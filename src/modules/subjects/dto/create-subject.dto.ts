@@ -1,5 +1,5 @@
 import { IsString, MaxLength } from 'class-validator';
-import type { CreateSubjectInput } from '@taco/contracts';
+import type { CreateSubjectInput } from '@kms545487/contracts';
 
 export class CreateSubjectDto implements CreateSubjectInput {
   @IsString()

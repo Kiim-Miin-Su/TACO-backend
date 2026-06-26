@@ -7,7 +7,7 @@ import {
   Min,
   MaxLength,
 } from 'class-validator';
-import type { CreateStudentInput } from '@taco/contracts';
+import type { CreateStudentInput } from '@kms545487/contracts';
 import { ResidenceType, StudentStatus } from '../student.entity';
 
 // DTO는 type이 아니라 class로 둡니다.

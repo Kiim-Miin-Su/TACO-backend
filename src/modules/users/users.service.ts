@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import type { Account, WebIdCheckResult } from '@taco/contracts';
+import type { Account, WebIdCheckResult } from '@kms545487/contracts';
 
 // 사전 가입된 로그인 계정(데모 seed). 실제로는 users 테이블 조회.
 const SEED: Account[] = [

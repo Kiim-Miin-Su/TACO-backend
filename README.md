@@ -37,7 +37,7 @@ src/
 ## 타입 컨벤션 / 공유 계약
 
 - 도메인 모델은 `type`(예: `Student = StudentContract & BaseRow`), DTO는 **class**(class-validator 런타임 메타데이터 필요).
-- 엔티티/DTO는 `@taco/contracts`를 `import type`/`implements` 하여 프론트와 형상 일치 (런타임 의존 없음 — `dist`에 미포함).
+- 엔티티/DTO는 `@kms545487/contracts`를 `import type`/`implements` 하여 프론트와 형상 일치 (런타임 의존 없음 — `dist`에 미포함).
 
 ## 엔드포인트 (요약)
 

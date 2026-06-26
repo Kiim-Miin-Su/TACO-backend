@@ -1,5 +1,5 @@
 import { IsIn, IsInt, IsOptional, Min } from 'class-validator';
-import type { CreatePaymentInput } from '@taco/contracts';
+import type { CreatePaymentInput } from '@kms545487/contracts';
 import { PaymentMethod } from '../payment.entity';
 
 export class CreatePaymentDto implements CreatePaymentInput {

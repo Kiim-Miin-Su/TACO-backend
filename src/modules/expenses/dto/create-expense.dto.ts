@@ -1,5 +1,5 @@
 import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
-import type { CreateExpenseInput } from '@taco/contracts';
+import type { CreateExpenseInput } from '@kms545487/contracts';
 import { ExpenseCategory } from '../expense.entity';
 
 const CATEGORIES: ExpenseCategory[] = [

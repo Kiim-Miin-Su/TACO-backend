@@ -1,5 +1,5 @@
 import { IsInt, IsOptional, IsString, Min } from 'class-validator';
-import type { CreateEnrollmentInput } from '@taco/contracts';
+import type { CreateEnrollmentInput } from '@kms545487/contracts';
 
 export class CreateEnrollmentDto implements CreateEnrollmentInput {
   @IsInt()

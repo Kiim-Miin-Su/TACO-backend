@@ -1,5 +1,5 @@
 import { IsInt, IsString, MaxLength, Min } from 'class-validator';
-import type { CreateCourseInput } from '@taco/contracts';
+import type { CreateCourseInput } from '@kms545487/contracts';
 
 export class CreateCourseDto implements CreateCourseInput {
   @IsString()
