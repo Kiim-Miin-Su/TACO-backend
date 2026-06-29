@@ -1,8 +1,11 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
-import type { ScheduleRow } from '@kms545487/contracts';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import type { Conflict, ScheduleRow } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { RoomsService } from '../rooms/rooms.service';
+import { AvailabilityService } from '../availability/availability.service';
 import { ClassSession, SESSIONS } from './schedule.entity';
+import { detectConflicts } from './conflict.util';
+import { UpdateScheduleDto } from './dto/update-schedule.dto';
 
 // in-module 라벨 룩업(데모) — 프론트 mock seed와 정렬.
 const INSTRUCTORS: Record<number, string> = { 1: '박지훈', 2: '정유진' };
@@ -20,6 +23,7 @@ const COURSES: Record<number, { name: string; subjectId: number; instructorId: n
 const pad = (n: number) => String(n).padStart(2, '0');
 const fmt = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 const weekdayOf = (dateStr: string) => new Date(dateStr + 'T00:00:00Z').getUTCDay(); // 0(일)~6(토)
+const toMin = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
 function addMinutes(hhmm: string, mins: number): string {
   const [h, m] = hhmm.split(':').map(Number);
   const t = h * 60 + m + mins;
@@ -41,6 +45,7 @@ export class ScheduleService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly rooms: RoomsService,
+    private readonly availability: AvailabilityService,
   ) {}
 
   // 이번 주(월~금) 데모 수업 시드. 강의실/강사/시간 충돌 없게 구성.
@@ -90,6 +95,60 @@ export class ScheduleService implements OnModuleInit {
       )
       .map((s) => this.enrich(s, rooms))
       .sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')));
+  }
+
+  // 충돌 드라이런(생성·이동 전 검사)
+  checkConflicts(input: {
+    sessionDate: string; startTime: string; endTime?: string; durationMinutes?: number;
+    instructorId?: number; roomId?: number; ignoreSessionId?: number;
+  }): Conflict[] {
+    const endTime = input.endTime ?? (input.durationMinutes != null ? addMinutes(input.startTime, input.durationMinutes) : input.startTime);
+    return detectConflicts(
+      { sessionDate: input.sessionDate, startTime: input.startTime, endTime, instructorId: input.instructorId, roomId: input.roomId, ignoreSessionId: input.ignoreSessionId },
+      this.db.findAll<ClassSession>(SESSIONS),
+      this.availability.list(),
+    );
+  }
+
+  // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
+  update(id: number, dto: UpdateScheduleDto): { row: ScheduleRow; conflicts: Conflict[] } {
+    const cur = this.db.findById<ClassSession>(SESSIONS, id);
+    if (!cur) throw new NotFoundException(`Session ${id} not found`);
+
+    // 참조 무결성(FK) 검증
+    if (dto.courseId != null && !COURSES[dto.courseId]) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
+    if (dto.instructorId != null && !INSTRUCTORS[dto.instructorId]) throw new BadRequestException(`instructorId ${dto.instructorId} 없음`);
+    if (dto.roomId != null && !this.rooms.findAll().some((r) => r.id === dto.roomId)) throw new BadRequestException(`roomId ${dto.roomId} 없음`);
+
+    // 필드 병합(이동=날짜/시간, 리사이즈=종료/시수, 편집=코스/강사/강의실/상태)
+    const sessionDate = dto.sessionDate ?? cur.sessionDate;
+    const startTime = dto.startTime ?? cur.startTime ?? '00:00';
+    let endTime: string;
+    let durationMinutes: number;
+    if (dto.endTime) { endTime = dto.endTime; durationMinutes = toMin(endTime) - toMin(startTime); }
+    else if (dto.durationMinutes != null) { durationMinutes = dto.durationMinutes; endTime = addMinutes(startTime, durationMinutes); }
+    else { durationMinutes = cur.durationMinutes; endTime = cur.endTime ?? addMinutes(startTime, durationMinutes); }
+    if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작보다 빠릅니다');
+
+    const courseId = dto.courseId ?? cur.courseId;
+    const course = COURSES[courseId];
+    const instructorId = dto.instructorId ?? (dto.courseId != null && course ? course.instructorId : cur.instructorId);
+    const roomId = dto.roomId ?? cur.roomId;
+
+    const conflicts = detectConflicts(
+      { sessionDate, startTime, endTime, instructorId, roomId, ignoreSessionId: id },
+      this.db.findAll<ClassSession>(SESSIONS),
+      this.availability.list(),
+    );
+    if (conflicts.length && !dto.force) throw new ConflictException({ message: '스케줄 충돌', conflicts });
+
+    const updated = this.db.update<ClassSession>(SESSIONS, id, {
+      sessionDate, startTime, endTime, durationMinutes, courseId, instructorId, roomId,
+      status: dto.status ?? cur.status,
+      topic: dto.topic ?? (dto.courseId != null && course ? course.name : cur.topic),
+    })!;
+    const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
+    return { row: this.enrich(updated, roomsMap), conflicts };
   }
 
   private enrich(s: ClassSession, rooms: Map<number, { name: string }>): ScheduleRow {
