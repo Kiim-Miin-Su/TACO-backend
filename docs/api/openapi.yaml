@@ -2,6 +2,8 @@ openapi: 3.1.0
 info:
   title: TACO ERP API
   version: 0.2.0-draft
+  license:
+    name: UNLICENSED
   description: >
     TnAcademy 백오피스(ERP) 전체 API 스펙 — **단일 소스(계획 포함)**.
 
@@ -58,6 +60,12 @@ tags:
     description: 경영 지표(대표 전용)
   - name: approvals
     description: 승인 센터(집계)
+  - name: rooms
+    description: 강의실(스케줄 v5)
+  - name: availability
+    description: 가용/불가 시간(학생·강사·강의실)
+  - name: scheduling
+    description: 스케줄 엔진 — 충돌검사·슬롯추천·자원 스케줄·시수
 
 security:
   - bearerAuth: []
@@ -1234,6 +1242,223 @@ paths:
                   expenses: { type: array, items: { $ref: '#/components/schemas/Expense' } }
                   payouts: { type: array, items: { $ref: '#/components/schemas/InstructorPayout' } }
 
+  # ════════════════════════════ rooms (v5) ════════════════════════════
+  /rooms:
+    get:
+      tags: [rooms]
+      summary: 강의실 목록
+      operationId: listRooms
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Room' } }
+    post:
+      tags: [rooms]
+      summary: 강의실 추가
+      operationId: createRoom
+      x-status: planned
+      x-roles: [admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoomInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Room' }
+  /rooms/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [rooms]
+      summary: 강의실 단건
+      operationId: getRoom
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Room' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [rooms]
+      summary: 강의실 수정
+      operationId: updateRoom
+      x-status: planned
+      x-roles: [admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoomInput' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Room' }
+  /rooms/{id}/schedule:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [scheduling]
+      summary: 강의실 개인 스케줄(기간)
+      operationId: getRoomSchedule
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ClassSession' } }
+
+  # ════════════════════════════ availability (v5) ════════════════════════════
+  /availability:
+    get:
+      tags: [availability]
+      summary: 가용/불가 시간 조회(자원별)
+      operationId: listAvailability
+      x-status: planned
+      x-roles: [student, parent, instructor, manager, admin, super_admin]
+      parameters:
+        - { name: ownerType, in: query, required: true, schema: { $ref: '#/components/schemas/AvailabilityOwner' } }
+        - { name: ownerId, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/AvailabilityBlock' } }
+    put:
+      tags: [availability]
+      summary: 가용 블록 upsert
+      operationId: upsertAvailability
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpsertAvailabilityInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AvailabilityBlock' }
+  /availability/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    delete:
+      tags: [availability]
+      summary: 가용 블록 삭제
+      operationId: deleteAvailability
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '204': { description: 삭제됨 }
+
+  # ════════════════════════════ scheduling engine (v5) ════════════════════════════
+  /schedule/conflicts:
+    post:
+      tags: [scheduling]
+      summary: 충돌 검사(생성·이동 전)
+      description: 후보 세션이 강사·강의실·학생 이중예약·불가시간·capacity와 충돌하는지 검사.
+      operationId: checkConflicts
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConflictCheckInput' }
+      responses:
+        '200':
+          description: 충돌 목록(빈 배열=충돌 없음)
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Conflict' } }
+  /schedule/suggest-slots:
+    post:
+      tags: [scheduling]
+      summary: 가능 시간 슬롯 추천(학생가용 ∩ 강사가용 − 점유)
+      operationId: suggestSlots
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SuggestSlotsInput' }
+      responses:
+        '200':
+          description: 주별 후보 슬롯
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/SlotCandidate' } }
+  /instructors/{id}/schedule:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [scheduling]
+      summary: 강사 개인 스케줄(기간)
+      operationId: getInstructorSchedule
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ClassSession' } }
+  /students/{id}/schedule:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [scheduling]
+      summary: 학생 개인 스케줄(기간)
+      operationId: getStudentSchedule
+      x-status: planned
+      x-roles: [student, parent, instructor, manager, admin, super_admin]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ClassSession' } }
+  /reports/teaching-hours:
+    get:
+      tags: [scheduling]
+      summary: 시수 집계(기간·강사·학생) — 회계 입력
+      operationId: teachingHours
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, format: date } }
+        - { name: to, in: query, required: true, schema: { type: string, format: date } }
+        - { name: instructorId, in: query, schema: { type: integer } }
+        - { name: studentId, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TeachingHours' }
+
 components:
   securitySchemes:
     bearerAuth:
@@ -1457,8 +1682,10 @@ components:
         seriesId: { type: integer, description: '(예정) 반복 시리즈 묶음 id' }
         courseId: { type: integer }
         instructorId: { type: integer }
+        roomId: { type: integer, description: '강의실(스케줄 v5)' }
         sessionDate: { type: string, format: date }
-        startTime: { type: string, description: '(예정) HH:mm 시작 시각(주간 캘린더)' }
+        startTime: { type: string, description: 'HH:mm 시작 시각(주간 캘린더)' }
+        endTime: { type: string, description: 'HH:mm 종료(=start+duration 파생 가능)' }
         durationMinutes: { type: integer }
         status: { $ref: '#/components/schemas/SessionStatus' }
         topic: { type: string }
@@ -1680,8 +1907,9 @@ components:
       properties:
         courseId: { type: integer }
         instructorId: { type: integer }
+        roomId: { type: integer }
         sessionDate: { type: string, format: date }
-        startTime: { type: string, description: 'HH:mm (예정)' }
+        startTime: { type: string, description: 'HH:mm' }
         durationMinutes: { type: integer }
         topic: { type: string }
     CreateRecurringInput:
@@ -1690,6 +1918,7 @@ components:
       properties:
         courseId: { type: integer }
         instructorId: { type: integer }
+        roomId: { type: integer }
         startDate: { type: string, format: date }
         endDate: { type: string, format: date }
         weekdays:
@@ -1796,3 +2025,94 @@ components:
         endDate: { type: string, format: date }
         allDay: { type: boolean }
         memo: { type: string }
+
+    # ════════ 스케줄 엔진 (v5) ════════
+    AvailabilityOwner: { type: string, enum: [student, instructor, room] }
+    AvailabilityKind: { type: string, enum: [available, unavailable] }
+    ConflictType: { type: string, enum: [double_book, unavailable, room_capacity] }
+    Room:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        buildingId: { type: integer, description: 상위 위치(건물) }
+        capacity: { type: integer }
+        color: { type: string }
+        isActive: { type: boolean }
+    CreateRoomInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        buildingId: { type: integer }
+        capacity: { type: integer }
+        color: { type: string }
+        isActive: { type: boolean }
+    AvailabilityBlock:
+      type: object
+      properties:
+        id: { type: integer }
+        ownerType: { $ref: '#/components/schemas/AvailabilityOwner' }
+        ownerId: { type: integer }
+        kind: { $ref: '#/components/schemas/AvailabilityKind' }
+        weekday: { type: integer, minimum: 0, maximum: 6, description: 0(일)~6(토) }
+        startTime: { type: string, description: 'HH:mm' }
+        endTime: { type: string, description: 'HH:mm' }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: string, format: date }
+    UpsertAvailabilityInput:
+      type: object
+      required: [ownerType, ownerId, weekday, startTime, endTime]
+      properties:
+        id: { type: integer, description: 있으면 수정, 없으면 생성 }
+        ownerType: { $ref: '#/components/schemas/AvailabilityOwner' }
+        ownerId: { type: integer }
+        kind: { $ref: '#/components/schemas/AvailabilityKind' }
+        weekday: { type: integer, minimum: 0, maximum: 6 }
+        startTime: { type: string }
+        endTime: { type: string }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: string, format: date }
+    ConflictCheckInput:
+      type: object
+      required: [sessionDate, startTime, durationMinutes]
+      properties:
+        ignoreSessionId: { type: integer, description: 이동 시 자기 자신 제외 }
+        instructorId: { type: integer }
+        roomId: { type: integer }
+        studentIds: { type: array, items: { type: integer } }
+        sessionDate: { type: string, format: date }
+        startTime: { type: string }
+        durationMinutes: { type: integer }
+    Conflict:
+      type: object
+      properties:
+        type: { $ref: '#/components/schemas/ConflictType' }
+        resource: { type: string, enum: [instructor, room, student] }
+        resourceId: { type: integer }
+        sessionId: { type: integer, description: 충돌 상대 세션(있으면) }
+        detail: { type: string }
+    SuggestSlotsInput:
+      type: object
+      required: [instructorId, studentIds, weekStart, weeks, durationMinutes]
+      properties:
+        instructorId: { type: integer }
+        studentIds: { type: array, items: { type: integer } }
+        roomId: { type: integer }
+        weekStart: { type: string, format: date }
+        weeks: { type: integer, minimum: 1 }
+        durationMinutes: { type: integer }
+        granularityMin: { type: integer, default: 30 }
+    SlotCandidate:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        weekday: { type: integer }
+        startTime: { type: string }
+        endTime: { type: string }
+    TeachingHours:
+      type: object
+      properties:
+        sessions: { type: integer, description: 대상 수업 수(held) }
+        minutes: { type: integer, description: 총 시수(분) }
+        hours: { type: number, description: 시간 환산 }

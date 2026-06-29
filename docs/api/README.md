@@ -4,7 +4,7 @@
 "무엇을 만들지 까먹지 않기 위해" 현재(구현) + 예정(TBO-02) 엔드포인트를 모두 담습니다.
 
 - 스펙 파일: [`openapi.yaml`](./openapi.yaml) — OpenAPI 3.1
-- 현황: **68개 오퍼레이션** (구현 26 · 예정 42), 스키마 66개 — `2026-06-29` 기준
+- 현황: **81개 오퍼레이션** (구현 26 · 예정 55), 스키마 78개 — `2026-06-29` 기준 (v5 스케줄 엔진 포함)
 
 ## 보는 방법
 
@@ -63,6 +63,11 @@ payload/엔티티의 형상은 **한 곳에서만** 정의합니다.
 | transactions | `GET /transactions` | 예정 |
 | dashboard | `GET /dashboard/summary` · `GET /dashboard/revenue` (대표 전용) | 예정 |
 | approvals | `GET /approvals` (대표 전용) | 예정 |
+| **rooms** (v5) | `GET·POST /rooms` · `GET·PATCH /{id}` · `GET /{id}/schedule` | 예정 |
+| **availability** (v5) | `GET·PUT /availability` · `DELETE /{id}` | 예정 |
+| **scheduling** (v5) | `POST /schedule/conflicts` · `POST /schedule/suggest-slots` · `GET /instructors|students|rooms/{id}/schedule` · `GET /reports/teaching-hours` | 예정 |
+
+> v5 스케줄 엔진 상세 설계: `docs/scheduling.md` (Lantiv 분석 기반).
 
 ## store/mock payload ↔ DTO
 
