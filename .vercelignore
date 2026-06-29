@@ -1,0 +1,6 @@
+dist
+test
+docs
+.claude
+*.spec.ts
+*.e2e-spec.ts
