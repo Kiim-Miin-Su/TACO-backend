@@ -185,6 +185,8 @@ export class ScheduleService implements OnModuleInit {
       this.db.findAll<ClassSession>(SESSIONS),
       this.availability.list(),
     );
+    // 디버깅: 생성 요청 + 충돌 현황 로깅
+    console.log('[schedule.create] req', JSON.stringify({ courseId: dto.courseId, instructorId, roomId: dto.roomId, sessionDate: dto.sessionDate, startTime, endTime, force: !!dto.force }), 'conflicts', conflicts.length);
     if (conflicts.length && !dto.force) throw new ConflictException({ message: '스케줄 충돌', conflicts });
 
     const row = this.db.insert<ClassSession>(SESSIONS, {
@@ -271,6 +273,7 @@ export class ScheduleService implements OnModuleInit {
         others, blocks,
       ));
     }
+    console.log('[schedule.update] req', JSON.stringify({ id, scope, dto }), 'siblings', seriesPatches.length, 'conflicts', conflicts.length);
     if (conflicts.length && !dto.force) throw new ConflictException({ message: '스케줄 충돌', conflicts });
 
     // 4) 일괄 적용(대상 먼저, 그 뒤 시리즈)

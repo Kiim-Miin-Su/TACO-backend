@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
+import { LoggerMiddleware } from './common/logger.middleware';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
@@ -33,4 +34,9 @@ import { ScheduleModule } from './modules/schedule/schedule.module';
     ScheduleModule,
   ],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  // 모든 요청 로깅(디버깅)
+  configure(consumer: MiddlewareConsumer): void {
+    consumer.apply(LoggerMiddleware).forRoutes('*');
+  }
+}
