@@ -26,7 +26,15 @@ async function bootstrapServer() {
     .setVersion('0.1.0')
     .addBearerAuth()
     .build();
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, config));
+  // 서버리스(Vercel)는 Swagger UI 정적 에셋을 서빙하지 못해 흰 화면이 됨.
+  // → JS/CSS를 CDN(jsdelivr swagger-ui-dist)에서 로드하도록 지정.
+  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, config), {
+    customCssUrl: 'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css',
+    customJs: [
+      'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js',
+      'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js',
+    ],
+  });
 
   await app.init();
   return app.getHttpAdapter().getInstance() as (req: unknown, res: unknown) => void;
