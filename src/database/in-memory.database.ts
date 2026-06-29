@@ -57,4 +57,12 @@ export class InMemoryDatabase {
     Object.assign(row, patch, { updatedAt: new Date().toISOString() });
     return row;
   }
+
+  remove(name: string, id: number): boolean {
+    const rows = this.collection(name);
+    const i = rows.findIndex((r) => r.id === id);
+    if (i < 0) return false;
+    rows.splice(i, 1);
+    return true;
+  }
 }
