@@ -4,6 +4,7 @@ info:
   version: 0.2.0-draft
   license:
     name: UNLICENSED
+    identifier: LicenseRef-UNLICENSED
   description: >
     TnAcademy 백오피스(ERP) 전체 API 스펙 — **단일 소스(계획 포함)**.
 
