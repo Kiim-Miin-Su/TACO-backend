@@ -1727,6 +1727,9 @@ components:
         interestSubjectId: { type: integer }
         interestCourseId: { type: integer }
         academyExpectation: { type: string }
+        desiredStartTime: { type: string, enum: [immediately, within_1_month, within_2_3_months, undecided] }
+        learningAtmosphere: { type: string, enum: [self_directed, normal, needs_management] }
+        studentIntention: { type: string, enum: [student_wants, parent_only, unknown] }
         weakness: { type: string }
     UpdateCounselInput:
       type: object
@@ -1755,6 +1758,7 @@ components:
         payerParentId: { type: integer }
         amount: { type: integer }
         paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+        dueAt: { type: string, format: date, description: 납부 기한(청구 시 지정 가능) }
     UpdatePaymentInput:
       type: object
       properties:
