@@ -16,8 +16,15 @@ info:
     - 라이브 Swagger(구현된 부분만): `http://localhost:3001/docs` · JSON: `/docs-json`
     - 본 설계 스펙 미리보기: 이 파일을 https://editor.swagger.io 에 붙여넣기.
 servers:
-  - url: http://localhost:3001/api
-    description: 로컬 개발(in-memory)
+  - url: "{protocol}://{host}/api"
+    description: "host만 교체: 로컬 Docker(localhost:3001) → AWS 공개IP/도메인"
+    variables:
+      protocol:
+        default: http
+        enum: [http, https]
+      host:
+        default: localhost:3001
+        description: 로컬 Docker / AWS 배포 주소
 tags:
   - name: health
     description: 헬스체크
@@ -2029,7 +2036,10 @@ components:
 
     # ════════ 스케줄 엔진 (v5) ════════
     AvailabilityOwner: { type: string, enum: [student, instructor, room] }
-    AvailabilityKind: { type: string, enum: [available, unavailable] }
+    AvailabilityKind:
+      type: string
+      enum: [available, unavailable]
+      description: "unavailable = 불가시간(Block). 뷰에서 고정 회색/검정으로 통일 표시."
     ConflictType: { type: string, enum: [double_book, unavailable, room_capacity] }
     Room:
       type: object
