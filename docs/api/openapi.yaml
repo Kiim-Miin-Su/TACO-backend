@@ -1377,10 +1377,69 @@ paths:
         '204': { description: 삭제됨 }
 
   # ════════════════════════════ scheduling engine (v5) ════════════════════════════
+  /schedule:
+    get:
+      tags: [scheduling]
+      summary: 스케줄 조회(기간·필터) → 주간 표/캘린더용 enriched 행
+      operationId: listSchedule
+      x-status: implemented
+      x-roles: [instructor, manager, admin, super_admin]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: instructorId, in: query, schema: { type: integer } }
+        - { name: roomId, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ScheduleRow' } }
+  /schedule/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      tags: [scheduling]
+      summary: 수업 이동·리사이즈·편집 (FK 검증 + 충돌 검사)
+      description: >
+        sessionDate·start/end·duration·room·instructor·course·status 부분수정.
+        scope(this_and_following|all)면 같은 seriesId 세션을 동일 델타로 함께 이동(반복 편집).
+        FK 위반 → 400. 강사/강의실 이중예약·불가시간 충돌 → 409 {message, conflicts}.
+        body.force=true 면 충돌이 있어도 적용하고 conflicts를 함께 반환.
+      operationId: updateSchedule
+      x-status: implemented
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateScheduleInput' }
+      responses:
+        '200':
+          description: 적용됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  row: { $ref: '#/components/schemas/ScheduleRow' }
+                  conflicts: { type: array, items: { $ref: '#/components/schemas/Conflict' } }
+                  updated: { type: integer, description: '함께 수정된 세션 수(반복 포함). 단건이면 1.' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: 충돌(force 아님)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  conflicts: { type: array, items: { $ref: '#/components/schemas/Conflict' } }
   /schedule/conflicts:
     post:
       tags: [scheduling]
-      summary: 충돌 검사(생성·이동 전)
+      summary: 충돌 검사(생성·이동 전, 드라이런)
+      x-status: implemented
       description: 후보 세션이 강사·강의실·학생 이중예약·불가시간·capacity와 충돌하는지 검사.
       operationId: checkConflicts
       x-status: planned
@@ -2127,3 +2186,34 @@ components:
         sessions: { type: integer, description: 대상 수업 수(held) }
         minutes: { type: integer, description: 총 시수(분) }
         hours: { type: number, description: 시간 환산 }
+    ScheduleRow:
+      description: 주간 표/캘린더용 enriched 세션(세션 + 라벨·색·요일)
+      allOf:
+        - { $ref: '#/components/schemas/ClassSession' }
+        - type: object
+          properties:
+            weekday: { type: integer, description: 0(일)~6(토) }
+            courseName: { type: string }
+            subjectName: { type: string }
+            instructorName: { type: string }
+            roomName: { type: string }
+            color: { type: string }
+    UpdateScheduleInput:
+      type: object
+      description: 이동·리사이즈·편집 부분수정 (모든 필드 optional)
+      properties:
+        sessionDate: { type: string, format: date }
+        startTime: { type: string, description: 'HH:mm' }
+        endTime: { type: string, description: 'HH:mm' }
+        durationMinutes: { type: integer }
+        roomId: { type: integer }
+        instructorId: { type: integer }
+        courseId: { type: integer }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        topic: { type: string }
+        scope:
+          allOf: [{ $ref: '#/components/schemas/RecurrenceScope' }]
+          description: >
+            반복(seriesId) 적용 범위. this=이 일정만(기본), this_and_following=이 일정 및 이후,
+            all=시리즈 전체. 같은 seriesId 세션에 동일한 날짜·시간 델타(+절대 강의실/강사/상태)를 적용.
+        force: { type: boolean, description: 충돌이 있어도 적용 }

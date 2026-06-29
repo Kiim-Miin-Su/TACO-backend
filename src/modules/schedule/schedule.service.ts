@@ -29,6 +29,13 @@ function addMinutes(hhmm: string, mins: number): string {
   const t = h * 60 + m + mins;
   return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
 }
+const addDaysISO = (dateStr: string, days: number): string => {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return fmt(d);
+};
+const dayDiff = (a: string, b: string): number =>
+  Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86_400_000);
 function mondayOfThisWeekUTC(): Date {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -38,7 +45,13 @@ function mondayOfThisWeekUTC(): Date {
   return d;
 }
 
-type SeedDef = { dayOffset: number; startTime: string; durationMinutes: number; courseId: number; roomId: number; status: ClassSession['status'] };
+// 주간 반복 시리즈 시드 정의 — 같은 시리즈는 한 seriesId를 공유(반복 편집 데모용).
+type SeedSeries = { courseId: number; roomId: number; weekdayOffsets: number[]; startTime: string; durationMinutes: number };
+// 병합된 세션 필드(업데이트 적용 단위) — 이동/리사이즈/편집 공통.
+type MergedFields = {
+  sessionDate: string; startTime: string; endTime: string; durationMinutes: number;
+  courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string;
+};
 
 @Injectable()
 export class ScheduleService implements OnModuleInit {
@@ -48,37 +61,37 @@ export class ScheduleService implements OnModuleInit {
     private readonly availability: AvailabilityService,
   ) {}
 
-  // 이번 주(월~금) 데모 수업 시드. 강의실/강사/시간 충돌 없게 구성.
+  // 이번 주 데모 수업 시드 — 주간 반복 시리즈 단위(같은 시리즈=한 seriesId). 충돌 없게 구성.
   onModuleInit(): void {
     if (this.db.findAll<ClassSession>(SESSIONS).length) return;
     const mon = mondayOfThisWeekUTC();
-    const defs: SeedDef[] = [
-      { dayOffset: 0, startTime: '16:00', durationMinutes: 90, courseId: 10, roomId: 1, status: 'scheduled' },
-      { dayOffset: 0, startTime: '18:00', durationMinutes: 90, courseId: 11, roomId: 2, status: 'scheduled' },
-      { dayOffset: 1, startTime: '16:00', durationMinutes: 90, courseId: 12, roomId: 1, status: 'scheduled' },
-      { dayOffset: 1, startTime: '16:00', durationMinutes: 120, courseId: 11, roomId: 3, status: 'scheduled' },
-      { dayOffset: 2, startTime: '16:00', durationMinutes: 90, courseId: 10, roomId: 1, status: 'scheduled' },
-      { dayOffset: 2, startTime: '18:00', durationMinutes: 90, courseId: 12, roomId: 2, status: 'scheduled' },
-      { dayOffset: 3, startTime: '16:00', durationMinutes: 120, courseId: 11, roomId: 3, status: 'scheduled' },
-      { dayOffset: 4, startTime: '16:00', durationMinutes: 90, courseId: 10, roomId: 1, status: 'scheduled' },
-      { dayOffset: 4, startTime: '18:00', durationMinutes: 90, courseId: 12, roomId: 2, status: 'scheduled' },
+    const series: SeedSeries[] = [
+      // SAT Reading 정규(강사1·강의실1) — 월·수·금 16:00
+      { courseId: 10, roomId: 1, weekdayOffsets: [0, 2, 4], startTime: '16:00', durationMinutes: 90 },
+      // AP Calculus BC(강사2·강의실3) — 화·목 16:00
+      { courseId: 11, roomId: 3, weekdayOffsets: [1, 3], startTime: '16:00', durationMinutes: 120 },
+      // TOEFL 정규(강사1·강의실2) — 월·수 18:00
+      { courseId: 12, roomId: 2, weekdayOffsets: [0, 2], startTime: '18:00', durationMinutes: 90 },
     ];
-    let series = 0;
-    defs.forEach((d) => {
-      const c = COURSES[d.courseId];
-      const date = new Date(mon);
-      date.setUTCDate(date.getUTCDate() + d.dayOffset);
-      this.db.insert<ClassSession>(SESSIONS, {
-        seriesId: ++series,
-        courseId: d.courseId,
-        instructorId: c.instructorId,
-        roomId: d.roomId,
-        sessionDate: fmt(date),
-        startTime: d.startTime,
-        endTime: addMinutes(d.startTime, d.durationMinutes),
-        durationMinutes: d.durationMinutes,
-        status: d.status,
-        topic: c.name,
+    let seriesId = 0;
+    series.forEach((sr) => {
+      const sid = ++seriesId;
+      const c = COURSES[sr.courseId];
+      sr.weekdayOffsets.forEach((off) => {
+        const date = new Date(mon);
+        date.setUTCDate(date.getUTCDate() + off);
+        this.db.insert<ClassSession>(SESSIONS, {
+          seriesId: sid,
+          courseId: sr.courseId,
+          instructorId: c.instructorId,
+          roomId: sr.roomId,
+          sessionDate: fmt(date),
+          startTime: sr.startTime,
+          endTime: addMinutes(sr.startTime, sr.durationMinutes),
+          durationMinutes: sr.durationMinutes,
+          status: 'scheduled',
+          topic: c.name,
+        });
       });
     });
   }
@@ -111,7 +124,8 @@ export class ScheduleService implements OnModuleInit {
   }
 
   // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
-  update(id: number, dto: UpdateScheduleDto): { row: ScheduleRow; conflicts: Conflict[] } {
+  // scope(this_and_following|all)면 같은 seriesId 세션에 동일 날짜·시간 델타를 함께 적용.
+  update(id: number, dto: UpdateScheduleDto): { row: ScheduleRow; conflicts: Conflict[]; updated: number } {
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
 
@@ -120,35 +134,81 @@ export class ScheduleService implements OnModuleInit {
     if (dto.instructorId != null && !INSTRUCTORS[dto.instructorId]) throw new BadRequestException(`instructorId ${dto.instructorId} 없음`);
     if (dto.roomId != null && !this.rooms.findAll().some((r) => r.id === dto.roomId)) throw new BadRequestException(`roomId ${dto.roomId} 없음`);
 
-    // 필드 병합(이동=날짜/시간, 리사이즈=종료/시수, 편집=코스/강사/강의실/상태)
+    // 1) 대상(primary) 세션의 새 필드 계산
+    const primary = this.mergeFields(cur, dto);
+
+    // 2) 시리즈 동반 편집 대상 산출(this=대상만, this_and_following=대상 이후, all=시리즈 전체)
+    //    공통 델타: 날짜(일수)·시작시각(분). 강의실/강사/상태/시수는 절대값으로 동일 적용.
+    const scope = dto.scope ?? 'this';
+    const dayDelta = dayDiff(primary.sessionDate, cur.sessionDate);
+    const startDelta = toMin(primary.startTime) - toMin(cur.startTime ?? primary.startTime);
+    const seriesPatches: { id: number; fields: MergedFields }[] = [];
+    if (scope !== 'this' && cur.seriesId != null) {
+      const members = this.db.findBy<ClassSession>(SESSIONS, (s) =>
+        s.id !== id && s.seriesId === cur.seriesId &&
+        (scope === 'all' || s.sessionDate > cur.sessionDate),
+      );
+      for (const m of members) {
+        const mStart = addMinutes(m.startTime ?? '00:00', startDelta);
+        seriesPatches.push({
+          id: m.id,
+          fields: {
+            sessionDate: addDaysISO(m.sessionDate, dayDelta),
+            startTime: mStart,
+            endTime: addMinutes(mStart, primary.durationMinutes),
+            durationMinutes: primary.durationMinutes,
+            courseId: primary.courseId,
+            instructorId: primary.instructorId,
+            roomId: primary.roomId,
+            status: primary.status,
+            topic: m.topic ?? primary.topic,
+          },
+        });
+      }
+    }
+
+    // 3) 충돌 검사(대상 + 시리즈 동반). 자기 자신과 함께 이동하는 형제는 검사에서 제외.
+    const movingIds = new Set<number>([id, ...seriesPatches.map((p) => p.id)]);
+    const others = this.db.findBy<ClassSession>(SESSIONS, (s) => !movingIds.has(s.id));
+    const blocks = this.availability.list();
+    const conflicts: Conflict[] = [];
+    for (const f of [primary, ...seriesPatches.map((p) => p.fields)]) {
+      conflicts.push(...detectConflicts(
+        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime, instructorId: f.instructorId, roomId: f.roomId },
+        others, blocks,
+      ));
+    }
+    if (conflicts.length && !dto.force) throw new ConflictException({ message: '스케줄 충돌', conflicts });
+
+    // 4) 일괄 적용(대상 먼저, 그 뒤 시리즈)
+    const updated = this.db.update<ClassSession>(SESSIONS, id, primary)!;
+    for (const p of seriesPatches) this.db.update<ClassSession>(SESSIONS, p.id, p.fields);
+
+    const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
+    return { row: this.enrich(updated, roomsMap), conflicts, updated: 1 + seriesPatches.length };
+  }
+
+  // 부분수정 DTO → 세션 전체 필드(이동=날짜/시간, 리사이즈=종료/시수, 편집=코스/강사/강의실/상태).
+  private mergeFields(cur: ClassSession, dto: UpdateScheduleDto): MergedFields {
     const sessionDate = dto.sessionDate ?? cur.sessionDate;
     const startTime = dto.startTime ?? cur.startTime ?? '00:00';
     let endTime: string;
     let durationMinutes: number;
     if (dto.endTime) { endTime = dto.endTime; durationMinutes = toMin(endTime) - toMin(startTime); }
     else if (dto.durationMinutes != null) { durationMinutes = dto.durationMinutes; endTime = addMinutes(startTime, durationMinutes); }
-    else { durationMinutes = cur.durationMinutes; endTime = cur.endTime ?? addMinutes(startTime, durationMinutes); }
+    // 종료/시수 미지정 → 시수 유지하되 종료는 시작 기준으로 재계산(이동 시 종료가 어긋나지 않게).
+    else { durationMinutes = cur.durationMinutes; endTime = addMinutes(startTime, durationMinutes); }
     if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작보다 빠릅니다');
 
     const courseId = dto.courseId ?? cur.courseId;
     const course = COURSES[courseId];
     const instructorId = dto.instructorId ?? (dto.courseId != null && course ? course.instructorId : cur.instructorId);
     const roomId = dto.roomId ?? cur.roomId;
-
-    const conflicts = detectConflicts(
-      { sessionDate, startTime, endTime, instructorId, roomId, ignoreSessionId: id },
-      this.db.findAll<ClassSession>(SESSIONS),
-      this.availability.list(),
-    );
-    if (conflicts.length && !dto.force) throw new ConflictException({ message: '스케줄 충돌', conflicts });
-
-    const updated = this.db.update<ClassSession>(SESSIONS, id, {
+    return {
       sessionDate, startTime, endTime, durationMinutes, courseId, instructorId, roomId,
       status: dto.status ?? cur.status,
       topic: dto.topic ?? (dto.courseId != null && course ? course.name : cur.topic),
-    })!;
-    const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
-    return { row: this.enrich(updated, roomsMap), conflicts };
+    };
   }
 
   private enrich(s: ClassSession, rooms: Map<number, { name: string }>): ScheduleRow {
