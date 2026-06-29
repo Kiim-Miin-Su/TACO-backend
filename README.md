@@ -10,8 +10,32 @@ npm run dev        # http://localhost:3001/api (watch)
 npm run build && npm start
 ```
 
-- 환경변수: `PORT`(기본 3001), `WEB_ORIGIN`(CORS, 기본 http://localhost:3000), `JWT_SECRET`, `JWT_EXPIRES_IN`
+- 환경변수: `PORT`(기본 3001), `WEB_ORIGIN`(CORS, 기본 http://localhost:3000), `JWT_SECRET`, `JWT_EXPIRES_IN` — `.env.example` 참고
 - **API 문서(Swagger): http://localhost:3001/docs** (스펙 JSON: `/docs-json`)
+
+## Docker (로컬 테스트 → AWS 배포)
+
+로컬은 Docker로 백엔드를 띄우고, 프론트는 `NEXT_PUBLIC_API_URL` 로 그 주소를 가리킵니다.
+추후 AWS 배포 시 **같은 이미지**를 ECR push 후 ECS/EC2에서 실행하고, 프론트 env만 공개 IP/도메인으로 바꿉니다.
+
+```bash
+cp .env.example .env            # 필요 시 값 수정
+docker compose up --build       # → http://localhost:3001/api · 문서 /docs
+docker compose logs -f api      # 로그
+docker compose down             # 중지
+```
+
+프론트 연결(BASE_URL):
+
+```bash
+# frontend/.env.local
+NEXT_PUBLIC_API_URL=http://localhost:3001     # 로컬 Docker
+# NEXT_PUBLIC_API_URL=http://<EC2-공개IP>:3001 # AWS 배포 후 이 값만 교체
+# NEXT_PUBLIC_API_URL=https://api.your-domain
+```
+
+> AWS 단계: ① `docker build` → ECR push ② ECS Fargate(또는 EC2+compose) 실행
+> ③ 보안그룹에서 3001(또는 ALB 443) 오픈 ④ `WEB_ORIGIN`을 프론트 배포 주소로 설정.
 
 ## 구조 (feature 모듈 기반)
 

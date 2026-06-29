@@ -1,0 +1,22 @@
+# 로컬 Docker 테스트용. 추후 AWS(ECR/ECS·EC2)로 동일 이미지 배포.
+#   docker compose up --build      # 빌드 + 실행
+#   docker compose up -d           # 백그라운드
+#   docker compose logs -f api     # 로그
+#   docker compose down            # 중지
+services:
+  api:
+    build: .
+    image: taco-api:local
+    container_name: taco-api
+    ports:
+      - "3001:3001"
+    env_file:
+      - .env            # 없으면 아래 environment 기본값 사용 (.env.example 참고)
+    environment:
+      PORT: 3001
+      # 프론트(브라우저) 출처 — CORS 허용. 로컬 프론트 dev 서버.
+      WEB_ORIGIN: ${WEB_ORIGIN:-http://localhost:3000}
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-change-me}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-1h}
+      NODE_ENV: production
+    restart: unless-stopped
