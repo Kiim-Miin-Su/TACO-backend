@@ -39,7 +39,12 @@ src/
 - 도메인 모델은 `type`(예: `Student = StudentContract & BaseRow`), DTO는 **class**(class-validator 런타임 메타데이터 필요).
 - 엔티티/DTO는 `@kms545487/contracts`를 `import type`/`implements` 하여 프론트와 형상 일치 (런타임 의존 없음 — `dist`에 미포함).
 
-## 엔드포인트 (요약)
+## 엔드포인트
+
+> **전체 설계 스펙(현재+예정, payload 포함)**: [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) · 인덱스/규약: [`docs/api/README.md`](./docs/api/README.md)
+> 구현된 부분의 라이브 Swagger는 실행 후 `/docs`.
+
+### 구현 요약
 
 | Method | Path | 설명 |
 |---|---|---|
@@ -53,8 +58,9 @@ src/
 | GET/POST | `/api/courses` (+ `/:id`) | 코스 |
 | GET/POST | `/api/expenses` · POST `/:id/approve`·`/reject` | 지출(승인) |
 
-> 전체 목록은 `/docs` 참고 (현재 20개 경로).
+## 남은 도메인 (스펙 정의 완료 · 구현 예정)
 
-## 남은 도메인 (동일 패턴으로 확장 예정)
-
-class-sessions·attendance·session-reports(피드백), counsel(forms+rounds), instructor-payouts, academy-events, parents/instructors. sub-resource가 있는 sessions·counsel을 먼저 설계 권장.
+class-sessions·attendance·session-reports(피드백), counsel(forms+rounds), instructor-payouts,
+academy-events, roadmaps(M:N), parents/instructors, transactions/dashboard/approvals.
+payload·응답·권한은 [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) 에 이미 정의됨(구현 26 · 예정 42 오퍼레이션).
+sub-resource가 있는 sessions·counsel을 먼저 구현 권장.

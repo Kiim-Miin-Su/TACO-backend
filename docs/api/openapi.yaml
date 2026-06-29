@@ -1,0 +1,1794 @@
+openapi: 3.1.0
+info:
+  title: TACO ERP API
+  version: 0.2.0-draft
+  description: >
+    TnAcademy 백오피스(ERP) 전체 API 스펙 — **단일 소스(계획 포함)**.
+
+    - 본 문서는 "구현 완료(implemented)" + "예정(planned, TBO-02)" 엔드포인트를 **모두** 정의합니다.
+      구현 전에 payload·응답·권한을 확정해 두어 백엔드 구현과 프론트 연동이 어긋나지 않게 합니다.
+    - payload/엔티티 형상의 단일 소스는 공유 계약 패키지 `@kms545487/contracts` 입니다.
+      본 스펙의 schema는 그 타입을 OpenAPI로 옮긴 것이며, 구현 시 DTO(class)가 `implements` 합니다.
+    - 각 operation의 `x-status`(implemented|planned)와 `x-roles`(접근 허용 역할)를 확인하세요.
+    - 라이브 Swagger(구현된 부분만): `http://localhost:3001/docs` · JSON: `/docs-json`
+    - 본 설계 스펙 미리보기: 이 파일을 https://editor.swagger.io 에 붙여넣기.
+servers:
+  - url: http://localhost:3001/api
+    description: 로컬 개발(in-memory)
+tags:
+  - name: health
+    description: 헬스체크
+  - name: auth
+    description: 인증(JWT 발급/검증)
+  - name: users
+    description: 로그인 계정(web id 검증)
+  - name: students
+    description: 학생 (소프트삭제=퇴원)
+  - name: parents
+    description: 학부모
+  - name: instructors
+    description: 강사
+  - name: enrollments
+    description: 수강등록
+  - name: subjects
+    description: 과목
+  - name: courses
+    description: 코스(시급 포함)
+  - name: roadmaps
+    description: 로드맵(코스·과목·강사 M:N)
+  - name: class-sessions
+    description: 수업/스케줄(시간대·반복)
+  - name: attendance
+    description: 출석
+  - name: session-reports
+    description: 수업 보고서(학부모 피드백)
+  - name: counsel
+    description: 상담(카드·회차)
+  - name: payments
+    description: 결제·수납(민감)
+  - name: instructor-payouts
+    description: 강사 페이(승인→지급)
+  - name: expenses
+    description: 지출·비품(승인)
+  - name: academy-events
+    description: 학원 이벤트/공지
+  - name: transactions
+    description: 통합 원장(입·출금)
+  - name: dashboard
+    description: 경영 지표(대표 전용)
+  - name: approvals
+    description: 승인 센터(집계)
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ════════════════════════════ health ════════════════════════════
+  /health:
+    get:
+      tags: [health]
+      summary: 헬스체크
+      operationId: health
+      security: []
+      x-status: implemented
+      x-roles: [public]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  uptime: { type: number }
+
+  # ════════════════════════════ auth ════════════════════════════
+  /auth/token:
+    post:
+      tags: [auth]
+      summary: 토큰 발급(데모 로그인)
+      operationId: issueToken
+      security: []
+      x-status: implemented
+      x-roles: [public]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IssueTokenInput' }
+      responses:
+        '201':
+          description: 발급됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  accessToken: { type: string }
+                  account: { $ref: '#/components/schemas/Account' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+  /auth/me:
+    get:
+      tags: [auth]
+      summary: 현재 토큰의 계정/역할 조회
+      operationId: getMe
+      x-status: implemented
+      x-roles: [any]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Account' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # ════════════════════════════ users ════════════════════════════
+  /users:
+    get:
+      tags: [users]
+      summary: 계정 목록(데모 seed)
+      operationId: listUsers
+      x-status: implemented
+      x-roles: [admin, manager, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Account' } }
+  /users/exists:
+    get:
+      tags: [users]
+      summary: web id 존재 확인(학생/학부모 가입 ID 검증)
+      operationId: checkWebId
+      x-status: implemented
+      x-roles: [any]
+      parameters:
+        - { name: webId, in: query, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/WebIdCheckResult' }
+
+  # ════════════════════════════ students ════════════════════════════
+  /students:
+    get:
+      tags: [students]
+      summary: 학생 목록(기본 스코프=활성, 퇴원 제외)
+      operationId: listStudents
+      x-status: implemented
+      x-status-note: 'q/page/size/sort/status 필터는 planned'
+      x-roles: [instructor, manager, admin, super_admin]
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+        - { $ref: '#/components/parameters/Q' }
+        - { $ref: '#/components/parameters/Sort' }
+        - name: status
+          in: query
+          description: '특정 상태만. 미지정 시 활성(퇴원 제외).'
+          schema: { $ref: '#/components/schemas/StudentStatus' }
+        - name: includeDropped
+          in: query
+          description: 퇴원 포함 여부
+          schema: { type: boolean, default: false }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudentPage' }
+    post:
+      tags: [students]
+      summary: 학생 등록(학부모·코스 동시 등록 가능)
+      operationId: createStudent
+      x-status: implemented
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateStudentInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Student' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+  /students/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [students]
+      summary: 학생 단건
+      operationId: getStudent
+      x-status: implemented
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Student' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [students]
+      summary: 학생 정보 수정(추후 Web ID 부여 포함)
+      operationId: updateStudent
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateStudentInput' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Student' }
+  /students/{id}/drop:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [students]
+      summary: 퇴원(소프트삭제) — 레코드 보존, 활성 스코프에서 제외
+      description: >
+        학생/수강을 status='canceled' 로 전이만 한다.
+        상담·수업보고서(학점)·결제·출석·부모연결은 **삭제하지 않는다**(자산화).
+      operationId: dropStudent
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      responses:
+        '200':
+          description: 퇴원 처리됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Student' }
+  /students/{id}/detail:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [students]
+      summary: 학생 상세(집계) — 코스·강사·상담·연락처·메모 순환 flow
+      operationId: getStudentDetail
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StudentDetail' }
+
+  # ════════════════════════════ parents ════════════════════════════
+  /parents:
+    get:
+      tags: [parents]
+      summary: 학부모 목록
+      operationId: listParents
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      parameters:
+        - { $ref: '#/components/parameters/Q' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Parent' } }
+    post:
+      tags: [parents]
+      summary: 학부모 등록 + 학생 연결
+      operationId: createParent
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateParentInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Parent' }
+
+  # ════════════════════════════ instructors ════════════════════════════
+  /instructors:
+    get:
+      tags: [instructors]
+      summary: 강사 목록
+      operationId: listInstructors
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Instructor' } }
+
+  # ════════════════════════════ enrollments ════════════════════════════
+  /enrollments:
+    get:
+      tags: [enrollments]
+      summary: 수강등록 목록
+      operationId: listEnrollments
+      x-status: implemented
+      x-roles: [instructor, manager, admin, super_admin]
+      parameters:
+        - { name: studentId, in: query, schema: { type: integer } }
+        - { name: courseId, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Enrollment' } }
+    post:
+      tags: [enrollments]
+      summary: 수강등록 생성
+      operationId: createEnrollment
+      x-status: implemented
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateEnrollmentInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Enrollment' }
+  /enrollments/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [enrollments]
+      summary: 수강등록 단건
+      operationId: getEnrollment
+      x-status: implemented
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Enrollment' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [enrollments]
+      summary: 수강 상태 변경(일시정지/수료/취소)
+      operationId: updateEnrollment
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status: { $ref: '#/components/schemas/EnrollmentStatus' }
+                memo: { type: string }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Enrollment' }
+
+  # ════════════════════════════ subjects ════════════════════════════
+  /subjects:
+    get:
+      tags: [subjects]
+      summary: 과목 목록
+      operationId: listSubjects
+      x-status: implemented
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Subject' } }
+    post:
+      tags: [subjects]
+      summary: 과목 추가
+      operationId: createSubject
+      x-status: implemented
+      x-roles: [admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateSubjectInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subject' }
+  /subjects/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [subjects]
+      summary: 과목 단건
+      operationId: getSubject
+      x-status: implemented
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Subject' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ════════════════════════════ courses ════════════════════════════
+  /courses:
+    get:
+      tags: [courses]
+      summary: 코스 목록
+      operationId: listCourses
+      x-status: implemented
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Course' } }
+    post:
+      tags: [courses]
+      summary: 코스 추가(시급 포함)
+      operationId: createCourse
+      x-status: implemented
+      x-roles: [admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCourseInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Course' }
+  /courses/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [courses]
+      summary: 코스 단건
+      operationId: getCourse
+      x-status: implemented
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Course' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ════════════════════════════ roadmaps ════════════════════════════
+  /roadmaps:
+    get:
+      tags: [roadmaps]
+      summary: 로드맵 목록
+      operationId: listRoadmaps
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Roadmap' } }
+    post:
+      tags: [roadmaps]
+      summary: 로드맵 생성(코스 M:N 연결 포함)
+      operationId: createRoadmap
+      x-status: planned
+      x-roles: [admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoadmapInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Roadmap' }
+  /roadmaps/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [roadmaps]
+      summary: 로드맵 상세(연결 코스·강사 포함)
+      operationId: getRoadmap
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RoadmapDetail' }
+    patch:
+      tags: [roadmaps]
+      summary: 로드맵 수정(코스 연결/순서 변경)
+      operationId: updateRoadmap
+      x-status: planned
+      x-roles: [admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRoadmapInput' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Roadmap' }
+
+  # ════════════════════════════ class-sessions (schedule) ════════════════════════════
+  /class-sessions:
+    get:
+      tags: [class-sessions]
+      summary: 수업/스케줄 목록(기간·필터)
+      description: '캘린더 월/주 뷰용. from~to 범위 + 코스/강사/학생 필터.'
+      operationId: listClassSessions
+      x-status: planned
+      x-roles: [student, parent, instructor, manager, admin, super_admin]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: courseId, in: query, schema: { type: integer } }
+        - { name: instructorId, in: query, schema: { type: integer } }
+        - { name: studentId, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/ClassSession' } }
+    post:
+      tags: [class-sessions]
+      summary: 수업 단건 개설
+      operationId: createClassSession
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateClassSessionInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClassSession' }
+  /class-sessions/recurring:
+    post:
+      tags: [class-sessions]
+      summary: 기간·요일 반복 수업 생성(시리즈)
+      description: '생성된 수업들은 동일 seriesId 로 묶인다(시리즈 편집용).'
+      operationId: createRecurringClassSessions
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRecurringInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  seriesId: { type: integer }
+                  created: { type: integer, description: 생성된 수업 수 }
+                  sessions: { type: array, items: { $ref: '#/components/schemas/ClassSession' } }
+  /class-sessions/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [class-sessions]
+      summary: 수업 단건
+      operationId: getClassSession
+      x-status: planned
+      x-roles: [student, parent, instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ClassSession' }
+    patch:
+      tags: [class-sessions]
+      summary: 수업 수정(시간·주제 등). 시리즈 범위 지정 가능
+      description: >
+        시간/요일 변경 시 `scope` 로 적용 범위를 정한다(구글 캘린더식).
+        관련 출석·보고서 Join 은 sessionId 기준이라 그대로 유지되며,
+        강사 페이/대시보드 등 파생값은 서버에서 재계산한다.
+      operationId: updateClassSession
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateClassSessionInput' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  affected: { type: integer, description: 변경된 수업 수 }
+                  sessions: { type: array, items: { $ref: '#/components/schemas/ClassSession' } }
+    delete:
+      tags: [class-sessions]
+      summary: 수업 삭제/취소(시리즈 범위 지정 가능)
+      operationId: deleteClassSession
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      parameters:
+        - name: scope
+          in: query
+          schema: { $ref: '#/components/schemas/RecurrenceScope' }
+      responses:
+        '204': { description: 삭제됨 }
+
+  # ════════════════════════════ attendance ════════════════════════════
+  /attendance:
+    get:
+      tags: [attendance]
+      summary: 출석 조회(수업별)
+      operationId: listAttendance
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      parameters:
+        - { name: sessionId, in: query, required: true, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Attendance' } }
+    put:
+      tags: [attendance]
+      summary: 출석 upsert(수업×학생)
+      operationId: upsertAttendance
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sessionId, studentId, status]
+              properties:
+                sessionId: { type: integer }
+                studentId: { type: integer }
+                status: { $ref: '#/components/schemas/AttendanceStatus' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Attendance' }
+
+  # ════════════════════════════ session-reports ════════════════════════════
+  /session-reports:
+    get:
+      tags: [session-reports]
+      summary: 수업 보고서 조회(수업/학생별)
+      operationId: listSessionReports
+      x-status: planned
+      x-roles: [parent, instructor, manager, admin, super_admin]
+      parameters:
+        - { name: sessionId, in: query, schema: { type: integer } }
+        - { name: studentId, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/SessionReport' } }
+    put:
+      tags: [session-reports]
+      summary: 보고서 작성/수정 upsert
+      operationId: upsertSessionReport
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpsertSessionReportInput' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionReport' }
+  /session-reports/{id}/submit:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [session-reports]
+      summary: 보고서 제출(발송 대기)
+      operationId: submitSessionReport
+      x-status: planned
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SessionReport' }
+  /session-reports/{id}/send:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [session-reports]
+      summary: 학부모 카카오 발송(MQ outbox 적재)
+      operationId: sendSessionReport
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      responses:
+        '202': { description: 발송 큐 적재됨 }
+
+  # ════════════════════════════ counsel ════════════════════════════
+  /counsel:
+    get:
+      tags: [counsel]
+      summary: 상담카드 목록(검색·상태·담당자 필터)
+      operationId: listCounsel
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+        - { $ref: '#/components/parameters/Q' }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/CounselStatus' } }
+        - { name: assignedStaffId, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CounselPage' }
+    post:
+      tags: [counsel]
+      summary: 상담 신청(학생/학부모 자가 또는 상담실장 작성)
+      operationId: createCounsel
+      x-status: planned
+      x-roles: [student, parent, manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCounselInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CounselForm' }
+  /counsel/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [counsel]
+      summary: 상담카드 상세(회차 포함)
+      operationId: getCounsel
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CounselDetail' }
+    patch:
+      tags: [counsel]
+      summary: 상담카드 수정(상태/배정/관심코스 등)
+      operationId: updateCounsel
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateCounselInput' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CounselForm' }
+  /counsel/{id}/rounds:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [counsel]
+      summary: 상담 회차 추가(roundNo 자동 증가)
+      operationId: addCounselRound
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateCounselRoundInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CounselRound' }
+
+  # ════════════════════════════ payments ════════════════════════════
+  /payments:
+    get:
+      tags: [payments]
+      summary: 결제 목록(민감 — 권한 제한)
+      operationId: listPayments
+      x-status: implemented
+      x-status-note: 'q/page/status/기간 필터는 planned'
+      x-roles: [manager, admin, super_admin]
+      parameters:
+        - { $ref: '#/components/parameters/Page' }
+        - { $ref: '#/components/parameters/Size' }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/PaymentStatus' } }
+        - { name: studentId, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PaymentPage' }
+    post:
+      tags: [payments]
+      summary: 청구 생성(미수)
+      operationId: createPayment
+      x-status: implemented
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePaymentInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+  /payments/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [payments]
+      summary: 결제 단건
+      operationId: getPayment
+      x-status: implemented
+      x-roles: [manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [payments]
+      summary: 결제 수정(금액/수단/메모)
+      operationId: updatePayment
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdatePaymentInput' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+  /payments/{id}/pay:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [payments]
+      summary: 수납 완료 처리(입금 거래 원장 반영)
+      operationId: payPayment
+      x-status: implemented
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                method: { $ref: '#/components/schemas/PaymentMethod' }
+                paidAt: { type: string, format: date }
+      responses:
+        '200':
+          description: 수납됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Payment' }
+
+  # ════════════════════════════ instructor-payouts ════════════════════════════
+  /instructor-payouts:
+    get:
+      tags: [instructor-payouts]
+      summary: 강사 페이 목록
+      operationId: listPayouts
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      parameters:
+        - { name: instructorId, in: query, schema: { type: integer } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/InstructorPayout' } }
+    post:
+      tags: [instructor-payouts]
+      summary: 페이 산정 요청(시수×시급 자동 계산, 강사 수동 보정 가능)
+      operationId: createPayout
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreatePayoutInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstructorPayout' }
+  /instructor-payouts/{id}/approve:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [instructor-payouts]
+      summary: 페이 승인(pending→confirmed)
+      operationId: approvePayout
+      x-status: planned
+      x-roles: [super_admin]
+      responses:
+        '200':
+          description: 승인됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstructorPayout' }
+  /instructor-payouts/{id}/pay:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [instructor-payouts]
+      summary: 페이 지급(confirmed→paid, 출금 원장 반영)
+      operationId: payPayout
+      x-status: planned
+      x-roles: [super_admin]
+      responses:
+        '200':
+          description: 지급됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/InstructorPayout' }
+
+  # ════════════════════════════ expenses ════════════════════════════
+  /expenses:
+    get:
+      tags: [expenses]
+      summary: 지출 목록
+      operationId: listExpenses
+      x-status: implemented
+      x-roles: [manager, admin, super_admin]
+      parameters:
+        - { name: category, in: query, schema: { $ref: '#/components/schemas/ExpenseCategory' } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ApprovalStatus' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Expense' } }
+    post:
+      tags: [expenses]
+      summary: 지출 요청(승인 대기, 영수증 첨부)
+      operationId: createExpense
+      x-status: implemented
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateExpenseInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Expense' }
+  /expenses/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    get:
+      tags: [expenses]
+      summary: 지출 단건
+      operationId: getExpense
+      x-status: implemented
+      x-roles: [manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Expense' }
+        '404': { $ref: '#/components/responses/NotFound' }
+    patch:
+      tags: [expenses]
+      summary: 지출 수정(상세에서 수정)
+      operationId: updateExpense
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateExpenseInput' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Expense' }
+  /expenses/{id}/approve:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [expenses]
+      summary: 지출 승인(출금 원장 반영)
+      operationId: approveExpense
+      x-status: implemented
+      x-roles: [super_admin]
+      responses:
+        '200':
+          description: 승인됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Expense' }
+  /expenses/{id}/reject:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    post:
+      tags: [expenses]
+      summary: 지출 반려
+      operationId: rejectExpense
+      x-status: implemented
+      x-roles: [super_admin]
+      responses:
+        '200':
+          description: 반려됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Expense' }
+
+  # ════════════════════════════ academy-events ════════════════════════════
+  /academy-events:
+    get:
+      tags: [academy-events]
+      summary: 학원 이벤트/공지 목록
+      operationId: listEvents
+      x-status: planned
+      x-roles: [student, parent, instructor, manager, admin, super_admin]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: priority, in: query, schema: { $ref: '#/components/schemas/EventPriority' } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/AcademyEvent' } }
+    post:
+      tags: [academy-events]
+      summary: 이벤트 발행(캘린더 모달에서 생성)
+      operationId: createEvent
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateEventInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AcademyEvent' }
+  /academy-events/{id}:
+    parameters: [{ $ref: '#/components/parameters/Id' }]
+    patch:
+      tags: [academy-events]
+      summary: 이벤트 수정
+      operationId: updateEvent
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateEventInput' }
+      responses:
+        '200':
+          description: 수정됨
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AcademyEvent' }
+    delete:
+      tags: [academy-events]
+      summary: 이벤트 삭제
+      operationId: deleteEvent
+      x-status: planned
+      x-roles: [manager, admin, super_admin]
+      responses:
+        '204': { description: 삭제됨 }
+
+  # ════════════════════════════ transactions ════════════════════════════
+  /transactions:
+    get:
+      tags: [transactions]
+      summary: 통합 원장(입·출금) 조회
+      operationId: listTransactions
+      x-status: planned
+      x-roles: [super_admin]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: direction, in: query, schema: { type: string, enum: [in, out] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: '#/components/schemas/Transaction' } }
+
+  # ════════════════════════════ dashboard ════════════════════════════
+  /dashboard/summary:
+    get:
+      tags: [dashboard]
+      summary: 경영 요약(입금/미수/지출/순익) — 대표 전용
+      operationId: dashboardSummary
+      x-status: planned
+      x-roles: [super_admin]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DashboardSummary' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+  /dashboard/revenue:
+    get:
+      tags: [dashboard]
+      summary: 매출 시각화 데이터(기간/인당/과목/수업) — 대표 전용
+      operationId: dashboardRevenue
+      x-status: planned
+      x-roles: [super_admin]
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: groupBy, in: query, schema: { type: string, enum: [day, student, subject, course] } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    label: { type: string }
+                    amount: { type: number }
+
+  # ════════════════════════════ approvals ════════════════════════════
+  /approvals:
+    get:
+      tags: [approvals]
+      summary: 승인 대기 집계(지출·강사페이 등) — 대표 전용
+      operationId: listApprovals
+      x-status: planned
+      x-roles: [super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  expenses: { type: array, items: { $ref: '#/components/schemas/Expense' } }
+                  payouts: { type: array, items: { $ref: '#/components/schemas/InstructorPayout' } }
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: integer }
+    Page:
+      name: page
+      in: query
+      description: 1-base 페이지 번호(planned)
+      schema: { type: integer, minimum: 1, default: 1 }
+    Size:
+      name: size
+      in: query
+      description: 페이지 크기(planned)
+      schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+    Q:
+      name: q
+      in: query
+      description: 검색어(planned)
+      schema: { type: string }
+    Sort:
+      name: sort
+      in: query
+      description: '정렬. 예: name,-createdAt (planned)'
+      schema: { type: string }
+
+  responses:
+    BadRequest:
+      description: 잘못된 요청(검증 실패)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: 인증 필요/실패
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: 권한 없음(역할 불충분)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: 리소스 없음
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    # ── 공통/에러 ──
+    Error:
+      type: object
+      description: NestJS 기본 예외 형상
+      properties:
+        statusCode: { type: integer, example: 400 }
+        message:
+          oneOf:
+            - { type: string }
+            - { type: array, items: { type: string } }
+        error: { type: string, example: Bad Request }
+    PageMeta:
+      type: object
+      properties:
+        page: { type: integer }
+        size: { type: integer }
+        total: { type: integer }
+
+    # ── enums(계약과 동일) ──
+    StudentStatus: { type: string, enum: [lead, active, paused, completed, canceled] }
+    ResidenceType: { type: string, enum: [domestic, overseas] }
+    EnrollmentStatus: { type: string, enum: [active, paused, completed, canceled] }
+    SessionStatus: { type: string, enum: [scheduled, held, canceled, no_show, makeup] }
+    AttendanceStatus: { type: string, enum: [present, late, absent, excused] }
+    ReportStatus: { type: string, enum: [draft, submitted, sent] }
+    PaymentStatus: { type: string, enum: [pending, paid, overdue, refunded, partial_refund] }
+    PaymentMethod: { type: string, enum: [card, transfer, cash, point, etc] }
+    ApprovalStatus: { type: string, enum: [requested, approved, rejected] }
+    PayoutStatus: { type: string, enum: [pending, confirmed, paid] }
+    ExpenseCategory: { type: string, enum: [supplies, equipment, books, rent, utility, marketing, meal, etc] }
+    EventType: { type: string, enum: [notice, exam, holiday, closure, event] }
+    EventPriority: { type: string, enum: [low, normal, high] }
+    CounselStatus: { type: string, enum: [requested, pending, registered, dropped] }
+    CounselSource: { type: string, enum: [internal_form, naver_form, google_form, manual, etc] }
+    CounselResult: { type: string, enum: [positive, neutral, negative, no_response, registered] }
+    AccountRole: { type: string, enum: [student, parent, instructor, manager, admin, super_admin] }
+    RecurrenceScope:
+      type: string
+      enum: [this, this_and_following, all]
+      description: 시리즈 편집 적용 범위(구글 캘린더식)
+
+    # ── account/auth ──
+    Account:
+      type: object
+      properties:
+        id: { type: integer }
+        webId: { type: string }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/AccountRole' }
+    WebIdCheckResult:
+      type: object
+      properties:
+        webId: { type: string }
+        exists: { type: boolean }
+        name: { type: string }
+        role: { $ref: '#/components/schemas/AccountRole' }
+    IssueTokenInput:
+      type: object
+      required: [webId]
+      properties:
+        webId: { type: string, example: sophia_kim }
+
+    # ── people ──
+    Student:
+      type: object
+      required: [id, name, status]
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        englishName: { type: string }
+        grade: { type: integer }
+        phone: { type: string }
+        status: { $ref: '#/components/schemas/StudentStatus' }
+        schoolName: { type: string }
+        residenceType: { $ref: '#/components/schemas/ResidenceType' }
+        memo: { type: string }
+        webId: { type: string }
+        createdAt: { type: string }
+        updatedAt: { type: string }
+    StudentDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Student' }
+        - type: object
+          properties:
+            enrollments: { type: array, items: { $ref: '#/components/schemas/Enrollment' } }
+            parents: { type: array, items: { $ref: '#/components/schemas/Parent' } }
+            counselForms: { type: array, items: { $ref: '#/components/schemas/CounselForm' } }
+    StudentPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Student' } }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+    Parent:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        phone: { type: string }
+        kakaoAvailable: { type: boolean }
+        webId: { type: string }
+    Instructor:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        subjectName: { type: string }
+
+    # ── catalog ──
+    Subject:
+      type: object
+      properties:
+        id: { type: integer }
+        code: { type: string }
+        name: { type: string }
+    Course:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        subjectId: { type: integer }
+        instructorId: { type: integer }
+        price: { type: integer }
+        hourlyRate: { type: integer }
+    Roadmap:
+      type: object
+      description: '(예정) 코스 묶음. 코스·과목·강사 M:N.'
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        description: { type: string }
+        targetGrade: { type: integer }
+        isActive: { type: boolean }
+    RoadmapDetail:
+      allOf:
+        - { $ref: '#/components/schemas/Roadmap' }
+        - type: object
+          properties:
+            courses:
+              type: array
+              items:
+                type: object
+                properties:
+                  courseId: { type: integer }
+                  sortOrder: { type: integer }
+
+    # ── enrollment ──
+    Enrollment:
+      type: object
+      properties:
+        id: { type: integer }
+        studentId: { type: integer }
+        courseId: { type: integer }
+        roadmapId: { type: integer }
+        status: { $ref: '#/components/schemas/EnrollmentStatus' }
+        totalSessions: { type: integer }
+        completedSessions: { type: integer }
+        enrolledAt: { type: string }
+
+    # ── session/attendance/report ──
+    ClassSession:
+      type: object
+      properties:
+        id: { type: integer }
+        seriesId: { type: integer, description: '(예정) 반복 시리즈 묶음 id' }
+        courseId: { type: integer }
+        instructorId: { type: integer }
+        sessionDate: { type: string, format: date }
+        startTime: { type: string, description: '(예정) HH:mm 시작 시각(주간 캘린더)' }
+        durationMinutes: { type: integer }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        topic: { type: string }
+    Attendance:
+      type: object
+      properties:
+        id: { type: integer }
+        sessionId: { type: integer }
+        studentId: { type: integer }
+        status: { $ref: '#/components/schemas/AttendanceStatus' }
+    SessionReport:
+      type: object
+      properties:
+        id: { type: integer }
+        sessionId: { type: integer }
+        studentId: { type: integer }
+        instructorId: { type: integer }
+        content: { type: string }
+        homework: { type: string }
+        status: { $ref: '#/components/schemas/ReportStatus' }
+
+    # ── counsel ──
+    CounselForm:
+      type: object
+      properties:
+        id: { type: integer }
+        applicantName: { type: string }
+        applicantPhone: { type: string }
+        parentId: { type: integer }
+        studentId: { type: integer }
+        assignedStaffId: { type: integer }
+        status: { $ref: '#/components/schemas/CounselStatus' }
+        source: { $ref: '#/components/schemas/CounselSource' }
+        interestSubjectId: { type: integer }
+        interestCourseId: { type: integer }
+        academyExpectation: { type: string }
+        weakness: { type: string }
+        createdAt: { type: string }
+    CounselRound:
+      type: object
+      properties:
+        id: { type: integer }
+        counselFormId: { type: integer }
+        roundNo: { type: integer }
+        counselorId: { type: integer }
+        completedAt: { type: string }
+        isCompleted: { type: boolean }
+        summary: { type: string }
+        detail: { type: string }
+        result: { $ref: '#/components/schemas/CounselResult' }
+        nextAction: { type: string }
+        nextContactAt: { type: string }
+    CounselDetail:
+      allOf:
+        - { $ref: '#/components/schemas/CounselForm' }
+        - type: object
+          properties:
+            rounds: { type: array, items: { $ref: '#/components/schemas/CounselRound' } }
+    CounselPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/CounselForm' } }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+
+    # ── finance ──
+    Payment:
+      type: object
+      properties:
+        id: { type: integer }
+        enrollmentId: { type: integer }
+        studentId: { type: integer }
+        payerParentId: { type: integer }
+        amount: { type: integer }
+        paidAmount: { type: integer }
+        status: { $ref: '#/components/schemas/PaymentStatus' }
+        paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+        dueAt: { type: string, format: date }
+        paidAt: { type: string, format: date }
+        memo: { type: string }
+        createdAt: { type: string, description: 등록일(청구 생성일) }
+    PaymentPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Payment' } }
+        meta: { $ref: '#/components/schemas/PageMeta' }
+    Transaction:
+      type: object
+      properties:
+        id: { type: integer }
+        direction: { type: string, enum: [in, out] }
+        category: { type: string }
+        label: { type: string }
+        amount: { type: integer }
+        method: { type: string }
+        occurredAt: { type: string, format: date }
+    Expense:
+      type: object
+      properties:
+        id: { type: integer }
+        category: { $ref: '#/components/schemas/ExpenseCategory' }
+        title: { type: string }
+        amount: { type: integer }
+        spentAt: { type: string, format: date }
+        vendor: { type: string }
+        memo: { type: string }
+        receiptUrl: { type: string }
+        status: { $ref: '#/components/schemas/ApprovalStatus' }
+    InstructorPayout:
+      type: object
+      properties:
+        id: { type: integer }
+        instructorId: { type: integer }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        sessionCount: { type: integer }
+        totalMinutes: { type: integer }
+        amount: { type: integer }
+        status: { $ref: '#/components/schemas/PayoutStatus' }
+        paidAt: { type: string, format: date }
+
+    # ── event ──
+    AcademyEvent:
+      type: object
+      properties:
+        id: { type: integer }
+        title: { type: string }
+        type: { $ref: '#/components/schemas/EventType' }
+        priority: { $ref: '#/components/schemas/EventPriority' }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        allDay: { type: boolean }
+        memo: { type: string }
+
+    # ── dashboard ──
+    DashboardSummary:
+      type: object
+      properties:
+        revenue: { type: integer, description: 입금 합계 }
+        receivable: { type: integer, description: 미수금 }
+        expense: { type: integer, description: 지출 합계 }
+        payout: { type: integer, description: 강사 페이 합계 }
+        net: { type: integer, description: 순익 }
+
+    # ════════ 요청(Create/Update) payload — @kms545487/contracts 와 일치 ════════
+    CreateStudentInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string }
+        englishName: { type: string }
+        phone: { type: string }
+        grade: { type: integer }
+        schoolName: { type: string }
+        residenceType: { $ref: '#/components/schemas/ResidenceType' }
+        status: { $ref: '#/components/schemas/StudentStatus' }
+        memo: { type: string }
+        webId: { type: string }
+    UpdateStudentInput:
+      type: object
+      description: 부분 수정(모든 필드 optional)
+      properties:
+        name: { type: string }
+        englishName: { type: string }
+        phone: { type: string }
+        grade: { type: integer }
+        schoolName: { type: string }
+        memo: { type: string }
+        webId: { type: string }
+        status: { $ref: '#/components/schemas/StudentStatus' }
+    CreateParentInput:
+      type: object
+      required: [name, studentId]
+      properties:
+        name: { type: string }
+        phone: { type: string }
+        webId: { type: string }
+        studentId: { type: integer }
+        relation: { type: string }
+        isPayer: { type: boolean }
+        isPrimary: { type: boolean }
+    CreateEnrollmentInput:
+      type: object
+      required: [studentId, courseId]
+      properties:
+        studentId: { type: integer }
+        courseId: { type: integer }
+        roadmapId: { type: integer }
+        totalSessions: { type: integer }
+        memo: { type: string }
+    CreateSubjectInput:
+      type: object
+      required: [code, name]
+      properties:
+        code: { type: string }
+        name: { type: string }
+    CreateCourseInput:
+      type: object
+      required: [name, subjectId, instructorId, price, hourlyRate]
+      properties:
+        name: { type: string }
+        subjectId: { type: integer }
+        instructorId: { type: integer }
+        price: { type: integer }
+        hourlyRate: { type: integer }
+    CreateRoadmapInput:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string }
+        description: { type: string }
+        targetGrade: { type: integer }
+        courseIds:
+          type: array
+          items: { type: integer }
+          description: 연결할 코스(M:N, 순서대로)
+    CreateClassSessionInput:
+      type: object
+      required: [courseId, instructorId, sessionDate, durationMinutes]
+      properties:
+        courseId: { type: integer }
+        instructorId: { type: integer }
+        sessionDate: { type: string, format: date }
+        startTime: { type: string, description: 'HH:mm (예정)' }
+        durationMinutes: { type: integer }
+        topic: { type: string }
+    CreateRecurringInput:
+      type: object
+      required: [courseId, instructorId, startDate, endDate, weekdays, durationMinutes]
+      properties:
+        courseId: { type: integer }
+        instructorId: { type: integer }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        weekdays:
+          type: array
+          items: { type: integer, minimum: 0, maximum: 6 }
+          description: 0(일)~6(토)
+        startTime: { type: string }
+        durationMinutes: { type: integer }
+        topic: { type: string }
+    UpdateClassSessionInput:
+      type: object
+      properties:
+        sessionDate: { type: string, format: date }
+        startTime: { type: string }
+        durationMinutes: { type: integer }
+        topic: { type: string }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        scope: { $ref: '#/components/schemas/RecurrenceScope' }
+    UpsertSessionReportInput:
+      type: object
+      required: [sessionId, studentId]
+      properties:
+        sessionId: { type: integer }
+        studentId: { type: integer }
+        content: { type: string }
+        homework: { type: string }
+    CreateCounselInput:
+      type: object
+      required: [applicantName, source]
+      properties:
+        applicantName: { type: string }
+        applicantPhone: { type: string }
+        source: { $ref: '#/components/schemas/CounselSource' }
+        assignedStaffId: { type: integer }
+        interestSubjectId: { type: integer }
+        interestCourseId: { type: integer }
+        academyExpectation: { type: string }
+        weakness: { type: string }
+    UpdateCounselInput:
+      type: object
+      properties:
+        status: { $ref: '#/components/schemas/CounselStatus' }
+        assignedStaffId: { type: integer }
+        interestSubjectId: { type: integer }
+        interestCourseId: { type: integer }
+        academyExpectation: { type: string }
+        weakness: { type: string }
+    CreateCounselRoundInput:
+      type: object
+      properties:
+        counselorId: { type: integer }
+        summary: { type: string }
+        detail: { type: string }
+        result: { $ref: '#/components/schemas/CounselResult' }
+        nextAction: { type: string }
+        nextContactAt: { type: string }
+    CreatePaymentInput:
+      type: object
+      required: [studentId, amount]
+      properties:
+        studentId: { type: integer }
+        enrollmentId: { type: integer }
+        payerParentId: { type: integer }
+        amount: { type: integer }
+        paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+    UpdatePaymentInput:
+      type: object
+      properties:
+        amount: { type: integer }
+        paymentMethod: { $ref: '#/components/schemas/PaymentMethod' }
+        dueAt: { type: string, format: date }
+        memo: { type: string }
+    CreateExpenseInput:
+      type: object
+      required: [category, title, amount, spentAt]
+      properties:
+        category: { $ref: '#/components/schemas/ExpenseCategory' }
+        title: { type: string }
+        amount: { type: integer }
+        spentAt: { type: string, format: date }
+        vendor: { type: string }
+        memo: { type: string }
+        receiptUrl: { type: string }
+    CreatePayoutInput:
+      type: object
+      required: [instructorId, periodStart, periodEnd]
+      properties:
+        instructorId: { type: integer }
+        periodStart: { type: string, format: date }
+        periodEnd: { type: string, format: date }
+        amount: { type: integer, description: 수동 보정 금액(미지정 시 자동 산정) }
+    CreateEventInput:
+      type: object
+      required: [title, type, startDate, endDate]
+      properties:
+        title: { type: string }
+        type: { $ref: '#/components/schemas/EventType' }
+        priority: { $ref: '#/components/schemas/EventPriority' }
+        startDate: { type: string, format: date }
+        endDate: { type: string, format: date }
+        allDay: { type: boolean }
+        memo: { type: string }

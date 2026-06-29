@@ -21,7 +21,7 @@ async function bootstrap() {
   // Swagger — http://localhost:3001/docs (JSON: /docs-json)
   const swaggerConfig = new DocumentBuilder()
     .setTitle('TACO ERP API')
-    .setDescription('TnAcademy 백오피스 API (in-memory). 도메인: 학생/수강/결제/인증/계정')
+    .setDescription('TnAcademy 백오피스 API (in-memory). 전체 설계 스펙(현재+예정)은 docs/api/openapi.yaml 참고.')
     .setVersion('0.1.0')
     .addBearerAuth()
     .build();
