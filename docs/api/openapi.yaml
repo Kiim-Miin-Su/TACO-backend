@@ -1389,12 +1389,61 @@ paths:
         - { name: to, in: query, schema: { type: string, format: date } }
         - { name: instructorId, in: query, schema: { type: integer } }
         - { name: roomId, in: query, schema: { type: integer } }
+        - { name: studentId, in: query, schema: { type: integer }, description: '학생 활성 수강 코스(코호트 status≠drop)의 세션만' }
       responses:
         '200':
           description: OK
           content:
             application/json:
               schema: { type: array, items: { $ref: '#/components/schemas/ScheduleRow' } }
+    post:
+      tags: [scheduling]
+      summary: 세션 생성(추천→배정·수동 추가)
+      description: >
+        FK 검증(course·instructor·room) + 충돌 검사(강사/강의실 이중예약·불가시간).
+        충돌 시 409 {message, conflicts}, body.force=true 면 강제 생성하고 conflicts 동반 반환.
+      operationId: createSchedule
+      x-status: implemented
+      x-roles: [manager, admin, super_admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateScheduleInput' }
+      responses:
+        '201':
+          description: 생성됨
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  row: { $ref: '#/components/schemas/ScheduleRow' }
+                  conflicts: { type: array, items: { $ref: '#/components/schemas/Conflict' } }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409':
+          description: 충돌(force 아님)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message: { type: string }
+                  conflicts: { type: array, items: { $ref: '#/components/schemas/Conflict' } }
+  /schedule/resources:
+    get:
+      tags: [scheduling]
+      summary: 자원 피커 — 강사·강의실·학생·코스 옵션(FK 정렬)
+      description: 좌측 자원 레일·배정 폼용 경량 목록. 각 자원 {type,id,name,color,sub}.
+      operationId: scheduleResources
+      x-status: implemented
+      x-roles: [instructor, manager, admin, super_admin]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ScheduleResources' }
   /schedule/{id}:
     parameters: [{ $ref: '#/components/parameters/Id' }]
     patch:
@@ -2187,7 +2236,7 @@ components:
         minutes: { type: integer, description: 총 시수(분) }
         hours: { type: number, description: 시간 환산 }
     ScheduleRow:
-      description: 주간 표/캘린더용 enriched 세션(세션 + 라벨·색·요일)
+      description: 주간 표/캘린더용 enriched 세션(세션 + 라벨·색·요일·코호트)
       allOf:
         - { $ref: '#/components/schemas/ClassSession' }
         - type: object
@@ -2198,6 +2247,47 @@ components:
             instructorName: { type: string }
             roomName: { type: string }
             color: { type: string }
+            studentIds: { type: array, items: { type: integer }, description: '코스 코호트(enrollment status≠drop)' }
+            studentNames: { type: array, items: { type: string } }
+    ScheduleResource:
+      type: object
+      properties:
+        type: { type: string, enum: [student, instructor, room] }
+        id: { type: integer }
+        name: { type: string }
+        color: { type: string }
+        sub: { type: string, description: '보조 라벨(과목·학년·정원)' }
+    ScheduleCourseOption:
+      type: object
+      properties:
+        id: { type: integer }
+        name: { type: string }
+        instructorId: { type: integer }
+        subjectName: { type: string }
+        color: { type: string }
+    ScheduleResources:
+      type: object
+      properties:
+        instructors: { type: array, items: { $ref: '#/components/schemas/ScheduleResource' } }
+        rooms: { type: array, items: { $ref: '#/components/schemas/ScheduleResource' } }
+        students: { type: array, items: { $ref: '#/components/schemas/ScheduleResource' } }
+        courses: { type: array, items: { $ref: '#/components/schemas/ScheduleCourseOption' } }
+    CreateScheduleInput:
+      type: object
+      required: [courseId, sessionDate, startTime]
+      description: 세션 생성(추천→배정·수동). endTime 없으면 durationMinutes(기본 60)로 파생.
+      properties:
+        courseId: { type: integer }
+        instructorId: { type: integer, description: '미지정 시 코스 기본 강사' }
+        roomId: { type: integer }
+        sessionDate: { type: string, format: date }
+        startTime: { type: string, description: 'HH:mm' }
+        endTime: { type: string, description: 'HH:mm' }
+        durationMinutes: { type: integer }
+        topic: { type: string }
+        seriesId: { type: integer }
+        status: { $ref: '#/components/schemas/SessionStatus' }
+        force: { type: boolean, description: '충돌 강제 적용' }
     UpdateScheduleInput:
       type: object
       description: 이동·리사이즈·편집 부분수정 (모든 필드 optional)

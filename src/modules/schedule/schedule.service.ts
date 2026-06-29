@@ -18,6 +18,22 @@ const COURSES: Record<number, { name: string; subjectId: number; instructorId: n
   11: { name: 'AP Calculus BC', subjectId: 2, instructorId: 2 },
   12: { name: 'TOEFL 정규', subjectId: 1, instructorId: 1 },
 };
+// 학생(데모) — 프론트 mock seed와 정렬. status==='drop'은 코호트에서 제외(소프트삭제 보존).
+const STUDENTS_LBL: Record<number, { name: string; grade?: number; status: string }> = {
+  1: { name: '김서연', grade: 11, status: 'active' },
+  2: { name: '이준호', grade: 12, status: 'active' },
+  3: { name: '박지민', grade: 10, status: 'paused' },
+  4: { name: '최민준', grade: 11, status: 'active' },
+};
+// 코스 코호트(수강생). enrollments seed와 정렬: 10→[1,4], 11→[2], 12→[1].
+const COURSE_STUDENTS: Record<number, number[]> = {
+  10: [1, 4],
+  11: [2],
+  12: [1],
+};
+// 활성(비-drop) 수강생만 — 학생 차원/필터/개인 스케줄 스코프.
+const activeStudentsOf = (courseId: number): number[] =>
+  (COURSE_STUDENTS[courseId] ?? []).filter((sid) => STUDENTS_LBL[sid] && STUDENTS_LBL[sid].status !== 'drop');
 
 // ── 날짜/시간 유틸(결정론적, KST 의존 없음) ──
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -96,18 +112,95 @@ export class ScheduleService implements OnModuleInit {
     });
   }
 
-  // 기간/필터 조회 → enriched 읽기모델(주간 표용)
-  list(opts: { from?: string; to?: string; instructorId?: number; roomId?: number }): ScheduleRow[] {
+  // 기간/필터 조회 → enriched 읽기모델(주간 표/캘린더용)
+  // studentId 필터: 해당 학생이 활성 수강 중인 코스의 세션만(코호트 역추적).
+  list(opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number }): ScheduleRow[] {
     const rooms = new Map(this.rooms.findAll().map((r) => [r.id, r]));
+    const coursesOfStudent = opts.studentId != null
+      ? new Set(Object.keys(COURSE_STUDENTS).map(Number).filter((cid) => activeStudentsOf(cid).includes(opts.studentId!)))
+      : null;
     return this.db
       .findBy<ClassSession>(SESSIONS, (s) =>
         (opts.from ? s.sessionDate >= opts.from : true) &&
         (opts.to ? s.sessionDate <= opts.to : true) &&
         (opts.instructorId ? s.instructorId === opts.instructorId : true) &&
-        (opts.roomId ? s.roomId === opts.roomId : true),
+        (opts.roomId ? s.roomId === opts.roomId : true) &&
+        (coursesOfStudent ? coursesOfStudent.has(s.courseId) : true),
       )
       .map((s) => this.enrich(s, rooms))
       .sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')));
+  }
+
+  // 자원 피커(좌측 레일·필터)용 경량 목록 — 강사·강의실·학생.
+  resources(): import('@kms545487/contracts').ScheduleResources {
+    const PALETTE = ['#0969da', '#1a7f37', '#8250df', '#bf3989', '#9a6700', '#1b7c83'];
+    return {
+      instructors: Object.entries(INSTRUCTORS).map(([id, name]) => ({
+        type: 'instructor' as const, id: Number(id), name,
+        color: PALETTE[Number(id) % PALETTE.length],
+        sub: Object.values(COURSES).find((c) => c.instructorId === Number(id))
+          ? SUBJECTS[Object.values(COURSES).find((c) => c.instructorId === Number(id))!.subjectId]?.name
+          : undefined,
+      })),
+      rooms: this.rooms.findAll().map((r) => ({
+        type: 'room' as const, id: r.id, name: r.name, color: r.color,
+        sub: r.capacity != null ? `정원 ${r.capacity}` : undefined,
+      })),
+      students: Object.entries(STUDENTS_LBL)
+        .filter(([, s]) => s.status !== 'drop')
+        .map(([id, s]) => ({
+          type: 'student' as const, id: Number(id), name: s.name,
+          color: PALETTE[(Number(id) + 2) % PALETTE.length],
+          sub: s.grade != null ? `${s.grade}학년` : undefined,
+        })),
+      courses: Object.entries(COURSES).map(([id, c]) => ({
+        id: Number(id), name: c.name, instructorId: c.instructorId,
+        subjectName: SUBJECTS[c.subjectId]?.name ?? '', color: SUBJECTS[c.subjectId]?.color,
+      })),
+    };
+  }
+
+  // 세션 생성(추천→배정). FK 검증 + 충돌 검사(force 아니면 충돌 시 409).
+  create(dto: {
+    courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
+    startTime: string; endTime?: string; durationMinutes?: number; topic?: string;
+    seriesId?: number; status?: ClassSession['status']; force?: boolean;
+  }): { row: ScheduleRow; conflicts: Conflict[] } {
+    const course = COURSES[dto.courseId];
+    if (!course) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
+    const instructorId = dto.instructorId ?? course.instructorId;
+    if (!INSTRUCTORS[instructorId]) throw new BadRequestException(`instructorId ${instructorId} 없음`);
+    if (dto.roomId != null && !this.rooms.findAll().some((r) => r.id === dto.roomId))
+      throw new BadRequestException(`roomId ${dto.roomId} 없음`);
+
+    const startTime = dto.startTime;
+    const durationMinutes = dto.endTime
+      ? toMin(dto.endTime) - toMin(startTime)
+      : dto.durationMinutes ?? 60;
+    if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작보다 빠릅니다');
+    const endTime = dto.endTime ?? addMinutes(startTime, durationMinutes);
+
+    const conflicts = detectConflicts(
+      { sessionDate: dto.sessionDate, startTime, endTime, instructorId, roomId: dto.roomId },
+      this.db.findAll<ClassSession>(SESSIONS),
+      this.availability.list(),
+    );
+    if (conflicts.length && !dto.force) throw new ConflictException({ message: '스케줄 충돌', conflicts });
+
+    const row = this.db.insert<ClassSession>(SESSIONS, {
+      seriesId: dto.seriesId,
+      courseId: dto.courseId,
+      instructorId,
+      roomId: dto.roomId,
+      sessionDate: dto.sessionDate,
+      startTime,
+      endTime,
+      durationMinutes,
+      status: dto.status ?? 'scheduled',
+      topic: dto.topic ?? course.name,
+    });
+    const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
+    return { row: this.enrich(row, roomsMap), conflicts };
   }
 
   // 충돌 드라이런(생성·이동 전 검사)
@@ -214,6 +307,7 @@ export class ScheduleService implements OnModuleInit {
   private enrich(s: ClassSession, rooms: Map<number, { name: string }>): ScheduleRow {
     const c = COURSES[s.courseId];
     const sub = c ? SUBJECTS[c.subjectId] : undefined;
+    const studentIds = activeStudentsOf(s.courseId);
     return {
       ...s,
       weekday: weekdayOf(s.sessionDate),
@@ -223,6 +317,8 @@ export class ScheduleService implements OnModuleInit {
       instructorName: INSTRUCTORS[s.instructorId] ?? `강사 ${s.instructorId}`,
       roomName: s.roomId ? rooms.get(s.roomId)?.name : undefined,
       color: sub?.color,
+      studentIds,
+      studentNames: studentIds.map((sid) => STUDENTS_LBL[sid]?.name ?? `학생 ${sid}`),
     };
   }
 }

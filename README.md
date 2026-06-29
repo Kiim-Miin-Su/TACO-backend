@@ -88,3 +88,12 @@ class-sessions·attendance·session-reports(피드백), counsel(forms+rounds), i
 academy-events, roadmaps(M:N), parents/instructors, transactions/dashboard/approvals.
 payload·응답·권한은 [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) 에 이미 정의됨(구현 26 · 예정 42 오퍼레이션).
 sub-resource가 있는 sessions·counsel을 먼저 구현 권장.
+
+## 변경 이력 — 스케줄 API 확장 (2026-06-29)
+
+- `GET /schedule/resources` — 자원 피커(강사·강의실·학생·코스 옵션, FK 정렬).
+- `POST /schedule` — 세션 생성(추천→배정·수동). FK 검증 + 충돌 검사(409 / `force`).
+- `GET /schedule?studentId=` — 학생 활성 수강 코스의 세션만(코호트 역추적, status≠drop).
+- `ScheduleRow.studentIds/studentNames` enrich(코호트). `availability` PUT/DELETE 클라이언트 연동.
+- e2e(jest+supertest): `test/schedule.e2e-spec.ts`·`test/availability.e2e-spec.ts` — 참조 무결성·충돌·시리즈 스코프. `npm run test:e2e`.
+- 보안 점검: `docs/SECURITY-review-2026-06-29.md`.
