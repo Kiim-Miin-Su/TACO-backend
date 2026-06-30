@@ -129,4 +129,56 @@ describe('Schedule API (e2e)', () => {
       .expect(200)).body.row;
     expect(updated.memo).toBe('변경: 워크북 지참');
   });
+
+  it('color 왕복: POST 색 저장 + PATCH 색 변경 / 미지정 시 코스 색 폴백', async () => {
+    const created = (await http.post('/api/schedule')
+      .send({ courseId: 10, sessionDate: addDaysISO(MON, 2), startTime: '13:00', durationMinutes: 60, color: '#bf3989' })
+      .expect(201)).body.row;
+    expect(created.color).toBe('#bf3989');
+
+    const updated = (await http.patch(`/api/schedule/${created.id}`)
+      .send({ color: '#9a6700' })
+      .expect(200)).body.row;
+    expect(updated.color).toBe('#9a6700');
+
+    // color 미지정 → 코스10 색(#0969da) 폴백
+    const fallback = (await http.post('/api/schedule')
+      .send({ courseId: 10, sessionDate: addDaysISO(MON, 2), startTime: '15:00', durationMinutes: 60 })
+      .expect(201)).body.row;
+    expect(fallback.color).toBe('#0969da');
+  });
+
+  it('DELETE /schedule/:id — 삭제 후 목록에서 사라짐', async () => {
+    const created = (await http.post('/api/schedule')
+      .send({ courseId: 10, sessionDate: addDaysISO(MON, 3), startTime: '14:00', durationMinutes: 60 })
+      .expect(201)).body.row;
+    const del = (await http.delete(`/api/schedule/${created.id}`).expect(200)).body;
+    expect(del).toMatchObject({ id: created.id, deleted: true });
+
+    const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200)).body;
+    expect(list.some((r: { id: number }) => r.id === created.id)).toBe(false);
+  });
+
+  it('DELETE /schedule/:id — 존재하지 않으면 404', async () => {
+    await http.delete('/api/schedule/999999').expect(404);
+  });
+
+  it('결강(canceled) 세션은 시간 점유에서 제외 → 같은 슬롯 생성 가능', async () => {
+    const day = addDaysISO(MON, 4);
+    // 1) 슬롯 점유 세션 생성
+    const occupy = (await http.post('/api/schedule')
+      .send({ courseId: 10, sessionDate: day, startTime: '10:00', durationMinutes: 60 })
+      .expect(201)).body.row;
+    // 2) 같은 슬롯 재생성 → 강사 이중예약 409
+    await http.post('/api/schedule')
+      .send({ courseId: 10, sessionDate: day, startTime: '10:00', durationMinutes: 60 })
+      .expect(409);
+    // 3) 점유 세션을 결강 처리 → 시간 점유 해제
+    await http.patch(`/api/schedule/${occupy.id}`).send({ status: 'canceled' }).expect(200);
+    // 4) 이제 같은 슬롯 생성 성공(충돌 없음)
+    const ok = (await http.post('/api/schedule')
+      .send({ courseId: 10, sessionDate: day, startTime: '10:00', durationMinutes: 60 })
+      .expect(201)).body;
+    expect(ok.conflicts).toEqual([]);
+  });
 });

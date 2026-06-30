@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import { ScheduleService } from './schedule.service';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
@@ -58,5 +58,12 @@ export class ScheduleController {
   @Patch(':id')
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleDto) {
     return this.schedule.update(id, dto);
+  }
+
+  // 세션 삭제
+  @Delete(':id')
+  @ApiOperation({ summary: '세션 삭제' })
+  remove(@Param('id', ParseIntPipe) id: number) {
+    return this.schedule.remove(id);
   }
 }

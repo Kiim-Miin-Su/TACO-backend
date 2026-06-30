@@ -24,6 +24,7 @@ export class CoursesService {
       instructorId: dto.instructorId,
       price: dto.price,
       hourlyRate: dto.hourlyRate,
+      color: dto.color,
     });
   }
 }

@@ -13,10 +13,11 @@ const SUBJECTS: Record<number, { name: string; color: string }> = {
   1: { name: '영어', color: '#0969da' },
   2: { name: '수학', color: '#1a7f37' },
 };
-const COURSES: Record<number, { name: string; subjectId: number; instructorId: number }> = {
-  10: { name: 'SAT Reading 정규', subjectId: 1, instructorId: 1 },
-  11: { name: 'AP Calculus BC', subjectId: 2, instructorId: 2 },
-  12: { name: 'TOEFL 정규', subjectId: 1, instructorId: 1 },
+// color = 개설 시 선택한 캘린더 색상 라벨(코스 단위). 세션 색 기본값.
+const COURSES: Record<number, { name: string; subjectId: number; instructorId: number; color: string }> = {
+  10: { name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, color: '#0969da' },
+  11: { name: 'AP Calculus BC', subjectId: 2, instructorId: 2, color: '#8250df' },
+  12: { name: 'TOEFL 정규', subjectId: 1, instructorId: 1, color: '#1b7c83' },
 };
 // 학생(데모) — 프론트 mock seed와 정렬. status==='drop'은 코호트에서 제외(소프트삭제 보존).
 const STUDENTS_LBL: Record<number, { name: string; grade?: number; status: string }> = {
@@ -66,7 +67,7 @@ type SeedSeries = { courseId: number; roomId: number; weekdayOffsets: number[]; 
 // 병합된 세션 필드(업데이트 적용 단위) — 이동/리사이즈/편집 공통.
 type MergedFields = {
   sessionDate: string; startTime: string; endTime: string; durationMinutes: number;
-  courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string;
+  courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string; color?: string;
 };
 
 @Injectable()
@@ -170,7 +171,7 @@ export class ScheduleService implements OnModuleInit {
       courses: Object.entries(COURSES).map(([id, c]) => ({
         id: Number(id), name: c.name, instructorId: c.instructorId,
         instructorName: INSTRUCTORS[c.instructorId],
-        subjectName: SUBJECTS[c.subjectId]?.name ?? '', color: SUBJECTS[c.subjectId]?.color,
+        subjectName: SUBJECTS[c.subjectId]?.name ?? '', color: c.color ?? SUBJECTS[c.subjectId]?.color,
         durationMinutes: courseDuration(Number(id)),
       })),
     };
@@ -179,7 +180,7 @@ export class ScheduleService implements OnModuleInit {
   // 세션 생성(추천→배정). FK 검증 + 충돌 검사(force 아니면 충돌 시 409).
   create(dto: {
     courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
-    startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string;
+    startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
     seriesId?: number; status?: ClassSession['status']; force?: boolean;
   }): { row: ScheduleRow; conflicts: Conflict[] } {
     const course = COURSES[dto.courseId];
@@ -217,9 +218,16 @@ export class ScheduleService implements OnModuleInit {
       status: dto.status ?? 'scheduled',
       topic: dto.topic ?? course.name,
       memo: dto.memo,
+      color: dto.color ?? course.color,
     });
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
     return { row: this.enrich(row, roomsMap), conflicts };
+  }
+
+  // 세션 삭제. (데모: 단건 제거. 실DB에서는 출석/리포트 FK 처리 필요)
+  remove(id: number): { id: number; deleted: boolean } {
+    if (!this.db.findById<ClassSession>(SESSIONS, id)) throw new NotFoundException(`Session ${id} not found`);
+    return { id, deleted: this.db.remove(SESSIONS, id) };
   }
 
   // 충돌 드라이런(생성·이동 전 검사)
@@ -322,6 +330,7 @@ export class ScheduleService implements OnModuleInit {
       status: dto.status ?? cur.status,
       topic: dto.topic ?? (dto.courseId != null && course ? course.name : cur.topic),
       memo: dto.memo ?? cur.memo,
+      color: dto.color ?? cur.color,
     };
   }
 
@@ -337,7 +346,7 @@ export class ScheduleService implements OnModuleInit {
       subjectName: sub?.name ?? '',
       instructorName: INSTRUCTORS[s.instructorId] ?? `강사 ${s.instructorId}`,
       roomName: s.roomId ? rooms.get(s.roomId)?.name : undefined,
-      color: sub?.color,
+      color: s.color ?? c?.color ?? sub?.color, // 세션 색 → 코스 색 → 과목 색
       studentIds,
       studentNames: studentIds.map((sid) => STUDENTS_LBL[sid]?.name ?? `학생 ${sid}`),
     };

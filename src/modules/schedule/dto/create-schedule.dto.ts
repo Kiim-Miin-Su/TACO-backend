@@ -43,6 +43,10 @@ export class CreateScheduleDto {
   @IsOptional() @IsString() @MaxLength(500)
   memo?: string;
 
+  @ApiPropertyOptional({ description: '캘린더 색상 라벨(미지정 시 코스 색)' })
+  @IsOptional() @IsString() @MaxLength(20)
+  color?: string;
+
   @ApiPropertyOptional({ description: '반복 시리즈로 묶을 때' })
   @IsOptional() @IsInt()
   seriesId?: number;

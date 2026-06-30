@@ -34,6 +34,7 @@ export function detectConflicts(
   // 1) 이중예약(강사·강의실)
   for (const s of sessions) {
     if (s.id === cand.ignoreSessionId) continue;
+    if (s.status === 'canceled' || s.status === 'no_show') continue; // 결강/취소는 시간 점유 아님
     if (s.sessionDate !== cand.sessionDate || !s.startTime) continue;
     const sEnd = s.endTime ?? addMinutes(s.startTime, s.durationMinutes);
     if (!overlaps(cand.startTime, cand.endTime, s.startTime, sEnd)) continue;

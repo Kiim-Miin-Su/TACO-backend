@@ -37,6 +37,9 @@ export class UpdateScheduleDto {
   @IsOptional() @IsString() @MaxLength(500)
   memo?: string;
 
+  @IsOptional() @IsString() @MaxLength(20)
+  color?: string;
+
   // 반복 편집 범위(구글 캘린더식). this=이 일정만, this_and_following=이후 전부, all=시리즈 전체.
   // 같은 seriesId의 다른 세션들에 동일한 날짜·시간 델타(+절대 강의실/강사/상태)를 적용. 기본 'this'.
   @IsOptional() @IsIn(SCOPES)
