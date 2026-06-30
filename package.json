@@ -12,7 +12,7 @@
     "lint": "eslint \"src/**/*.ts\""
   },
   "dependencies": {
-    "@kms545487/contracts": "github:Kiim-Miin-Su/contracts#main",
+    "@kms545487/contracts": "^0.1.6",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
     "@nestjs/platform-express": "^11.1.27",
