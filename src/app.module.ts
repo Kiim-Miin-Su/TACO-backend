@@ -13,6 +13,8 @@ import { ExpensesModule } from './modules/expenses/expenses.module';
 import { RoomsModule } from './modules/rooms/rooms.module';
 import { AvailabilityModule } from './modules/availability/availability.module';
 import { ScheduleModule } from './modules/schedule/schedule.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { PayoutsModule } from './modules/payouts/payouts.module';
 
 @Module({
   imports: [
@@ -32,6 +34,9 @@ import { ScheduleModule } from './modules/schedule/schedule.module';
     RoomsModule,
     AvailabilityModule,
     ScheduleModule,
+    // 시수 측정·페이 정산(TBO-05)
+    ReportsModule,
+    PayoutsModule,
   ],
 })
 export class AppModule implements NestModule {

@@ -1,0 +1,107 @@
+import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { InMemoryDatabase } from '../../database/in-memory.database';
+import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
+import { Course, COURSES } from '../courses/course.entity';
+import { SessionReportRow, SESSION_REPORTS } from './report.entity';
+import { CreateReportDto } from './dto/create-report.dto';
+
+/**
+ * 수업 보고서 — 강사 제출 → 관리자 승인/반려.
+ * 시수/페이 산정은 '승인된 보고서가 있는 held 세션'만 대상으로 하므로,
+ * 여기서 세션 FK·중복(세션×학생)·강사 일치 등 참조 무결성을 먼저 지킨다.
+ */
+@Injectable()
+export class ReportsService {
+  constructor(private readonly db: InMemoryDatabase) {}
+
+  findAll(): SessionReportRow[] {
+    return this.db.findAll<SessionReportRow>(SESSION_REPORTS);
+  }
+
+  findOne(id: number): SessionReportRow {
+    const row = this.db.findById<SessionReportRow>(SESSION_REPORTS, id);
+    if (!row) throw new NotFoundException(`Report ${id} not found`);
+    return row;
+  }
+
+  findBySession(sessionId: number): SessionReportRow[] {
+    return this.db.findBy<SessionReportRow>(SESSION_REPORTS, (r) => r.sessionId === sessionId);
+  }
+
+  // 승인된 보고서가 있는 세션 id 집합 — 시수 적격성 판정에 사용(payouts에서 호출).
+  approvedSessionIds(): Set<number> {
+    return new Set(
+      this.db
+        .findBy<SessionReportRow>(SESSION_REPORTS, (r) => r.status === 'approved')
+        .map((r) => r.sessionId),
+    );
+  }
+
+  create(dto: CreateReportDto): SessionReportRow {
+    // 1) 세션 FK 검증
+    const session = this.db.findById<ClassSession>(SESSIONS, dto.sessionId);
+    if (!session) throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
+
+    // 2) 강사 일치(미지정 시 세션 강사로 채움)
+    const instructorId = dto.instructorId ?? session.instructorId;
+    if (instructorId !== session.instructorId)
+      throw new BadRequestException(
+        `보고서 강사(${instructorId})가 세션 강사(${session.instructorId})와 불일치`,
+      );
+
+    // 3) (세션, 학생) 중복 보고서 금지 — ERD unique(session_id, student_id)
+    const dup = this.db.findBy<SessionReportRow>(
+      SESSION_REPORTS,
+      (r) => r.sessionId === dto.sessionId && r.studentId === dto.studentId,
+    );
+    if (dup.length) throw new ConflictException(`세션 ${dto.sessionId}·학생 ${dto.studentId} 보고서가 이미 존재`);
+
+    // 4) 과목 스냅샷(코스 조인) — 코스가 있으면 subjectId 보존
+    const course = this.db.findById<Course>(COURSES, session.courseId);
+    const status = dto.status ?? 'submitted';
+    return this.db.insert<SessionReportRow>(SESSION_REPORTS, {
+      sessionId: dto.sessionId,
+      studentId: dto.studentId,
+      instructorId,
+      subjectId: course?.subjectId,
+      content: dto.content,
+      homework: dto.homework,
+      status,
+      submittedAt: status === 'submitted' ? new Date().toISOString() : undefined,
+    });
+  }
+
+  // 강사: 작성완료 제출(draft → submitted)
+  submit(id: number): SessionReportRow {
+    const r = this.findOne(id);
+    if (r.status === 'approved') throw new BadRequestException('이미 승인된 보고서');
+    return this.db.update<SessionReportRow>(SESSION_REPORTS, id, {
+      status: 'submitted',
+      submittedAt: new Date().toISOString(),
+      rejectedReason: undefined,
+    }) as SessionReportRow;
+  }
+
+  // 관리자 승인(submitted → approved) — 승인 시 시수 적격 세션으로 편입
+  approve(id: number, approvedBy?: number): SessionReportRow {
+    const r = this.findOne(id);
+    if (r.status !== 'submitted')
+      throw new BadRequestException(`승인 불가 상태(${r.status}) — submitted만 승인 가능`);
+    return this.db.update<SessionReportRow>(SESSION_REPORTS, id, {
+      status: 'approved',
+      approvedAt: new Date().toISOString(),
+      approvedBy,
+    }) as SessionReportRow;
+  }
+
+  // 관리자 반려(→ rejected, 사유 보존). 재제출 가능.
+  reject(id: number, reason?: string): SessionReportRow {
+    const r = this.findOne(id);
+    if (r.status === 'approved')
+      throw new BadRequestException('이미 승인됨 — 반려하려면 정산 회수 후 처리 필요');
+    return this.db.update<SessionReportRow>(SESSION_REPORTS, id, {
+      status: 'rejected',
+      rejectedReason: reason ?? '사유 미기재',
+    }) as SessionReportRow;
+  }
+}
