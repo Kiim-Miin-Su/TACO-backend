@@ -1,13 +1,25 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { AvailabilityBlock, AVAILABILITY, AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
+import { RoomsService } from '../rooms/rooms.service';
 
 type Seed = Omit<AvailabilityBlock, 'id' | 'createdAt' | 'updatedAt'>;
 
 @Injectable()
 export class AvailabilityService implements OnModuleInit {
-  constructor(private readonly db: InMemoryDatabase) {}
+  constructor(
+    private readonly db: InMemoryDatabase,
+    private readonly rooms: RoomsService,
+  ) {}
+
+  // owner_id 참조 무결성(#7): room은 실제 테이블이므로 즉시 검증.
+  // instructor/student는 데모 하드코딩이라 DB 승격 시 검증 추가(현재는 통과).
+  private assertOwner(ownerType: AvailabilityOwner, ownerId: number): void {
+    if (ownerType === 'room' && !this.rooms.findAll().some((r) => r.id === ownerId)) {
+      throw new BadRequestException(`roomId ${ownerId} 없음(존재하지 않는 강의실)`);
+    }
+  }
 
   // 데모 가용/불가(Block) 시드. unavailable = 차단(주간 표에서 회색).
   onModuleInit(): void {
@@ -35,6 +47,7 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   upsert(dto: UpsertAvailabilityDto): AvailabilityBlock {
+    this.assertOwner(dto.ownerType, dto.ownerId); // owner_id 참조 무결성(#7)
     if (dto.id) {
       const updated = this.db.update<AvailabilityBlock>(AVAILABILITY, dto.id, {
         kind: dto.kind ?? 'available',

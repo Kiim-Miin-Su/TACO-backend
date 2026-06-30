@@ -26,6 +26,12 @@ describe('Availability API (e2e)', () => {
     expect(res.body.every((b: { ownerType: string; ownerId: number }) => b.ownerType === 'student' && b.ownerId === 1)).toBe(true);
   });
 
+  it('참조 무결성(#7): 존재하지 않는 강의실 owner → 400', async () => {
+    await http.put('/api/availability')
+      .send({ ownerType: 'room', ownerId: 9999, kind: 'unavailable', weekday: 2, startTime: '10:00', endTime: '11:00' })
+      .expect(400);
+  });
+
   it('PUT(id) → 수정, DELETE → 삭제', async () => {
     const created = (await http.put('/api/availability')
       .send({ ownerType: 'room', ownerId: 1, kind: 'unavailable', weekday: 3, startTime: '09:00', endTime: '10:00' })
