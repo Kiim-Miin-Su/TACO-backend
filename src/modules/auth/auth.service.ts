@@ -13,7 +13,15 @@ export type JwtClaims = {
  */
 @Injectable()
 export class AuthService {
-  private readonly secret: string = process.env.JWT_SECRET ?? 'dev-secret-change-me';
+  // 운영(NODE_ENV=production)에서는 JWT_SECRET 미설정 시 부팅 실패(약한 기본키 서명 방지).
+  private readonly secret: string = (() => {
+    const s = process.env.JWT_SECRET;
+    if (!s) {
+      if (process.env.NODE_ENV === 'production') throw new Error('JWT_SECRET 환경변수가 필요합니다(운영).');
+      return 'dev-secret-change-me';
+    }
+    return s;
+  })();
   private readonly expiresIn: string = process.env.JWT_EXPIRES_IN ?? '1h';
 
   sign(claims: JwtClaims): string {
