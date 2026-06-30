@@ -20,6 +20,10 @@ export class AvailabilityService implements OnModuleInit {
       // 강사2 가용(화·목 16:00–20:00)
       { ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 2, startTime: '16:00', endTime: '20:00' },
       { ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 4, startTime: '16:00', endTime: '20:00' },
+      // 강사1 가용(월·수·금 14:00–20:00) — 추천은 강사가 명시한 가용 안에서만 잡힘(무결성)
+      { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
+      { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 3, startTime: '14:00', endTime: '20:00' },
+      { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 5, startTime: '14:00', endTime: '20:00' },
     ];
     seed.forEach((b) => this.db.insert<AvailabilityBlock>(AVAILABILITY, b));
   }
