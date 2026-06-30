@@ -39,6 +39,10 @@ export class CreateScheduleDto {
   @IsOptional() @IsString() @MaxLength(200)
   topic?: string;
 
+  @ApiPropertyOptional()
+  @IsOptional() @IsString() @MaxLength(500)
+  memo?: string;
+
   @ApiPropertyOptional({ description: '반복 시리즈로 묶을 때' })
   @IsOptional() @IsInt()
   seriesId?: number;

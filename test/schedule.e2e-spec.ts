@@ -107,4 +107,16 @@ describe('Schedule API (e2e)', () => {
       .expect(200);
     expect(res.body.updated).toBeGreaterThan(1);
   });
+
+  it('memo 왕복: POST로 생성 시 저장 + PATCH로 수정', async () => {
+    const created = (await http.post('/api/schedule')
+      .send({ courseId: 10, sessionDate: addDaysISO(MON, 1), startTime: '11:00', durationMinutes: 60, memo: '준비물: 교재 3장' })
+      .expect(201)).body.row;
+    expect(created.memo).toBe('준비물: 교재 3장');
+
+    const updated = (await http.patch(`/api/schedule/${created.id}`)
+      .send({ memo: '변경: 워크북 지참' })
+      .expect(200)).body.row;
+    expect(updated.memo).toBe('변경: 워크북 지참');
+  });
 });

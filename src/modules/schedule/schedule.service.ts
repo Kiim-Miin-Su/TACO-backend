@@ -66,7 +66,7 @@ type SeedSeries = { courseId: number; roomId: number; weekdayOffsets: number[]; 
 // 병합된 세션 필드(업데이트 적용 단위) — 이동/리사이즈/편집 공통.
 type MergedFields = {
   sessionDate: string; startTime: string; endTime: string; durationMinutes: number;
-  courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string;
+  courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string;
 };
 
 @Injectable()
@@ -163,7 +163,7 @@ export class ScheduleService implements OnModuleInit {
   // 세션 생성(추천→배정). FK 검증 + 충돌 검사(force 아니면 충돌 시 409).
   create(dto: {
     courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
-    startTime: string; endTime?: string; durationMinutes?: number; topic?: string;
+    startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string;
     seriesId?: number; status?: ClassSession['status']; force?: boolean;
   }): { row: ScheduleRow; conflicts: Conflict[] } {
     const course = COURSES[dto.courseId];
@@ -200,6 +200,7 @@ export class ScheduleService implements OnModuleInit {
       durationMinutes,
       status: dto.status ?? 'scheduled',
       topic: dto.topic ?? course.name,
+      memo: dto.memo,
     });
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
     return { row: this.enrich(row, roomsMap), conflicts };
@@ -304,6 +305,7 @@ export class ScheduleService implements OnModuleInit {
       sessionDate, startTime, endTime, durationMinutes, courseId, instructorId, roomId,
       status: dto.status ?? cur.status,
       topic: dto.topic ?? (dto.courseId != null && course ? course.name : cur.topic),
+      memo: dto.memo ?? cur.memo,
     };
   }
 
