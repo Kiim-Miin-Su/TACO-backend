@@ -1,8 +1,8 @@
-import 'reflect-metadata';
-import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
-import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
-import { AppModule } from '../src/app.module';
+import "reflect-metadata";
+import { NestFactory } from "@nestjs/core";
+import { ValidationPipe } from "@nestjs/common";
+import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { AppModule } from "../src/app.module";
 
 // ─────────────────────────────────────────────────────────────
 // Vercel 서버리스 엔트리. main.ts와 동일 부트 설정을 함수로 래핑.
@@ -15,24 +15,28 @@ let cachedServer: ((req: unknown, res: unknown) => void) | undefined;
 async function bootstrapServer() {
   const app = await NestFactory.create(AppModule);
 
-  // WEB_ORIGIN(프론트 Vercel 도메인) 미지정 시 모든 오리진 허용(데모). 운영은 도메인 지정 권장.
-  app.enableCors({ origin: process.env.WEB_ORIGIN ?? true, credentials: true });
-  app.setGlobalPrefix('api');
+  // WEB_ORIGIN: 콤마로 여러 도메인 지정 가능. 미지정 시 모든 오리진 허용(데모). 운영은 도메인 지정 권장.
+  const webOrigin = process.env.WEB_ORIGIN;
+  app.enableCors({
+    origin: webOrigin ? webOrigin.split(',').map((s) => s.trim()).filter(Boolean) : true,
+    credentials: true,
+  });
+  app.setGlobalPrefix("api");
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
   const config = new DocumentBuilder()
-    .setTitle('TACO ERP API')
-    .setDescription('TnAcademy 백오피스 API (in-memory, serverless). 설계 스펙: docs/api/openapi.yaml')
-    .setVersion('0.1.0')
+    .setTitle("TACO ERP API")
+    .setDescription("TnAcademy 백오피스 API (in-memory, serverless). 설계 스펙: docs/api/openapi.yaml")
+    .setVersion("0.1.0")
     .addBearerAuth()
     .build();
   // 서버리스(Vercel)는 Swagger UI 정적 에셋을 서빙하지 못해 흰 화면이 됨.
   // → JS/CSS를 CDN(jsdelivr swagger-ui-dist)에서 로드하도록 지정.
-  SwaggerModule.setup('docs', app, SwaggerModule.createDocument(app, config), {
-    customCssUrl: 'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css',
+  SwaggerModule.setup("docs", app, SwaggerModule.createDocument(app, config), {
+    customCssUrl: "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
     customJs: [
-      'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js',
-      'https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js',
+      "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
+      "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js",
     ],
   });
 

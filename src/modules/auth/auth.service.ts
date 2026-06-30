@@ -13,11 +13,13 @@ export type JwtClaims = {
  */
 @Injectable()
 export class AuthService {
-  // 운영(NODE_ENV=production)에서는 JWT_SECRET 미설정 시 부팅 실패(약한 기본키 서명 방지).
+  // JWT_SECRET 권장(운영). 미설정 시 부팅을 막지 않고(서버리스 전체 다운 방지) 경고만 남기고
+  // 고정 기본키로 동작 — 데모는 즉시 사용 가능, 운영은 반드시 JWT_SECRET 설정 권장.
   private readonly secret: string = (() => {
     const s = process.env.JWT_SECRET;
     if (!s) {
-      if (process.env.NODE_ENV === 'production') throw new Error('JWT_SECRET 환경변수가 필요합니다(운영).');
+      // eslint-disable-next-line no-console
+      console.warn('[auth] JWT_SECRET 미설정 — 기본 개발키 사용 중. 운영에서는 반드시 JWT_SECRET을 설정하세요.');
       return 'dev-secret-change-me';
     }
     return s;
