@@ -298,8 +298,10 @@ export class ScheduleService implements OnModuleInit {
         others, blocks,
       ));
     }
-    console.log('[schedule.update] req', JSON.stringify({ id, scope, dto }), 'siblings', seriesPatches.length, 'conflicts', conflicts.length);
-    if (conflicts.length && !dto.force) throw new ConflictException({ message: '스케줄 충돌', conflicts });
+    // 결강·취소(canceled/no_show)로 바꾸는 변경은 시간 점유가 사라지므로 충돌 검사와 무관 — 항상 허용.
+    const becomesCanceled = primary.status === 'canceled' || primary.status === 'no_show';
+    console.log('[schedule.update] req', JSON.stringify({ id, scope, dto }), 'siblings', seriesPatches.length, 'conflicts', conflicts.length, 'becomesCanceled', becomesCanceled);
+    if (conflicts.length && !dto.force && !becomesCanceled) throw new ConflictException({ message: '스케줄 충돌', conflicts });
 
     // 4) 일괄 적용(대상 먼저, 그 뒤 시리즈)
     const updated = this.db.update<ClassSession>(SESSIONS, id, primary)!;

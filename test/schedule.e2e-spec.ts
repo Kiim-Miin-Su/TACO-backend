@@ -163,6 +163,18 @@ describe('Schedule API (e2e)', () => {
     await http.delete('/api/schedule/999999').expect(404);
   });
 
+  it('충돌 시각(시드 월 16:00)을 취소로 변경 시 force 없이도 허용(충돌 무관)', async () => {
+    // 시드 강사1 월 16:00 세션과 겹치도록 force 생성
+    const occupy = (await http.post('/api/schedule')
+      .send({ courseId: 10, sessionDate: MON, startTime: '16:00', durationMinutes: 90, force: true })
+      .expect(201)).body.row;
+    // 이 세션을 '취소(no_show)'로 변경 — 겹침이 있어도 409 없이 200
+    const res = (await http.patch(`/api/schedule/${occupy.id}`)
+      .send({ status: 'no_show' })
+      .expect(200)).body;
+    expect(res.row.status).toBe('no_show');
+  });
+
   it('결강(canceled) 세션은 시간 점유에서 제외 → 같은 슬롯 생성 가능', async () => {
     const day = addDaysISO(MON, 4);
     // 1) 슬롯 점유 세션 생성
