@@ -88,6 +88,7 @@ export class PayoutsService implements OnModuleInit {
     const paid = this.generate(2, '2026-06-01', '2026-06-30');
     this.confirm(paid.id);
     this.pay(paid.id);
+    console.log('[payouts.seedDemo] 강사1 적격 3건(미정산) · 강사2 지급완료 1건 주입');
   }
 
   private hm(hhmm: string): number {
@@ -177,6 +178,7 @@ export class PayoutsService implements OnModuleInit {
         instructorPayAmount: l.amount,
       });
     }
+    console.log('[payouts.generate]', JSON.stringify({ instructorId, from, to, sessionCount: m.sessionCount, amount: m.computedAmount }));
     return payout;
   }
 
@@ -249,6 +251,7 @@ export class PayoutsService implements OnModuleInit {
       occurredAt: now,
       payoutId: id,
     });
+    console.log('[payouts.pay]', JSON.stringify({ id, amount: payout.amount, txId: transaction.id }));
     return { payout, transaction };
   }
 }

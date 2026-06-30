@@ -203,7 +203,6 @@ export class ScheduleService implements OnModuleInit {
       this.availability.list(),
     );
     // 디버깅: 생성 요청 + 충돌 현황 로깅
-    console.log('[schedule.create] req', JSON.stringify({ courseId: dto.courseId, instructorId, roomId: dto.roomId, sessionDate: dto.sessionDate, startTime, endTime, force: !!dto.force }), 'conflicts', conflicts.length);
     if (conflicts.length && !dto.force) throw new ConflictException({ message: '스케줄 충돌', conflicts });
 
     const row = this.db.insert<ClassSession>(SESSIONS, {
@@ -300,7 +299,6 @@ export class ScheduleService implements OnModuleInit {
     }
     // 결강·취소(canceled/no_show)로 바꾸는 변경은 시간 점유가 사라지므로 충돌 검사와 무관 — 항상 허용.
     const becomesCanceled = primary.status === 'canceled' || primary.status === 'no_show';
-    console.log('[schedule.update] req', JSON.stringify({ id, scope, dto }), 'siblings', seriesPatches.length, 'conflicts', conflicts.length, 'becomesCanceled', becomesCanceled);
     if (conflicts.length && !dto.force && !becomesCanceled) throw new ConflictException({ message: '스케줄 충돌', conflicts });
 
     // 4) 일괄 적용(대상 먼저, 그 뒤 시리즈)
