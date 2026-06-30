@@ -32,10 +32,20 @@ describe('Schedule API (e2e)', () => {
     expect(res.body.rooms.length).toBeGreaterThan(0);
     expect(res.body.students.length).toBeGreaterThan(0);
     expect(res.body.courses.length).toBeGreaterThan(0);
-    // 코스 옵션은 강사 FK와 정렬되어 있어야 함
+    // 코스 옵션은 강사 FK와 정렬되어 있어야 함 + 진행시간(세션에서 파생) > 0
     for (const c of res.body.courses) {
       expect(res.body.instructors.some((i: { id: number }) => i.id === c.instructorId)).toBe(true);
+      expect(c.durationMinutes).toBeGreaterThan(0);
     }
+    // 코스11(AP Calculus)은 시드 세션이 120분 → 진행시간 120 파생
+    const c11 = res.body.courses.find((c: { id: number }) => c.id === 11);
+    expect(c11.durationMinutes).toBe(120);
+  });
+
+  it('겹침 픽스처: 강사1 점심 불가시간 위 세션이 시드에 존재', async () => {
+    const rows = (await http.get(`/api/schedule?from=${MON}&to=${SUN}&instructorId=1`).expect(200)).body;
+    const overlap = rows.find((r: { sessionDate: string; startTime: string }) => r.sessionDate === MON && r.startTime === '12:30');
+    expect(overlap).toBeTruthy(); // 강사1 점심(12:00–13:00)과 겹치는 데모 세션
   });
 
   it('GET /schedule?studentId=2 — 학생2 코호트(코스11) 세션만', async () => {

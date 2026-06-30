@@ -110,6 +110,16 @@ export class ScheduleService implements OnModuleInit {
         });
       });
     });
+
+    // 테스트용 겹침 픽스처: 강사1(박지훈)의 점심 불가시간(월 12:00–13:00) 위에 놓인 세션.
+    // 캘린더에서 강사1 선택 시 회색 불가 밴드와 겹치는 수업이 보이고, 충돌 검사 데모가 가능.
+    const mon0 = fmt(mon);
+    this.db.insert<ClassSession>(SESSIONS, {
+      courseId: 12, instructorId: 1, roomId: 2,
+      sessionDate: mon0, startTime: '12:30', endTime: '13:30', durationMinutes: 60,
+      status: 'scheduled', topic: 'TOEFL 보강(불가시간 겹침 데모)',
+      memo: '⚠ 강사1 점심(12:00–13:00)과 겹침 — 충돌 시각화 테스트용',
+    });
   }
 
   // 기간/필터 조회 → enriched 읽기모델(주간 표/캘린더용)
@@ -134,6 +144,10 @@ export class ScheduleService implements OnModuleInit {
   // 자원 피커(좌측 레일·필터)용 경량 목록 — 강사·강의실·학생.
   resources(): import('@kms545487/contracts').ScheduleResources {
     const PALETTE = ['#0969da', '#1a7f37', '#8250df', '#bf3989', '#9a6700', '#1b7c83'];
+    // 코스 진행시간은 그 코스의 기존 세션에서 파생(단일 소스). 세션 없으면 기본 90분.
+    const allSessions = this.db.findAll<ClassSession>(SESSIONS);
+    const courseDuration = (courseId: number): number =>
+      allSessions.find((s) => s.courseId === courseId)?.durationMinutes ?? 90;
     return {
       instructors: Object.entries(INSTRUCTORS).map(([id, name]) => ({
         type: 'instructor' as const, id: Number(id), name,
@@ -155,7 +169,9 @@ export class ScheduleService implements OnModuleInit {
         })),
       courses: Object.entries(COURSES).map(([id, c]) => ({
         id: Number(id), name: c.name, instructorId: c.instructorId,
+        instructorName: INSTRUCTORS[c.instructorId],
         subjectName: SUBJECTS[c.subjectId]?.name ?? '', color: SUBJECTS[c.subjectId]?.color,
+        durationMinutes: courseDuration(Number(id)),
       })),
     };
   }
