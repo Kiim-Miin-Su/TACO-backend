@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { LoggingInterceptor } from './common/logging.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -19,6 +20,7 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, transform: true }),
   );
+  app.useGlobalInterceptors(new LoggingInterceptor()); // 모든 요청 로깅(docs/logging.md)
 
   // Swagger — http://localhost:3001/docs (JSON: /docs-json)
   const swaggerConfig = new DocumentBuilder()

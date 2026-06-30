@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import type { Conflict, ScheduleRow } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { RoomsService } from '../rooms/rooms.service';
@@ -72,6 +72,8 @@ type MergedFields = {
 
 @Injectable()
 export class ScheduleService implements OnModuleInit {
+  private readonly logger = new Logger(ScheduleService.name);
+
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly rooms: RoomsService,
@@ -203,7 +205,10 @@ export class ScheduleService implements OnModuleInit {
       this.availability.list(),
     );
     // 디버깅: 생성 요청 + 충돌 현황 로깅
-    if (conflicts.length && !dto.force) throw new ConflictException({ message: '스케줄 충돌', conflicts });
+    if (conflicts.length && !dto.force) {
+      this.logger.warn(`create 충돌 ${conflicts.length}건 — course=${dto.courseId} ${dto.sessionDate} ${dto.startTime} (force로 강제 가능)`);
+      throw new ConflictException({ message: '스케줄 충돌', conflicts });
+    }
 
     const row = this.db.insert<ClassSession>(SESSIONS, {
       seriesId: dto.seriesId,
@@ -299,7 +304,10 @@ export class ScheduleService implements OnModuleInit {
     }
     // 결강·취소(canceled/no_show)로 바꾸는 변경은 시간 점유가 사라지므로 충돌 검사와 무관 — 항상 허용.
     const becomesCanceled = primary.status === 'canceled' || primary.status === 'no_show';
-    if (conflicts.length && !dto.force && !becomesCanceled) throw new ConflictException({ message: '스케줄 충돌', conflicts });
+    if (conflicts.length && !dto.force && !becomesCanceled) {
+      this.logger.warn(`update 충돌 ${conflicts.length}건 — session=${id} scope=${scope} (force로 강제 가능)`);
+      throw new ConflictException({ message: '스케줄 충돌', conflicts });
+    }
 
     // 4) 일괄 적용(대상 먼저, 그 뒤 시리즈)
     const updated = this.db.update<ClassSession>(SESSIONS, id, primary)!;

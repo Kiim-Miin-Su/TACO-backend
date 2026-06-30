@@ -3,6 +3,7 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import { AppModule } from "../src/app.module";
+import { LoggingInterceptor } from "../src/common/logging.interceptor";
 
 // ─────────────────────────────────────────────────────────────
 // Vercel 서버리스 엔트리. main.ts와 동일 부트 설정을 함수로 래핑.
@@ -23,6 +24,7 @@ async function bootstrapServer() {
   });
   app.setGlobalPrefix("api");
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalInterceptors(new LoggingInterceptor()); // 모든 요청 로깅(docs/logging.md)
 
   const config = new DocumentBuilder()
     .setTitle("TACO ERP API")
