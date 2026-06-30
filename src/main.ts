@@ -7,9 +7,11 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
-  // 프론트(Next.js)와 분리 운영 — CORS 허용
+  // 프론트(Next.js)와 분리 운영 — CORS 허용.
+  // WEB_ORIGIN: 콤마로 여러 도메인 지정 가능. 미지정 시 로컬 개발 기본값(localhost:3000).
+  const webOrigin = process.env.WEB_ORIGIN;
   app.enableCors({
-    origin: process.env.WEB_ORIGIN ?? 'http://localhost:3000',
+    origin: webOrigin ? webOrigin.split(',').map((s) => s.trim()).filter(Boolean) : 'http://localhost:3000',
     credentials: true,
   });
 
