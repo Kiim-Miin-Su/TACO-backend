@@ -1,3 +1,9 @@
+// [참조/처리] 전역 인메모리 저장소(단일 인스턴스, DatabaseModule이 provide).
+//  - 모든 도메인 서비스(students/schedule/payouts/events…)가 생성자에서 InMemoryDatabase를 DI로 주입받아
+//    이 한 곳의 컬렉션(collection name 상수 키)에 read/write. → 사실상의 "DB".
+//  - seed<T>(name, rows): 고정 id로 멱등 삽입(재기동/하이드레이션 중복 방지, audit 필드 자동).
+//    insert<T>: nextId 자동 부여. 참조 무결성(FK 정합)은 각 서비스가 seed 단계에서 id를 맞춰 보장.
+//  - 프론트는 이 데이터를 REST로 받아 zustand store에 하이드레이트(단일 소스).
 import { Injectable } from '@nestjs/common';
 import { BaseRow } from '../common/types/base';
 

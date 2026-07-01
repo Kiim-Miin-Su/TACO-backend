@@ -1896,6 +1896,54 @@
           "transactions"
         ]
       }
+    },
+    "/api/events": {
+      "get": {
+        "operationId": "EventsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "AcademyEvent[] — title·type·priority·startDate·endDate·allDay·memo"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "학원 이벤트/공지 목록(AcademyEvent[]) — 캘린더 표시(시작일 오름차순)",
+        "tags": [
+          "events"
+        ]
+      },
+      "post": {
+        "operationId": "EventsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 AcademyEvent"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "학원 이벤트 발행(관리자) — 캘린더 구간 유효성 검증",
+        "tags": [
+          "events"
+        ]
+      }
     }
   },
   "info": {
@@ -2612,6 +2660,50 @@
             "description": "반려 사유(강사에게 표시)"
           }
         }
+      },
+      "CreateEventDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "notice",
+              "exam",
+              "holiday",
+              "closure",
+              "event"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": "string"
+          },
+          "allDay": {
+            "type": "boolean"
+          },
+          "memo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "type",
+          "startDate",
+          "endDate"
+        ]
       }
     }
   }

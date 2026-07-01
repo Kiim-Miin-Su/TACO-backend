@@ -1,3 +1,7 @@
+// [참조/처리] 루트 모듈. DatabaseModule(전역 인메모리 DB) + 모든 도메인 feature 모듈을 조립.
+//  - 각 feature 모듈 서비스는 onModuleInit에서 시드 → 부팅 시 데이터 준비(프론트가 REST로 하이드레이트).
+//  - 관리자 쓰기 모듈(events/expenses/payouts/reports)은 AuthModule을 import해 RolesGuard(AuthService) 주입.
+//  - LoggerMiddleware는 전 라우트에 적용(요청 로깅). 컨트롤러 전역 prefix 'api'는 main.ts/서버리스 진입점에서 설정.
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { LoggerMiddleware } from './common/logger.middleware';
 import { DatabaseModule } from './database/database.module';
@@ -17,6 +21,7 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { CounselModule } from './modules/counsel/counsel.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
+import { EventsModule } from './modules/events/events.module';
 
 @Module({
   imports: [
@@ -39,9 +44,10 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
     // 시수 측정·페이 정산(TBO-05)
     ReportsModule,
     PayoutsModule,
-    // 상담(counsel)·원장(transactions) — B2 목→백엔드 이관
+    // 상담(counsel)·원장(transactions)·학원이벤트(events) — B2 목→백엔드 이관
     CounselModule,
     TransactionsModule,
+    EventsModule,
   ],
 })
 export class AppModule implements NestModule {
