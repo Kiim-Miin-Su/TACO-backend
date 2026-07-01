@@ -1944,6 +1944,63 @@
           "events"
         ]
       }
+    },
+    "/api/attendance": {
+      "get": {
+        "operationId": "AttendanceController_findAll",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attendance[] — sessionId·studentId·status"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "출결 목록(Attendance[]) — sessionId 지정 시 해당 세션만",
+        "tags": [
+          "attendance"
+        ]
+      },
+      "put": {
+        "operationId": "AttendanceController_upsert",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAttendanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "upsert된 Attendance"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장",
+        "tags": [
+          "attendance"
+        ]
+      }
     }
   },
   "info": {
@@ -2703,6 +2760,33 @@
           "type",
           "startDate",
           "endDate"
+        ]
+      },
+      "UpsertAttendanceDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "studentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "late",
+              "absent",
+              "excused"
+            ]
+          }
+        },
+        "required": [
+          "sessionId",
+          "studentId",
+          "status"
         ]
       }
     }

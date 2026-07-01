@@ -22,6 +22,7 @@ import { PayoutsModule } from './modules/payouts/payouts.module';
 import { CounselModule } from './modules/counsel/counsel.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { EventsModule } from './modules/events/events.module';
+import { AttendanceModule } from './modules/attendance/attendance.module';
 
 @Module({
   imports: [
@@ -48,6 +49,7 @@ import { EventsModule } from './modules/events/events.module';
     CounselModule,
     TransactionsModule,
     EventsModule,
+    AttendanceModule,
   ],
 })
 export class AppModule implements NestModule {
