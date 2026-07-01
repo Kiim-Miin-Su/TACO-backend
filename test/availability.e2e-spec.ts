@@ -81,6 +81,22 @@ describe('Availability API (e2e)', () => {
       .expect(200);
   });
 
+  it('일회성 블록(effectiveFrom=effectiveTo): 그 주만 막고 다음 주는 통과', async () => {
+    const fri = weekdayDateThisWeek(5);
+    const nx = new Date(fri + 'T00:00:00Z'); nx.setUTCDate(nx.getUTCDate() + 7);
+    const nextFri = nx.toISOString().slice(0, 10);
+    // 강의실1 금요일 15:00–16:00 불가 — 이 날짜 1회만(effectiveFrom=effectiveTo).
+    await http.put('/api/availability')
+      .send({ ownerType: 'room', ownerId: 1, kind: 'unavailable', weekday: 5, startTime: '15:00', endTime: '16:00', effectiveFrom: fri, effectiveTo: fri })
+      .expect(200);
+    // 이번 주 금요일 → 막힘(409)
+    await http.post('/api/schedule').set(TH())
+      .send({ courseId: 10, roomId: 1, sessionDate: fri, startTime: '15:00', durationMinutes: 60 }).expect(409);
+    // 다음 주 금요일 → 안 막힘(201)
+    await http.post('/api/schedule').set(TH())
+      .send({ courseId: 10, roomId: 1, sessionDate: nextFri, startTime: '15:00', durationMinutes: 60 }).expect(201);
+  });
+
   it('기간(effectiveFrom): 기간 밖 주에는 불가시간이 세션을 막지 않음', async () => {
     const thu = weekdayDateThisWeek(4);
     const future = new Date(thu + 'T00:00:00Z'); future.setUTCDate(future.getUTCDate() + 28);
