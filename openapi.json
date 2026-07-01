@@ -1881,6 +1881,21 @@
           "counsel"
         ]
       }
+    },
+    "/api/transactions": {
+      "get": {
+        "operationId": "TransactionsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Transaction[] — direction(in/out)·category·label·amount·method·occurredAt"
+          }
+        },
+        "summary": "입·출금 통합 원장(Transaction[]) — 대시보드 매출/지출 집계용",
+        "tags": [
+          "transactions"
+        ]
+      }
     }
   },
   "info": {

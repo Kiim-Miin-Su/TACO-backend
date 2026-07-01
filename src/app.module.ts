@@ -16,6 +16,7 @@ import { ScheduleModule } from './modules/schedule/schedule.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { CounselModule } from './modules/counsel/counsel.module';
+import { TransactionsModule } from './modules/transactions/transactions.module';
 
 @Module({
   imports: [
@@ -38,8 +39,9 @@ import { CounselModule } from './modules/counsel/counsel.module';
     // 시수 측정·페이 정산(TBO-05)
     ReportsModule,
     PayoutsModule,
-    // 상담(counsel) — B2 목→백엔드 이관
+    // 상담(counsel)·원장(transactions) — B2 목→백엔드 이관
     CounselModule,
+    TransactionsModule,
   ],
 })
 export class AppModule implements NestModule {
