@@ -32,7 +32,7 @@
         "parameters": [
           {
             "name": "token",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -81,7 +81,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -120,7 +130,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -149,7 +166,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -178,7 +202,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "summary": "토큰 검증 → claims.",
@@ -193,7 +224,7 @@
         "parameters": [
           {
             "name": "webId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -202,7 +233,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -216,7 +254,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -244,7 +292,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -266,7 +324,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -289,7 +354,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -303,7 +375,7 @@
         "parameters": [
           {
             "name": "studentId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -312,7 +384,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -334,7 +416,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -357,7 +446,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -371,7 +467,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -393,7 +499,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -416,7 +529,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -439,7 +559,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -453,7 +580,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -475,7 +612,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -498,7 +642,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -512,7 +663,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -534,7 +695,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -557,7 +725,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -571,7 +746,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -598,7 +783,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -626,7 +818,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -654,7 +853,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -682,7 +888,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -701,7 +914,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -723,7 +946,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -746,7 +976,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -893,7 +1130,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -947,7 +1194,14 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1077,7 +1331,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1105,7 +1369,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1134,7 +1405,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1162,7 +1440,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1265,7 +1550,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1310,7 +1605,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1339,7 +1641,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1554,43 +1863,300 @@
     "schemas": {
       "SignupDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "webId": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 50
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 100
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "instructor",
+              "manager",
+              "admin"
+            ]
+          }
+        },
+        "required": [
+          "webId",
+          "name",
+          "email",
+          "password"
+        ]
       },
       "LoginDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "webId": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "webId"
+        ]
       },
       "ApproveDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "instructor",
+              "manager",
+              "admin",
+              "super_admin"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
       },
       "CreateStudentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "englishName": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "grade": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "schoolName": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "residenceType": {
+            "type": "string",
+            "enum": [
+              "domestic",
+              "overseas"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "lead",
+              "active",
+              "paused",
+              "completed",
+              "canceled"
+            ]
+          },
+          "memo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
       },
       "CreateEnrollmentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "studentId": {
+            "type": "number"
+          },
+          "courseId": {
+            "type": "number"
+          },
+          "roadmapId": {
+            "type": "number"
+          },
+          "totalSessions": {
+            "type": "number",
+            "minimum": 0
+          },
+          "memo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "studentId",
+          "courseId"
+        ]
       },
       "CreatePaymentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "studentId": {
+            "type": "number"
+          },
+          "enrollmentId": {
+            "type": "number"
+          },
+          "payerParentId": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "card",
+              "transfer",
+              "cash",
+              "point",
+              "etc"
+            ]
+          }
+        },
+        "required": [
+          "studentId",
+          "amount"
+        ]
       },
       "CreateSubjectDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 50
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
       },
       "CreateCourseDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "subjectId": {
+            "type": "number"
+          },
+          "instructorId": {
+            "type": "number"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0
+          },
+          "hourlyRate": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "subjectId",
+          "instructorId",
+          "price",
+          "hourlyRate"
+        ]
       },
       "CreateExpenseDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "supplies",
+              "equipment",
+              "books",
+              "rent",
+              "utility",
+              "marketing",
+              "meal",
+              "etc"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "spentAt": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          },
+          "memo": {
+            "type": "string"
+          },
+          "receiptUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "title",
+          "amount",
+          "spentAt"
+        ]
       },
       "CreateRoomDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "buildingId": {
+            "type": "number"
+          },
+          "capacity": {
+            "type": "number",
+            "minimum": 0
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#?([0-9A-F]{3}|[0-9A-F]{4}|[0-9A-F]{6}|[0-9A-F]{8})$"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ]
       },
       "UpsertAvailabilityDto": {
         "type": "object",
@@ -1601,12 +2167,13 @@
             "description": "수정할 블록 id(없으면 신규 생성)"
           },
           "ownerType": {
-            "type": "string",
             "enum": [
               "student",
               "instructor",
               "room"
             ],
+            "type": "string",
+            "example": "instructor",
             "description": "소유 자원 종류"
           },
           "ownerId": {
@@ -1615,18 +2182,19 @@
             "description": "소유 자원 id(ownerType에 따라 students/users/rooms)"
           },
           "kind": {
-            "type": "string",
             "enum": [
               "available",
               "unavailable"
             ],
+            "type": "string",
+            "example": "unavailable",
             "description": "가용/불가(기본 available)"
           },
           "weekday": {
             "type": "number",
-            "example": 1,
             "minimum": 0,
             "maximum": 6,
+            "example": 1,
             "description": "요일(0=일 ~ 6=토)"
           },
           "startTime": {
@@ -1712,14 +2280,17 @@
           },
           "instructorId": {
             "type": "number",
+            "example": 1,
             "description": "강사 FK(미지정 시 코스 기본 강사)"
           },
           "roomId": {
             "type": "number",
+            "example": 2,
             "description": "강의실 FK"
           },
           "sessionDate": {
             "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "example": "2026-06-30"
           },
           "startTime": {
@@ -1733,35 +2304,47 @@
           },
           "durationMinutes": {
             "type": "number",
+            "minimum": 10,
             "example": 90,
             "description": "endTime 없을 때 사용(기본 60)"
           },
           "topic": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 200,
+            "example": "Reading: 추론 문제 전략",
+            "description": "수업 주제"
           },
           "memo": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500,
+            "example": "교재 3장 지참",
+            "description": "메모"
           },
           "color": {
             "type": "string",
+            "maxLength": 20,
+            "example": "#0969da",
             "description": "캘린더 색상 라벨(미지정 시 코스 색)"
           },
           "seriesId": {
             "type": "number",
-            "description": "반복 시리즈로 묶을 때"
+            "example": 1719800000000,
+            "description": "반복 시리즈로 묶을 때(같은 seriesId)"
           },
           "status": {
-            "type": "string",
             "enum": [
               "scheduled",
               "held",
               "canceled",
               "no_show",
               "makeup"
-            ]
+            ],
+            "type": "string",
+            "example": "scheduled"
           },
           "force": {
             "type": "boolean",
+            "example": false,
             "description": "충돌이 있어도 강제 적용(기본 false → 충돌 시 409)"
           }
         },
@@ -1776,6 +2359,7 @@
         "properties": {
           "sessionDate": {
             "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "example": "2026-07-02",
             "description": "이동할 날짜(YYYY-MM-DD)"
           },
@@ -1791,22 +2375,25 @@
           },
           "durationMinutes": {
             "type": "number",
+            "minimum": 10,
             "example": 60
           },
           "roomId": {
             "type": "number",
+            "example": 2,
             "description": "강의실 FK"
           },
           "instructorId": {
             "type": "number",
+            "example": 1,
             "description": "강사 FK"
           },
           "courseId": {
             "type": "number",
+            "example": 10,
             "description": "코스 FK"
           },
           "status": {
-            "type": "string",
             "enum": [
               "scheduled",
               "held",
@@ -1814,29 +2401,39 @@
               "no_show",
               "makeup"
             ],
+            "type": "string",
+            "example": "canceled",
             "description": "상태(취소/결강 등)"
           },
           "topic": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 200,
+            "example": "Reading: 근거 문장 매칭"
           },
           "memo": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500,
+            "example": "워크북 지참"
           },
           "color": {
             "type": "string",
+            "maxLength": 20,
+            "example": "#9a6700",
             "description": "캘린더 색상 라벨"
           },
           "scope": {
-            "type": "string",
             "enum": [
               "this",
               "this_and_following",
               "all"
             ],
+            "type": "string",
+            "example": "this",
             "description": "반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)"
           },
           "force": {
             "type": "boolean",
+            "example": false,
             "description": "충돌이 있어도 강제 적용(기본 false → 충돌 시 409)"
           }
         }
@@ -1861,20 +2458,23 @@
           },
           "content": {
             "type": "string",
+            "maxLength": 4000,
             "example": "오늘 진도: 추론 문제 3세트. 정답률 향상.",
             "description": "보고서 본문(진도·피드백)"
           },
           "homework": {
             "type": "string",
+            "maxLength": 2000,
             "example": "워크북 12–15p",
             "description": "숙제(선택)"
           },
           "status": {
-            "type": "string",
             "enum": [
               "draft",
               "submitted"
             ],
+            "type": "string",
+            "example": "submitted",
             "description": "기본 submitted(승인요청). draft 허용"
           }
         },
@@ -1899,6 +2499,7 @@
         "properties": {
           "reason": {
             "type": "string",
+            "maxLength": 1000,
             "example": "진도 내용 보완 필요",
             "description": "반려 사유(강사에게 표시)"
           }
@@ -1934,6 +2535,7 @@
         "properties": {
           "amount": {
             "type": "number",
+            "minimum": 0,
             "example": 150000,
             "description": "실효 지급액(원). 자동 산정액은 보존됨"
           },

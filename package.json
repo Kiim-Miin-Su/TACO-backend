@@ -7,7 +7,7 @@
     "dev": "nest start --watch",
     "start": "node dist/main.js",
     "build": "nest build",
-    "openapi": "ts-node scripts/generate-openapi.ts",
+    "openapi": "nest build -p tsconfig.build.json && node dist/scripts/generate-openapi.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:e2e": "jest --config test/jest-e2e.json --runInBand",
     "lint": "eslint \"src/**/*.ts\""
@@ -23,6 +23,7 @@
     "class-validator": "^0.14.1",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^9.0.1",
+    "openapi": "^1.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },

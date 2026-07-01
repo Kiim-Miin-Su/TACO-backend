@@ -24,39 +24,39 @@ export class UpdateScheduleDto {
   @IsOptional() @IsInt() @Min(10)
   durationMinutes?: number;
 
-  @ApiPropertyOptional({ description: '강의실 FK' })
+  @ApiPropertyOptional({ example: 2, description: '강의실 FK' })
   @IsOptional() @IsInt()
   roomId?: number;
 
-  @ApiPropertyOptional({ description: '강사 FK' })
+  @ApiPropertyOptional({ example: 1, description: '강사 FK' })
   @IsOptional() @IsInt()
   instructorId?: number;
 
-  @ApiPropertyOptional({ description: '코스 FK' })
+  @ApiPropertyOptional({ example: 10, description: '코스 FK' })
   @IsOptional() @IsInt()
   courseId?: number;
 
-  @ApiPropertyOptional({ enum: STATUSES, description: '상태(취소/결강 등)' })
+  @ApiPropertyOptional({ enum: STATUSES, example: 'canceled', description: '상태(취소/결강 등)' })
   @IsOptional() @IsIn(STATUSES)
   status?: SessionStatus;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: 'Reading: 근거 문장 매칭' })
   @IsOptional() @IsString() @MaxLength(200)
   topic?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ example: '워크북 지참' })
   @IsOptional() @IsString() @MaxLength(500)
   memo?: string;
 
-  @ApiPropertyOptional({ description: '캘린더 색상 라벨' })
+  @ApiPropertyOptional({ example: '#9a6700', description: '캘린더 색상 라벨' })
   @IsOptional() @IsString() @MaxLength(20)
   color?: string;
 
-  @ApiPropertyOptional({ enum: SCOPES, description: '반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)' })
+  @ApiPropertyOptional({ enum: SCOPES, example: 'this', description: '반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)' })
   @IsOptional() @IsIn(SCOPES)
   scope?: RecurrenceScope;
 
-  @ApiPropertyOptional({ description: '충돌이 있어도 강제 적용(기본 false → 충돌 시 409)' })
+  @ApiPropertyOptional({ example: false, description: '충돌이 있어도 강제 적용(기본 false → 충돌 시 409)' })
   @IsOptional() @IsBoolean()
   force?: boolean;
 }

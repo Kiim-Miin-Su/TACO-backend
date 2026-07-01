@@ -23,7 +23,7 @@ export class CreateReportDto {
   @IsOptional() @IsString() @MaxLength(2000)
   homework?: string;
 
-  @ApiPropertyOptional({ enum: ['draft', 'submitted'], description: '기본 submitted(승인요청). draft 허용' })
+  @ApiPropertyOptional({ enum: ['draft', 'submitted'], example: 'submitted', description: '기본 submitted(승인요청). draft 허용' })
   @IsOptional() @IsIn(['draft', 'submitted'])
   status?: 'draft' | 'submitted';
 }
