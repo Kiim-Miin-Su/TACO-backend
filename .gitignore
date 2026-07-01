@@ -10,3 +10,4 @@ dist/
 
 # FUSE mount artifacts (sandbox)
 **/.fuse_hidden*
+tsconfig.oapi.json

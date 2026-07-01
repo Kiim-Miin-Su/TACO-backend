@@ -1842,6 +1842,45 @@
           "payouts"
         ]
       }
+    },
+    "/api/counsel": {
+      "get": {
+        "operationId": "CounselController_findForms",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "CounselForm[] — 신청자·상태·관심 과목/코스·다음 상담일 등"
+          }
+        },
+        "summary": "상담 접수 목록(CounselForm[])",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
+    "/api/counsel/rounds": {
+      "get": {
+        "operationId": "CounselController_findRounds",
+        "parameters": [
+          {
+            "name": "counselFormId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CounselRound[] — 회차·요약·결과·다음 액션"
+          }
+        },
+        "summary": "상담 회차 목록(CounselRound[]). counselFormId로 필터.",
+        "tags": [
+          "counsel"
+        ]
+      }
     }
   },
   "info": {
