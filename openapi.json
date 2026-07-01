@@ -2001,6 +2001,59 @@
           "attendance"
         ]
       }
+    },
+    "/api/roadmaps": {
+      "get": {
+        "operationId": "RoadmapsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Roadmap[] — title·targetGrade·durationWeeks·isActive"
+          }
+        },
+        "summary": "로드맵 목록(Roadmap[])",
+        "tags": [
+          "roadmaps"
+        ]
+      },
+      "post": {
+        "operationId": "RoadmapsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoadmapDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 Roadmap"
+          }
+        },
+        "summary": "로드맵 생성 — courseIds(코스 FK) 순서대로 링크",
+        "tags": [
+          "roadmaps"
+        ]
+      }
+    },
+    "/api/roadmaps/courses": {
+      "get": {
+        "operationId": "RoadmapsController_findAllCourses",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "RoadmapCourse[] — roadmapId·courseId·sortOrder"
+          }
+        },
+        "summary": "로드맵↔코스 링크(RoadmapCourse[]) — M:N 조인(sortOrder)",
+        "tags": [
+          "roadmaps"
+        ]
+      }
     }
   },
   "info": {
@@ -2787,6 +2840,31 @@
           "sessionId",
           "studentId",
           "status"
+        ]
+      },
+      "CreateRoadmapDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "targetGrade": {
+            "type": "number",
+            "minimum": 0
+          },
+          "courseIds": {
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "title"
         ]
       }
     }

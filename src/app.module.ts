@@ -23,6 +23,7 @@ import { CounselModule } from './modules/counsel/counsel.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { EventsModule } from './modules/events/events.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
+import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
     TransactionsModule,
     EventsModule,
     AttendanceModule,
+    RoadmapsModule,
   ],
 })
 export class AppModule implements NestModule {
