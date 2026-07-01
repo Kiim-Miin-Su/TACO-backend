@@ -1,9 +1,13 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('reports')
+@ApiBearerAuth()
+@UseGuards(RolesGuard)
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
@@ -32,15 +36,17 @@ export class ReportsController {
     return this.reports.submit(id);
   }
 
-  // super_admin 승인/반려 (인증 Guard는 추후 연결 — expenses 패턴과 동일)
+  // 관리자 승인/반려 — RolesGuard로 super_admin/manager/admin만 허용.
   @Post(':id/approve')
-  @ApiOperation({ summary: '관리자 승인(submitted → approved) — 시수 적격 편입' })
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '관리자 승인(submitted → approved) — 시수 적격 편입 [관리자]' })
   approve(@Param('id', ParseIntPipe) id: number, @Body() body?: { approvedBy?: number }) {
     return this.reports.approve(id, body?.approvedBy);
   }
 
   @Post(':id/reject')
-  @ApiOperation({ summary: '관리자 반려(→ rejected, 사유 보존)' })
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '관리자 반려(→ rejected, 사유 보존) [관리자]' })
   reject(@Param('id', ParseIntPipe) id: number, @Body() body?: { reason?: string }) {
     return this.reports.reject(id, body?.reason);
   }

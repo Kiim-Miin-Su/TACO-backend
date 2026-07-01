@@ -52,7 +52,7 @@ describe('Permission matrix (e2e)', () => {
     });
   });
 
-  describe('현재 역할 가드 없음(개방) — 모든 로그인 역할 200 (RolesGuard 확장 대상)', () => {
+  describe('읽기(GET)는 개방 — 모든 로그인 역할 200', () => {
     const open = ['/api/schedule', '/api/payouts', '/api/reports', '/api/schedule/resources'];
     for (const role of Object.keys(ACCOUNTS)) {
       for (const path of open) {
@@ -60,6 +60,24 @@ describe('Permission matrix (e2e)', () => {
           await http.get(path).set(auth(role)).expect(200);
         });
       }
+    }
+  });
+
+  // 백오피스 쓰기 액션은 RolesGuard(super_admin/manager/admin) 전용.
+  // 가드가 핸들러보다 먼저 실행되므로 id가 유효하지 않아도 인가 결과(403/401)가 먼저 나온다.
+  describe('RolesGuard — 관리자 전용 쓰기 액션 거부', () => {
+    const adminWrites = ['/api/payouts/999/confirm', '/api/reports/999/approve', '/api/expenses/999/approve'];
+    for (const path of adminWrites) {
+      it(`instructor → POST ${path} 403`, async () => {
+        await http.post(path).set(auth('instructor')).send({}).expect(403);
+      });
+      it(`토큰 없음 → POST ${path} 401`, async () => {
+        await http.post(path).send({}).expect(401);
+      });
+      it(`manager → POST ${path} 통과(가드 허용, 403/401 아님)`, async () => {
+        const res = await http.post(path).set(auth('manager')).send({});
+        expect([401, 403]).not.toContain(res.status); // 인가 통과 → 이후 핸들러 결과(예: 404/400)
+      });
     }
   });
 });
