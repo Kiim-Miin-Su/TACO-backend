@@ -80,6 +80,20 @@ describe('Availability API (e2e)', () => {
       .send({ ownerType: 'student', ownerId: 5, kind: 'available', weekday: 2, startTime: '11:00', endTime: '12:00' })
       .expect(200);
   });
+
+  it('기간(effectiveFrom): 기간 밖 주에는 불가시간이 세션을 막지 않음', async () => {
+    const thu = weekdayDateThisWeek(4);
+    const future = new Date(thu + 'T00:00:00Z'); future.setUTCDate(future.getUTCDate() + 28);
+    const futureThu = future.toISOString().slice(0, 10);
+    // 강의실2 목요일 09:00–10:00 불가 — 단, 4주 뒤부터 적용(effectiveFrom).
+    await http.put('/api/availability')
+      .send({ ownerType: 'room', ownerId: 2, kind: 'unavailable', weekday: 4, startTime: '09:00', endTime: '10:00', effectiveFrom: futureThu })
+      .expect(200);
+    // 이번 주 목요일 세션은 기간 밖 → 충돌 없이 생성(201).
+    await http.post('/api/schedule').set(TH())
+      .send({ courseId: 10, roomId: 2, sessionDate: thu, startTime: '09:00', durationMinutes: 60 })
+      .expect(201);
+  });
 });
 
 // 현재 주의 특정 요일(0=일~6=토) 날짜
