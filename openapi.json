@@ -2054,6 +2054,118 @@
           "roadmaps"
         ]
       }
+    },
+    "/api/parents": {
+      "get": {
+        "operationId": "ParentsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Parent[] — name·phone·kakaoAvailable"
+          }
+        },
+        "summary": "보호자 목록(Parent[])",
+        "tags": [
+          "parents"
+        ]
+      },
+      "post": {
+        "operationId": "ParentsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateParentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ parent, relation }"
+          }
+        },
+        "summary": "보호자 등록 + 학생 연결 — studentId FK 검증, 대표 불변",
+        "tags": [
+          "parents"
+        ]
+      }
+    },
+    "/api/parents/relations": {
+      "get": {
+        "operationId": "ParentsController_findAllRelations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "ParentStudent[] — parentId·studentId·relation·isPayer·isPrimary"
+          }
+        },
+        "summary": "학생↔보호자 관계(ParentStudent[]) — M:N(대표/납부자)",
+        "tags": [
+          "parents"
+        ]
+      }
+    },
+    "/api/parents/link": {
+      "post": {
+        "operationId": "ParentsController_link",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkParentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 ParentStudent"
+          }
+        },
+        "summary": "기존 보호자를 학생에 연결(형제 M:N) — FK·유니크·대표 불변",
+        "tags": [
+          "parents"
+        ]
+      }
+    },
+    "/api/parents/relations/{id}": {
+      "patch": {
+        "operationId": "ParentsController_updateRelation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRelationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "수정된 ParentStudent"
+          }
+        },
+        "summary": "관계 수정(대표 이전·납부자 변경) — 대표 지정 시 기존 대표 강등",
+        "tags": [
+          "parents"
+        ]
+      }
     }
   },
   "info": {
@@ -2866,6 +2978,77 @@
         "required": [
           "title"
         ]
+      },
+      "CreateParentDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "webId": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          },
+          "isPayer": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "studentId": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "name",
+          "studentId"
+        ]
+      },
+      "LinkParentDto": {
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "studentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "relation": {
+            "type": "string"
+          },
+          "isPayer": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "parentId",
+          "studentId"
+        ]
+      },
+      "UpdateRelationDto": {
+        "type": "object",
+        "properties": {
+          "relation": {
+            "type": "string"
+          },
+          "isPayer": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          }
+        }
       }
     }
   }

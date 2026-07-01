@@ -24,6 +24,7 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { EventsModule } from './modules/events/events.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
+import { ParentsModule } from './modules/parents/parents.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
     EventsModule,
     AttendanceModule,
     RoadmapsModule,
+    ParentsModule,
   ],
 })
 export class AppModule implements NestModule {
