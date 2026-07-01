@@ -8,4 +8,7 @@ export type AppRole = 'instructor' | 'manager' | 'admin' | 'super_admin';
 // 관리자급(승인·지급·정산 등 백오피스 액션)의 공통 집합. 재사용해 표기 일관성 유지.
 export const ADMIN_ROLES: AppRole[] = ['super_admin', 'manager', 'admin'];
 
+// 로그인 직원 전체(강사 포함). "로그인만 요구"하는 라우트에 사용 = 인증 필수·역할 무관.
+export const STAFF_ROLES: AppRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
+
 export const Roles = (...roles: AppRole[]) => SetMetadata(ROLES_KEY, roles);

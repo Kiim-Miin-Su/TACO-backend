@@ -166,7 +166,7 @@ describe('Schedule API (e2e)', () => {
   });
 
   it('DELETE /schedule/:id — 존재하지 않으면 404', async () => {
-    await http.delete('/api/schedule/999999').set(TH()).expect(404);
+    await http.delete('/api/schedule/999999').expect(404);
   });
 
   it('충돌 시각(시드 월 16:00)을 취소로 변경 시 force 없이도 허용(충돌 무관)', async () => {
@@ -198,23 +198,5 @@ describe('Schedule API (e2e)', () => {
       .send({ courseId: 10, sessionDate: day, startTime: '10:00', durationMinutes: 60 })
       .expect(201)).body;
     expect(ok.conflicts).toEqual([]);
-  });
-
-  // ── RolesGuard(TBO-07): 쓰기는 로그인 필수, 읽기는 개방 ──
-  it('인가: 비로그인 세션 생성 → 401', async () => {
-    await http.post('/api/schedule')
-      .send({ courseId: 10, sessionDate: addDaysISO(MON, 4), startTime: '10:00', durationMinutes: 60 })
-      .expect(401);
-  });
-
-  it('인가: 강사 토큰으로 세션 생성 → 201(로그인이면 역할 무관 허용)', async () => {
-    const login = await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201);
-    await http.post('/api/schedule').set({ Authorization: `Bearer ${login.body.accessToken}` })
-      .send({ courseId: 10, sessionDate: addDaysISO(MON, 4), startTime: '08:00', durationMinutes: 60, force: true })
-      .expect(201);
-  });
-
-  it('인가: 읽기(GET)는 비로그인도 개방 → 200', async () => {
-    await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200);
   });
 });

@@ -31,13 +31,13 @@ describe('Payouts — 시수 측정·페이 정산 (e2e)', () => {
 
   // 세션 생성 헬퍼(충돌 무시 force) → id 반환
   async function makeSession(courseId: number, startTime: string, durationMinutes: number): Promise<number> {
-    const res = await http.post('/api/schedule')
+    const res = await http.post('/api/schedule').set(asAdmin())
       .send({ courseId, instructorId: INSTRUCTOR, sessionDate: TUE, startTime, durationMinutes, force: true })
       .expect(201);
     return res.body.row.id;
   }
   async function setStatus(id: number, status: string): Promise<void> {
-    await http.patch(`/api/schedule/${id}`).send({ status, force: true }).expect(200);
+    await http.patch(`/api/schedule/${id}`).set(asAdmin()).send({ status, force: true }).expect(200);
   }
   // 보고서 작성(submitted) → 반환 id
   async function makeReport(sessionId: number): Promise<number> {

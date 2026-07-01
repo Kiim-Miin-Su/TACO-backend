@@ -7,9 +7,15 @@ describe('Availability API (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
 
+  // 스케줄 쓰기는 RolesGuard로 로그인 필수 → 데모 토큰(연동 테스트의 세션 생성용).
+  let TOKEN = '';
+  const TH = () => ({ Authorization: `Bearer ${TOKEN}` });
+
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
+    const login = await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201);
+    TOKEN = login.body.accessToken;
   });
   afterAll(async () => { await app.close(); });
 
@@ -53,7 +59,7 @@ describe('Availability API (e2e)', () => {
     await http.put('/api/availability')
       .send({ ownerType: 'room', ownerId: 1, kind: 'unavailable', weekday: 3, startTime: '14:00', endTime: '15:00' })
       .expect(200);
-    const res = await http.post('/api/schedule')
+    const res = await http.post('/api/schedule').set(TH())
       .send({ courseId: 10, roomId: 1, sessionDate: wed, startTime: '14:00', durationMinutes: 60 })
       .expect(409);
     expect(JSON.stringify(res.body)).toContain('unavailable');

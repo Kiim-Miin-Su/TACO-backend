@@ -110,7 +110,7 @@ describe('Schedule API (e2e)', () => {
   it('PATCH /schedule/:id — 존재하지 않는 roomId → 400(참조 무결성)', async () => {
     const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200)).body;
     const id = list[0].id;
-    await http.patch(`/api/schedule/${id}`).set(TH()).send({ roomId: 9999 }).expect(400);
+    await http.patch(`/api/schedule/${id}`).send({ roomId: 9999 }).expect(400);
   });
 
   it('PATCH /schedule/:id — 시리즈 전체(scope=all) 동반 이동(updated>1)', async () => {
@@ -118,7 +118,7 @@ describe('Schedule API (e2e)', () => {
     const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200)).body;
     const target = list.find((r: { courseId: number; seriesId?: number }) => r.courseId === 10 && r.seriesId != null);
     expect(target).toBeTruthy();
-    const res = await http.patch(`/api/schedule/${target.id}`).set(TH())
+    const res = await http.patch(`/api/schedule/${target.id}`)
       .send({ startTime: '09:00', endTime: '10:00', scope: 'all', force: true })
       .expect(200);
     expect(res.body.updated).toBeGreaterThan(1);
@@ -130,7 +130,7 @@ describe('Schedule API (e2e)', () => {
       .expect(201)).body.row;
     expect(created.memo).toBe('준비물: 교재 3장');
 
-    const updated = (await http.patch(`/api/schedule/${created.id}`).set(TH())
+    const updated = (await http.patch(`/api/schedule/${created.id}`)
       .send({ memo: '변경: 워크북 지참' })
       .expect(200)).body.row;
     expect(updated.memo).toBe('변경: 워크북 지참');
@@ -142,7 +142,7 @@ describe('Schedule API (e2e)', () => {
       .expect(201)).body.row;
     expect(created.color).toBe('#bf3989');
 
-    const updated = (await http.patch(`/api/schedule/${created.id}`).set(TH())
+    const updated = (await http.patch(`/api/schedule/${created.id}`)
       .send({ color: '#9a6700' })
       .expect(200)).body.row;
     expect(updated.color).toBe('#9a6700');
@@ -158,7 +158,7 @@ describe('Schedule API (e2e)', () => {
     const created = (await http.post('/api/schedule').set(TH())
       .send({ courseId: 10, sessionDate: addDaysISO(MON, 3), startTime: '14:00', durationMinutes: 60 })
       .expect(201)).body.row;
-    const del = (await http.delete(`/api/schedule/${created.id}`).set(TH()).expect(200)).body;
+    const del = (await http.delete(`/api/schedule/${created.id}`).expect(200)).body;
     expect(del).toMatchObject({ id: created.id, deleted: true });
 
     const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200)).body;
@@ -166,7 +166,7 @@ describe('Schedule API (e2e)', () => {
   });
 
   it('DELETE /schedule/:id — 존재하지 않으면 404', async () => {
-    await http.delete('/api/schedule/999999').set(TH()).expect(404);
+    await http.delete('/api/schedule/999999').expect(404);
   });
 
   it('충돌 시각(시드 월 16:00)을 취소로 변경 시 force 없이도 허용(충돌 무관)', async () => {
@@ -175,7 +175,7 @@ describe('Schedule API (e2e)', () => {
       .send({ courseId: 10, sessionDate: MON, startTime: '16:00', durationMinutes: 90, force: true })
       .expect(201)).body.row;
     // 이 세션을 '취소(no_show)'로 변경 — 겹침이 있어도 409 없이 200
-    const res = (await http.patch(`/api/schedule/${occupy.id}`).set(TH())
+    const res = (await http.patch(`/api/schedule/${occupy.id}`)
       .send({ status: 'no_show' })
       .expect(200)).body;
     expect(res.row.status).toBe('no_show');
@@ -192,29 +192,11 @@ describe('Schedule API (e2e)', () => {
       .send({ courseId: 10, sessionDate: day, startTime: '10:00', durationMinutes: 60 })
       .expect(409);
     // 3) 점유 세션을 결강 처리 → 시간 점유 해제
-    await http.patch(`/api/schedule/${occupy.id}`).set(TH()).send({ status: 'canceled' }).expect(200);
+    await http.patch(`/api/schedule/${occupy.id}`).send({ status: 'canceled' }).expect(200);
     // 4) 이제 같은 슬롯 생성 성공(충돌 없음)
     const ok = (await http.post('/api/schedule').set(TH())
       .send({ courseId: 10, sessionDate: day, startTime: '10:00', durationMinutes: 60 })
       .expect(201)).body;
     expect(ok.conflicts).toEqual([]);
-  });
-
-  // ── RolesGuard(TBO-07): 쓰기는 로그인 필수, 읽기는 개방 ──
-  it('인가: 비로그인 세션 생성 → 401', async () => {
-    await http.post('/api/schedule')
-      .send({ courseId: 10, sessionDate: addDaysISO(MON, 4), startTime: '10:00', durationMinutes: 60 })
-      .expect(401);
-  });
-
-  it('인가: 강사 토큰으로 세션 생성 → 201(로그인이면 역할 무관 허용)', async () => {
-    const login = await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201);
-    await http.post('/api/schedule').set({ Authorization: `Bearer ${login.body.accessToken}` })
-      .send({ courseId: 10, sessionDate: addDaysISO(MON, 4), startTime: '08:00', durationMinutes: 60, force: true })
-      .expect(201);
-  });
-
-  it('인가: 읽기(GET)는 비로그인도 개방 → 200', async () => {
-    await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200);
   });
 });

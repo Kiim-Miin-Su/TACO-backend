@@ -1,10 +1,14 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
 import { ScheduleService } from './schedule.service';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { RolesGuard } from '../auth/roles.guard';
+import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('scheduling')
+@ApiBearerAuth()
+@UseGuards(RolesGuard)
 @Controller('schedule')
 export class ScheduleController {
   constructor(private readonly schedule: ScheduleService) {}
@@ -49,20 +53,23 @@ export class ScheduleController {
 
   // POST /api/schedule — 세션 생성(추천→배정·수동 추가). 충돌 시 409(force=true면 적용).
   @Post()
-  @ApiOperation({ summary: '세션 생성(추천→배정·수동). FK 검증 + 충돌 검사(409 / force=true 강제).' })
+  @Roles(...STAFF_ROLES) // 로그인 필수(강사 본인 일정 포함) — 비로그인 401
+  @ApiOperation({ summary: '세션 생성(추천→배정·수동). FK 검증 + 충돌 검사(409 / force=true 강제). [로그인]' })
   create(@Body() dto: CreateScheduleDto) {
     return this.schedule.create(dto);
   }
 
   // 이동·리사이즈·상세편집. 충돌 시 409 {message, conflicts} (force=true면 적용).
   @Patch(':id')
+  @Roles(...STAFF_ROLES) // 로그인 필수
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleDto) {
     return this.schedule.update(id, dto);
   }
 
   // 세션 삭제
   @Delete(':id')
-  @ApiOperation({ summary: '세션 삭제' })
+  @Roles(...STAFF_ROLES) // 로그인 필수
+  @ApiOperation({ summary: '세션 삭제 [로그인]' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.schedule.remove(id);
   }
