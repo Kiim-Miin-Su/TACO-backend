@@ -1,9 +1,20 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
-import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
+import { DocumentBuilder, SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "../src/app.module";
 import { LoggingInterceptor } from "../src/common/logging.interceptor";
+
+// 서버리스(@vercel/node)는 런타임 컴파일에서 데코레이터 메타데이터/Swagger 플러그인이
+// 소실돼 request body·parameter 스키마가 비어 보일 수 있다. → 빌드 타임에 생성해 커밋한
+// openapi.json(npm run openapi)을 우선 서빙한다. 없으면 런타임 생성으로 폴백.
+let staticOpenapi: OpenAPIObject | undefined;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  staticOpenapi = require("../openapi.json") as OpenAPIObject;
+} catch {
+  staticOpenapi = undefined;
+}
 
 // ─────────────────────────────────────────────────────────────
 // Vercel 서버리스 엔트리. main.ts와 동일 부트 설정을 함수로 래핑.
@@ -32,9 +43,11 @@ async function bootstrapServer() {
     .setVersion("0.1.0")
     .addBearerAuth()
     .build();
+  // 빌드 타임 스펙 우선(파라미터·스키마 정확). 없으면 런타임 생성으로 폴백.
+  const document = staticOpenapi ?? SwaggerModule.createDocument(app, config);
   // 서버리스(Vercel)는 Swagger UI 정적 에셋을 서빙하지 못해 흰 화면이 됨.
   // → JS/CSS를 CDN(jsdelivr swagger-ui-dist)에서 로드하도록 지정.
-  SwaggerModule.setup("docs", app, SwaggerModule.createDocument(app, config), {
+  SwaggerModule.setup("docs", app, document, {
     customCssUrl: "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
     customJs: [
       "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",

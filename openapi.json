@@ -1,0 +1,1962 @@
+{
+  "openapi": "3.0.0",
+  "paths": {
+    "/api/auth/signup": {
+      "post": {
+        "operationId": "AuthController_signup",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SignupDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "가입 신청(대표 승인 대기). 인증 메일 발송.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/verify-email": {
+      "get": {
+        "operationId": "AuthController_verifyEmail",
+        "parameters": [
+          {
+            "name": "token",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "이메일 인증(token).",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "operationId": "AuthController_login",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "로그인(비밀번호 해시 검증 + 상태 게이트).",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/pending": {
+      "get": {
+        "operationId": "AuthController_pending",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "승인 대기 계정 목록(대표 전용).",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/approve/{id}": {
+      "post": {
+        "operationId": "AuthController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "가입 승인(active 전환, 역할 지정 가능) — 대표 전용.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/reject/{id}": {
+      "post": {
+        "operationId": "AuthController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "가입 반려 — 대표 전용.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "operationId": "AuthController_me",
+        "parameters": [
+          {
+            "name": "authorization",
+            "required": true,
+            "in": "header",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "토큰 검증 → claims.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/users/exists": {
+      "get": {
+        "operationId": "UsersController_exists",
+        "parameters": [
+          {
+            "name": "webId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/users": {
+      "get": {
+        "operationId": "UsersController_list",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/health": {
+      "get": {
+        "operationId": "HealthController_check",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Health"
+        ]
+      }
+    },
+    "/api/students": {
+      "get": {
+        "operationId": "StudentsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      },
+      "post": {
+        "operationId": "StudentsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStudentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/students/{id}": {
+      "get": {
+        "operationId": "StudentsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/enrollments": {
+      "get": {
+        "operationId": "EnrollmentsController_findAll",
+        "parameters": [
+          {
+            "name": "studentId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Enrollments"
+        ]
+      },
+      "post": {
+        "operationId": "EnrollmentsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEnrollmentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Enrollments"
+        ]
+      }
+    },
+    "/api/enrollments/{id}": {
+      "get": {
+        "operationId": "EnrollmentsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Enrollments"
+        ]
+      }
+    },
+    "/api/payments": {
+      "get": {
+        "operationId": "PaymentsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      },
+      "post": {
+        "operationId": "PaymentsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreatePaymentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/payments/{id}": {
+      "get": {
+        "operationId": "PaymentsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/payments/{id}/pay": {
+      "post": {
+        "operationId": "PaymentsController_markPaid",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Payments"
+        ]
+      }
+    },
+    "/api/subjects": {
+      "get": {
+        "operationId": "SubjectsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "subjects"
+        ]
+      },
+      "post": {
+        "operationId": "SubjectsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSubjectDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "subjects"
+        ]
+      }
+    },
+    "/api/subjects/{id}": {
+      "get": {
+        "operationId": "SubjectsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "subjects"
+        ]
+      }
+    },
+    "/api/courses": {
+      "get": {
+        "operationId": "CoursesController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "courses"
+        ]
+      },
+      "post": {
+        "operationId": "CoursesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCourseDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/api/courses/{id}": {
+      "get": {
+        "operationId": "CoursesController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "courses"
+        ]
+      }
+    },
+    "/api/expenses": {
+      "get": {
+        "operationId": "ExpensesController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "expenses"
+        ]
+      },
+      "post": {
+        "operationId": "ExpensesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateExpenseDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
+    "/api/expenses/{id}": {
+      "get": {
+        "operationId": "ExpensesController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
+    "/api/expenses/{id}/approve": {
+      "post": {
+        "operationId": "ExpensesController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
+    "/api/expenses/{id}/reject": {
+      "post": {
+        "operationId": "ExpensesController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "expenses"
+        ]
+      }
+    },
+    "/api/rooms": {
+      "get": {
+        "operationId": "RoomsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "rooms"
+        ]
+      },
+      "post": {
+        "operationId": "RoomsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoomDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "rooms"
+        ]
+      }
+    },
+    "/api/rooms/{id}": {
+      "get": {
+        "operationId": "RoomsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "rooms"
+        ]
+      }
+    },
+    "/api/availability": {
+      "get": {
+        "operationId": "AvailabilityController_list",
+        "parameters": [
+          {
+            "name": "ownerType",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "enum": [
+                "student",
+                "instructor",
+                "room"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "ownerId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday, startTime, endTime }"
+          }
+        },
+        "summary": "가용/불가 블록 목록(ownerType·ownerId 필터)",
+        "tags": [
+          "availability"
+        ]
+      },
+      "put": {
+        "operationId": "AvailabilityController_upsert",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAvailabilityDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "AvailabilityBlock(생성/수정 결과)"
+          },
+          "400": {
+            "description": "존재하지 않는 강의실 owner 등"
+          },
+          "409": {
+            "description": "이미 지정된 가용/불가 시간과 겹침(겹친 시각 메시지 포함)"
+          }
+        },
+        "summary": "가용/불가 블록 생성·수정(id 있으면 수정). 같은 오너·요일 겹침 시 409.",
+        "tags": [
+          "availability"
+        ]
+      }
+    },
+    "/api/availability/{id}": {
+      "delete": {
+        "operationId": "AvailabilityController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "블록 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ id, deleted: boolean }"
+          }
+        },
+        "summary": "가용/불가 블록 삭제",
+        "tags": [
+          "availability"
+        ]
+      }
+    },
+    "/api/schedule": {
+      "get": {
+        "operationId": "ScheduleController_list",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "instructorId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "roomId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "studentId",
+            "required": false,
+            "in": "query",
+            "description": "학생 코호트(enrollment status≠drop) 역추적",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "스케줄 조회(기간·강사·강의실·학생 필터). studentId는 학생 활성 수강 코스의 세션만.",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "post": {
+        "operationId": "ScheduleController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScheduleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[] }"
+          },
+          "401": {
+            "description": "토큰 없음(로그인 필요)"
+          },
+          "409": {
+            "description": "{ message, conflicts: Conflict[] } — force=false에서 충돌 시"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "세션 생성(추천→배정·수동). FK 검증 + 충돌 검사(409 / force=true 강제). [로그인]",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/api/schedule/resources": {
+      "get": {
+        "operationId": "ScheduleController_resources",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "자원 피커 — 강사·강의실·학생·코스 옵션(FK 정렬). 좌측 레일·배정 폼용.",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/api/schedule/conflicts": {
+      "post": {
+        "operationId": "ScheduleController_conflicts",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConflictCheckDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "충돌 드라이런 — 생성·이동 전 강사·강의실 이중예약/불가시간 겹침 검사",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/api/schedule/{id}": {
+      "patch": {
+        "operationId": "ScheduleController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "세션 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateScheduleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }"
+          },
+          "409": {
+            "description": "{ message, conflicts } — force=false에서 충돌 시"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "세션 이동·리사이즈·상세편집(반복 scope 지원). 충돌 시 409. [로그인]",
+        "tags": [
+          "scheduling"
+        ]
+      },
+      "delete": {
+        "operationId": "ScheduleController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "세션 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "{ id, deleted: true }"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "세션 삭제 [로그인]",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/api/reports": {
+      "get": {
+        "operationId": "ReportsController_findAll",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "보고서 목록(sessionId 필터 가능)",
+        "tags": [
+          "reports"
+        ]
+      },
+      "post": {
+        "operationId": "ReportsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "보고서 작성(세션 FK·중복·강사 일치 검증). 기본 submitted(승인요청).",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/{id}": {
+      "get": {
+        "operationId": "ReportsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/{id}/submit": {
+      "post": {
+        "operationId": "ReportsController_submit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "강사 제출(draft → submitted)",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/{id}/approve": {
+      "post": {
+        "operationId": "ReportsController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "보고서 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "SessionReport(status=approved, approvedAt·approvedBy)"
+          },
+          "403": {
+            "description": "권한 없음(관리자 전용)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "관리자 승인(submitted → approved) — 시수 적격 편입 [관리자]",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/{id}/reject": {
+      "post": {
+        "operationId": "ReportsController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "보고서 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "SessionReport(status=rejected, rejectedReason)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "관리자 반려(→ rejected, 사유 보존) [관리자]",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/payouts": {
+      "get": {
+        "operationId": "PayoutsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "정산서 목록",
+        "tags": [
+          "payouts"
+        ]
+      }
+    },
+    "/api/payouts/preview": {
+      "get": {
+        "operationId": "PayoutsController_preview",
+        "parameters": [
+          {
+            "name": "instructorId",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "from",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": true,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서.",
+        "tags": [
+          "payouts"
+        ]
+      }
+    },
+    "/api/payouts/{id}": {
+      "get": {
+        "operationId": "PayoutsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "payouts"
+        ]
+      }
+    },
+    "/api/payouts/generate": {
+      "post": {
+        "operationId": "PayoutsController_generate",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GeneratePayoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 정산서(InstructorPayout): status=pending, amount, sessionCount, totalMinutes, lines[]"
+          },
+          "400": {
+            "description": "적격 세션 0(이미 연결/기간 오류)"
+          },
+          "401": {
+            "description": "토큰 없음"
+          },
+          "403": {
+            "description": "권한 없음(관리자 전용)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "정산서 생성(pending) — 적격 세션 묶음·시급 조인 산정·세션 연결. [관리자]",
+        "tags": [
+          "payouts"
+        ]
+      }
+    },
+    "/api/payouts/{id}/confirm": {
+      "post": {
+        "operationId": "PayoutsController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "정산서 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "정산서(status=confirmed)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "관리자 확정(pending → confirmed) [관리자]",
+        "tags": [
+          "payouts"
+        ]
+      }
+    },
+    "/api/payouts/{id}/adjust": {
+      "post": {
+        "operationId": "PayoutsController_adjust",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "정산서 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AdjustPayoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "정산서(computedAmount 보존, adjustedAmount·amount 갱신)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "관리자 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존) [관리자]",
+        "tags": [
+          "payouts"
+        ]
+      }
+    },
+    "/api/payouts/{id}/reject": {
+      "post": {
+        "operationId": "PayoutsController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "정산서 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectPayoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "정산서(status=rejected, rejectedReason)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "관리자 반려(→ rejected) + 연결 세션 회수(재산정 가능) [관리자]",
+        "tags": [
+          "payouts"
+        ]
+      }
+    },
+    "/api/payouts/{id}/pay": {
+      "post": {
+        "operationId": "PayoutsController_pay",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "정산서 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "{ payout: status=paid, transaction: 원장 출금 1건 }"
+          },
+          "400": {
+            "description": "confirmed 상태가 아님"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "지급 완료(confirmed → paid) + 통합 원장 출금 기록 [관리자]",
+        "tags": [
+          "payouts"
+        ]
+      }
+    }
+  },
+  "info": {
+    "title": "TACO ERP API",
+    "description": "TnAcademy 백오피스 API (in-memory). 빌드 타임 생성 스펙.",
+    "version": "0.1.0",
+    "contact": {}
+  },
+  "tags": [],
+  "servers": [],
+  "components": {
+    "securitySchemes": {
+      "bearer": {
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "type": "http"
+      }
+    },
+    "schemas": {
+      "SignupDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "LoginDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "ApproveDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateStudentDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateEnrollmentDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreatePaymentDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateSubjectDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateCourseDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateExpenseDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "CreateRoomDto": {
+        "type": "object",
+        "properties": {}
+      },
+      "UpsertAvailabilityDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 5,
+            "description": "수정할 블록 id(없으면 신규 생성)"
+          },
+          "ownerType": {
+            "type": "string",
+            "enum": [
+              "student",
+              "instructor",
+              "room"
+            ],
+            "description": "소유 자원 종류"
+          },
+          "ownerId": {
+            "type": "number",
+            "example": 1,
+            "description": "소유 자원 id(ownerType에 따라 students/users/rooms)"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "description": "가용/불가(기본 available)"
+          },
+          "weekday": {
+            "type": "number",
+            "example": 1,
+            "minimum": 0,
+            "maximum": 6,
+            "description": "요일(0=일 ~ 6=토)"
+          },
+          "startTime": {
+            "type": "string",
+            "example": "12:00",
+            "description": "시작(HH:mm)"
+          },
+          "endTime": {
+            "type": "string",
+            "example": "13:00",
+            "description": "종료(HH:mm)"
+          },
+          "effectiveFrom": {
+            "type": "string",
+            "example": "2026-06-01",
+            "description": "적용 시작일(선택)"
+          },
+          "effectiveTo": {
+            "type": "string",
+            "example": "2026-08-31",
+            "description": "적용 종료일(선택)"
+          }
+        },
+        "required": [
+          "ownerType",
+          "ownerId",
+          "weekday",
+          "startTime",
+          "endTime"
+        ]
+      },
+      "ConflictCheckDto": {
+        "type": "object",
+        "properties": {
+          "sessionDate": {
+            "type": "string",
+            "example": "2026-06-29",
+            "description": "대상 날짜(YYYY-MM-DD)"
+          },
+          "startTime": {
+            "type": "string",
+            "example": "14:00",
+            "description": "시작(HH:mm)"
+          },
+          "endTime": {
+            "type": "string",
+            "example": "15:00",
+            "description": "종료(HH:mm). 미지정 시 durationMinutes로 파생"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "example": 60,
+            "description": "진행 분(endTime 미지정 시 사용)"
+          },
+          "instructorId": {
+            "type": "number",
+            "example": 1,
+            "description": "강사(users.id) — 이중예약·불가시간 검사 대상"
+          },
+          "roomId": {
+            "type": "number",
+            "example": 2,
+            "description": "강의실(rooms.id) — 이중예약·불가시간 검사 대상"
+          },
+          "ignoreSessionId": {
+            "type": "number",
+            "example": 5,
+            "description": "검사에서 제외할 세션 id(자기 자신 이동 시)"
+          }
+        },
+        "required": [
+          "sessionDate",
+          "startTime"
+        ]
+      },
+      "CreateScheduleDto": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "number",
+            "example": 10,
+            "description": "코스 FK(필수)"
+          },
+          "instructorId": {
+            "type": "number",
+            "description": "강사 FK(미지정 시 코스 기본 강사)"
+          },
+          "roomId": {
+            "type": "number",
+            "description": "강의실 FK"
+          },
+          "sessionDate": {
+            "type": "string",
+            "example": "2026-06-30"
+          },
+          "startTime": {
+            "type": "string",
+            "example": "16:00"
+          },
+          "endTime": {
+            "type": "string",
+            "example": "17:30",
+            "description": "미지정 시 start+duration 파생"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "example": 90,
+            "description": "endTime 없을 때 사용(기본 60)"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "memo": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string",
+            "description": "캘린더 색상 라벨(미지정 시 코스 색)"
+          },
+          "seriesId": {
+            "type": "number",
+            "description": "반복 시리즈로 묶을 때"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "held",
+              "canceled",
+              "no_show",
+              "makeup"
+            ]
+          },
+          "force": {
+            "type": "boolean",
+            "description": "충돌이 있어도 강제 적용(기본 false → 충돌 시 409)"
+          }
+        },
+        "required": [
+          "courseId",
+          "sessionDate",
+          "startTime"
+        ]
+      },
+      "UpdateScheduleDto": {
+        "type": "object",
+        "properties": {
+          "sessionDate": {
+            "type": "string",
+            "example": "2026-07-02",
+            "description": "이동할 날짜(YYYY-MM-DD)"
+          },
+          "startTime": {
+            "type": "string",
+            "example": "15:00",
+            "description": "시작(HH:mm)"
+          },
+          "endTime": {
+            "type": "string",
+            "example": "16:00",
+            "description": "종료(HH:mm)"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "example": 60
+          },
+          "roomId": {
+            "type": "number",
+            "description": "강의실 FK"
+          },
+          "instructorId": {
+            "type": "number",
+            "description": "강사 FK"
+          },
+          "courseId": {
+            "type": "number",
+            "description": "코스 FK"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "scheduled",
+              "held",
+              "canceled",
+              "no_show",
+              "makeup"
+            ],
+            "description": "상태(취소/결강 등)"
+          },
+          "topic": {
+            "type": "string"
+          },
+          "memo": {
+            "type": "string"
+          },
+          "color": {
+            "type": "string",
+            "description": "캘린더 색상 라벨"
+          },
+          "scope": {
+            "type": "string",
+            "enum": [
+              "this",
+              "this_and_following",
+              "all"
+            ],
+            "description": "반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)"
+          },
+          "force": {
+            "type": "boolean",
+            "description": "충돌이 있어도 강제 적용(기본 false → 충돌 시 409)"
+          }
+        }
+      },
+      "CreateReportDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "number",
+            "example": 1,
+            "description": "수업 세션 FK(class_sessions.id)"
+          },
+          "studentId": {
+            "type": "number",
+            "example": 1,
+            "description": "학생 FK(students.id)"
+          },
+          "instructorId": {
+            "type": "number",
+            "example": 1,
+            "description": "강사 FK(미지정 시 세션 강사로 채움)"
+          },
+          "content": {
+            "type": "string",
+            "example": "오늘 진도: 추론 문제 3세트. 정답률 향상.",
+            "description": "보고서 본문(진도·피드백)"
+          },
+          "homework": {
+            "type": "string",
+            "example": "워크북 12–15p",
+            "description": "숙제(선택)"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "draft",
+              "submitted"
+            ],
+            "description": "기본 submitted(승인요청). draft 허용"
+          }
+        },
+        "required": [
+          "sessionId",
+          "studentId",
+          "content"
+        ]
+      },
+      "ApproveReportDto": {
+        "type": "object",
+        "properties": {
+          "approvedBy": {
+            "type": "number",
+            "example": 7,
+            "description": "승인 처리자(users.id). 미지정 시 서버가 채움"
+          }
+        }
+      },
+      "RejectReportDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "example": "진도 내용 보완 필요",
+            "description": "반려 사유(강사에게 표시)"
+          }
+        }
+      },
+      "GeneratePayoutDto": {
+        "type": "object",
+        "properties": {
+          "instructorId": {
+            "type": "number",
+            "example": 1,
+            "description": "강사(users.id)"
+          },
+          "from": {
+            "type": "string",
+            "example": "2026-06-01",
+            "description": "정산 기간 시작(YYYY-MM-DD)"
+          },
+          "to": {
+            "type": "string",
+            "example": "2026-06-30",
+            "description": "정산 기간 종료(YYYY-MM-DD)"
+          }
+        },
+        "required": [
+          "instructorId",
+          "from",
+          "to"
+        ]
+      },
+      "AdjustPayoutDto": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "example": 150000,
+            "description": "실효 지급액(원). 자동 산정액은 보존됨"
+          },
+          "reason": {
+            "type": "string",
+            "example": "교통비 차감",
+            "description": "수정 사유"
+          }
+        },
+        "required": [
+          "amount"
+        ]
+      },
+      "RejectPayoutDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "example": "근태 확인 필요",
+            "description": "반려 사유(강사에게 표시)"
+          }
+        }
+      }
+    }
+  }
+}
