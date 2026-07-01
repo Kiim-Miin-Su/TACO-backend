@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { AvailabilityBlock, AVAILABILITY, AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
@@ -18,6 +18,22 @@ export class AvailabilityService implements OnModuleInit {
   private assertOwner(ownerType: AvailabilityOwner, ownerId: number): void {
     if (ownerType === 'room' && !this.rooms.findAll().some((r) => r.id === ownerId)) {
       throw new BadRequestException(`roomId ${ownerId} 없음(존재하지 않는 강의실)`);
+    }
+  }
+
+  // 겹침 방지(버그2): 같은 오너·같은 요일에 시간이 겹치는 블록이 이미 있으면 거부(자기 자신 제외).
+  // "이미 불가/가용으로 지정된 시간"을 중복 지정하지 못하게 한다. 겹친 상대 시각을 메시지에 담아 경고.
+  private assertNoOverlap(dto: UpsertAvailabilityDto): void {
+    const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    const s = toMin(dto.startTime), e = toMin(dto.endTime);
+    const clash = this.db.findBy<AvailabilityBlock>(AVAILABILITY, (b) =>
+      b.id !== dto.id &&
+      b.ownerType === dto.ownerType && b.ownerId === dto.ownerId && b.weekday === dto.weekday &&
+      toMin(b.startTime) < e && s < toMin(b.endTime),
+    )[0];
+    if (clash) {
+      const kindLabel = clash.kind === 'unavailable' ? '불가시간' : '가용시간';
+      throw new ConflictException(`이미 지정된 ${kindLabel}(${clash.startTime}–${clash.endTime})과 겹칩니다.`);
     }
   }
 
@@ -48,6 +64,7 @@ export class AvailabilityService implements OnModuleInit {
 
   upsert(dto: UpsertAvailabilityDto): AvailabilityBlock {
     this.assertOwner(dto.ownerType, dto.ownerId); // owner_id 참조 무결성(#7)
+    this.assertNoOverlap(dto); // 겹침 방지(버그2)
     if (dto.id) {
       const updated = this.db.update<AvailabilityBlock>(AVAILABILITY, dto.id, {
         kind: dto.kind ?? 'available',

@@ -64,6 +64,22 @@ describe('Availability API (e2e)', () => {
       .expect(409);
     expect(JSON.stringify(res.body)).toContain('unavailable');
   });
+
+  it('겹침 방지(버그2): 같은 오너·요일 겹치는 블록 → 409, 인접(안 겹침)은 통과', async () => {
+    // 학생5 화요일 10:00–11:00 불가 지정
+    await http.put('/api/availability')
+      .send({ ownerType: 'student', ownerId: 5, kind: 'unavailable', weekday: 2, startTime: '10:00', endTime: '11:00' })
+      .expect(200);
+    // 겹치는 시간(10:30–11:30) → 409 + 겹친 시각 메시지
+    const clash = await http.put('/api/availability')
+      .send({ ownerType: 'student', ownerId: 5, kind: 'unavailable', weekday: 2, startTime: '10:30', endTime: '11:30' })
+      .expect(409);
+    expect(JSON.stringify(clash.body)).toContain('겹칩니다');
+    // 인접(11:00–12:00, 겹치지 않음) → 통과
+    await http.put('/api/availability')
+      .send({ ownerType: 'student', ownerId: 5, kind: 'available', weekday: 2, startTime: '11:00', endTime: '12:00' })
+      .expect(200);
+  });
 });
 
 // 현재 주의 특정 요일(0=일~6=토) 날짜

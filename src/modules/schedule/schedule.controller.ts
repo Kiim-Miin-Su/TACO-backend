@@ -1,8 +1,9 @@
 import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiOkResponse, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { ScheduleService } from './schedule.service';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { ConflictCheckDto } from './dto/conflict-check.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
 
@@ -42,12 +43,11 @@ export class ScheduleController {
     return this.schedule.resources();
   }
 
-  // 충돌 드라이런(생성·이동 전 검사). body: {sessionDate,startTime,durationMinutes|endTime,instructorId?,roomId?,ignoreSessionId?}
+  // 충돌 드라이런(생성·이동 전 검사)
   @Post('conflicts')
-  conflicts(@Body() body: {
-    sessionDate: string; startTime: string; endTime?: string; durationMinutes?: number;
-    instructorId?: number; roomId?: number; ignoreSessionId?: number;
-  }) {
+  @ApiOperation({ summary: '충돌 드라이런 — 생성·이동 전 강사·강의실 이중예약/불가시간 겹침 검사' })
+  @ApiOkResponse({ description: 'Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }' })
+  conflicts(@Body() body: ConflictCheckDto) {
     return this.schedule.checkConflicts(body);
   }
 
@@ -55,6 +55,9 @@ export class ScheduleController {
   @Post()
   @Roles(...STAFF_ROLES) // 로그인 필수(강사 본인 일정 포함) — 비로그인 401
   @ApiOperation({ summary: '세션 생성(추천→배정·수동). FK 검증 + 충돌 검사(409 / force=true 강제). [로그인]' })
+  @ApiCreatedResponse({ description: '{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[] }' })
+  @ApiConflictResponse({ description: '{ message, conflicts: Conflict[] } — force=false에서 충돌 시' })
+  @ApiUnauthorizedResponse({ description: '토큰 없음(로그인 필요)' })
   create(@Body() dto: CreateScheduleDto) {
     return this.schedule.create(dto);
   }
@@ -62,6 +65,10 @@ export class ScheduleController {
   // 이동·리사이즈·상세편집. 충돌 시 409 {message, conflicts} (force=true면 적용).
   @Patch(':id')
   @Roles(...STAFF_ROLES) // 로그인 필수
+  @ApiParam({ name: 'id', description: '세션 id' })
+  @ApiOperation({ summary: '세션 이동·리사이즈·상세편집(반복 scope 지원). 충돌 시 409. [로그인]' })
+  @ApiOkResponse({ description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }' })
+  @ApiConflictResponse({ description: '{ message, conflicts } — force=false에서 충돌 시' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleDto) {
     return this.schedule.update(id, dto);
   }
@@ -69,6 +76,8 @@ export class ScheduleController {
   // 세션 삭제
   @Delete(':id')
   @Roles(...STAFF_ROLES) // 로그인 필수
+  @ApiParam({ name: 'id', description: '세션 id' })
+  @ApiOkResponse({ description: '{ id, deleted: true }' })
   @ApiOperation({ summary: '세션 삭제 [로그인]' })
   remove(@Param('id', ParseIntPipe) id: number) {
     return this.schedule.remove(id);

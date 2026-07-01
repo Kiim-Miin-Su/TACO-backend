@@ -121,7 +121,7 @@ export class ScheduleService implements OnModuleInit {
       courseId: 12, instructorId: 1, roomId: 2,
       sessionDate: mon0, startTime: '12:30', endTime: '13:30', durationMinutes: 60,
       status: 'scheduled', topic: 'TOEFL 보강(불가시간 겹침 데모)',
-      memo: '⚠ 강사1 점심(12:00–13:00)과 겹침 — 충돌 시각화 테스트용',
+      memo: '충돌 시각화 데모 — 불가시간과 겹치는 수업',
     });
   }
 

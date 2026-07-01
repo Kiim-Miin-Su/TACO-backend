@@ -48,10 +48,12 @@ export function detectConflicts(
   for (const b of blocks) {
     if (b.kind !== 'unavailable' || b.weekday !== wd) continue;
     if (!overlaps(cand.startTime, cand.endTime, b.startTime, b.endTime)) continue;
+    // detail: 겹친 불가시간의 실제 시각(요일·시:분)을 담아 프론트가 사람이 읽을 수 있게 표시.
+    const blockDetail = `불가시간 ${b.startTime}–${b.endTime}`;
     if (b.ownerType === 'instructor' && cand.instructorId === b.ownerId)
-      out.push({ type: 'unavailable', resource: 'instructor', resourceId: b.ownerId });
+      out.push({ type: 'unavailable', resource: 'instructor', resourceId: b.ownerId, detail: blockDetail });
     if (b.ownerType === 'room' && cand.roomId === b.ownerId)
-      out.push({ type: 'unavailable', resource: 'room', resourceId: b.ownerId });
+      out.push({ type: 'unavailable', resource: 'room', resourceId: b.ownerId, detail: blockDetail });
   }
   return out;
 }
