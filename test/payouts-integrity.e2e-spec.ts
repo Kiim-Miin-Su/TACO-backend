@@ -11,9 +11,15 @@ describe('Payouts 참조 무결성 (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
 
+  // 관리자 액션은 RolesGuard(super_admin/manager/admin) 보호 → 데모 admin 토큰 사용.
+  let ADMIN = '';
+  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
+
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
+    const login = await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201);
+    ADMIN = login.body.accessToken;
   });
   afterAll(async () => { await app.close(); });
 
@@ -48,7 +54,7 @@ describe('Payouts 참조 무결성 (e2e)', () => {
 
   it('관리자 경로: 생성→승인→급여수정→지급 + 무결성(수정액이 원장에 반영)', async () => {
     // 생성(pending) + 세션 연결
-    const p = (await http.post('/api/payouts/generate').send({ instructorId: 1, from: JUN1, to: JUN30 }).expect(201)).body;
+    const p = (await http.post('/api/payouts/generate').set(asAdmin()).send({ instructorId: 1, from: JUN1, to: JUN30 }).expect(201)).body;
     expect(p.status).toBe('pending');
     expect(p.amount).toBe(240000);
 
@@ -57,17 +63,17 @@ describe('Payouts 참조 무결성 (e2e)', () => {
     expect(again.sessionCount).toBe(0);
 
     // 관리자 승인(confirmed)
-    const confirmed = (await http.post(`/api/payouts/${p.id}/confirm`).expect(201)).body;
+    const confirmed = (await http.post(`/api/payouts/${p.id}/confirm`).set(asAdmin()).expect(201)).body;
     expect(confirmed.status).toBe('confirmed');
 
     // 관리자 급여 수정 — 자동 산정액 보존, 실효액만 변경
-    const adj = (await http.post(`/api/payouts/${p.id}/adjust`).send({ amount: 230000, reason: '식대 차감' }).expect(201)).body;
+    const adj = (await http.post(`/api/payouts/${p.id}/adjust`).set(asAdmin()).send({ amount: 230000, reason: '식대 차감' }).expect(201)).body;
     expect(adj.computedAmount).toBe(240000);
     expect(adj.adjustedAmount).toBe(230000);
     expect(adj.amount).toBe(230000);
 
     // 지급 완료 + 통합 원장 출금(수정된 실효액으로)
-    const paid = (await http.post(`/api/payouts/${p.id}/pay`).expect(201)).body;
+    const paid = (await http.post(`/api/payouts/${p.id}/pay`).set(asAdmin()).expect(201)).body;
     expect(paid.payout.status).toBe('paid');
     expect(paid.transaction).toMatchObject({ direction: 'out', category: 'instructor_payout', amount: 230000, payoutId: p.id });
   });
@@ -78,6 +84,6 @@ describe('Payouts 참조 무결성 (e2e)', () => {
     // 대신 강사1의 paid 정산서는 회수 불가(paid)임을 확인.
     const payouts = (await http.get('/api/payouts').expect(200)).body;
     const paid1 = payouts.find((p: { instructorId: number; status: string }) => p.instructorId === 1 && p.status === 'paid');
-    await http.post(`/api/payouts/${paid1.id}/reject`).send({ reason: 'x' }).expect(400); // 지급완료는 반려 불가
+    await http.post(`/api/payouts/${paid1.id}/reject`).set(asAdmin()).send({ reason: 'x' }).expect(400); // 지급완료는 반려 불가
   });
 });

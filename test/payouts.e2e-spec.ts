@@ -17,9 +17,15 @@ describe('Payouts — 시수 측정·페이 정산 (e2e)', () => {
   const INSTRUCTOR = 1;
   const STUDENT = 1;
 
+  // 관리자 액션은 RolesGuard(super_admin/manager/admin) 보호 → 데모 admin 토큰으로 호출.
+  let ADMIN = '';
+  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
+
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
+    const login = await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201);
+    ADMIN = login.body.accessToken;
   });
   afterAll(async () => { await app.close(); });
 
@@ -64,9 +70,9 @@ describe('Payouts — 시수 측정·페이 정산 (e2e)', () => {
     // S1·S2 보고서 작성 → 승인
     const r1 = await makeReport(S1);
     const r2 = await makeReport(S2);
-    await http.post(`/api/reports/${r1}/approve`).expect(201)
+    await http.post(`/api/reports/${r1}/approve`).set(asAdmin()).expect(201)
       .then((res) => expect(res.body.status).toBe('approved'));
-    await http.post(`/api/reports/${r2}/approve`).expect(201);
+    await http.post(`/api/reports/${r2}/approve`).set(asAdmin()).expect(201);
     // S4 보고서는 제출만(미승인)
     await makeReport(S4);
     // S3 보고서 없음(작성하지 않음)
@@ -74,7 +80,7 @@ describe('Payouts — 시수 측정·페이 정산 (e2e)', () => {
 
   it('3) 수업 취소 발생 — S5는 보고서 승인돼도 취소면 시수 제외', async () => {
     const r5 = await makeReport(S5);
-    await http.post(`/api/reports/${r5}/approve`).expect(201);
+    await http.post(`/api/reports/${r5}/approve`).set(asAdmin()).expect(201);
     await setStatus(S5, 'canceled'); // 진행되지 않음 → 시수 0
   });
 
@@ -94,7 +100,7 @@ describe('Payouts — 시수 측정·페이 정산 (e2e)', () => {
   });
 
   it('5) 페이 산정(generate) — 정산서 생성 + 세션 연결, 값 일치', async () => {
-    const p = (await http.post('/api/payouts/generate')
+    const p = (await http.post('/api/payouts/generate').set(asAdmin())
       .send({ instructorId: INSTRUCTOR, from: MON, to: SUN }).expect(201)).body;
     expect(p.status).toBe('pending');
     expect(p.sessionCount).toBe(2);
@@ -111,14 +117,14 @@ describe('Payouts — 시수 측정·페이 정산 (e2e)', () => {
   it('6) 이중 계상 방지 — 같은 기간 재산정 시 적격 0 → generate 400', async () => {
     const m = (await http.get(`/api/payouts/preview?instructorId=${INSTRUCTOR}&from=${MON}&to=${SUN}`).expect(200)).body;
     expect(m.sessionCount).toBe(0); // 이미 연결됨
-    await http.post('/api/payouts/generate')
+    await http.post('/api/payouts/generate').set(asAdmin())
       .send({ instructorId: INSTRUCTOR, from: MON, to: SUN }).expect(400);
   });
 
   it('7) 관리자 반려(reject) — 정산서 rejected + 세션 회수(재산정 가능)', async () => {
     const list = (await http.get('/api/payouts').expect(200)).body;
     const target = list.find((x: { status: string }) => x.status === 'pending');
-    const rejected = (await http.post(`/api/payouts/${target.id}/reject`).send({ reason: '근태 확인 필요' }).expect(201)).body;
+    const rejected = (await http.post(`/api/payouts/${target.id}/reject`).set(asAdmin()).send({ reason: '근태 확인 필요' }).expect(201)).body;
     expect(rejected.status).toBe('rejected');
     expect(rejected.rejectedReason).toBe('근태 확인 필요');
     // 세션 회수됨 → 다시 적격 2건
@@ -127,9 +133,9 @@ describe('Payouts — 시수 측정·페이 정산 (e2e)', () => {
   });
 
   it('8) 관리자 급여 수정(adjust) — 자동 산정액 보존, 실효 지급액만 변경', async () => {
-    const p = (await http.post('/api/payouts/generate')
+    const p = (await http.post('/api/payouts/generate').set(asAdmin())
       .send({ instructorId: INSTRUCTOR, from: MON, to: SUN }).expect(201)).body;
-    const adj = (await http.post(`/api/payouts/${p.id}/adjust`)
+    const adj = (await http.post(`/api/payouts/${p.id}/adjust`).set(asAdmin())
       .send({ amount: 150000, reason: '교통비 차감' }).expect(201)).body;
     expect(adj.computedAmount).toBe(165000); // 기준 보존
     expect(adj.adjustedAmount).toBe(150000);
@@ -141,10 +147,10 @@ describe('Payouts — 시수 측정·페이 정산 (e2e)', () => {
     const list = (await http.get('/api/payouts').expect(200)).body;
     const p = list.find((x: { status: string }) => x.status === 'pending');
     // 지급 전 확정 필요
-    await http.post(`/api/payouts/${p.id}/pay`).expect(400); // confirmed 아니면 거부
-    await http.post(`/api/payouts/${p.id}/confirm`).expect(201)
+    await http.post(`/api/payouts/${p.id}/pay`).set(asAdmin()).expect(400); // confirmed 아니면 거부
+    await http.post(`/api/payouts/${p.id}/confirm`).set(asAdmin()).expect(201)
       .then((res) => expect(res.body.status).toBe('confirmed'));
-    const paid = (await http.post(`/api/payouts/${p.id}/pay`).expect(201)).body;
+    const paid = (await http.post(`/api/payouts/${p.id}/pay`).set(asAdmin()).expect(201)).body;
     expect(paid.payout.status).toBe('paid');
     expect(paid.payout.paidAt).toBeTruthy();
     expect(paid.transaction).toMatchObject({ direction: 'out', category: 'instructor_payout', amount: 150000, payoutId: p.id });
@@ -163,5 +169,21 @@ describe('Payouts — 시수 측정·페이 정산 (e2e)', () => {
 
   it('검증: 잘못된 기간(from>to) → 400', async () => {
     await http.get(`/api/payouts/preview?instructorId=${INSTRUCTOR}&from=${SUN}&to=${MON}`).expect(400);
+  });
+
+  // ── RolesGuard 인가(TBO-07) — 관리자 액션은 super_admin/manager/admin 전용 ──
+  it('인가: 비로그인으로 정산서 생성 → 401', async () => {
+    await http.post('/api/payouts/generate')
+      .send({ instructorId: INSTRUCTOR, from: MON, to: SUN }).expect(401);
+  });
+
+  it('인가: 강사(instructor) 토큰으로 정산서 생성 → 403', async () => {
+    const login = await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201);
+    await http.post('/api/payouts/generate').set({ Authorization: `Bearer ${login.body.accessToken}` })
+      .send({ instructorId: INSTRUCTOR, from: MON, to: SUN }).expect(403);
+  });
+
+  it('인가: 읽기(GET /payouts)는 가드 없이 개방 유지 → 200', async () => {
+    await http.get('/api/payouts').expect(200);
   });
 });

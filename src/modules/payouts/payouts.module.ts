@@ -2,9 +2,10 @@ import { Module } from '@nestjs/common';
 import { PayoutsService } from './payouts.service';
 import { PayoutsController } from './payouts.controller';
 import { ReportsModule } from '../reports/reports.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [ReportsModule], // 시수 적격성(승인 보고서) 판정에 ReportsService 사용
+  imports: [ReportsModule, AuthModule], // ReportsService(시수 적격성) + RolesGuard(AuthService)
   controllers: [PayoutsController],
   providers: [PayoutsService],
   exports: [PayoutsService],
