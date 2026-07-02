@@ -62,7 +62,7 @@ export class PayoutsService implements OnModuleInit {
       const row = this.db.insert<SessionWithPayout>(SESSIONS, {
         courseId, instructorId, sessionDate: date, startTime: start,
         endTime: `${endH}:${endM}`, durationMinutes: minutes, status,
-        topic: '정규 수업(데모)',
+        topic: '정규 수업', // 캘린더 표기는 실데이터 문구만(피드백 2026-07-02)
       } as Omit<SessionWithPayout, 'id' | 'createdAt' | 'updatedAt'>);
       return row.id;
     };

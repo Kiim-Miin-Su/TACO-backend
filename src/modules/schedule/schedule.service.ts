@@ -104,11 +104,11 @@ export class ScheduleService implements OnModuleInit {
     // 테스트용 겹침 픽스처: 강사1(박지훈)의 점심 불가시간(월 12:00–13:00) 위에 놓인 세션.
     // 캘린더에서 강사1 선택 시 회색 불가 밴드와 겹치는 수업이 보이고, 충돌 검사 데모가 가능.
     const mon0 = fmt(mon);
+    // 표기는 실제 데이터(강사·수업명)로 깔끔하게 — "데모" 문구 금지(피드백 2026-07-02).
     this.db.insert<ClassSession>(SESSIONS, {
       courseId: 12, instructorId: 1, roomId: 2,
       sessionDate: mon0, startTime: '12:30', endTime: '13:30', durationMinutes: 60,
-      status: 'scheduled', topic: 'TOEFL 보강(불가시간 겹침 데모)',
-      memo: '충돌 시각화 데모 — 불가시간과 겹치는 수업',
+      status: 'scheduled', topic: 'TOEFL 정규 — 보강',
     });
 
     // ── 과거 히스토리 시드(프론트 mock 이관) — 오늘 기준 상대 날짜. 지난 held/취소/보강 =
