@@ -11,7 +11,7 @@ export class UpsertAvailabilityDto implements UpsertAvailabilityInput {
   @IsInt()
   id?: number;
 
-  @ApiProperty({ enum: ['student', 'instructor', 'room'], example: 'instructor', description: '소유 자원 종류' })
+  @ApiProperty({ enum: ['student', 'instructor', 'room'], description: '소유 자원 종류' })
   @IsIn(['student', 'instructor', 'room'])
   ownerType!: AvailabilityOwner;
 
@@ -19,7 +19,7 @@ export class UpsertAvailabilityDto implements UpsertAvailabilityInput {
   @IsInt()
   ownerId!: number;
 
-  @ApiPropertyOptional({ enum: ['available', 'unavailable'], example: 'unavailable', description: '가용/불가(기본 available)' })
+  @ApiPropertyOptional({ enum: ['available', 'unavailable'], description: '가용/불가(기본 available)' })
   @IsOptional()
   @IsIn(['available', 'unavailable'])
   kind?: AvailabilityKind;

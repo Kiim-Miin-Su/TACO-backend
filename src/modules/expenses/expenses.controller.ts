@@ -3,7 +3,7 @@ import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('expenses')
 @ApiBearerAuth()
@@ -23,7 +23,6 @@ export class ExpensesController {
   }
 
   @Post()
-  @Roles(...STAFF_ROLES)
   create(@Body() dto: CreateExpenseDto) {
     return this.expenses.create(dto);
   }

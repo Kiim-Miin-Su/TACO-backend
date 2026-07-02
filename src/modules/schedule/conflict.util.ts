@@ -47,9 +47,6 @@ export function detectConflicts(
   const wd = weekdayOf(cand.sessionDate);
   for (const b of blocks) {
     if (b.kind !== 'unavailable' || b.weekday !== wd) continue;
-    // 기간(effectiveFrom/effectiveTo) 밖의 주에는 적용 안 함 — "이번만/앞으로/기간" 반복 규칙 반영.
-    if (b.effectiveFrom && cand.sessionDate < b.effectiveFrom) continue;
-    if (b.effectiveTo && cand.sessionDate > b.effectiveTo) continue;
     if (!overlaps(cand.startTime, cand.endTime, b.startTime, b.endTime)) continue;
     // detail: 겹친 불가시간의 실제 시각(요일·시:분)을 담아 프론트가 사람이 읽을 수 있게 표시.
     const blockDetail = `불가시간 ${b.startTime}–${b.endTime}`;

@@ -1,13 +1,13 @@
-import "reflect-metadata";
-import { INestApplication, ValidationPipe } from "@nestjs/common";
-import { Test } from "@nestjs/testing";
-import { AppModule } from "../src/app.module";
+import 'reflect-metadata';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { Test } from '@nestjs/testing';
+import { AppModule } from '../src/app.module';
 
 // main.ts와 동일한 부트 설정으로 e2e 앱 인스턴스 생성.
 export async function createTestApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
-  app.setGlobalPrefix("api");
+  app.setGlobalPrefix('api');
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
   await app.init();
   return app;
@@ -22,7 +22,7 @@ export function mondayISO(): string {
   return u.toISOString().slice(0, 10);
 }
 export function addDaysISO(iso: string, n: number): string {
-  const d = new Date(iso + "T00:00:00Z");
+  const d = new Date(iso + 'T00:00:00Z');
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }

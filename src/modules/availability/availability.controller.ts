@@ -1,13 +1,10 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Put, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiOkResponse, ApiConflictResponse, ApiBadRequestResponse } from '@nestjs/swagger';
 import { AvailabilityService } from './availability.service';
 import { AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
-import { RolesGuard } from '../auth/roles.guard';
-import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('availability')
-@UseGuards(RolesGuard)
 @Controller('availability')
 export class AvailabilityController {
   constructor(private readonly availability: AvailabilityService) {}
@@ -25,7 +22,6 @@ export class AvailabilityController {
   }
 
   @Put()
-  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '가용/불가 블록 생성·수정(id 있으면 수정). 같은 오너·요일 겹침 시 409.' })
   @ApiOkResponse({ description: 'AvailabilityBlock(생성/수정 결과)' })
   @ApiConflictResponse({ description: '이미 지정된 가용/불가 시간과 겹침(겹친 시각 메시지 포함)' })
@@ -35,7 +31,6 @@ export class AvailabilityController {
   }
 
   @Delete(':id')
-  @Roles(...STAFF_ROLES)
   @ApiParam({ name: 'id', description: '블록 id' })
   @ApiOperation({ summary: '가용/불가 블록 삭제' })
   @ApiOkResponse({ description: '{ id, deleted: boolean }' })

@@ -17,8 +17,7 @@ async function main(): Promise<void> {
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  // 프로젝트 루트(=npm 실행 cwd)에 기록 — 컴파일 위치(dist/scripts)에 무관하게 backend/openapi.json.
-  const out = join(process.cwd(), 'openapi.json');
+  const out = join(__dirname, '..', 'openapi.json');
   writeFileSync(out, JSON.stringify(document, null, 2));
   await app.close();
   // eslint-disable-next-line no-console

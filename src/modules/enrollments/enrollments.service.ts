@@ -1,23 +1,11 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { Enrollment, ENROLLMENTS } from './enrollment.entity';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 
 @Injectable()
-export class EnrollmentsService implements OnModuleInit {
+export class EnrollmentsService {
   constructor(private readonly db: InMemoryDatabase) {}
-
-  // 데모 수강 시드 — 프론트 목데이터 이관. studentId→students, courseId→courses(무결성).
-  // completedSessions는 진행완료(held) 세션 수와 정합(코스10/11/12 각 2회).
-  onModuleInit(): void {
-    if (this.db.findAll<Enrollment>(ENROLLMENTS).length) return;
-    this.db.seed<Enrollment>(ENROLLMENTS, [
-      { id: 1, studentId: 1, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 2, enrolledAt: '2026-06-17' },
-      { id: 2, studentId: 2, courseId: 11, status: 'active', totalSessions: 20, completedSessions: 2, enrolledAt: '2026-06-16' },
-      { id: 3, studentId: 4, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 2, enrolledAt: '2026-06-17' },
-      { id: 4, studentId: 1, courseId: 12, status: 'active', totalSessions: 12, completedSessions: 2, enrolledAt: '2026-06-22' },
-    ]);
-  }
 
   findAll(): Enrollment[] {
     return this.db.findAll<Enrollment>(ENROLLMENTS);

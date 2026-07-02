@@ -11,11 +11,11 @@ export class CreateScheduleDto {
   @IsInt()
   courseId!: number;
 
-  @ApiPropertyOptional({ example: 1, description: '강사 FK(미지정 시 코스 기본 강사)' })
+  @ApiPropertyOptional({ description: '강사 FK(미지정 시 코스 기본 강사)' })
   @IsOptional() @IsInt()
   instructorId?: number;
 
-  @ApiPropertyOptional({ example: 2, description: '강의실 FK' })
+  @ApiPropertyOptional({ description: '강의실 FK' })
   @IsOptional() @IsInt()
   roomId?: number;
 
@@ -35,27 +35,27 @@ export class CreateScheduleDto {
   @IsOptional() @IsInt() @Min(10)
   durationMinutes?: number;
 
-  @ApiPropertyOptional({ example: 'Reading: 추론 문제 전략', description: '수업 주제' })
+  @ApiPropertyOptional()
   @IsOptional() @IsString() @MaxLength(200)
   topic?: string;
 
-  @ApiPropertyOptional({ example: '교재 3장 지참', description: '메모' })
+  @ApiPropertyOptional()
   @IsOptional() @IsString() @MaxLength(500)
   memo?: string;
 
-  @ApiPropertyOptional({ example: '#0969da', description: '캘린더 색상 라벨(미지정 시 코스 색)' })
+  @ApiPropertyOptional({ description: '캘린더 색상 라벨(미지정 시 코스 색)' })
   @IsOptional() @IsString() @MaxLength(20)
   color?: string;
 
-  @ApiPropertyOptional({ example: 1719800000000, description: '반복 시리즈로 묶을 때(같은 seriesId)' })
+  @ApiPropertyOptional({ description: '반복 시리즈로 묶을 때' })
   @IsOptional() @IsInt()
   seriesId?: number;
 
-  @ApiPropertyOptional({ enum: STATUSES, example: 'scheduled' })
+  @ApiPropertyOptional({ enum: STATUSES })
   @IsOptional() @IsIn(STATUSES)
   status?: SessionStatus;
 
-  @ApiPropertyOptional({ example: false, description: '충돌이 있어도 강제 적용(기본 false → 충돌 시 409)' })
+  @ApiPropertyOptional({ description: '충돌이 있어도 강제 적용(기본 false → 충돌 시 409)' })
   @IsOptional() @IsBoolean()
   force?: boolean;
 }
