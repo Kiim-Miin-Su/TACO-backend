@@ -20,6 +20,16 @@ export class AttendanceService implements OnModuleInit {
       { id: 1, sessionId: 1, studentId: 1, status: 'present' },
       { id: 2, sessionId: 1, studentId: 4, status: 'late' },
       { id: 3, sessionId: 2, studentId: 2, status: 'present' },
+      // 과거 held 세션(20~28, schedule 히스토리 시드)의 학생 출결 — 강사/학생 출결 대시보드 데모.
+      // 코호트 정합: 코스10→{1,4}, 코스11→{2}, 코스12→{1}.
+      { id: 4, sessionId: 20, studentId: 1, status: 'present' },
+      { id: 5, sessionId: 20, studentId: 4, status: 'late' },
+      { id: 6, sessionId: 21, studentId: 2, status: 'present' },
+      { id: 7, sessionId: 22, studentId: 1, status: 'present' },
+      { id: 8, sessionId: 26, studentId: 1, status: 'present' },
+      { id: 9, sessionId: 26, studentId: 4, status: 'present' },
+      { id: 10, sessionId: 27, studentId: 2, status: 'absent' },
+      { id: 11, sessionId: 28, studentId: 1, status: 'present' },
     ]);
   }
 
