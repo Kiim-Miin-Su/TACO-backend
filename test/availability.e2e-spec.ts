@@ -21,6 +21,7 @@ describe('Availability API (e2e)', () => {
 
   it('PUT /availability — 학생 가용시간 생성', async () => {
     const res = await http.put('/api/availability')
+      .set(TH())
       .send({ ownerType: 'student', ownerId: 1, kind: 'available', weekday: 1, startTime: '16:00', endTime: '18:00' })
       .expect(200);
     expect(res.body.id).toBeGreaterThan(0);
@@ -34,22 +35,25 @@ describe('Availability API (e2e)', () => {
 
   it('참조 무결성(#7): 존재하지 않는 강의실 owner → 400', async () => {
     await http.put('/api/availability')
+      .set(TH())
       .send({ ownerType: 'room', ownerId: 9999, kind: 'unavailable', weekday: 2, startTime: '10:00', endTime: '11:00' })
       .expect(400);
   });
 
   it('PUT(id) → 수정, DELETE → 삭제', async () => {
     const created = (await http.put('/api/availability')
+      .set(TH())
       .send({ ownerType: 'room', ownerId: 1, kind: 'unavailable', weekday: 3, startTime: '09:00', endTime: '10:00' })
       .expect(200)).body;
     // 수정(끝시간 연장)
     const updated = (await http.put('/api/availability')
+      .set(TH())
       .send({ id: created.id, ownerType: 'room', ownerId: 1, kind: 'unavailable', weekday: 3, startTime: '09:00', endTime: '11:00' })
       .expect(200)).body;
     expect(updated.id).toBe(created.id);
     expect(updated.endTime).toBe('11:00');
     // 삭제
-    const del = (await http.delete(`/api/availability/${created.id}`).expect(200)).body;
+    const del = (await http.delete(`/api/availability/${created.id}`).set(TH()).expect(200)).body;
     expect(del).toMatchObject({ id: created.id, deleted: true });
   });
 
@@ -57,6 +61,7 @@ describe('Availability API (e2e)', () => {
     // 강의실1 수요일 14:00-15:00 차단
     const wed = weekdayDateThisWeek(3);
     await http.put('/api/availability')
+      .set(TH())
       .send({ ownerType: 'room', ownerId: 1, kind: 'unavailable', weekday: 3, startTime: '14:00', endTime: '15:00' })
       .expect(200);
     const res = await http.post('/api/schedule').set(TH())
@@ -68,15 +73,18 @@ describe('Availability API (e2e)', () => {
   it('겹침 방지(버그2): 같은 오너·요일 겹치는 블록 → 409, 인접(안 겹침)은 통과', async () => {
     // 학생5 화요일 10:00–11:00 불가 지정
     await http.put('/api/availability')
+      .set(TH())
       .send({ ownerType: 'student', ownerId: 5, kind: 'unavailable', weekday: 2, startTime: '10:00', endTime: '11:00' })
       .expect(200);
     // 겹치는 시간(10:30–11:30) → 409 + 겹친 시각 메시지
     const clash = await http.put('/api/availability')
+      .set(TH())
       .send({ ownerType: 'student', ownerId: 5, kind: 'unavailable', weekday: 2, startTime: '10:30', endTime: '11:30' })
       .expect(409);
     expect(JSON.stringify(clash.body)).toContain('겹칩니다');
     // 인접(11:00–12:00, 겹치지 않음) → 통과
     await http.put('/api/availability')
+      .set(TH())
       .send({ ownerType: 'student', ownerId: 5, kind: 'available', weekday: 2, startTime: '11:00', endTime: '12:00' })
       .expect(200);
   });
@@ -87,6 +95,7 @@ describe('Availability API (e2e)', () => {
     const nextFri = nx.toISOString().slice(0, 10);
     // 강의실1 금요일 15:00–16:00 불가 — 이 날짜 1회만(effectiveFrom=effectiveTo).
     await http.put('/api/availability')
+      .set(TH())
       .send({ ownerType: 'room', ownerId: 1, kind: 'unavailable', weekday: 5, startTime: '15:00', endTime: '16:00', effectiveFrom: fri, effectiveTo: fri })
       .expect(200);
     // 이번 주 금요일 → 막힘(409)
@@ -103,6 +112,7 @@ describe('Availability API (e2e)', () => {
     const futureThu = future.toISOString().slice(0, 10);
     // 강의실2 목요일 09:00–10:00 불가 — 단, 4주 뒤부터 적용(effectiveFrom).
     await http.put('/api/availability')
+      .set(TH())
       .send({ ownerType: 'room', ownerId: 2, kind: 'unavailable', weekday: 4, startTime: '09:00', endTime: '10:00', effectiveFrom: futureThu })
       .expect(200);
     // 이번 주 목요일 세션은 기간 밖 → 충돌 없이 생성(201).

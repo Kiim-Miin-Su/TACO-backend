@@ -47,6 +47,7 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
   async function makeReport(sessionId: number): Promise<number> {
     const res = await http
       .post("/api/reports")
+      .set(asAdmin())
       .send({ sessionId, studentId: STUDENT, content: "진도/피드백 본문" })
       .expect(201);
     expect(res.body.status).toBe("submitted");
@@ -174,11 +175,11 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
 
   // ── 참조 무결성(FK)·검증 ──
   it("FK: 존재하지 않는 sessionId로 보고서 작성 → 400", async () => {
-    await http.post("/api/reports").send({ sessionId: 999999, studentId: STUDENT, content: "x" }).expect(400);
+    await http.post("/api/reports").set(asAdmin()).send({ sessionId: 999999, studentId: STUDENT, content: "x" }).expect(400);
   });
 
   it("중복 방지: 같은 (세션·학생) 보고서 재작성 → 409", async () => {
-    await http.post("/api/reports").send({ sessionId: S1, studentId: STUDENT, content: "중복" }).expect(409);
+    await http.post("/api/reports").set(asAdmin()).send({ sessionId: S1, studentId: STUDENT, content: "중복" }).expect(409);
   });
 
   it("검증: 잘못된 기간(from>to) → 400", async () => {

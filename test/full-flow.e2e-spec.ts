@@ -69,6 +69,7 @@ describe("Full Flow (e2e)", () => {
   it("4) 강사1 불가시간 설정(화 16:00–17:00) → 200", async () => {
     await http
       .put("/api/availability")
+      .set(asAdmin())
       .send({ ownerType: "instructor", ownerId: 1, kind: "unavailable", weekday: 2, startTime: "16:00", endTime: "17:00" })
       .expect(200);
   });
@@ -116,6 +117,7 @@ describe("Full Flow (e2e)", () => {
   it("7) 리포트 작성(submitted) + 관리자 승인 → approved", async () => {
     const r = await http
       .post("/api/reports")
+      .set(asAdmin())
       .send({ sessionId: S1, studentId: 1, content: "진도: 추론 문제. 정답률 향상." })
       .expect(201);
     reportId = r.body.id;
@@ -186,7 +188,7 @@ describe("Full Flow (e2e)", () => {
         .expect(201)
     ).body.row;
     await http.patch(`/api/schedule/${s.id}`).set(asAdmin()).send({ status: "held", force: true }).expect(200);
-    await http.post("/api/reports").send({ sessionId: s.id, studentId: 1, content: "미승인" }).expect(201); // submitted, 미승인
+    await http.post("/api/reports").set(asAdmin()).send({ sessionId: s.id, studentId: 1, content: "미승인" }).expect(201); // submitted, 미승인
     const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${w4mon}&to=${w4sun}`).expect(200)).body;
     expect(m.sessionCount).toBe(0);
   });
@@ -203,7 +205,7 @@ describe("Full Flow (e2e)", () => {
         .expect(201)
     ).body.row;
     await http.patch(`/api/schedule/${s.id}`).set(asAdmin()).send({ status: "held", force: true }).expect(200);
-    const r = (await http.post("/api/reports").send({ sessionId: s.id, studentId: 1, content: "ok" }).expect(201)).body;
+    const r = (await http.post("/api/reports").set(asAdmin()).send({ sessionId: s.id, studentId: 1, content: "ok" }).expect(201)).body;
     await http.post(`/api/reports/${r.id}/approve`).set(asAdmin()).expect(201);
     // 진행 상태였다가 취소로 변경 → 시수 제외
     await http.patch(`/api/schedule/${s.id}`).set(asAdmin()).send({ status: "canceled", force: true }).expect(200);

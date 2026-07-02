@@ -11,8 +11,14 @@ describe('Students Soft-Delete (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   const S1 = 1; // 김서연 — 시드상 수강 2건(enrollment 1, 4)
+  let ADMIN = '';
+  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
-  beforeAll(async () => { app = await createTestApp(); http = request(app.getHttpServer()); });
+  beforeAll(async () => {
+    app = await createTestApp();
+    http = request(app.getHttpServer());
+    ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
+  });
   afterAll(async () => { await app.close(); });
 
   it('DELETE 기존 학생 → status=canceled', async () => {
@@ -23,7 +29,7 @@ describe('Students Soft-Delete (e2e)', () => {
       .filter((e: { studentId: number }) => e.studentId === S1);
     expect(enrBefore.length).toBeGreaterThan(0);
 
-    const res = await http.delete(`/api/students/${S1}`).expect(200);
+    const res = await http.delete(`/api/students/${S1}`).set(asAdmin()).expect(200);
     expect(res.body.status).toBe('canceled');
 
     // 학생 상태 반영
@@ -38,6 +44,6 @@ describe('Students Soft-Delete (e2e)', () => {
   });
 
   it('DELETE 없는 학생 → 404', async () => {
-    await http.delete('/api/students/99999').expect(404);
+    await http.delete('/api/students/99999').set(asAdmin()).expect(404);
   });
 });

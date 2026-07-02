@@ -34,6 +34,7 @@ export class PaymentsController {
   }
 
   @Post()
+  @Roles(...ADMIN_ROLES)
   create(@Body() dto: CreatePaymentDto) {
     return this.payments.create(dto);
   }
@@ -45,6 +46,7 @@ export class PaymentsController {
   }
 
   @Post(':id/pay')
+  @Roles(...ADMIN_ROLES)
   markPaid(@Param('id', ParseIntPipe) id: number) {
     return this.payments.markPaid(id);
   }
