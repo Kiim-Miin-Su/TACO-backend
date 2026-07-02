@@ -6,35 +6,20 @@ import { AvailabilityService } from '../availability/availability.service';
 import { ClassSession, SESSIONS } from './schedule.entity';
 import { detectConflicts } from './conflict.util';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
+import { Course, COURSES as COURSES_COL } from '../courses/course.entity';
+import { Subject, SUBJECTS as SUBJECTS_COL } from '../subjects/subject.entity';
+import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
+import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
 
-// in-module 라벨 룩업(데모) — 프론트 mock seed와 정렬.
+// [감사 A, 2026-07-02] 하드코딩 상수(STUDENTS_LBL/COURSE_STUDENTS/COURSES/SUBJECTS) 제거 —
+//  코호트·카탈로그는 실제 컬렉션(students/enrollments/courses/subjects)을 조회한다(단일 소스).
+//  이전엔 상수 + `status !== 'drop'`(존재하지 않는 상태값 — 실제 소프트삭제는 'canceled') 필터라
+//  학생 삭제·신규 수강이 캘린더에 반영되지 않는 무결성 버그가 있었다.
+// 강사만 상수 유지: users 시드와 스케줄 instructorId(1,2)의 식별자 정합이 아직 안 돼 있어(TBO-06 잔여)
+//  users 컬렉션으로 바꾸면 FK가 어긋난다. JWT/users 정합 후 교체할 것.
 const INSTRUCTORS: Record<number, string> = { 1: '박지훈', 2: '정유진' };
-const SUBJECTS: Record<number, { name: string; color: string }> = {
-  1: { name: '영어', color: '#0969da' },
-  2: { name: '수학', color: '#1a7f37' },
-};
-// color = 개설 시 선택한 캘린더 색상 라벨(코스 단위). 세션 색 기본값.
-const COURSES: Record<number, { name: string; subjectId: number; instructorId: number; color: string }> = {
-  10: { name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, color: '#0969da' },
-  11: { name: 'AP Calculus BC', subjectId: 2, instructorId: 2, color: '#8250df' },
-  12: { name: 'TOEFL 정규', subjectId: 1, instructorId: 1, color: '#1b7c83' },
-};
-// 학생(데모) — 프론트 mock seed와 정렬. status==='drop'은 코호트에서 제외(소프트삭제 보존).
-const STUDENTS_LBL: Record<number, { name: string; grade?: number; status: string }> = {
-  1: { name: '김서연', grade: 11, status: 'active' },
-  2: { name: '이준호', grade: 12, status: 'active' },
-  3: { name: '박지민', grade: 10, status: 'paused' },
-  4: { name: '최민준', grade: 11, status: 'active' },
-};
-// 코스 코호트(수강생). enrollments seed와 정렬: 10→[1,4], 11→[2], 12→[1].
-const COURSE_STUDENTS: Record<number, number[]> = {
-  10: [1, 4],
-  11: [2],
-  12: [1],
-};
-// 활성(비-drop) 수강생만 — 학생 차원/필터/개인 스케줄 스코프.
-const activeStudentsOf = (courseId: number): number[] =>
-  (COURSE_STUDENTS[courseId] ?? []).filter((sid) => STUDENTS_LBL[sid] && STUDENTS_LBL[sid].status !== 'drop');
+// 과목 색 폴백(표시용) — Subject 계약에 color가 없어 세션→코스 색이 모두 없을 때만 사용.
+const SUBJECT_FALLBACK_COLOR: Record<number, string> = { 1: '#0969da', 2: '#1a7f37' };
 
 // ── 날짜/시간 유틸(결정론적, KST 의존 없음) ──
 const pad = (n: number) => String(n).padStart(2, '0');
@@ -63,7 +48,9 @@ function mondayOfThisWeekUTC(): Date {
 }
 
 // 주간 반복 시리즈 시드 정의 — 같은 시리즈는 한 seriesId를 공유(반복 편집 데모용).
-type SeedSeries = { courseId: number; roomId: number; weekdayOffsets: number[]; startTime: string; durationMinutes: number };
+// instructorId·topic을 시드에 직접 명시(코스 시드와 정렬) — onModuleInit 실행 순서상
+// courses 컬렉션이 아직 비어 있을 수 있어 시드만큼은 컬렉션을 참조하지 않는다.
+type SeedSeries = { courseId: number; instructorId: number; topic: string; roomId: number; weekdayOffsets: number[]; startTime: string; durationMinutes: number };
 // 병합된 세션 필드(업데이트 적용 단위) — 이동/리사이즈/편집 공통.
 type MergedFields = {
   sessionDate: string; startTime: string; endTime: string; durationMinutes: number;
@@ -87,30 +74,29 @@ export class ScheduleService implements OnModuleInit {
     const mon = mondayOfThisWeekUTC();
     const series: SeedSeries[] = [
       // SAT Reading 정규(강사1·강의실1) — 월·수·금 16:00
-      { courseId: 10, roomId: 1, weekdayOffsets: [0, 2, 4], startTime: '16:00', durationMinutes: 90 },
+      { courseId: 10, instructorId: 1, topic: 'SAT Reading 정규', roomId: 1, weekdayOffsets: [0, 2, 4], startTime: '16:00', durationMinutes: 90 },
       // AP Calculus BC(강사2·강의실3) — 화·목 16:00
-      { courseId: 11, roomId: 3, weekdayOffsets: [1, 3], startTime: '16:00', durationMinutes: 120 },
+      { courseId: 11, instructorId: 2, topic: 'AP Calculus BC', roomId: 3, weekdayOffsets: [1, 3], startTime: '16:00', durationMinutes: 120 },
       // TOEFL 정규(강사1·강의실2) — 월·수 18:00
-      { courseId: 12, roomId: 2, weekdayOffsets: [0, 2], startTime: '18:00', durationMinutes: 90 },
+      { courseId: 12, instructorId: 1, topic: 'TOEFL 정규', roomId: 2, weekdayOffsets: [0, 2], startTime: '18:00', durationMinutes: 90 },
     ];
     let seriesId = 0;
     series.forEach((sr) => {
       const sid = ++seriesId;
-      const c = COURSES[sr.courseId];
       sr.weekdayOffsets.forEach((off) => {
         const date = new Date(mon);
         date.setUTCDate(date.getUTCDate() + off);
         this.db.insert<ClassSession>(SESSIONS, {
           seriesId: sid,
           courseId: sr.courseId,
-          instructorId: c.instructorId,
+          instructorId: sr.instructorId,
           roomId: sr.roomId,
           sessionDate: fmt(date),
           startTime: sr.startTime,
           endTime: addMinutes(sr.startTime, sr.durationMinutes),
           durationMinutes: sr.durationMinutes,
           status: 'scheduled',
-          topic: c.name,
+          topic: sr.topic,
         });
       });
     });
@@ -146,12 +132,35 @@ export class ScheduleService implements OnModuleInit {
     this.db.seed<ClassSession>(SESSIONS, hist);
   }
 
+  // ── 카탈로그/명단 조회(단일 소스 = 실제 컬렉션) — 감사 A ──
+  private courseOf(id: number): Course | undefined {
+    return this.db.findById<Course>(COURSES_COL, id);
+  }
+  private subjectOf(id?: number): Subject | undefined {
+    return id == null ? undefined : this.db.findById<Subject>(SUBJECTS_COL, id);
+  }
+  private studentOf(id: number): Student | undefined {
+    return this.db.findById<Student>(STUDENTS_COL, id);
+  }
+  // 코호트 = 활성 수강(enrollment.status==='active') ∧ 학생 미삭제(status!=='canceled').
+  //  students.remove(소프트삭제)가 학생·수강 모두 'canceled'로 정리하므로 삭제 즉시 코호트에서 빠진다.
+  private activeStudentIds(courseId: number): number[] {
+    return this.db
+      .findBy<Enrollment>(ENROLLMENTS_COL, (e) => e.courseId === courseId && e.status === 'active')
+      .map((e) => e.studentId)
+      .filter((sid) => this.studentOf(sid)?.status !== 'canceled');
+  }
+
   // 기간/필터 조회 → enriched 읽기모델(주간 표/캘린더용)
-  // studentId 필터: 해당 학생이 활성 수강 중인 코스의 세션만(코호트 역추적).
+  // studentId 필터: 해당 학생이 활성 수강 중인 코스의 세션만(enrollments 역추적 — 단일 소스).
   list(opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number }): ScheduleRow[] {
     const rooms = new Map(this.rooms.findAll().map((r) => [r.id, r]));
     const coursesOfStudent = opts.studentId != null
-      ? new Set(Object.keys(COURSE_STUDENTS).map(Number).filter((cid) => activeStudentsOf(cid).includes(opts.studentId!)))
+      ? new Set(
+          this.db
+            .findBy<Enrollment>(ENROLLMENTS_COL, (e) => e.studentId === opts.studentId && e.status === 'active')
+            .map((e) => e.courseId),
+        )
       : null;
     return this.db
       .findBy<ClassSession>(SESSIONS, (s) =>
@@ -172,30 +181,34 @@ export class ScheduleService implements OnModuleInit {
     const allSessions = this.db.findAll<ClassSession>(SESSIONS);
     const courseDuration = (courseId: number): number =>
       allSessions.find((s) => s.courseId === courseId)?.durationMinutes ?? 90;
+    const courses = this.db.findAll<Course>(COURSES_COL);
     return {
-      instructors: Object.entries(INSTRUCTORS).map(([id, name]) => ({
-        type: 'instructor' as const, id: Number(id), name,
-        color: PALETTE[Number(id) % PALETTE.length],
-        sub: Object.values(COURSES).find((c) => c.instructorId === Number(id))
-          ? SUBJECTS[Object.values(COURSES).find((c) => c.instructorId === Number(id))!.subjectId]?.name
-          : undefined,
-      })),
+      instructors: Object.entries(INSTRUCTORS).map(([id, name]) => {
+        const c = courses.find((x) => x.instructorId === Number(id));
+        return {
+          type: 'instructor' as const, id: Number(id), name,
+          color: PALETTE[Number(id) % PALETTE.length],
+          sub: c ? this.subjectOf(c.subjectId)?.name : undefined,
+        };
+      }),
       rooms: this.rooms.findAll().map((r) => ({
         type: 'room' as const, id: r.id, name: r.name, color: r.color,
         sub: r.capacity != null ? `정원 ${r.capacity}` : undefined,
       })),
-      students: Object.entries(STUDENTS_LBL)
-        .filter(([, s]) => s.status !== 'drop')
-        .map(([id, s]) => ({
-          type: 'student' as const, id: Number(id), name: s.name,
-          color: PALETTE[(Number(id) + 2) % PALETTE.length],
+      // 학생 = students 컬렉션(단일 소스). 소프트삭제(canceled)만 제외 — 신규 등록·삭제가 즉시 반영.
+      students: this.db
+        .findBy<Student>(STUDENTS_COL, (s) => s.status !== 'canceled')
+        .map((s) => ({
+          type: 'student' as const, id: s.id, name: s.name,
+          color: PALETTE[(s.id + 2) % PALETTE.length],
           sub: s.grade != null ? `${s.grade}학년` : undefined,
         })),
-      courses: Object.entries(COURSES).map(([id, c]) => ({
-        id: Number(id), name: c.name, instructorId: c.instructorId,
+      courses: courses.map((c) => ({
+        id: c.id, name: c.name, instructorId: c.instructorId,
         instructorName: INSTRUCTORS[c.instructorId],
-        subjectName: SUBJECTS[c.subjectId]?.name ?? '', color: c.color ?? SUBJECTS[c.subjectId]?.color,
-        durationMinutes: courseDuration(Number(id)),
+        subjectName: this.subjectOf(c.subjectId)?.name ?? '',
+        color: c.color ?? SUBJECT_FALLBACK_COLOR[c.subjectId],
+        durationMinutes: courseDuration(c.id),
       })),
     };
   }
@@ -206,7 +219,7 @@ export class ScheduleService implements OnModuleInit {
     startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
     seriesId?: number; status?: ClassSession['status']; force?: boolean;
   }): { row: ScheduleRow; conflicts: Conflict[] } {
-    const course = COURSES[dto.courseId];
+    const course = this.courseOf(dto.courseId);
     if (!course) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
     const instructorId = dto.instructorId ?? course.instructorId;
     if (!INSTRUCTORS[instructorId]) throw new BadRequestException(`instructorId ${instructorId} 없음`);
@@ -275,7 +288,7 @@ export class ScheduleService implements OnModuleInit {
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
 
     // 참조 무결성(FK) 검증
-    if (dto.courseId != null && !COURSES[dto.courseId]) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
+    if (dto.courseId != null && !this.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
     if (dto.instructorId != null && !INSTRUCTORS[dto.instructorId]) throw new BadRequestException(`instructorId ${dto.instructorId} 없음`);
     if (dto.roomId != null && !this.rooms.findAll().some((r) => r.id === dto.roomId)) throw new BadRequestException(`roomId ${dto.roomId} 없음`);
 
@@ -351,7 +364,7 @@ export class ScheduleService implements OnModuleInit {
     if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작보다 빠릅니다');
 
     const courseId = dto.courseId ?? cur.courseId;
-    const course = COURSES[courseId];
+    const course = this.courseOf(courseId);
     const instructorId = dto.instructorId ?? (dto.courseId != null && course ? course.instructorId : cur.instructorId);
     const roomId = dto.roomId ?? cur.roomId;
     return {
@@ -365,20 +378,19 @@ export class ScheduleService implements OnModuleInit {
   }
 
   private enrich(s: ClassSession, rooms: Map<number, { name: string }>): ScheduleRow {
-    const c = COURSES[s.courseId];
-    const sub = c ? SUBJECTS[c.subjectId] : undefined;
-    const studentIds = activeStudentsOf(s.courseId);
+    const c = this.courseOf(s.courseId);
+    const studentIds = this.activeStudentIds(s.courseId);
     return {
       ...s,
       weekday: weekdayOf(s.sessionDate),
       endTime: s.endTime ?? (s.startTime ? addMinutes(s.startTime, s.durationMinutes) : undefined),
       courseName: c?.name ?? `course ${s.courseId}`,
-      subjectName: sub?.name ?? '',
+      subjectName: this.subjectOf(c?.subjectId)?.name ?? '',
       instructorName: INSTRUCTORS[s.instructorId] ?? `강사 ${s.instructorId}`,
       roomName: s.roomId ? rooms.get(s.roomId)?.name : undefined,
-      color: s.color ?? c?.color ?? sub?.color, // 세션 색 → 코스 색 → 과목 색
+      color: s.color ?? c?.color ?? (c ? SUBJECT_FALLBACK_COLOR[c.subjectId] : undefined), // 세션 → 코스 → 과목 폴백
       studentIds,
-      studentNames: studentIds.map((sid) => STUDENTS_LBL[sid]?.name ?? `학생 ${sid}`),
+      studentNames: studentIds.map((sid) => this.studentOf(sid)?.name ?? `학생 ${sid}`),
     };
   }
 }
