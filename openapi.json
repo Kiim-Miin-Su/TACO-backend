@@ -480,8 +480,13 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
-          "Payments"
+          "payments"
         ]
       },
       "post": {
@@ -509,8 +514,13 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
-          "Payments"
+          "payments"
         ]
       }
     },
@@ -539,8 +549,56 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
-          "Payments"
+          "payments"
+        ]
+      },
+      "patch": {
+        "operationId": "PaymentsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePaymentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "payments"
         ]
       }
     },
@@ -569,8 +627,13 @@
             }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
-          "Payments"
+          "payments"
         ]
       }
     },
@@ -1852,7 +1915,40 @@
             "description": "CounselForm[] — 신청자·상태·관심 과목/코스·다음 상담일 등"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "상담 접수 목록(CounselForm[])",
+        "tags": [
+          "counsel"
+        ]
+      },
+      "post": {
+        "operationId": "CounselController_createForm",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCounselDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 CounselForm"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 접수 생성 — status=requested",
         "tags": [
           "counsel"
         ]
@@ -1876,7 +1972,90 @@
             "description": "CounselRound[] — 회차·요약·결과·다음 액션"
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "summary": "상담 회차 목록(CounselRound[]). counselFormId로 필터.",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
+    "/api/counsel/{id}": {
+      "patch": {
+        "operationId": "CounselController_updateForm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCounselDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "수정된 CounselForm"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 폼 수정(상태 전환·담당자·관심사)",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
+    "/api/counsel/{id}/rounds": {
+      "post": {
+        "operationId": "CounselController_createRound",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCounselRoundDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 CounselRound"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 회차 추가 — roundNo 자동, 폼 nextContactAt 동기화",
         "tags": [
           "counsel"
         ]
@@ -2362,6 +2541,32 @@
           "amount"
         ]
       },
+      "UpdatePaymentDto": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "card",
+              "transfer",
+              "cash",
+              "point",
+              "etc"
+            ]
+          },
+          "dueAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "memo": {
+            "type": "string"
+          }
+        }
+      },
       "CreateSubjectDto": {
         "type": "object",
         "properties": {
@@ -2745,6 +2950,17 @@
             "example": "#9a6700",
             "description": "캘린더 색상 라벨"
           },
+          "instructorAttendance": {
+            "enum": [
+              "present",
+              "late",
+              "absent",
+              "makeup"
+            ],
+            "type": "string",
+            "example": "present",
+            "description": "강사 출결(출석/지각/결석/보강)"
+          },
           "scope": {
             "enum": [
               "this",
@@ -2880,6 +3096,131 @@
             "type": "string",
             "example": "근태 확인 필요",
             "description": "반려 사유(강사에게 표시)"
+          }
+        }
+      },
+      "CreateCounselDto": {
+        "type": "object",
+        "properties": {
+          "applicantName": {
+            "type": "string"
+          },
+          "applicantPhone": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "internal_form",
+              "naver_form",
+              "google_form",
+              "manual",
+              "etc"
+            ]
+          },
+          "assignedStaffId": {
+            "type": "number"
+          },
+          "interestSubjectId": {
+            "type": "number"
+          },
+          "interestCourseId": {
+            "type": "number"
+          },
+          "academyExpectation": {
+            "type": "string"
+          },
+          "desiredStartTime": {
+            "type": "string",
+            "enum": [
+              "immediately",
+              "within_1_month",
+              "within_2_3_months",
+              "undecided"
+            ]
+          },
+          "learningAtmosphere": {
+            "type": "string",
+            "enum": [
+              "self_directed",
+              "normal",
+              "needs_management"
+            ]
+          },
+          "studentIntention": {
+            "type": "string",
+            "enum": [
+              "student_wants",
+              "parent_only",
+              "unknown"
+            ]
+          },
+          "weakness": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicantName",
+          "source"
+        ]
+      },
+      "UpdateCounselDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "pending",
+              "registered",
+              "dropped"
+            ]
+          },
+          "assignedStaffId": {
+            "type": "number"
+          },
+          "interestSubjectId": {
+            "type": "number"
+          },
+          "interestCourseId": {
+            "type": "number"
+          },
+          "academyExpectation": {
+            "type": "string"
+          },
+          "weakness": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateCounselRoundDto": {
+        "type": "object",
+        "properties": {
+          "counselorId": {
+            "type": "number"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "positive",
+              "neutral",
+              "negative",
+              "no_response",
+              "registered"
+            ]
+          },
+          "nextAction": {
+            "type": "string"
+          },
+          "nextContactAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           }
         }
       },

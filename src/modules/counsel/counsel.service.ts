@@ -1,10 +1,58 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { Course, COURSES } from '../courses/course.entity';
+import { Subject, SUBJECTS } from '../subjects/subject.entity';
 import { CounselForm, CounselRound, COUNSEL_FORMS, COUNSEL_ROUNDS } from './counsel.entity';
+import { CreateCounselDto } from './dto/create-counsel.dto';
+import { UpdateCounselDto } from './dto/update-counsel.dto';
+import { CreateCounselRoundDto } from './dto/create-round.dto';
 
 @Injectable()
 export class CounselService implements OnModuleInit {
   constructor(private readonly db: InMemoryDatabase) {}
+
+  // 관심 과목/코스 FK 존재 검증(있을 때만) — 참조 무결성.
+  private assertRefs(dto: { interestSubjectId?: number; interestCourseId?: number }): void {
+    if (dto.interestSubjectId != null && !this.db.findById<Subject>(SUBJECTS, dto.interestSubjectId))
+      throw new BadRequestException(`interestSubjectId ${dto.interestSubjectId} 없음`);
+    if (dto.interestCourseId != null && !this.db.findById<Course>(COURSES, dto.interestCourseId))
+      throw new BadRequestException(`interestCourseId ${dto.interestCourseId} 없음`);
+  }
+
+  findForm(id: number): CounselForm {
+    const row = this.db.findById<CounselForm>(COUNSEL_FORMS, id);
+    if (!row) throw new NotFoundException(`CounselForm ${id} not found`);
+    return row;
+  }
+
+  // 상담 접수 생성 — 최초 status='requested'(미지정 시).
+  createForm(dto: CreateCounselDto): CounselForm {
+    this.assertRefs(dto);
+    return this.db.insert<CounselForm>(COUNSEL_FORMS, { ...dto, status: 'requested' } as Omit<CounselForm, 'id' | 'createdAt' | 'updatedAt'>);
+  }
+
+  // 상담 폼 수정(상태 전환·담당자·관심사). 존재 검증 + 관심 FK 검증.
+  updateForm(id: number, dto: UpdateCounselDto): CounselForm {
+    this.findForm(id);
+    this.assertRefs(dto);
+    return this.db.update<CounselForm>(COUNSEL_FORMS, id, dto) as CounselForm;
+  }
+
+  // 회차 추가 — roundNo 자동 증가, 부모 폼 FK 검증 + nextContactAt 동기화(배지 단일 소스).
+  createRound(formId: number, dto: CreateCounselRoundDto): CounselRound {
+    this.findForm(formId);
+    const existing = this.db.findBy<CounselRound>(COUNSEL_ROUNDS, (r) => r.counselFormId === formId);
+    const roundNo = existing.reduce((max, r) => Math.max(max, r.roundNo), -1) + 1;
+    const round = this.db.insert<CounselRound>(COUNSEL_ROUNDS, {
+      counselFormId: formId, roundNo, counselorId: dto.counselorId,
+      completedAt: new Date().toISOString().slice(0, 10), isCompleted: true,
+      summary: dto.summary, detail: dto.detail, result: dto.result,
+      nextAction: dto.nextAction, nextContactAt: dto.nextContactAt,
+    } as Omit<CounselRound, 'id' | 'createdAt' | 'updatedAt'>);
+    // 폼의 다음 상담일을 최신 회차 기준으로 동기화(상담 배지 = nextContactAt 미정).
+    if (dto.nextContactAt !== undefined) this.db.update<CounselForm>(COUNSEL_FORMS, formId, { nextContactAt: dto.nextContactAt });
+    return round;
+  }
 
   // 데모 상담 시드 — 프론트 목데이터 이관. rounds.counselFormId→forms.id(무결성).
   // 상담 탭 배지: status≠dropped ∧ nextContactAt 없음(다음 상담일 미정) 기준.

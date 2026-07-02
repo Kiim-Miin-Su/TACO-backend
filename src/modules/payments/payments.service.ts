@@ -2,6 +2,7 @@ import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { Payment, PAYMENTS } from './payment.entity';
 import { CreatePaymentDto } from './dto/create-payment.dto';
+import { UpdatePaymentDto } from './dto/update-payment.dto';
 
 @Injectable()
 export class PaymentsService implements OnModuleInit {
@@ -43,6 +44,12 @@ export class PaymentsService implements OnModuleInit {
       status: 'pending',
       paymentMethod: dto.paymentMethod,
     });
+  }
+
+  // 청구 정정(금액·수단·기한·메모). 수납 완료여도 관리자 정정 허용 — 존재 검증.
+  update(id: number, dto: UpdatePaymentDto): Payment {
+    this.findOne(id);
+    return this.db.update<Payment>(PAYMENTS, id, { ...dto }) as Payment;
   }
 
   markPaid(id: number): Payment {
