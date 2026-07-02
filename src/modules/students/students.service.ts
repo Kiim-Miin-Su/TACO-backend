@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { Student, STUDENTS } from './student.entity';
+import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { CreateStudentDto } from './dto/create-student.dto';
 
 @Injectable()
@@ -40,5 +41,16 @@ export class StudentsService implements OnModuleInit {
       status: dto.status ?? 'lead',
       memo: dto.memo,
     });
+  }
+
+  // 소프트 삭제: 학생 상태를 canceled로, 해당 학생의 active 수강도 canceled로 정리(무결성).
+  remove(id: number): Student {
+    const student = this.db.findById<Student>(STUDENTS, id);
+    if (!student) throw new NotFoundException(`Student ${id} not found`);
+    const enrollments = this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === id);
+    for (const e of enrollments) {
+      this.db.update<Enrollment>(ENROLLMENTS, e.id, { status: 'canceled' });
+    }
+    return this.db.update<Student>(STUDENTS, id, { status: 'canceled' }) as Student;
   }
 }
