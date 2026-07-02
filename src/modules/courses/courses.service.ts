@@ -12,9 +12,10 @@ export class CoursesService implements OnModuleInit {
   // 조인의 단일 소스. 세션이 참조하는 코스 id를 고정해 FK/조인 무결성을 보장한다.
   onModuleInit(): void {
     this.db.seed<Course>(COURSES, [
-      { id: 10, name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, price: 600000, hourlyRate: 50000, color: '#0969da' },
-      { id: 11, name: 'AP Calculus BC', subjectId: 2, instructorId: 2, price: 720000, hourlyRate: 60000, color: '#8250df' },
-      { id: 12, name: 'TOEFL 정규', subjectId: 1, instructorId: 1, price: 500000, hourlyRate: 45000, color: '#1b7c83' },
+      // 정가(price)는 결제 시드 금액과 정합(코스10=480,000 등) — 단일 소스 일관성.
+      { id: 10, name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, price: 480000, hourlyRate: 50000, color: '#0969da' },
+      { id: 11, name: 'AP Calculus BC', subjectId: 2, instructorId: 2, price: 520000, hourlyRate: 60000, color: '#8250df' },
+      { id: 12, name: 'TOEFL 정규', subjectId: 1, instructorId: 1, price: 420000, hourlyRate: 45000, color: '#1b7c83' },
     ]);
   }
 

@@ -32,7 +32,7 @@
         "parameters": [
           {
             "name": "token",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -81,7 +81,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -120,7 +130,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -149,7 +166,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -178,7 +202,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "summary": "토큰 검증 → claims.",
@@ -193,7 +224,7 @@
         "parameters": [
           {
             "name": "webId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -202,7 +233,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -216,7 +254,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -244,7 +292,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -266,7 +324,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -289,7 +354,42 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      },
+      "delete": {
+        "operationId": "StudentsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -303,7 +403,7 @@
         "parameters": [
           {
             "name": "studentId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -312,7 +412,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -334,7 +444,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -357,7 +474,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -371,11 +495,26 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
-          "Payments"
+          "payments"
         ]
       },
       "post": {
@@ -393,11 +532,23 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
-          "Payments"
+          "payments"
         ]
       }
     },
@@ -416,11 +567,66 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
-          "Payments"
+          "payments"
+        ]
+      },
+      "patch": {
+        "operationId": "PaymentsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdatePaymentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "payments"
         ]
       }
     },
@@ -439,11 +645,23 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
         "tags": [
-          "Payments"
+          "payments"
         ]
       }
     },
@@ -453,7 +671,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -475,7 +703,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -498,7 +733,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -512,7 +754,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -534,7 +786,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -557,7 +816,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -571,7 +837,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -598,7 +874,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -626,7 +909,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -654,7 +944,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -682,7 +979,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -701,7 +1005,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -723,7 +1037,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -746,7 +1067,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -893,7 +1221,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -947,7 +1285,14 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1077,7 +1422,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1105,7 +1460,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1134,7 +1496,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1162,7 +1531,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1265,7 +1641,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1310,7 +1696,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1339,7 +1732,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1533,6 +1933,446 @@
           "payouts"
         ]
       }
+    },
+    "/api/counsel": {
+      "get": {
+        "operationId": "CounselController_findForms",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "CounselForm[] — 신청자·상태·관심 과목/코스·다음 상담일 등"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 접수 목록(CounselForm[])",
+        "tags": [
+          "counsel"
+        ]
+      },
+      "post": {
+        "operationId": "CounselController_createForm",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCounselDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 CounselForm"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 접수 생성 — status=requested",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
+    "/api/counsel/rounds": {
+      "get": {
+        "operationId": "CounselController_findRounds",
+        "parameters": [
+          {
+            "name": "counselFormId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "CounselRound[] — 회차·요약·결과·다음 액션"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 회차 목록(CounselRound[]). counselFormId로 필터.",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
+    "/api/counsel/{id}": {
+      "patch": {
+        "operationId": "CounselController_updateForm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCounselDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "수정된 CounselForm"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 폼 수정(상태 전환·담당자·관심사)",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
+    "/api/counsel/{id}/rounds": {
+      "post": {
+        "operationId": "CounselController_createRound",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCounselRoundDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 CounselRound"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 회차 추가 — roundNo 자동, 폼 nextContactAt 동기화",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
+    "/api/transactions": {
+      "get": {
+        "operationId": "TransactionsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Transaction[] — direction(in/out)·category·label·amount·method·occurredAt"
+          }
+        },
+        "summary": "입·출금 통합 원장(Transaction[]) — 대시보드 매출/지출 집계용",
+        "tags": [
+          "transactions"
+        ]
+      }
+    },
+    "/api/events": {
+      "get": {
+        "operationId": "EventsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "AcademyEvent[] — title·type·priority·startDate·endDate·allDay·memo"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "학원 이벤트/공지 목록(AcademyEvent[]) — 캘린더 표시(시작일 오름차순)",
+        "tags": [
+          "events"
+        ]
+      },
+      "post": {
+        "operationId": "EventsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 AcademyEvent"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "학원 이벤트 발행(관리자) — 캘린더 구간 유효성 검증",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/attendance": {
+      "get": {
+        "operationId": "AttendanceController_findAll",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attendance[] — sessionId·studentId·status"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "출결 목록(Attendance[]) — sessionId 지정 시 해당 세션만",
+        "tags": [
+          "attendance"
+        ]
+      },
+      "put": {
+        "operationId": "AttendanceController_upsert",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAttendanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "upsert된 Attendance"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/roadmaps": {
+      "get": {
+        "operationId": "RoadmapsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Roadmap[] — title·targetGrade·durationWeeks·isActive"
+          }
+        },
+        "summary": "로드맵 목록(Roadmap[])",
+        "tags": [
+          "roadmaps"
+        ]
+      },
+      "post": {
+        "operationId": "RoadmapsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoadmapDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 Roadmap"
+          }
+        },
+        "summary": "로드맵 생성 — courseIds(코스 FK) 순서대로 링크",
+        "tags": [
+          "roadmaps"
+        ]
+      }
+    },
+    "/api/roadmaps/courses": {
+      "get": {
+        "operationId": "RoadmapsController_findAllCourses",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "RoadmapCourse[] — roadmapId·courseId·sortOrder"
+          }
+        },
+        "summary": "로드맵↔코스 링크(RoadmapCourse[]) — M:N 조인(sortOrder)",
+        "tags": [
+          "roadmaps"
+        ]
+      }
+    },
+    "/api/parents": {
+      "get": {
+        "operationId": "ParentsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Parent[] — name·phone·kakaoAvailable"
+          }
+        },
+        "summary": "보호자 목록(Parent[])",
+        "tags": [
+          "parents"
+        ]
+      },
+      "post": {
+        "operationId": "ParentsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateParentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ parent, relation }"
+          }
+        },
+        "summary": "보호자 등록 + 학생 연결 — studentId FK 검증, 대표 불변",
+        "tags": [
+          "parents"
+        ]
+      }
+    },
+    "/api/parents/relations": {
+      "get": {
+        "operationId": "ParentsController_findAllRelations",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "ParentStudent[] — parentId·studentId·relation·isPayer·isPrimary"
+          }
+        },
+        "summary": "학생↔보호자 관계(ParentStudent[]) — M:N(대표/납부자)",
+        "tags": [
+          "parents"
+        ]
+      }
+    },
+    "/api/parents/link": {
+      "post": {
+        "operationId": "ParentsController_link",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LinkParentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "생성된 ParentStudent"
+          }
+        },
+        "summary": "기존 보호자를 학생에 연결(형제 M:N) — FK·유니크·대표 불변",
+        "tags": [
+          "parents"
+        ]
+      }
+    },
+    "/api/parents/relations/{id}": {
+      "patch": {
+        "operationId": "ParentsController_updateRelation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRelationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "수정된 ParentStudent"
+          }
+        },
+        "summary": "관계 수정(대표 이전·납부자 변경) — 대표 지정 시 기존 대표 강등",
+        "tags": [
+          "parents"
+        ]
+      }
     }
   },
   "info": {
@@ -1554,43 +2394,326 @@
     "schemas": {
       "SignupDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "webId": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 50
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 100
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "instructor",
+              "manager",
+              "admin"
+            ]
+          }
+        },
+        "required": [
+          "webId",
+          "name",
+          "email",
+          "password"
+        ]
       },
       "LoginDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "webId": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "webId"
+        ]
       },
       "ApproveDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "instructor",
+              "manager",
+              "admin",
+              "super_admin"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
       },
       "CreateStudentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "englishName": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "grade": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "schoolName": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "residenceType": {
+            "type": "string",
+            "enum": [
+              "domestic",
+              "overseas"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "lead",
+              "active",
+              "paused",
+              "completed",
+              "canceled"
+            ]
+          },
+          "memo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
       },
       "CreateEnrollmentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "studentId": {
+            "type": "number"
+          },
+          "courseId": {
+            "type": "number"
+          },
+          "roadmapId": {
+            "type": "number"
+          },
+          "totalSessions": {
+            "type": "number",
+            "minimum": 0
+          },
+          "memo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "studentId",
+          "courseId"
+        ]
       },
       "CreatePaymentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "studentId": {
+            "type": "number"
+          },
+          "enrollmentId": {
+            "type": "number"
+          },
+          "payerParentId": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "card",
+              "transfer",
+              "cash",
+              "point",
+              "etc"
+            ]
+          }
+        },
+        "required": [
+          "studentId",
+          "amount"
+        ]
+      },
+      "UpdatePaymentDto": {
+        "type": "object",
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "card",
+              "transfer",
+              "cash",
+              "point",
+              "etc"
+            ]
+          },
+          "dueAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "memo": {
+            "type": "string"
+          }
+        }
       },
       "CreateSubjectDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 50
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
       },
       "CreateCourseDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "subjectId": {
+            "type": "number"
+          },
+          "instructorId": {
+            "type": "number"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0
+          },
+          "hourlyRate": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "subjectId",
+          "instructorId",
+          "price",
+          "hourlyRate"
+        ]
       },
       "CreateExpenseDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "supplies",
+              "equipment",
+              "books",
+              "rent",
+              "utility",
+              "marketing",
+              "meal",
+              "etc"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "spentAt": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          },
+          "memo": {
+            "type": "string"
+          },
+          "receiptUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "title",
+          "amount",
+          "spentAt"
+        ]
       },
       "CreateRoomDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "buildingId": {
+            "type": "number"
+          },
+          "capacity": {
+            "type": "number",
+            "minimum": 0
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#?([0-9A-F]{3}|[0-9A-F]{4}|[0-9A-F]{6}|[0-9A-F]{8})$"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ]
       },
       "UpsertAvailabilityDto": {
         "type": "object",
@@ -1601,12 +2724,13 @@
             "description": "수정할 블록 id(없으면 신규 생성)"
           },
           "ownerType": {
-            "type": "string",
             "enum": [
               "student",
               "instructor",
               "room"
             ],
+            "type": "string",
+            "example": "instructor",
             "description": "소유 자원 종류"
           },
           "ownerId": {
@@ -1615,18 +2739,19 @@
             "description": "소유 자원 id(ownerType에 따라 students/users/rooms)"
           },
           "kind": {
-            "type": "string",
             "enum": [
               "available",
               "unavailable"
             ],
+            "type": "string",
+            "example": "unavailable",
             "description": "가용/불가(기본 available)"
           },
           "weekday": {
             "type": "number",
-            "example": 1,
             "minimum": 0,
             "maximum": 6,
+            "example": 1,
             "description": "요일(0=일 ~ 6=토)"
           },
           "startTime": {
@@ -1712,14 +2837,17 @@
           },
           "instructorId": {
             "type": "number",
+            "example": 1,
             "description": "강사 FK(미지정 시 코스 기본 강사)"
           },
           "roomId": {
             "type": "number",
+            "example": 2,
             "description": "강의실 FK"
           },
           "sessionDate": {
             "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "example": "2026-06-30"
           },
           "startTime": {
@@ -1733,35 +2861,47 @@
           },
           "durationMinutes": {
             "type": "number",
+            "minimum": 10,
             "example": 90,
             "description": "endTime 없을 때 사용(기본 60)"
           },
           "topic": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 200,
+            "example": "Reading: 추론 문제 전략",
+            "description": "수업 주제"
           },
           "memo": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500,
+            "example": "교재 3장 지참",
+            "description": "메모"
           },
           "color": {
             "type": "string",
+            "maxLength": 20,
+            "example": "#0969da",
             "description": "캘린더 색상 라벨(미지정 시 코스 색)"
           },
           "seriesId": {
             "type": "number",
-            "description": "반복 시리즈로 묶을 때"
+            "example": 1719800000000,
+            "description": "반복 시리즈로 묶을 때(같은 seriesId)"
           },
           "status": {
-            "type": "string",
             "enum": [
               "scheduled",
               "held",
               "canceled",
               "no_show",
               "makeup"
-            ]
+            ],
+            "type": "string",
+            "example": "scheduled"
           },
           "force": {
             "type": "boolean",
+            "example": false,
             "description": "충돌이 있어도 강제 적용(기본 false → 충돌 시 409)"
           }
         },
@@ -1776,6 +2916,7 @@
         "properties": {
           "sessionDate": {
             "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "example": "2026-07-02",
             "description": "이동할 날짜(YYYY-MM-DD)"
           },
@@ -1791,22 +2932,25 @@
           },
           "durationMinutes": {
             "type": "number",
+            "minimum": 10,
             "example": 60
           },
           "roomId": {
             "type": "number",
+            "example": 2,
             "description": "강의실 FK"
           },
           "instructorId": {
             "type": "number",
+            "example": 1,
             "description": "강사 FK"
           },
           "courseId": {
             "type": "number",
+            "example": 10,
             "description": "코스 FK"
           },
           "status": {
-            "type": "string",
             "enum": [
               "scheduled",
               "held",
@@ -1814,29 +2958,50 @@
               "no_show",
               "makeup"
             ],
+            "type": "string",
+            "example": "canceled",
             "description": "상태(취소/결강 등)"
           },
           "topic": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 200,
+            "example": "Reading: 근거 문장 매칭"
           },
           "memo": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500,
+            "example": "워크북 지참"
           },
           "color": {
             "type": "string",
+            "maxLength": 20,
+            "example": "#9a6700",
             "description": "캘린더 색상 라벨"
           },
-          "scope": {
+          "instructorAttendance": {
+            "enum": [
+              "present",
+              "late",
+              "absent",
+              "makeup"
+            ],
             "type": "string",
+            "example": "present",
+            "description": "강사 출결(출석/지각/결석/보강)"
+          },
+          "scope": {
             "enum": [
               "this",
               "this_and_following",
               "all"
             ],
+            "type": "string",
+            "example": "this",
             "description": "반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)"
           },
           "force": {
             "type": "boolean",
+            "example": false,
             "description": "충돌이 있어도 강제 적용(기본 false → 충돌 시 409)"
           }
         }
@@ -1861,20 +3026,23 @@
           },
           "content": {
             "type": "string",
+            "maxLength": 4000,
             "example": "오늘 진도: 추론 문제 3세트. 정답률 향상.",
             "description": "보고서 본문(진도·피드백)"
           },
           "homework": {
             "type": "string",
+            "maxLength": 2000,
             "example": "워크북 12–15p",
             "description": "숙제(선택)"
           },
           "status": {
-            "type": "string",
             "enum": [
               "draft",
               "submitted"
             ],
+            "type": "string",
+            "example": "submitted",
             "description": "기본 submitted(승인요청). draft 허용"
           }
         },
@@ -1899,6 +3067,7 @@
         "properties": {
           "reason": {
             "type": "string",
+            "maxLength": 1000,
             "example": "진도 내용 보완 필요",
             "description": "반려 사유(강사에게 표시)"
           }
@@ -1934,6 +3103,7 @@
         "properties": {
           "amount": {
             "type": "number",
+            "minimum": 0,
             "example": 150000,
             "description": "실효 지급액(원). 자동 산정액은 보존됨"
           },
@@ -1954,6 +3124,298 @@
             "type": "string",
             "example": "근태 확인 필요",
             "description": "반려 사유(강사에게 표시)"
+          }
+        }
+      },
+      "CreateCounselDto": {
+        "type": "object",
+        "properties": {
+          "applicantName": {
+            "type": "string"
+          },
+          "applicantPhone": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "internal_form",
+              "naver_form",
+              "google_form",
+              "manual",
+              "etc"
+            ]
+          },
+          "assignedStaffId": {
+            "type": "number"
+          },
+          "interestSubjectId": {
+            "type": "number"
+          },
+          "interestCourseId": {
+            "type": "number"
+          },
+          "academyExpectation": {
+            "type": "string"
+          },
+          "desiredStartTime": {
+            "type": "string",
+            "enum": [
+              "immediately",
+              "within_1_month",
+              "within_2_3_months",
+              "undecided"
+            ]
+          },
+          "learningAtmosphere": {
+            "type": "string",
+            "enum": [
+              "self_directed",
+              "normal",
+              "needs_management"
+            ]
+          },
+          "studentIntention": {
+            "type": "string",
+            "enum": [
+              "student_wants",
+              "parent_only",
+              "unknown"
+            ]
+          },
+          "weakness": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicantName",
+          "source"
+        ]
+      },
+      "UpdateCounselDto": {
+        "type": "object",
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "pending",
+              "registered",
+              "dropped"
+            ]
+          },
+          "assignedStaffId": {
+            "type": "number"
+          },
+          "interestSubjectId": {
+            "type": "number"
+          },
+          "interestCourseId": {
+            "type": "number"
+          },
+          "academyExpectation": {
+            "type": "string"
+          },
+          "weakness": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateCounselRoundDto": {
+        "type": "object",
+        "properties": {
+          "counselorId": {
+            "type": "number"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "positive",
+              "neutral",
+              "negative",
+              "no_response",
+              "registered"
+            ]
+          },
+          "nextAction": {
+            "type": "string"
+          },
+          "nextContactAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        }
+      },
+      "CreateEventDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "notice",
+              "exam",
+              "holiday",
+              "closure",
+              "event"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": "string"
+          },
+          "allDay": {
+            "type": "boolean"
+          },
+          "memo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "type",
+          "startDate",
+          "endDate"
+        ]
+      },
+      "UpsertAttendanceDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "studentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "late",
+              "absent",
+              "excused"
+            ]
+          }
+        },
+        "required": [
+          "sessionId",
+          "studentId",
+          "status"
+        ]
+      },
+      "CreateRoadmapDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "targetGrade": {
+            "type": "number",
+            "minimum": 0
+          },
+          "courseIds": {
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "CreateParentDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "webId": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          },
+          "isPayer": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "studentId": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "name",
+          "studentId"
+        ]
+      },
+      "LinkParentDto": {
+        "type": "object",
+        "properties": {
+          "parentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "studentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "relation": {
+            "type": "string"
+          },
+          "isPayer": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "parentId",
+          "studentId"
+        ]
+      },
+      "UpdateRelationDto": {
+        "type": "object",
+        "properties": {
+          "relation": {
+            "type": "string"
+          },
+          "isPayer": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
           }
         }
       }

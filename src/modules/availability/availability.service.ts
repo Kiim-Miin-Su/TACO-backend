@@ -26,10 +26,15 @@ export class AvailabilityService implements OnModuleInit {
   private assertNoOverlap(dto: UpsertAvailabilityDto): void {
     const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
     const s = toMin(dto.startTime), e = toMin(dto.endTime);
+    // 기간(effectiveFrom/effectiveTo)이 겹치는지 — 서로 다른 기간이면 같은 요일·시간이어도 공존 가능
+    // ("이번만/앞으로" 분할 규칙). 미지정은 무한대(±)로 간주.
+    const rangesOverlap = (aF?: string, aT?: string, bF?: string, bT?: string) =>
+      (!aT || !bF || bF <= aT) && (!bT || !aF || aF <= bT);
     const clash = this.db.findBy<AvailabilityBlock>(AVAILABILITY, (b) =>
       b.id !== dto.id &&
       b.ownerType === dto.ownerType && b.ownerId === dto.ownerId && b.weekday === dto.weekday &&
-      toMin(b.startTime) < e && s < toMin(b.endTime),
+      toMin(b.startTime) < e && s < toMin(b.endTime) &&
+      rangesOverlap(dto.effectiveFrom, dto.effectiveTo, b.effectiveFrom, b.effectiveTo),
     )[0];
     if (clash) {
       const kindLabel = clash.kind === 'unavailable' ? '불가시간' : '가용시간';

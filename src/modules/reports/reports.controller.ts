@@ -4,7 +4,7 @@ import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { ApproveReportDto, RejectReportDto } from './dto/report-action.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -26,12 +26,14 @@ export class ReportsController {
   }
 
   @Post()
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '보고서 작성(세션 FK·중복·강사 일치 검증). 기본 submitted(승인요청).' })
   create(@Body() dto: CreateReportDto) {
     return this.reports.create(dto);
   }
 
   @Post(':id/submit')
+  @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '강사 제출(draft → submitted)' })
   submit(@Param('id', ParseIntPipe) id: number) {
     return this.reports.submit(id);
