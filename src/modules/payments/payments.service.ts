@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { Payment, PAYMENTS } from './payment.entity';
+import { Transaction, TRANSACTIONS } from '../transactions/transaction.entity';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 
@@ -54,10 +55,21 @@ export class PaymentsService implements OnModuleInit {
 
   markPaid(id: number): Payment {
     const row = this.findOne(id);
+    const now = new Date().toISOString();
     const updated = this.db.update<Payment>(PAYMENTS, id, {
       status: 'paid',
       paidAmount: row.amount,
-      paidAt: new Date().toISOString(),
+      paidAt: now,
+    });
+    // [자산화 점검 2026-07-02] 수납 = 통합 원장(transactions)에 입금 1줄 — payouts.pay와 동일 패턴.
+    //  이전엔 결제 상태만 바뀌고 원장 미기록 → 매출 집계(자산)에서 수납이 누락되던 갭.
+    this.db.insert<Transaction>(TRANSACTIONS, {
+      direction: 'in',
+      category: 'tuition',
+      label: `수강료 수납 — 학생 ${row.studentId}${row.enrollmentId != null ? ` · 수강 ${row.enrollmentId}` : ''}`,
+      amount: row.amount,
+      occurredAt: now,
+      paymentId: id,
     });
     return updated as Payment;
   }

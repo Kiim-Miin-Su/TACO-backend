@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { Expense, EXPENSES } from './expense.entity';
+import { Transaction, TRANSACTIONS } from '../transactions/transaction.entity';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 
 @Injectable()
@@ -44,8 +45,19 @@ export class ExpensesService implements OnModuleInit {
   }
 
   approve(id: number): Expense {
-    this.findOne(id);
-    return this.db.update<Expense>(EXPENSES, id, { status: 'approved' }) as Expense;
+    const row = this.findOne(id);
+    const updated = this.db.update<Expense>(EXPENSES, id, { status: 'approved' }) as Expense;
+    // [자산화 점검 2026-07-02] 지출 승인 = 통합 원장(transactions)에 출금 1줄(TBO-03 "승인 후 출금 반영").
+    //  이전엔 상태만 approved로 바뀌고 원장 미기록 → 지출 집계(자산)에서 누락되던 갭.
+    this.db.insert<Transaction>(TRANSACTIONS, {
+      direction: 'out',
+      category: `expense_${row.category}`,
+      label: `지출 승인 — ${row.title}`,
+      amount: row.amount,
+      occurredAt: new Date().toISOString(),
+      expenseId: id,
+    });
+    return updated;
   }
 
   reject(id: number): Expense {

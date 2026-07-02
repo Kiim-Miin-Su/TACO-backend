@@ -1,7 +1,8 @@
 import type { BaseRow } from '../../common/types/base';
 
 export const PAYOUTS = 'instructor_payouts';
-export const TRANSACTIONS = 'transactions';
+// 통합 원장 컬렉션명은 transactions 모듈이 단일 소스(중복 상수 제거 — 자산화 점검 2026-07-02)
+export { TRANSACTIONS } from '../transactions/transaction.entity';
 
 /**
  * 정산서 상태.
