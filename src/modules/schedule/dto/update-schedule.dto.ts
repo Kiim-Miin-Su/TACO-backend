@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, IsBoolean } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, IsBoolean, Max } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import type { SessionStatus, RecurrenceScope, InstructorAttendanceStatus } from '@kms545487/contracts';
 
@@ -22,7 +22,7 @@ export class UpdateScheduleDto {
   endTime?: string;
 
   @ApiPropertyOptional({ example: 60 })
-  @IsOptional() @IsInt() @Min(10)
+  @IsOptional() @IsInt() @Min(10) @Max(480) // [감사 H4] 상한 8h — 시급 계산 오염 방지
   durationMinutes?: number;
 
   @ApiPropertyOptional({ example: 2, description: '강의실 FK' })

@@ -6,6 +6,7 @@ import {
   Max,
   Min,
   MaxLength,
+  Matches,
 } from 'class-validator';
 import type { CreateStudentInput } from '@kms545487/contracts';
 import { ResidenceType, StudentStatus } from '../student.entity';
@@ -50,6 +51,7 @@ export class CreateStudentDto implements CreateStudentInput {
 
   @IsOptional()
   @IsString()
+  @Matches(/^[A-Z]{2}$/, { message: 'country는 ISO 3166-1 alpha-2 대문자 2자여야 합니다(예: KR·US·VN)' }) // [감사 H1] 임의 문자열 차단
   country?: string; // ISO alpha-2 — 시차·국가 필터
 
   @IsOptional()

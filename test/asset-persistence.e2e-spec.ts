@@ -91,6 +91,25 @@ describe('Asset persistence sweep (e2e)', () => {
     expect((await http.get('/api/events').expect(200)).body.some((e: { id: number }) => e.id === event.id)).toBe(true);
   });
 
+  it('[감사 2026-07-02] 입력 가드 회귀: country 형식·enrollment FK·duration/amount 상한 = 400', async () => {
+    // H1: country는 ISO alpha-2 대문자 2자만 — 임의 문자열/소문자/1자 거부
+    await http.post('/api/students').set(asAdmin()).send({ name: '가드학생', country: 'usa' }).expect(400);
+    await http.post('/api/students').set(asAdmin()).send({ name: '가드학생', country: 'X' }).expect(400);
+    const ok = (await http.post('/api/students').set(asAdmin()).send({ name: '가드학생', country: 'US' }).expect(201)).body;
+    expect(ok.country).toBe('US');
+    // H3: enrollments FK — 존재하지 않는 학생/코스 거부(유령 코호트 방지)
+    await http.post('/api/enrollments').set(asAdmin()).send({ studentId: 99999, courseId: 10 }).expect(400);
+    await http.post('/api/enrollments').set(asAdmin()).send({ studentId: ok.id, courseId: 99999 }).expect(400);
+    // H4: durationMinutes 상한 8h — 시급 계산 오염 방지
+    await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-05-01', startTime: '10:00', durationMinutes: 999999 }).expect(400);
+    // H5: amount 상한 1억
+    await http.post('/api/payments').set(asAdmin())
+      .send({ studentId: 1, courseId: 10, amount: 999_999_999_999, dueAt: '2099-05-01' }).expect(400);
+    await http.post('/api/expenses').set(asAdmin())
+      .send({ title: '가드 지출', amount: 999_999_999_999, category: 'supplies', spentAt: '2099-05-01' }).expect(400);
+  });
+
   it('재무: payments(청구→수납)와 expenses(요청→승인)가 저장되고 원장(transactions)에 기록된다', async () => {
     const txBefore = await listLen('/api/transactions');
     const pay = (await http.post('/api/payments').set(asAdmin())

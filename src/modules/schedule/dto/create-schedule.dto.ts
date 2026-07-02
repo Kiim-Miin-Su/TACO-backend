@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { SessionStatus } from '@kms545487/contracts';
 
@@ -32,7 +32,7 @@ export class CreateScheduleDto {
   endTime?: string;
 
   @ApiPropertyOptional({ example: 90, description: 'endTime 없을 때 사용(기본 60)' })
-  @IsOptional() @IsInt() @Min(10)
+  @IsOptional() @IsInt() @Min(10) @Max(480) // [감사 H4] 상한 8h — 시급 계산 오염 방지
   durationMinutes?: number;
 
   @ApiPropertyOptional({ example: 'Reading: 추론 문제 전략', description: '수업 주제' })

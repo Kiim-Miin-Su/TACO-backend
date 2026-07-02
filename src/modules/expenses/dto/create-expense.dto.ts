@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Min, Max } from 'class-validator';
 import type { CreateExpenseInput } from '@kms545487/contracts';
 import { ExpenseCategory } from '../expense.entity';
 
@@ -15,6 +15,7 @@ export class CreateExpenseDto implements CreateExpenseInput {
 
   @IsInt()
   @Min(0)
+  @Max(100_000_000) // [감사 H5] 상한 1억 — 오입력·오버플로우 방지
   amount!: number;
 
   @IsString()

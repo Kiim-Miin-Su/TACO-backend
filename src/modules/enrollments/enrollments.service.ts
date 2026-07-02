@@ -1,7 +1,9 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { Enrollment, ENROLLMENTS } from './enrollment.entity';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
+import { STUDENTS } from '../students/student.entity';
+import { COURSES } from '../courses/course.entity';
 
 @Injectable()
 export class EnrollmentsService implements OnModuleInit {
@@ -35,6 +37,11 @@ export class EnrollmentsService implements OnModuleInit {
 
   // 결제 없이도 등록 가능 (status=active)
   create(dto: CreateEnrollmentDto): Enrollment {
+    // [감사 H3] FK 존재 검증 — 고아 수강이 스케줄 코호트(activeStudentIds)에 유령 학생을 만드는 것 방지.
+    if (!this.db.findById(STUDENTS, dto.studentId))
+      throw new BadRequestException(`존재하지 않는 학생입니다 (studentId=${dto.studentId})`);
+    if (!this.db.findById(COURSES, dto.courseId))
+      throw new BadRequestException(`존재하지 않는 코스입니다 (courseId=${dto.courseId})`);
     return this.db.insert<Enrollment>(ENROLLMENTS, {
       studentId: dto.studentId,
       courseId: dto.courseId,
