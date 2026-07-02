@@ -13,9 +13,9 @@ export class StudentsService implements OnModuleInit {
   onModuleInit(): void {
     if (this.db.findAll<Student>(STUDENTS).length) return;
     this.db.seed<Student>(STUDENTS, [
-      { id: 1, name: '김서연', englishName: 'Sophia', grade: 11, residenceType: 'domestic', status: 'active' },
-      { id: 2, name: '이준호', englishName: 'Daniel', grade: 12, residenceType: 'domestic', status: 'active' },
-      { id: 3, name: '박지민', englishName: 'Emma', grade: 10, residenceType: 'domestic', status: 'paused' },
+      { id: 1, name: '김서연', englishName: 'Sophia', grade: 11, residenceType: 'overseas', country: 'US', status: 'active' },
+      { id: 2, name: '이준호', englishName: 'Daniel', grade: 12, residenceType: 'domestic', country: 'KR', status: 'active' },
+      { id: 3, name: '박지민', englishName: 'Emma', grade: 10, residenceType: 'overseas', country: 'VN', status: 'paused' },
       { id: 4, name: '최민준', englishName: 'Lucas', grade: 11, residenceType: 'domestic', status: 'active' },
     ]);
   }
@@ -39,6 +39,7 @@ export class StudentsService implements OnModuleInit {
       schoolName: dto.schoolName,
       residenceType: dto.residenceType ?? 'domestic',
       status: dto.status ?? 'lead',
+      country: dto.country,
       memo: dto.memo,
     });
   }

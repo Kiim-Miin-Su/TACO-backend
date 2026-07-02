@@ -50,5 +50,9 @@ export class CreateStudentDto implements CreateStudentInput {
 
   @IsOptional()
   @IsString()
+  country?: string; // ISO alpha-2 — 시차·국가 필터
+
+  @IsOptional()
+  @IsString()
   memo?: string;
 }
