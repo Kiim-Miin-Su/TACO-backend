@@ -45,6 +45,8 @@ export class StudentsService implements OnModuleInit {
 
   // 소프트 삭제: 학생 상태를 canceled로, 해당 학생의 active 수강도 canceled로 정리(무결성).
   remove(id: number): Student {
+    // [원자성] 학생 소프트삭제 + 활성 수강 일괄 canceled(부분 정리 잔존 금지)
+    return this.db.transaction(() => {
     const student = this.db.findById<Student>(STUDENTS, id);
     if (!student) throw new NotFoundException(`Student ${id} not found`);
     const enrollments = this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === id);
@@ -52,5 +54,7 @@ export class StudentsService implements OnModuleInit {
       this.db.update<Enrollment>(ENROLLMENTS, e.id, { status: 'canceled' });
     }
     return this.db.update<Student>(STUDENTS, id, { status: 'canceled' }) as Student;
+  
+    });
   }
 }

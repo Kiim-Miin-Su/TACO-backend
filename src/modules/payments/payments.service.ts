@@ -54,6 +54,8 @@ export class PaymentsService implements OnModuleInit {
   }
 
   markPaid(id: number): Payment {
+    // [원자성] 수납 상태 갱신 + 통합 원장 입금 1줄이 함께(원장 누락 방지)
+    return this.db.transaction(() => {
     const row = this.findOne(id);
     const now = new Date().toISOString();
     const updated = this.db.update<Payment>(PAYMENTS, id, {
@@ -72,5 +74,6 @@ export class PaymentsService implements OnModuleInit {
       paymentId: id,
     });
     return updated as Payment;
+      });
   }
 }

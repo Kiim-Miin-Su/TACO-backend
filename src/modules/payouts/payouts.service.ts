@@ -154,6 +154,8 @@ export class PayoutsService implements OnModuleInit {
 
   // 정산서 생성(pending) + 세션 연결(payoutId·페이 스냅샷 기록 → 이중 계상 방지).
   generate(instructorId: number, from: string, to: string): InstructorPayoutRow {
+    // [원자성] 정산서 생성 + 세션 payoutId 연결이 함께 성공/실패(이중계상 방지 불변식 보호)
+    return this.db.transaction(() => {
     const m = this.measure(instructorId, from, to);
     if (m.sessionCount === 0)
       throw new BadRequestException('정산 대상 세션이 없습니다(진행 완료 + 승인 보고서 필요)');
@@ -178,6 +180,8 @@ export class PayoutsService implements OnModuleInit {
       });
     }
     return payout;
+  
+    });
   }
 
   findAll(): InstructorPayoutRow[] {
@@ -215,6 +219,8 @@ export class PayoutsService implements OnModuleInit {
 
   // 관리자 반려(→ rejected) + 연결 세션 회수(payoutId 해제 → 재산정 가능).
   reject(id: number, reason?: string): InstructorPayoutRow {
+    // [원자성] 반려 상태 + 연결 세션 전량 회수(부분 회수 잔존 금지)
+    return this.db.transaction(() => {
     const p = this.findOne(id);
     if (p.status === 'paid') throw new BadRequestException('이미 지급됨 — 반려 불가');
     for (const l of p.lines) {
@@ -230,10 +236,14 @@ export class PayoutsService implements OnModuleInit {
       status: 'rejected',
       rejectedReason: reason ?? '사유 미기재',
     }) as InstructorPayoutRow;
+  
+    });
   }
 
   // 지급 완료(confirmed → paid) + 통합 원장 출금 1줄 기록.
   pay(id: number): { payout: InstructorPayoutRow; transaction: TransactionRow } {
+    // [원자성] 지급 상태 + 통합 원장 출금 1줄이 함께 기록(원장 누락/유령 지급 방지)
+    return this.db.transaction(() => {
     const p = this.findOne(id);
     if (p.status !== 'confirmed') throw new BadRequestException(`지급 불가 상태(${p.status}) — confirmed만 지급 가능`);
     const now = new Date().toISOString();
@@ -250,5 +260,6 @@ export class PayoutsService implements OnModuleInit {
       payoutId: id,
     });
     return { payout, transaction };
+      });
   }
 }

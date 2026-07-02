@@ -45,6 +45,8 @@ export class ExpensesService implements OnModuleInit {
   }
 
   approve(id: number): Expense {
+    // [원자성] 지출 승인 + 통합 원장 출금 1줄이 함께(원장 누락 방지)
+    return this.db.transaction(() => {
     const row = this.findOne(id);
     const updated = this.db.update<Expense>(EXPENSES, id, { status: 'approved' }) as Expense;
     // [자산화 점검 2026-07-02] 지출 승인 = 통합 원장(transactions)에 출금 1줄(TBO-03 "승인 후 출금 반영").
@@ -58,6 +60,7 @@ export class ExpensesService implements OnModuleInit {
       expenseId: id,
     });
     return updated;
+      });
   }
 
   reject(id: number): Expense {

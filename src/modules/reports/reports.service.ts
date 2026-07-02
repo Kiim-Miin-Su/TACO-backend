@@ -36,7 +36,7 @@ export class ReportsService implements OnModuleInit {
   }
 
   findBySession(sessionId: number): SessionReportRow[] {
-    return this.db.findBy<SessionReportRow>(SESSION_REPORTS, (r) => r.sessionId === sessionId);
+    return this.db.findByField<SessionReportRow>(SESSION_REPORTS, 'sessionId', sessionId); // 인덱스 조회
   }
 
   // 승인된 보고서가 있는 세션 id 집합 — 시수 적격성 판정에 사용(payouts에서 호출).

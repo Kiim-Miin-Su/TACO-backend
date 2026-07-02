@@ -40,7 +40,8 @@ export class ParentsService implements OnModuleInit {
 
   // 신규 보호자 + 학생 연결(intake).
   create(dto: CreateParentDto): { parent: Parent; relation: ParentStudent } {
-    if (!this.db.findById<Student>(STUDENTS, dto.studentId))
+    // [원자성] 보호자 생성 + 학생 연결(+기존 대표 강등)이 함께 — 고아 보호자/이중 대표 방지
+    return this.db.transaction(() => {    if (!this.db.findById<Student>(STUDENTS, dto.studentId))
       throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
     const parent = this.db.insert<Parent>(PARENTS, {
       name: dto.name,
@@ -56,6 +57,7 @@ export class ParentsService implements OnModuleInit {
       isPrimary: dto.isPrimary,
     });
     return { parent, relation };
+      });
   }
 
   // 기존 보호자를 학생에 연결(형제 등 M:N). FK·유니크·대표 불변 강제.

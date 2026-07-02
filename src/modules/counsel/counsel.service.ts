@@ -40,6 +40,8 @@ export class CounselService implements OnModuleInit {
 
   // 회차 추가 — roundNo 자동 증가, 부모 폼 FK 검증 + nextContactAt 동기화(배지 단일 소스).
   createRound(formId: number, dto: CreateCounselRoundDto): CounselRound {
+    // [원자성] 회차 기록 + 폼 nextContactAt 동기화가 함께(다음 일정 불일치 방지)
+    return this.db.transaction(() => {
     this.findForm(formId);
     const existing = this.db.findBy<CounselRound>(COUNSEL_ROUNDS, (r) => r.counselFormId === formId);
     const roundNo = existing.reduce((max, r) => Math.max(max, r.roundNo), -1) + 1;
@@ -52,6 +54,8 @@ export class CounselService implements OnModuleInit {
     // 폼의 다음 상담일을 최신 회차 기준으로 동기화(상담 배지 = nextContactAt 미정).
     if (dto.nextContactAt !== undefined) this.db.update<CounselForm>(COUNSEL_FORMS, formId, { nextContactAt: dto.nextContactAt });
     return round;
+  
+    });
   }
 
   // 데모 상담 시드 — 프론트 목데이터 이관. rounds.counselFormId→forms.id(무결성).

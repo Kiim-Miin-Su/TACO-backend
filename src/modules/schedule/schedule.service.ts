@@ -145,8 +145,10 @@ export class ScheduleService implements OnModuleInit {
   // 코호트 = 활성 수강(enrollment.status==='active') ∧ 학생 미삭제(status!=='canceled').
   //  students.remove(소프트삭제)가 학생·수강 모두 'canceled'로 정리하므로 삭제 즉시 코호트에서 빠진다.
   private activeStudentIds(courseId: number): number[] {
+    // 인덱스 조회(courseId) — enrich가 세션마다 호출하는 핫패스(전체 스캔 제거)
     return this.db
-      .findBy<Enrollment>(ENROLLMENTS_COL, (e) => e.courseId === courseId && e.status === 'active')
+      .findByField<Enrollment>(ENROLLMENTS_COL, 'courseId', courseId)
+      .filter((e) => e.status === 'active')
       .map((e) => e.studentId)
       .filter((sid) => this.studentOf(sid)?.status !== 'canceled');
   }
@@ -158,7 +160,8 @@ export class ScheduleService implements OnModuleInit {
     const coursesOfStudent = opts.studentId != null
       ? new Set(
           this.db
-            .findBy<Enrollment>(ENROLLMENTS_COL, (e) => e.studentId === opts.studentId && e.status === 'active')
+            .findByField<Enrollment>(ENROLLMENTS_COL, 'studentId', opts.studentId)
+            .filter((e) => e.status === 'active')
             .map((e) => e.courseId),
         )
       : null;
@@ -284,6 +287,8 @@ export class ScheduleService implements OnModuleInit {
   // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
   // scope(this_and_following|all)면 같은 seriesId 세션에 동일 날짜·시간 델타를 함께 적용.
   update(id: number, dto: UpdateScheduleDto): { row: ScheduleRow; conflicts: Conflict[]; updated: number } {
+    // [원자성] 반복 시리즈 scope 편집 — 대상+동반 세션이 전부 반영되거나 전부 롤백(부분 편집 잔존 금지)
+    return this.db.transaction(() => {
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
 
@@ -349,6 +354,7 @@ export class ScheduleService implements OnModuleInit {
 
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
     return { row: this.enrich(updated, roomsMap), conflicts, updated: 1 + seriesPatches.length };
+      });
   }
 
   // 부분수정 DTO → 세션 전체 필드(이동=날짜/시간, 리사이즈=종료/시수, 편집=코스/강사/강의실/상태).

@@ -38,7 +38,7 @@ export class AttendanceService implements OnModuleInit {
   }
 
   findBySession(sessionId: number): Attendance[] {
-    return this.db.findBy<Attendance>(ATTENDANCE, (a) => a.sessionId === sessionId);
+    return this.db.findByField<Attendance>(ATTENDANCE, 'sessionId', sessionId); // 인덱스 조회
   }
 
   // 출결 기록(upsert). FK 검증 → 기존 (session,student) 행 갱신 or 신규 삽입.
@@ -53,7 +53,7 @@ export class AttendanceService implements OnModuleInit {
     // 3) (세션, 학생) 유니크 — 있으면 갱신, 없으면 삽입
     const [existing] = this.db.findBy<Attendance>(
       ATTENDANCE,
-      (a) => a.sessionId === dto.sessionId && a.studentId === dto.studentId,
+      (a) => a.sessionId === dto.sessionId && a.studentId === dto.studentId, // (upsert 판별은 2키라 predicate 유지)
     );
     if (existing) {
       return this.db.update<Attendance>(ATTENDANCE, existing.id, { status: dto.status }) as Attendance;
