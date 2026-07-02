@@ -41,12 +41,5 @@ export type InstructorPayoutRow = {
   confirmedAt?: string;
 } & BaseRow;
 
-// 통합 원장(출금) 기록 — 지급 확정 시 1줄.
-export type TransactionRow = {
-  direction: 'in' | 'out';
-  category: string;
-  label: string;
-  amount: number;
-  occurredAt: string;
-  payoutId?: number;
-} & BaseRow;
+// 통합 원장 행 — transactions 모듈이 단일 소스(계약 v0.1.10에 payoutId 역참조 포함).
+export type { Transaction as TransactionRow } from '../transactions/transaction.entity';
