@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { Expense, EXPENSES } from './expense.entity';
 import { Transaction, TRANSACTIONS } from '../transactions/transaction.entity';
@@ -48,6 +48,8 @@ export class ExpensesService implements OnModuleInit {
     // [원자성] 지출 승인 + 통합 원장 출금 1줄이 함께(원장 누락 방지)
     return this.db.transaction(() => {
     const row = this.findOne(id);
+    // [H2] 상태 가드 — 재승인 시 원장 출금 중복, approved→반려 시 원장 불일치 방지(코드리뷰 2026-07-02)
+    if (row.status !== 'requested') throw new BadRequestException(`승인 불가 상태(${row.status}) — requested만 승인 가능`);
     const updated = this.db.update<Expense>(EXPENSES, id, { status: 'approved' }) as Expense;
     // [자산화 점검 2026-07-02] 지출 승인 = 통합 원장(transactions)에 출금 1줄(TBO-03 "승인 후 출금 반영").
     //  이전엔 상태만 approved로 바뀌고 원장 미기록 → 지출 집계(자산)에서 누락되던 갭.
@@ -64,7 +66,9 @@ export class ExpensesService implements OnModuleInit {
   }
 
   reject(id: number): Expense {
-    this.findOne(id);
+    const row = this.findOne(id);
+    // [H2] approved 지출을 반려하면 이미 기록된 원장 출금과 어긋남 — requested만 반려 가능
+    if (row.status !== 'requested') throw new BadRequestException(`반려 불가 상태(${row.status}) — requested만 반려 가능`);
     return this.db.update<Expense>(EXPENSES, id, { status: 'rejected' }) as Expense;
   }
 }

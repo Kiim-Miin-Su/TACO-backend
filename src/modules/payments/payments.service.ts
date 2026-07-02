@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { Payment, PAYMENTS } from './payment.entity';
 import { Transaction, TRANSACTIONS } from '../transactions/transaction.entity';
@@ -57,6 +57,8 @@ export class PaymentsService implements OnModuleInit {
     // [원자성] 수납 상태 갱신 + 통합 원장 입금 1줄이 함께(원장 누락 방지)
     return this.db.transaction(() => {
     const row = this.findOne(id);
+    // [H1] 멱등 가드 — 이중 클릭/재시도로 원장 입금이 중복 기록되는 것 방지(코드리뷰 2026-07-02)
+    if (row.status === 'paid') throw new BadRequestException('이미 수납 완료된 청구입니다.');
     const now = new Date().toISOString();
     const updated = this.db.update<Payment>(PAYMENTS, id, {
       status: 'paid',

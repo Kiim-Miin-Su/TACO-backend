@@ -57,6 +57,7 @@ export class InMemoryDatabase {
     if (!fields) return;
     for (const [field, buckets] of fields) {
       const v = (row as Record<string, unknown>)[field];
+      if (v === undefined) continue; // [L4] 미보유 필드는 인덱싱하지 않음(undefined 버킷 비대 방지)
       if (!buckets.has(v)) buckets.set(v, new Set());
       buckets.get(v)!.add(row);
     }
@@ -68,7 +69,8 @@ export class InMemoryDatabase {
     if (!fields) return;
     for (const [field, buckets] of fields) {
       const v = (row as Record<string, unknown>)[field];
-      buckets.get(v)?.delete(row);
+      const set = buckets.get(v);
+      if (set) { set.delete(row); if (set.size === 0) buckets.delete(v); } // [L4] 빈 버킷 정리
     }
   }
 
@@ -105,6 +107,7 @@ export class InMemoryDatabase {
       const buckets = new Map<unknown, Set<BaseRow>>();
       for (const row of this.collection(name)) {
         const v = (row as Record<string, unknown>)[field];
+        if (v === undefined) continue; // [L4]
         if (!buckets.has(v)) buckets.set(v, new Set());
         buckets.get(v)!.add(row);
       }
@@ -117,6 +120,8 @@ export class InMemoryDatabase {
   transaction<R>(fn: () => R): R {
     if (this.txDepth > 0) {
       // 중첩: 외곽 트랜잭션의 스냅샷이 이미 전체를 보호 — 그대로 실행.
+      // ⚠ savepoint 아님: 내부 tx의 예외를 외곽 안에서 catch하고 삼키면 내부의 부분 쓰기가
+      //   외곽 커밋에 섞인다. 내부 tx 예외는 반드시 재던질 것(코드리뷰 2026-07-02).
       this.txDepth++;
       try { return fn(); } finally { this.txDepth--; }
     }
@@ -125,7 +130,10 @@ export class InMemoryDatabase {
     const seqSnap = new Map(this.sequences);
     this.txDepth = 1;
     try {
-      return fn();
+      const result = fn();
+      // [M2] async 콜백은 스냅샷 경계 밖에서 쓰기가 일어나 롤백이 무의미 — 명시적으로 거부.
+      if (result instanceof Promise) throw new Error('transaction(fn): fn은 동기 함수여야 합니다(async 미지원)');
+      return result;
     } catch (e) {
       this.store = storeSnap;
       this.sequences = seqSnap;

@@ -56,6 +56,10 @@ export class UsersService implements OnModuleInit {
       throw new BadRequestException('이미 사용 중인 이메일입니다.');
 
     const passwordHash = await bcrypt.hash(input.password, 10);
+    // [M1] await(hash) 사이에 동일 webId/email 가입이 끼어들 수 있음(TOCTOU) — insert 직전 동기 재검증
+    if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.');
+    if (this.db.findBy<StaffAccount>(USERS, (a) => a.email.toLowerCase() === email).length)
+      throw new BadRequestException('이미 사용 중인 이메일입니다.');
     const verifyToken = randomBytes(24).toString('hex');
     const acc = this.db.insert<StaffAccount>(USERS, {
       webId, name: input.name.trim(), email, role,

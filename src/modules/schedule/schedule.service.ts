@@ -29,6 +29,9 @@ const toMin = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); re
 function addMinutes(hhmm: string, mins: number): string {
   const [h, m] = hhmm.split(':').map(Number);
   const t = h * 60 + m + mins;
+  // [M3] 시리즈 델타 적용 시 자정 범위를 벗어나면 '0-4:-30' 같은 오염 문자열이 커밋될 수 있음(코드리뷰).
+  //  여기서 400을 던지면 감싼 db.transaction이 시리즈 전체를 롤백한다(부분 오염 금지).
+  if (t < 0 || t >= 24 * 60) throw new BadRequestException(`시간 범위를 벗어납니다(${hhmm} ${mins >= 0 ? '+' : ''}${mins}분)`);
   return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
 }
 const addDaysISO = (dateStr: string, days: number): string => {

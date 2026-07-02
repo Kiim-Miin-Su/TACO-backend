@@ -105,5 +105,12 @@ describe('Asset persistence sweep (e2e)', () => {
       .find((x: { id: number }) => x.id === exp.id)?.status).toBe('approved');
     // 수납 입금 + 지출 출금 = 원장 2건 이상 증가
     expect(await listLen('/api/transactions')).toBeGreaterThanOrEqual(txBefore + 2);
+
+    // [H1/H2 회귀] 중복 수납·재승인은 400 — 원장이 더 늘지 않는다(이중 기록 방지)
+    const txAfter = await listLen('/api/transactions');
+    await http.post(`/api/payments/${pay.id}/pay`).set(asAdmin()).send({ method: 'card' }).expect(400);
+    await http.post(`/api/expenses/${exp.id}/approve`).set(asAdmin()).expect(400);
+    await http.post(`/api/expenses/${exp.id}/reject`).set(asAdmin()).expect(400); // approved 반려 금지(원장 정합)
+    expect(await listLen('/api/transactions')).toBe(txAfter);
   });
 });
