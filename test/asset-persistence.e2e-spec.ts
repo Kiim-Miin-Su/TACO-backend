@@ -108,6 +108,14 @@ describe('Asset persistence sweep (e2e)', () => {
       .send({ studentId: 1, courseId: 10, amount: 999_999_999_999, dueAt: '2099-05-01' }).expect(400);
     await http.post('/api/expenses').set(asAdmin())
       .send({ title: '가드 지출', amount: 999_999_999_999, category: 'supplies', spentAt: '2099-05-01' }).expect(400);
+    // [자정 크로스] KST 저장 세션은 당일 오후→익일 오전으로 넘어갈 수 없다(설계상 거부 — 단일 날짜 세션만).
+    //  ① endTime < startTime(23:00→01:00) = "종료가 시작보다 빠름" 400
+    //  ② durationMinutes로 24:00 초과(23:00+120분) = addMinutes 범위 가드 400
+    //  해외 학생용 자정 크로스 "표시"는 프론트 tz 변환의 24:00 클램프가 담당(저장은 항상 KST 단일 날짜).
+    await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-05-02', startTime: '23:00', endTime: '01:00' }).expect(400);
+    await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-05-02', startTime: '23:00', durationMinutes: 120 }).expect(400);
   });
 
   it('재무: payments(청구→수납)와 expenses(요청→승인)가 저장되고 원장(transactions)에 기록된다', async () => {
