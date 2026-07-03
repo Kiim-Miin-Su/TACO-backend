@@ -13,15 +13,15 @@ export class PayoutsController {
   constructor(private readonly payouts: PayoutsService) {}
 
   @Get()
-  @Roles(...STAFF_ROLES) // [통신 감사 2026-07-03 H1] 재무 정보 비로그인 노출 차단
-  @ApiOperation({ summary: '정산서 목록' })
+  @Roles(...ADMIN_ROLES) // [코드리뷰 2026-07-03 M1] STAFF→ADMIN 상향 — 강사가 타 강사 정산액 열람 차단(수평 권한)
+  @ApiOperation({ summary: '정산서 목록 [관리자]' })
   findAll() {
     return this.payouts.findAll();
   }
 
   // GET /api/payouts/preview?instructorId=&from=&to= — 산정 미리보기(읽기 전용)
   @Get('preview')
-  @Roles(...STAFF_ROLES) // [통신 감사 2026-07-03 H1] 재무 정보 비로그인 노출 차단
+  @Roles(...ADMIN_ROLES) // [코드리뷰 2026-07-03 M1] STAFF→ADMIN 상향 — 타 강사 시급·시수 미리보기 차단
   @ApiOperation({ summary: '시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서.' })
   @ApiQuery({ name: 'instructorId', required: true })
   @ApiQuery({ name: 'from', required: true })
@@ -35,7 +35,7 @@ export class PayoutsController {
   }
 
   @Get(':id')
-  @Roles(...STAFF_ROLES) // [통신 감사 2026-07-03 H1] 재무 정보 비로그인 노출 차단
+  @Roles(...ADMIN_ROLES) // [코드리뷰 2026-07-03 M1] STAFF→ADMIN 상향 — 정산서 단건도 관리자 전용
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.payouts.findOne(id);
   }

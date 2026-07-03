@@ -3,8 +3,9 @@ import request from "supertest";
 import { createTestApp } from "./setup-app";
 
 // 권한 매트릭스 e2e (#6) — 데모 역할별 토큰으로 주요 엔드포인트 호출 → 기대 응답 검증.
-// 현재 가드: /auth/pending·approve·reject 만 super_admin 전용. 나머지(schedule·payouts·reports)는
-// 아직 역할 가드가 없어 "로그인 누구나 접근 가능"(향후 RolesGuard 확장 대상)임을 이 테스트가 명시한다.
+// 가드 현황(2026-07-03): /auth/pending·approve·reject = super_admin 전용.
+// schedule·reports 읽기 = 로그인(STAFF). payouts 읽기 = 관리자 전용(M1 상향).
+// conflicts 드라이런·users/exists = 로그인 필수(H1·H2 — @Roles 누락 무인증 개방 수정).
 describe("Permission matrix (e2e)", () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
@@ -54,8 +55,8 @@ describe("Permission matrix (e2e)", () => {
     });
   });
 
-  describe("읽기(GET)는 개방 — 모든 로그인 역할 200", () => {
-    const open = ["/api/schedule", "/api/payouts", "/api/reports", "/api/schedule/resources"];
+  describe("읽기(GET) — 로그인 역할 공통 개방(스태프)", () => {
+    const open = ["/api/schedule", "/api/reports", "/api/schedule/resources"];
     for (const role of Object.keys(ACCOUNTS)) {
       for (const path of open) {
         it(`${role} → GET ${path} 200`, async () => {
@@ -63,6 +64,52 @@ describe("Permission matrix (e2e)", () => {
         });
       }
     }
+  });
+
+  // [코드리뷰 2026-07-03 M1] 정산 조회는 관리자 전용으로 상향 — 강사가 타 강사 정산액·시급 열람 차단.
+  describe("정산 읽기(GET /payouts) — 관리자 전용", () => {
+    it("super_admin → 200", async () => {
+      await http.get("/api/payouts").set(auth("super_admin")).expect(200);
+    });
+    it("manager → 200", async () => {
+      await http.get("/api/payouts").set(auth("manager")).expect(200);
+    });
+    it("instructor → 403 (수평 권한 차단)", async () => {
+      await http.get("/api/payouts").set(auth("instructor")).expect(403);
+    });
+    it("instructor → GET /payouts/preview 403", async () => {
+      await http
+        .get("/api/payouts/preview")
+        .query({ instructorId: 1, from: "2026-07-01", to: "2026-07-31" })
+        .set(auth("instructor"))
+        .expect(403);
+    });
+    it("토큰 없음 → 401", async () => {
+      await http.get("/api/payouts").expect(401);
+    });
+  });
+
+  // [코드리뷰 2026-07-03 H1·H2] @Roles 누락으로 무인증 개방됐던 라우트 — 로그인 필수 회귀 방지.
+  describe("무가드 회귀 방지 — conflicts 드라이런·users/exists 로그인 필수", () => {
+    it("토큰 없음 → POST /schedule/conflicts 401", async () => {
+      await http
+        .post("/api/schedule/conflicts")
+        .send({ sessionDate: "2026-07-06", startTime: "10:00", endTime: "11:00", instructorId: 1, roomId: 1 })
+        .expect(401);
+    });
+    it("instructor → POST /schedule/conflicts 통과(401/403 아님)", async () => {
+      const res = await http
+        .post("/api/schedule/conflicts")
+        .set(auth("instructor"))
+        .send({ sessionDate: "2026-07-06", startTime: "10:00", endTime: "11:00", instructorId: 1, roomId: 1 });
+      expect([401, 403]).not.toContain(res.status);
+    });
+    it("토큰 없음 → GET /users/exists 401", async () => {
+      await http.get("/api/users/exists").query({ webId: "admin" }).expect(401);
+    });
+    it("manager → GET /users/exists 200", async () => {
+      await http.get("/api/users/exists").query({ webId: "admin" }).set(auth("manager")).expect(200);
+    });
   });
 
   // 백오피스 쓰기 액션은 RolesGuard(super_admin/manager/admin) 전용.

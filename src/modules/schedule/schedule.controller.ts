@@ -47,7 +47,8 @@ export class ScheduleController {
 
   // 충돌 드라이런(생성·이동 전 검사)
   @Post('conflicts')
-  @ApiOperation({ summary: '충돌 드라이런 — 생성·이동 전 강사·강의실 이중예약/불가시간 겹침 검사' })
+  @Roles(...STAFF_ROLES) // [코드리뷰 2026-07-03 H1] @Roles 누락 → 무인증 접근 가능했음. 강사·강의실 가용성 탐지 차단
+  @ApiOperation({ summary: '충돌 드라이런 — 생성·이동 전 강사·강의실 이중예약/불가시간 겹침 검사 [로그인]' })
   @ApiOkResponse({ description: 'Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }' })
   conflicts(@Body() body: ConflictCheckDto) {
     return this.schedule.checkConflicts(body);
