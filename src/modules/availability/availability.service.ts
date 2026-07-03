@@ -71,6 +71,14 @@ export class AvailabilityService implements OnModuleInit {
     this.assertOwner(dto.ownerType, dto.ownerId); // owner_id 참조 무결성(#7)
     this.assertNoOverlap(dto); // 겹침 방지(버그2)
     if (dto.id) {
+      // [취약점 수정 2026-07-03] id 지정 갱신은 **소유자 일치**를 강제 — 임의 id로 남의(다른
+      //  강사·학생·강의실) 블록을 변조하는 크로스-오너 공격 차단. 소유자 이전은 삭제 후 재생성으로만.
+      const existing = this.db.findById<AvailabilityBlock>(AVAILABILITY, dto.id);
+      if (existing && (existing.ownerType !== dto.ownerType || Number(existing.ownerId) !== Number(dto.ownerId))) {
+        throw new BadRequestException(
+          `블록 소유자가 일치하지 않습니다 (id=${dto.id}는 ${existing.ownerType} ${existing.ownerId} 소유)`,
+        );
+      }
       const updated = this.db.update<AvailabilityBlock>(AVAILABILITY, dto.id, {
         kind: dto.kind ?? 'available',
         weekday: dto.weekday,

@@ -85,6 +85,22 @@ describe('Assetization sweep 2 (e2e)', () => {
     expect(auto.studentIds.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('[취약점 2026-07-03] availability upsert 크로스-오너 변조 차단 — 남의 블록 id 갱신 400', async () => {
+    // 강사1 소유 블록 생성
+    const mine = (await http.put('/api/availability').set(asAdmin())
+      .send({ ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday: 6, startTime: '20:00', endTime: '21:00' })
+      .expect(200)).body;
+    // 같은 id를 학생2 소유로 갱신 시도 → 400(블록 탈취 방지)
+    await http.put('/api/availability').set(asAdmin())
+      .send({ id: mine.id, ownerType: 'student', ownerId: 2, kind: 'unavailable', weekday: 6, startTime: '09:00', endTime: '10:00' })
+      .expect(400);
+    // 정상: 같은 소유자의 시간 변경은 허용
+    const moved = (await http.put('/api/availability').set(asAdmin())
+      .send({ id: mine.id, ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday: 6, startTime: '21:00', endTime: '22:00' })
+      .expect(200)).body;
+    expect(moved.startTime).toBe('21:00');
+  });
+
   it('expenses.reject: 반려 사유가 서버에 저장된다(클라 휘발 → 자산)', async () => {
     const exp = (await http.post('/api/expenses').set(asAdmin())
       .send({ title: '반려사유 테스트', amount: 1000, category: 'supplies', spentAt: '2099-06-01' }).expect(201)).body;
