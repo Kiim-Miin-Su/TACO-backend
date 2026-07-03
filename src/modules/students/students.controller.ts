@@ -5,11 +5,13 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   UseGuards,
 } from '@nestjs/common';
 import { StudentsService } from './students.service';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { UpdateStudentDto } from './dto/update-student.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
 
@@ -32,6 +34,12 @@ export class StudentsController {
   @Roles(...ADMIN_ROLES)
   create(@Body() dto: CreateStudentDto) {
     return this.students.create(dto);
+  }
+
+  @Patch(':id')
+  @Roles(...ADMIN_ROLES)
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateStudentDto) {
+    return this.students.update(id, dto);
   }
 
   @Delete(':id')

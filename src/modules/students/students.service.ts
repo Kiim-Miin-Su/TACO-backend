@@ -3,6 +3,7 @@ import { InMemoryDatabase } from '../../database/in-memory.database';
 import { Student, STUDENTS } from './student.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { CreateStudentDto } from './dto/create-student.dto';
+import { UpdateStudentDto } from './dto/update-student.dto';
 
 @Injectable()
 export class StudentsService implements OnModuleInit {
@@ -45,6 +46,13 @@ export class StudentsService implements OnModuleInit {
   }
 
   // 소프트 삭제: 학생 상태를 canceled로, 해당 학생의 active 수강도 canceled로 정리(무결성).
+  // [피드백 2026-07-03] 부분 수정 — 캘린더 우측 패널의 학생 정보 편집(국가·거주·상태·연락처 등).
+  //  존재 검증 후 전달된 필드만 갱신(빈 body는 no-op). 퇴원(수강 동반 정리)은 remove가 담당.
+  update(id: number, dto: UpdateStudentDto): Student {
+    this.findOne(id);
+    return this.db.update<Student>(STUDENTS, id, { ...dto }) as Student;
+  }
+
   remove(id: number): Student {
     // [원자성] 학생 소프트삭제 + 활성 수강 일괄 canceled(부분 정리 잔존 금지)
     return this.db.transaction(() => {

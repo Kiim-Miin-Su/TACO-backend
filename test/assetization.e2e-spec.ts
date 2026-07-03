@@ -51,6 +51,22 @@ describe('Assetization sweep 2 (e2e)', () => {
     await http.delete(`/api/report-templates/${created.id}`).set(asAdmin()).expect(200);
   });
 
+  it('students PATCH: 국가·거주·상태 부분 수정(출국/입국·그만둠 대응) + 형식 가드 400', async () => {
+    const st = (await http.post('/api/students').set(asAdmin())
+      .send({ name: '수정테스트', country: 'KR' }).expect(201)).body;
+    // 출국: KR→US + 해외 전환
+    const moved = (await http.patch(`/api/students/${st.id}`).set(asAdmin())
+      .send({ country: 'US', residenceType: 'overseas' }).expect(200)).body;
+    expect(moved).toMatchObject({ country: 'US', residenceType: 'overseas', name: '수정테스트' });
+    // 갑작스런 휴원
+    expect((await http.patch(`/api/students/${st.id}`).set(asAdmin())
+      .send({ status: 'paused' }).expect(200)).body.status).toBe('paused');
+    // 가드: 잘못된 국가 코드·학년 범위·미존재 학생
+    await http.patch(`/api/students/${st.id}`).set(asAdmin()).send({ country: 'usa' }).expect(400);
+    await http.patch(`/api/students/${st.id}`).set(asAdmin()).send({ grade: 13 }).expect(400);
+    await http.patch('/api/students/99999').set(asAdmin()).send({ status: 'active' }).expect(404);
+  });
+
   it('expenses.reject: 반려 사유가 서버에 저장된다(클라 휘발 → 자산)', async () => {
     const exp = (await http.post('/api/expenses').set(asAdmin())
       .send({ title: '반려사유 테스트', amount: 1000, category: 'supplies', spentAt: '2099-06-01' }).expect(201)).body;
