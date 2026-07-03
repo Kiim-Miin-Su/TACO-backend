@@ -14,7 +14,7 @@ describe('Asset persistence sweep (e2e)', () => {
   let ADMIN = '';
   const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
-  const listLen = async (path: string) => ((await http.get(path).expect(200)).body as unknown[]).length;
+  const listLen = async (path: string) => ((await http.get(path).set(asAdmin()).expect(200)).body as unknown[]).length;
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -127,8 +127,8 @@ describe('Asset persistence sweep (e2e)', () => {
       .send({ title: '자산 지출', amount: 5000, category: 'supplies', spentAt: '2099-03-02' }).expect(201)).body;
     await http.post(`/api/expenses/${exp.id}/approve`).set(asAdmin()).expect(201);
 
-    expect((await http.get('/api/payments').expect(200)).body.some((x: { id: number }) => x.id === pay.id)).toBe(true);
-    expect((await http.get('/api/expenses').expect(200)).body
+    expect((await http.get('/api/payments').set(asAdmin()).expect(200)).body.some((x: { id: number }) => x.id === pay.id)).toBe(true);
+    expect((await http.get('/api/expenses').set(asAdmin()).expect(200)).body
       .find((x: { id: number }) => x.id === exp.id)?.status).toBe('approved');
     // 수납 입금 + 지출 출금 = 원장 2건 이상 증가
     expect(await listLen('/api/transactions')).toBeGreaterThanOrEqual(txBefore + 2);

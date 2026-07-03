@@ -368,6 +368,44 @@
           "Students"
         ]
       },
+      "patch": {
+        "operationId": "StudentsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStudentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      },
       "delete": {
         "operationId": "StudentsController_remove",
         "parameters": [
@@ -2726,6 +2764,53 @@
         "required": [
           "name"
         ]
+      },
+      "UpdateStudentDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "englishName": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "grade": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "country": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "residenceType": {
+            "type": "string",
+            "enum": [
+              "domestic",
+              "overseas"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "lead",
+              "active",
+              "paused",
+              "completed",
+              "canceled"
+            ]
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
       },
       "CreateEnrollmentDto": {
         "type": "object",

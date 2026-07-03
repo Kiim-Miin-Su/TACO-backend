@@ -79,7 +79,7 @@ describe('Assetization sweep 2 (e2e)', () => {
   });
 
   it('payments.refund: paid→refunded + 원장 출금(역참조) + 멱등·미수납 400', async () => {
-    const listLen = async () => ((await http.get('/api/transactions').expect(200)).body as unknown[]).length;
+    const listLen = async () => ((await http.get('/api/transactions').set(asAdmin()).expect(200)).body as unknown[]).length;
     const pay = (await http.post('/api/payments').set(asAdmin())
       .send({ studentId: 1, courseId: 10, amount: 220000, dueAt: '2099-06-02' }).expect(201)).body;
     await http.post(`/api/payments/${pay.id}/refund`).set(asAdmin()).expect(400); // 미수납 환불 금지
@@ -87,7 +87,7 @@ describe('Assetization sweep 2 (e2e)', () => {
     const txBefore = await listLen();
     const refunded = (await http.post(`/api/payments/${pay.id}/refund`).set(asAdmin()).expect(201)).body;
     expect(refunded.status).toBe('refunded');
-    const txs = (await http.get('/api/transactions').expect(200)).body;
+    const txs = (await http.get('/api/transactions').set(asAdmin()).expect(200)).body;
     expect(txs.length).toBe(txBefore + 1);
     const refundTx = txs.find((t: { paymentId?: number; direction: string; category: string }) =>
       t.paymentId === pay.id && t.direction === 'out' && t.category === 'refund');

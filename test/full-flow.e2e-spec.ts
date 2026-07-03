@@ -131,7 +131,7 @@ describe("Full Flow (e2e)", () => {
 
   // 8) 페이 계산(preview) — held ∧ 승인 세션만
   it("8) 페이 미리보기: S1 적격, 75,000(90분×50,000/h)", async () => {
-    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${W3MON}&to=${W3SUN}`).expect(200)).body;
+    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${W3MON}&to=${W3SUN}`).set(asAdmin()).expect(200)).body;
     expect(m.lines.some((l: { sessionId: number }) => l.sessionId === S1)).toBe(true);
     const line = m.lines.find((l: { sessionId: number }) => l.sessionId === S1);
     expect(line).toMatchObject({ hourlyRate: 50000, durationMinutes: 90, amount: 75000 });
@@ -154,14 +154,14 @@ describe("Full Flow (e2e)", () => {
   // 10) 반려로 세션 회수 → 재산정 가능
   it("10) 정산 반려 → 세션 회수, 다시 적격", async () => {
     await http.post(`/api/payouts/${payoutId}/reject`).set(asAdmin()).send({ reason: "재확인" }).expect(201);
-    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${W3MON}&to=${W3SUN}`).expect(200)).body;
+    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${W3MON}&to=${W3SUN}`).set(asAdmin()).expect(200)).body;
     expect(m.sessionCount).toBe(1);
   });
 
   // 11) 독립 스케줄 삭제 → 페이 미반영(시수 미측정)
   it("11) S1 삭제 → 페이 미리보기에서 사라짐(시수 0)", async () => {
     await http.delete(`/api/schedule/${S1}`).set(asAdmin()).expect(200);
-    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${W3MON}&to=${W3SUN}`).expect(200)).body;
+    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${W3MON}&to=${W3SUN}`).set(asAdmin()).expect(200)).body;
     expect(m.lines.some((l: { sessionId: number }) => l.sessionId === S1)).toBe(false);
     expect(m.sessionCount).toBe(0);
   });
@@ -189,7 +189,7 @@ describe("Full Flow (e2e)", () => {
     ).body.row;
     await http.patch(`/api/schedule/${s.id}`).set(asAdmin()).send({ status: "held", force: true }).expect(200);
     await http.post("/api/reports").set(asAdmin()).send({ sessionId: s.id, studentId: 1, content: "미승인" }).expect(201); // submitted, 미승인
-    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${w4mon}&to=${w4sun}`).expect(200)).body;
+    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${w4mon}&to=${w4sun}`).set(asAdmin()).expect(200)).body;
     expect(m.sessionCount).toBe(0);
   });
 
@@ -209,7 +209,7 @@ describe("Full Flow (e2e)", () => {
     await http.post(`/api/reports/${r.id}/approve`).set(asAdmin()).expect(201);
     // 진행 상태였다가 취소로 변경 → 시수 제외
     await http.patch(`/api/schedule/${s.id}`).set(asAdmin()).send({ status: "canceled", force: true }).expect(200);
-    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${w5mon}&to=${w5sun}`).expect(200)).body;
+    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${w5mon}&to=${w5sun}`).set(asAdmin()).expect(200)).body;
     expect(m.sessionCount).toBe(0);
   });
 

@@ -13,7 +13,7 @@ import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 
 // [참조/처리] /api/payments — 읽기·청구 생성·수납은 기존대로. 청구 정정(PATCH)은 관리자만(@Roles ADMIN).
 @ApiTags('payments')
@@ -24,11 +24,13 @@ export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [통신 감사 2026-07-03 H1] 재무 정보 비로그인 노출 차단
   findAll() {
     return this.payments.findAll();
   }
 
   @Get(':id')
+  @Roles(...STAFF_ROLES) // [통신 감사 2026-07-03 H1] 재무 정보 비로그인 노출 차단
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.payments.findOne(id);
   }

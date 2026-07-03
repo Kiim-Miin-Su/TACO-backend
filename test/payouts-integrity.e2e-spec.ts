@@ -26,7 +26,7 @@ describe("Payouts 참조 무결성 (e2e)", () => {
   });
 
   it("데모 시드: 강사2 지급완료 정산서 + 연결 세션 역참조 일치(Σ페이=금액)", async () => {
-    const payouts = (await http.get("/api/payouts").expect(200)).body;
+    const payouts = (await http.get("/api/payouts").set(asAdmin()).expect(200)).body;
     const paid = payouts.find((p: { instructorId: number; status: string }) => p.instructorId === 2 && p.status === "paid");
     expect(paid).toBeTruthy();
     expect(paid.amount).toBe(360000); // 3 × 120분 × 60,000/h
@@ -48,7 +48,7 @@ describe("Payouts 참조 무결성 (e2e)", () => {
   });
 
   it("시수 게이트: 강사1 적격은 held+승인보고서 3건만(무보고·취소 제외)", async () => {
-    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).expect(200)).body;
+    const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     expect(m.sessionCount).toBe(3);
     expect(m.totalMinutes).toBe(300); // 90 + 90 + 120
     expect(m.computedAmount).toBe(240000); // 75,000 + 75,000 + 90,000
@@ -63,7 +63,7 @@ describe("Payouts 참조 무결성 (e2e)", () => {
     expect(p.amount).toBe(240000);
 
     // 이중 계상 방지: 같은 세션 재산정 시 0
-    const again = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).expect(200)).body;
+    const again = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     expect(again.sessionCount).toBe(0);
 
     // 관리자 승인(confirmed)
@@ -88,7 +88,7 @@ describe("Payouts 참조 무결성 (e2e)", () => {
     // 강사1 세션은 앞 테스트에서 paid에 묶임 → 새 기간(좁게) 대신 반려 후 회수 검증을 위해
     // 새 정산서를 만들 수 없으니(이미 연결), 강사2의 미연결 기간엔 세션이 없음.
     // 대신 강사1의 paid 정산서는 회수 불가(paid)임을 확인.
-    const payouts = (await http.get("/api/payouts").expect(200)).body;
+    const payouts = (await http.get("/api/payouts").set(asAdmin()).expect(200)).body;
     const paid1 = payouts.find((p: { instructorId: number; status: string }) => p.instructorId === 1 && p.status === "paid");
     await http.post(`/api/payouts/${paid1.id}/reject`).set(asAdmin()).send({ reason: "x" }).expect(400); // 지급완료는 반려 불가
   });

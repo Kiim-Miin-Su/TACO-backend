@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } fr
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiOkResponse, ApiCreatedResponse, ApiBadRequestResponse, ApiUnauthorizedResponse, ApiForbiddenResponse } from '@nestjs/swagger';
 import { PayoutsService } from './payouts.service';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import { GeneratePayoutDto, AdjustPayoutDto, RejectPayoutDto } from './dto/payout.dto';
 
 @ApiTags('payouts')
@@ -13,6 +13,7 @@ export class PayoutsController {
   constructor(private readonly payouts: PayoutsService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [통신 감사 2026-07-03 H1] 재무 정보 비로그인 노출 차단
   @ApiOperation({ summary: '정산서 목록' })
   findAll() {
     return this.payouts.findAll();
@@ -20,6 +21,7 @@ export class PayoutsController {
 
   // GET /api/payouts/preview?instructorId=&from=&to= — 산정 미리보기(읽기 전용)
   @Get('preview')
+  @Roles(...STAFF_ROLES) // [통신 감사 2026-07-03 H1] 재무 정보 비로그인 노출 차단
   @ApiOperation({ summary: '시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서.' })
   @ApiQuery({ name: 'instructorId', required: true })
   @ApiQuery({ name: 'from', required: true })
@@ -33,6 +35,7 @@ export class PayoutsController {
   }
 
   @Get(':id')
+  @Roles(...STAFF_ROLES) // [통신 감사 2026-07-03 H1] 재무 정보 비로그인 노출 차단
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.payouts.findOne(id);
   }

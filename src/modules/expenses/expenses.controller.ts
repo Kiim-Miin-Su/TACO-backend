@@ -14,11 +14,13 @@ export class ExpensesController {
   constructor(private readonly expenses: ExpensesService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [통신 감사 2026-07-03 H1] 재무 정보 비로그인 노출 차단
   findAll() {
     return this.expenses.findAll();
   }
 
   @Get(':id')
+  @Roles(...STAFF_ROLES) // [통신 감사 2026-07-03 H1] 재무 정보 비로그인 노출 차단
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.expenses.findOne(id);
   }
