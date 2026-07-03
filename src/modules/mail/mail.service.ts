@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
 import * as nodemailer from 'nodemailer';
 
 /**
@@ -8,7 +8,7 @@ import * as nodemailer from 'nodemailer';
  * 필요한 환경변수: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS, MAIL_FROM
  */
 @Injectable()
-export class MailService {
+export class MailService implements OnModuleDestroy {
   private readonly logger = new Logger(MailService.name);
   private readonly enabled = !!process.env.SMTP_HOST;
   private transporter = this.enabled
@@ -34,5 +34,11 @@ export class MailService {
       html: `<p>아래 버튼을 눌러 이메일 인증을 완료하세요.</p><p><a href="${link}">이메일 인증하기</a></p><p>${link}</p>`,
     });
     return { sent: true };
+  }
+
+  // [테스트 안정화 2026-07-03] SMTP 설정 시 nodemailer 트랜스포터가 열린 소켓/풀을 남겨
+  //  app.close() 후에도 jest worker가 정상 종료 못 하던 문제 → 종료 시 명시적으로 닫는다.
+  onModuleDestroy(): void {
+    this.transporter?.close();
   }
 }
