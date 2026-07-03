@@ -1,4 +1,4 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max } from 'class-validator';
+import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { SessionStatus } from '@kms545487/contracts';
 
@@ -34,6 +34,10 @@ export class CreateScheduleDto {
   @ApiPropertyOptional({ example: 90, description: 'endTime 없을 때 사용(기본 60)' })
   @IsOptional() @IsInt() @Min(10) @Max(480) // [감사 H4] 상한 8h — 시급 계산 오염 방지
   durationMinutes?: number;
+
+  @ApiPropertyOptional({ description: '명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용', type: [Number] })
+  @IsOptional() @IsArray() @IsInt({ each: true }) @ArrayMaxSize(20)
+  studentIds?: number[];
 
   @ApiPropertyOptional({ example: 'Reading: 추론 문제 전략', description: '수업 주제' })
   @IsOptional() @IsString() @MaxLength(200)

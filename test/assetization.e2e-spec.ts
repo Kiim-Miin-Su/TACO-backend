@@ -67,6 +67,24 @@ describe('Assetization sweep 2 (e2e)', () => {
     await http.patch('/api/students/99999').set(asAdmin()).send({ status: 'active' }).expect(404);
   });
 
+  it('[v0.1.13] 세션 명시 코호트: 학생 선택 저장·부분집합 검증 400·미지정=코스 파생(하위 호환)', async () => {
+    // 코스10 활성 수강생: 1(김서연), 4(최민준) — 시드. 부분 선택(1만) → studentIds=[1]
+    const ses = (await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-07-01', startTime: '10:00', durationMinutes: 60, studentIds: [1] })
+      .expect(201)).body.row;
+    expect(ses.studentIds).toEqual([1]);
+    expect(ses.studentNames).toEqual(['김서연']);
+    // 비수강생(2=이준호는 코스11) 포함 → 400(유령 코호트 방지)
+    await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-07-02', startTime: '10:00', durationMinutes: 60, studentIds: [1, 2] })
+      .expect(400);
+    // 미지정 → 기존대로 코스 활성 수강생 전원 파생(하위 호환)
+    const auto = (await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-07-03', startTime: '10:00', durationMinutes: 60 })
+      .expect(201)).body.row;
+    expect(auto.studentIds.length).toBeGreaterThanOrEqual(2);
+  });
+
   it('expenses.reject: 반려 사유가 서버에 저장된다(클라 휘발 → 자산)', async () => {
     const exp = (await http.post('/api/expenses').set(asAdmin())
       .send({ title: '반려사유 테스트', amount: 1000, category: 'supplies', spentAt: '2099-06-01' }).expect(201)).body;

@@ -56,6 +56,7 @@ function mondayOfThisWeekUTC(): Date {
 type SeedSeries = { courseId: number; instructorId: number; topic: string; roomId: number; weekdayOffsets: number[]; startTime: string; durationMinutes: number };
 // 병합된 세션 필드(업데이트 적용 단위) — 이동/리사이즈/편집 공통.
 type MergedFields = {
+  studentIds?: number[]; // 명시 코호트(v0.1.13)
   sessionDate: string; startTime: string; endTime: string; durationMinutes: number;
   courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string; color?: string;
   instructorAttendance?: ClassSession['instructorAttendance'];
@@ -223,6 +224,7 @@ export class ScheduleService implements OnModuleInit {
   create(dto: {
     courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
     startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
+    studentIds?: number[]; // 명시 코호트(v0.1.13)
     seriesId?: number; status?: ClassSession['status']; force?: boolean;
   }): { row: ScheduleRow; conflicts: Conflict[] } {
     const course = this.courseOf(dto.courseId);
@@ -239,6 +241,13 @@ export class ScheduleService implements OnModuleInit {
     if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작보다 빠릅니다');
     const endTime = dto.endTime ?? addMinutes(startTime, durationMinutes);
 
+    // [명시 코호트 v0.1.13] 학생 선택(단체) — 그 코스 활성 수강생의 부분집합만 허용(유령 코호트 방지)
+    if (dto.studentIds?.length) {
+      const allowed = new Set(this.activeStudentIds(dto.courseId));
+      const bad = dto.studentIds.filter((id) => !allowed.has(id));
+      if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
+    }
+
     const conflicts = detectConflicts(
       { sessionDate: dto.sessionDate, startTime, endTime, instructorId, roomId: dto.roomId },
       this.db.findAll<ClassSession>(SESSIONS),
@@ -251,6 +260,7 @@ export class ScheduleService implements OnModuleInit {
     }
 
     const row = this.db.insert<ClassSession>(SESSIONS, {
+      studentIds: dto.studentIds,
       seriesId: dto.seriesId,
       courseId: dto.courseId,
       instructorId,
@@ -290,6 +300,13 @@ export class ScheduleService implements OnModuleInit {
   // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
   // scope(this_and_following|all)면 같은 seriesId 세션에 동일 날짜·시간 델타를 함께 적용.
   update(id: number, dto: UpdateScheduleDto): { row: ScheduleRow; conflicts: Conflict[]; updated: number } {
+    // [명시 코호트 v0.1.13] 부분집합 검증 — create와 동일 규칙(함수 통일: activeStudentIds 단일 소스)
+    if (dto.studentIds?.length) {
+      const cur0 = this.db.findById<ClassSession>(SESSIONS, id);
+      const allowed = new Set(this.activeStudentIds(dto.courseId ?? cur0?.courseId ?? 0));
+      const bad = dto.studentIds.filter((x) => !allowed.has(x));
+      if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
+    }
     // [원자성] 반복 시리즈 scope 편집 — 대상+동반 세션이 전부 반영되거나 전부 롤백(부분 편집 잔존 금지)
     return this.db.transaction(() => {
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
@@ -383,12 +400,14 @@ export class ScheduleService implements OnModuleInit {
       memo: dto.memo ?? cur.memo,
       color: dto.color ?? cur.color,
       instructorAttendance: dto.instructorAttendance ?? cur.instructorAttendance,
+      studentIds: dto.studentIds ?? cur.studentIds, // 명시 코호트(v0.1.13) — 검증은 update() 본문
     };
   }
 
   private enrich(s: ClassSession, rooms: Map<number, { name: string }>): ScheduleRow {
     const c = this.courseOf(s.courseId);
-    const studentIds = this.activeStudentIds(s.courseId);
+    // 명시 코호트(v0.1.13) 우선 — 미지정 시 기존대로 코스 활성 수강생 파생(하위 호환)
+    const studentIds = s.studentIds?.length ? s.studentIds.map(Number) : this.activeStudentIds(s.courseId);
     return {
       ...s,
       weekday: weekdayOf(s.sessionDate),
