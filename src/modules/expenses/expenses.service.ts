@@ -65,10 +65,12 @@ export class ExpensesService implements OnModuleInit {
       });
   }
 
-  reject(id: number): Expense {
+  reject(id: number, reason?: string): Expense {
     const row = this.findOne(id);
     // [H2] approved 지출을 반려하면 이미 기록된 원장 출금과 어긋남 — requested만 반려 가능
     if (row.status !== 'requested') throw new BadRequestException(`반려 불가 상태(${row.status}) — requested만 반려 가능`);
-    return this.db.update<Expense>(EXPENSES, id, { status: 'rejected' }) as Expense;
+    // [자산화 2026-07-03] 반려 사유를 서버에 저장(v0.1.12 Expense.rejectedReason) —
+    //  이전엔 zustand expenseRejectReasons(브라우저 휘발)에만 있어 실DB 이관 시 유실되던 갭.
+    return this.db.update<Expense>(EXPENSES, id, { status: 'rejected', rejectedReason: reason }) as Expense;
   }
 }

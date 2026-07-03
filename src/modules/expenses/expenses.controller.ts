@@ -2,6 +2,7 @@ import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@ne
 import { ApiTags, ApiBearerAuth } from '@nestjs/swagger';
 import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
+import { RejectExpenseDto } from './dto/reject-expense.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 
@@ -37,7 +38,7 @@ export class ExpensesController {
 
   @Post(':id/reject')
   @Roles(...ADMIN_ROLES)
-  reject(@Param('id', ParseIntPipe) id: number) {
-    return this.expenses.reject(id);
+  reject(@Param('id', ParseIntPipe) id: number, @Body() body: RejectExpenseDto) {
+    return this.expenses.reject(id, body?.reason);
   }
 }

@@ -630,6 +630,41 @@
         ]
       }
     },
+    "/api/payments/{id}/refund": {
+      "post": {
+        "operationId": "PaymentsController_refund",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "payments"
+        ]
+      }
+    },
     "/api/payments/{id}/pay": {
       "post": {
         "operationId": "PaymentsController_markPaid",
@@ -977,6 +1012,16 @@
             }
           }
         ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectExpenseDto"
+              }
+            }
+          }
+        },
         "responses": {
           "201": {
             "description": "",
@@ -2104,6 +2149,172 @@
         ]
       }
     },
+    "/api/view-presets": {
+      "get": {
+        "operationId": "ViewPresetsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "view-presets"
+        ]
+      },
+      "post": {
+        "operationId": "ViewPresetsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateViewPresetDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "view-presets"
+        ]
+      }
+    },
+    "/api/view-presets/{id}": {
+      "delete": {
+        "operationId": "ViewPresetsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "view-presets"
+        ]
+      }
+    },
+    "/api/report-templates": {
+      "get": {
+        "operationId": "ReportTemplatesController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "report-templates"
+        ]
+      },
+      "post": {
+        "operationId": "ReportTemplatesController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "report-templates"
+        ]
+      }
+    },
+    "/api/report-templates/{id}": {
+      "delete": {
+        "operationId": "ReportTemplatesController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "report-templates"
+        ]
+      }
+    },
     "/api/events": {
       "get": {
         "operationId": "EventsController_findAll",
@@ -2504,6 +2715,10 @@
               "canceled"
             ]
           },
+          "country": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
           "memo": {
             "type": "string"
           }
@@ -2551,7 +2766,8 @@
           },
           "amount": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 100000000
           },
           "paymentMethod": {
             "type": "string",
@@ -2667,7 +2883,8 @@
           },
           "amount": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 100000000
           },
           "spentAt": {
             "type": "string"
@@ -2688,6 +2905,15 @@
           "amount",
           "spentAt"
         ]
+      },
+      "RejectExpenseDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 200
+          }
+        }
       },
       "CreateRoomDto": {
         "type": "object",
@@ -2862,6 +3088,7 @@
           "durationMinutes": {
             "type": "number",
             "minimum": 10,
+            "maximum": 480,
             "example": 90,
             "description": "endTime 없을 때 사용(기본 60)"
           },
@@ -2933,6 +3160,7 @@
           "durationMinutes": {
             "type": "number",
             "minimum": 10,
+            "maximum": 480,
             "example": 60
           },
           "roomId": {
@@ -3251,6 +3479,125 @@
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           }
         }
+      },
+      "CreateViewPresetDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "month",
+              "week",
+              "day"
+            ]
+          },
+          "periodFrom": {
+            "type": "string"
+          },
+          "periodTo": {
+            "type": "string"
+          },
+          "instructorIds": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "studentIds": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "roomIds": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "subjects": {
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "attended",
+                "late",
+                "absence",
+                "makeup"
+              ]
+            }
+          },
+          "groupOnly": {
+            "type": "boolean"
+          },
+          "q": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "colorBy": {
+            "type": "string",
+            "enum": [
+              "subject",
+              "instructor",
+              "room",
+              "student"
+            ]
+          },
+          "countryCode": {
+            "type": "string"
+          },
+          "paneCountryInstructor": {
+            "type": "string"
+          },
+          "paneCountryStudent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "view",
+          "instructorIds",
+          "studentIds",
+          "roomIds",
+          "subjects",
+          "statuses",
+          "groupOnly"
+        ]
+      },
+      "CreateReportTemplateDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "homework": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "name",
+          "content"
+        ]
       },
       "CreateEventDto": {
         "type": "object",

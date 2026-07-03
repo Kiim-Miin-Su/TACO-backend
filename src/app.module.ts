@@ -21,6 +21,8 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { CounselModule } from './modules/counsel/counsel.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
+import { ViewPresetsModule } from './modules/view-presets/view-presets.module';
+import { ReportTemplatesModule } from './modules/report-templates/report-templates.module';
 import { EventsModule } from './modules/events/events.module';
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
@@ -50,6 +52,8 @@ import { ParentsModule } from './modules/parents/parents.module';
     // 상담(counsel)·원장(transactions)·학원이벤트(events) — B2 목→백엔드 이관
     CounselModule,
     TransactionsModule,
+    ViewPresetsModule,
+    ReportTemplatesModule,
     EventsModule,
     AttendanceModule,
     RoadmapsModule,

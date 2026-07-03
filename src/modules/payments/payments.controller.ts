@@ -45,6 +45,12 @@ export class PaymentsController {
     return this.payments.update(id, dto);
   }
 
+  @Post(':id/refund')
+  @Roles(...ADMIN_ROLES)
+  refund(@Param('id', ParseIntPipe) id: number) {
+    return this.payments.refund(id);
+  }
+
   @Post(':id/pay')
   @Roles(...ADMIN_ROLES)
   markPaid(@Param('id', ParseIntPipe) id: number) {
