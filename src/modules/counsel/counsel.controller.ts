@@ -17,6 +17,7 @@ export class CounselController {
   constructor(private readonly counsel: CounselService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '상담 접수 목록(CounselForm[])' })
   @ApiOkResponse({ description: 'CounselForm[] — 신청자·상태·관심 과목/코스·다음 상담일 등' })
   findForms() {
@@ -24,6 +25,7 @@ export class CounselController {
   }
 
   @Get('rounds')
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '상담 회차 목록(CounselRound[]). counselFormId로 필터.' })
   @ApiQuery({ name: 'counselFormId', required: false })
   @ApiOkResponse({ description: 'CounselRound[] — 회차·요약·결과·다음 액션' })

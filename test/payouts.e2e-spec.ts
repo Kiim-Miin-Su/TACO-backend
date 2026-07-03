@@ -118,7 +118,7 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
     expect(p.computedAmount).toBe(165000);
     expect(p.amount).toBe(165000);
     // 연결된 세션은 instructorPayAmount 스냅샷 보유
-    const s1 = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200)).body.find(
+    const s1 = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body.find(
       (r: { id: number }) => r.id === S1,
     );
     expect(s1.payoutId).toBe(p.id);

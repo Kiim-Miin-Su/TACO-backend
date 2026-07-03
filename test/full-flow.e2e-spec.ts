@@ -171,7 +171,7 @@ describe("Full Flow (e2e)", () => {
     for (const id of seriesIds) {
       await http.delete(`/api/schedule/${id}`).set(asAdmin()).expect(200);
     }
-    const list = (await http.get(`/api/schedule?from=${W3MON}&to=${addDaysISO(W3MON, 28)}`).expect(200)).body;
+    const list = (await http.get(`/api/schedule?from=${W3MON}&to=${addDaysISO(W3MON, 28)}`).set(asAdmin()).expect(200)).body;
     expect(list.some((r: { id: number }) => seriesIds.includes(r.id))).toBe(false);
   });
 

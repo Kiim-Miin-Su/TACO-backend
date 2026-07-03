@@ -13,6 +13,7 @@ export class AvailabilityController {
   constructor(private readonly availability: AvailabilityService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '가용/불가 블록 목록(ownerType·ownerId 필터)' })
   @ApiQuery({ name: 'ownerType', required: false, enum: ['student', 'instructor', 'room'] })
   @ApiQuery({ name: 'ownerId', required: false })

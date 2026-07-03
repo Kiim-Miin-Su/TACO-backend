@@ -23,9 +23,9 @@ describe('Students Soft-Delete (e2e)', () => {
 
   it('DELETE 기존 학생 → status=canceled', async () => {
     // 사전: 학생1은 active, 수강 2건 active
-    const before = (await http.get(`/api/students/${S1}`).expect(200)).body;
+    const before = (await http.get(`/api/students/${S1}`).set(asAdmin()).expect(200)).body;
     expect(before.status).toBe('active');
-    const enrBefore = (await http.get('/api/enrollments').expect(200)).body
+    const enrBefore = (await http.get('/api/enrollments').set(asAdmin()).expect(200)).body
       .filter((e: { studentId: number }) => e.studentId === S1);
     expect(enrBefore.length).toBeGreaterThan(0);
 
@@ -33,11 +33,11 @@ describe('Students Soft-Delete (e2e)', () => {
     expect(res.body.status).toBe('canceled');
 
     // 학생 상태 반영
-    const after = (await http.get(`/api/students/${S1}`).expect(200)).body;
+    const after = (await http.get(`/api/students/${S1}`).set(asAdmin()).expect(200)).body;
     expect(after.status).toBe('canceled');
 
     // 해당 학생 수강 전부 canceled
-    const enrAfter = (await http.get('/api/enrollments').expect(200)).body
+    const enrAfter = (await http.get('/api/enrollments').set(asAdmin()).expect(200)).body
       .filter((e: { studentId: number }) => e.studentId === S1);
     expect(enrAfter.length).toBe(enrBefore.length);
     for (const e of enrAfter) expect(e.status).toBe('canceled');

@@ -17,7 +17,7 @@ export { isStaffRole, toAccount, toSafe } from './user.entity';
 export type { AccountStatus, SafeAccount, StaffAccount, StaffRole } from './user.entity';
 
 // 데모 시드 — 운영 계정(이미 활성·이메일 인증 완료). 비밀번호: 'demo1234'.
-const DEMO_PW_HASH = bcrypt.hashSync('demo1234', 10);
+const DEMO_PW_HASH = bcrypt.hashSync('demo1234', 12);
 
 @Injectable()
 export class UsersService implements OnModuleInit {
@@ -55,7 +55,7 @@ export class UsersService implements OnModuleInit {
     if (this.db.findBy<StaffAccount>(USERS, (a) => a.email.toLowerCase() === email).length)
       throw new BadRequestException('이미 사용 중인 이메일입니다.');
 
-    const passwordHash = await bcrypt.hash(input.password, 10);
+    const passwordHash = await bcrypt.hash(input.password, 12) // [보안 2026-07-03] cost 12;
     // [M1] await(hash) 사이에 동일 webId/email 가입이 끼어들 수 있음(TOCTOU) — insert 직전 동기 재검증
     if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.');
     if (this.db.findBy<StaffAccount>(USERS, (a) => a.email.toLowerCase() === email).length)

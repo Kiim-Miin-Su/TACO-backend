@@ -36,7 +36,7 @@ describe("Payouts 참조 무결성 (e2e)", () => {
     expect(paid.paidAt).toBeTruthy();
 
     // 역참조 무결성: 연결 세션이 payoutId로 정산서를 가리키고, 페이 스냅샷 합 = 금액
-    const sessions = (await http.get(`/api/schedule?from=${JUN1}&to=${JUN30}`).expect(200)).body;
+    const sessions = (await http.get(`/api/schedule?from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     const linked = sessions.filter((s: { payoutId?: number }) => s.payoutId === paid.id);
     expect(linked.length).toBe(3);
     const sum = linked.reduce((a: number, s: { instructorPayAmount?: number }) => a + (s.instructorPayAmount ?? 0), 0);

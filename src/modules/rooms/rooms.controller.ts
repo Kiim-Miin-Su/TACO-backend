@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { RoomsService } from './rooms.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('rooms')
 @UseGuards(RolesGuard)
@@ -12,11 +12,13 @@ export class RoomsController {
   constructor(private readonly rooms: RoomsService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   findAll() {
     return this.rooms.findAll();
   }
 
   @Get(':id')
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.rooms.findOne(id);
   }

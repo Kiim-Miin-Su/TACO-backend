@@ -27,8 +27,8 @@ describe('Parents Flow (e2e)', () => {
   afterAll(async () => { await app.close(); });
 
   it('시드: 보호자 3 + 관계 3(각 학생 대표 1명)', async () => {
-    const parents = (await http.get('/api/parents').expect(200)).body;
-    const rels = (await http.get('/api/parents/relations').expect(200)).body;
+    const parents = (await http.get('/api/parents').set(asAdmin()).expect(200)).body;
+    const rels = (await http.get('/api/parents/relations').set(asAdmin()).expect(200)).body;
     expect(parents.length).toBeGreaterThanOrEqual(3);
     expect(rels.length).toBeGreaterThanOrEqual(3);
     // 시드 각 학생(1·2·4)은 대표 정확히 1명
@@ -36,7 +36,7 @@ describe('Parents Flow (e2e)', () => {
   });
 
   it('1) 인테이크: 학생3은 아직 보호자 없음', async () => {
-    const rels = (await http.get('/api/parents/relations').expect(200)).body;
+    const rels = (await http.get('/api/parents/relations').set(asAdmin()).expect(200)).body;
     expect(rel(rels, S3).length).toBe(0);
   });
 
@@ -56,7 +56,7 @@ describe('Parents Flow (e2e)', () => {
       .send({ name: '김아빠', phone: '010-0000-0002', relation: '부', isPayer: true, isPrimary: false, studentId: S3 })
       .expect(201);
     dadId = res.body.parent.id;
-    const rels = (await http.get('/api/parents/relations').expect(200)).body;
+    const rels = (await http.get('/api/parents/relations').set(asAdmin()).expect(200)).body;
     expect(rel(rels, S3).length).toBe(2);
     const primary = primaryOf(rels, S3);
     expect(primary.length).toBe(1);
@@ -68,10 +68,10 @@ describe('Parents Flow (e2e)', () => {
   });
 
   it('5) 형제(M:N): 모를 학생2에도 납부자로 연결(대표 아님) → 성공, 학생2 대표는 불변', async () => {
-    const before = primaryOf((await http.get('/api/parents/relations').expect(200)).body, 2);
+    const before = primaryOf((await http.get('/api/parents/relations').set(asAdmin()).expect(200)).body, 2);
     await http.post('/api/parents/link').set(asAdmin())
       .send({ parentId: momId, studentId: 2, relation: '모', isPayer: true, isPrimary: false }).expect(201);
-    const rels = (await http.get('/api/parents/relations').expect(200)).body;
+    const rels = (await http.get('/api/parents/relations').set(asAdmin()).expect(200)).body;
     // 모는 이제 학생 2명(3, 2)과 연결
     const momRels = rels.filter((r: { parentId: number }) => r.parentId === momId);
     expect(momRels.map((r: { studentId: number }) => r.studentId).sort()).toEqual([2, 3]);
@@ -81,10 +81,10 @@ describe('Parents Flow (e2e)', () => {
   });
 
   it('6) 대표 이전: 부를 학생3 대표로 승격(PATCH) → 모 강등, 대표 여전히 1명(부)', async () => {
-    const rels0 = (await http.get('/api/parents/relations').expect(200)).body;
+    const rels0 = (await http.get('/api/parents/relations').set(asAdmin()).expect(200)).body;
     const dadRel = rels0.find((r: { parentId: number; studentId: number }) => r.parentId === dadId && r.studentId === S3);
     await http.patch(`/api/parents/relations/${dadRel.id}`).set(asAdmin()).send({ isPrimary: true }).expect(200);
-    const rels = (await http.get('/api/parents/relations').expect(200)).body;
+    const rels = (await http.get('/api/parents/relations').set(asAdmin()).expect(200)).body;
     const primary = primaryOf(rels, S3);
     expect(primary.length).toBe(1);           // 불변: 대표 ≤ 1
     expect(primary[0].parentId).toBe(dadId);  // 이전 완료

@@ -6,6 +6,8 @@ import { createTestApp, mondayISO, addDaysISO } from "./setup-app";
 describe("Schedule API (e2e)", () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
+  let ADMIN = '';
+  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
   const MON = mondayISO();
   const SUN = addDaysISO(MON, 6);
 
@@ -16,6 +18,7 @@ describe("Schedule API (e2e)", () => {
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
+    ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     const login = await http.post("/api/auth/login").send({ webId: "admin", password: "demo1234" }).expect(201);
     TOKEN = login.body.accessToken;
   });
@@ -24,7 +27,7 @@ describe("Schedule API (e2e)", () => {
   });
 
   it("GET /schedule — enriched 행(요일·라벨·코호트 studentIds 포함)", async () => {
-    const res = await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200);
+    const res = await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200);
     expect(Array.isArray(res.body)).toBe(true);
     expect(res.body.length).toBeGreaterThan(0);
     const r = res.body[0];
@@ -35,7 +38,7 @@ describe("Schedule API (e2e)", () => {
   });
 
   it("GET /schedule/resources — 강사·강의실·학생·코스 옵션", async () => {
-    const res = await http.get("/api/schedule/resources").expect(200);
+    const res = await http.get("/api/schedule/resources").set(asAdmin()).expect(200);
     expect(res.body.instructors.length).toBeGreaterThan(0);
     expect(res.body.rooms.length).toBeGreaterThan(0);
     expect(res.body.students.length).toBeGreaterThan(0);
@@ -51,7 +54,7 @@ describe("Schedule API (e2e)", () => {
   });
 
   it("겹침 픽스처: 강사1 점심 불가시간 위 세션이 시드에 존재", async () => {
-    const rows = (await http.get(`/api/schedule?from=${MON}&to=${SUN}&instructorId=1`).expect(200)).body;
+    const rows = (await http.get(`/api/schedule?from=${MON}&to=${SUN}&instructorId=1`).set(asAdmin()).expect(200)).body;
     const overlap = rows.find(
       (r: { sessionDate: string; startTime: string }) => r.sessionDate === MON && r.startTime === "12:30",
     );
@@ -59,7 +62,7 @@ describe("Schedule API (e2e)", () => {
   });
 
   it("GET /schedule?studentId=2 — 학생2 코호트(코스11) 세션만", async () => {
-    const res = await http.get(`/api/schedule?from=${MON}&to=${SUN}&studentId=2`).expect(200);
+    const res = await http.get(`/api/schedule?from=${MON}&to=${SUN}&studentId=2`).set(asAdmin()).expect(200);
     expect(res.body.length).toBeGreaterThan(0);
     for (const r of res.body) {
       expect(r.courseId).toBe(11);
@@ -124,14 +127,14 @@ describe("Schedule API (e2e)", () => {
   });
 
   it("PATCH /schedule/:id — 존재하지 않는 roomId → 400(참조 무결성)", async () => {
-    const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200)).body;
+    const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body;
     const id = list[0].id;
     await http.patch(`/api/schedule/${id}`).set(TH()).send({ roomId: 9999 }).expect(400);
   });
 
   it("PATCH /schedule/:id — 시리즈 전체(scope=all) 동반 이동(updated>1)", async () => {
     // 시드: 코스10 시리즈(월·수·금) — 한 세션을 빈 시각으로 옮기되 scope=all
-    const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200)).body;
+    const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body;
     const target = list.find((r: { courseId: number; seriesId?: number }) => r.courseId === 10 && r.seriesId != null);
     expect(target).toBeTruthy();
     const res = await http
@@ -198,7 +201,7 @@ describe("Schedule API (e2e)", () => {
     const del = (await http.delete(`/api/schedule/${created.id}`).set(TH()).expect(200)).body;
     expect(del).toMatchObject({ id: created.id, deleted: true });
 
-    const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200)).body;
+    const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body;
     expect(list.some((r: { id: number }) => r.id === created.id)).toBe(false);
   });
 
@@ -267,6 +270,6 @@ describe("Schedule API (e2e)", () => {
   });
 
   it("인가: 읽기(GET)는 비로그인도 개방 → 200", async () => {
-    await http.get(`/api/schedule?from=${MON}&to=${SUN}`).expect(200);
+    await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200);
   });
 });

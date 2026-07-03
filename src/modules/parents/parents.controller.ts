@@ -4,7 +4,7 @@ import { ParentsService } from './parents.service';
 import { CreateParentDto } from './dto/create-parent.dto';
 import { LinkParentDto, UpdateRelationDto } from './dto/link-parent.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 
 // [참조/처리] /api/parents REST(people 도메인 — students와 동일하게 무가드).
 //  - GET /parents · GET /parents/relations(M:N). POST /parents(신규+연결) · POST /parents/link(기존 연결).
@@ -16,6 +16,7 @@ export class ParentsController {
   constructor(private readonly parents: ParentsService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '보호자 목록(Parent[])' })
   @ApiOkResponse({ description: 'Parent[] — name·phone·kakaoAvailable' })
   findAll() {
@@ -23,6 +24,7 @@ export class ParentsController {
   }
 
   @Get('relations')
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '학생↔보호자 관계(ParentStudent[]) — M:N(대표/납부자)' })
   @ApiOkResponse({ description: 'ParentStudent[] — parentId·studentId·relation·isPayer·isPrimary' })
   findAllRelations() {

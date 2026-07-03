@@ -3,7 +3,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { SubjectsService } from './subjects.service';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('subjects')
 @UseGuards(RolesGuard)
@@ -12,11 +12,13 @@ export class SubjectsController {
   constructor(private readonly subjects: SubjectsService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   findAll() {
     return this.subjects.findAll();
   }
 
   @Get(':id')
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.subjects.findOne(id);
   }

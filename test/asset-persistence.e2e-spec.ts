@@ -30,7 +30,7 @@ describe('Asset persistence sweep (e2e)', () => {
       .expect(201);
     const id = res.body.account?.id ?? res.body.id;
     expect(await listLen('/api/users')).toBe(before + 1);
-    const all = (await http.get('/api/users').expect(200)).body;
+    const all = (await http.get('/api/users').set(asAdmin()).expect(200)).body;
     const saved = all.find((a: { webId: string }) => a.webId === 'asset_tester');
     expect(saved).toMatchObject({ status: 'pending', emailVerified: false, role: 'instructor' });
     expect(saved.passwordHash).toBeUndefined(); // 안전 필드만 노출
@@ -51,16 +51,16 @@ describe('Asset persistence sweep (e2e)', () => {
     const parentId = parentRes.parent?.id ?? parentRes.id;
 
     // 재조회로 저장 확인(각 컬렉션)
-    expect((await http.get('/api/subjects').expect(200)).body.some((x: { id: number }) => x.id === subj.id)).toBe(true);
-    expect((await http.get('/api/courses').expect(200)).body.some((x: { id: number }) => x.id === course.id)).toBe(true);
-    expect((await http.get('/api/rooms').expect(200)).body.some((x: { id: number }) => x.id === room.id)).toBe(true);
-    expect((await http.get('/api/students').expect(200)).body.some((x: { id: number }) => x.id === student.id)).toBe(true);
-    expect((await http.get('/api/enrollments').expect(200)).body.some((x: { id: number }) => x.id === enr.id)).toBe(true);
-    expect((await http.get('/api/parents/relations').expect(200)).body
+    expect((await http.get('/api/subjects').set(asAdmin()).expect(200)).body.some((x: { id: number }) => x.id === subj.id)).toBe(true);
+    expect((await http.get('/api/courses').set(asAdmin()).expect(200)).body.some((x: { id: number }) => x.id === course.id)).toBe(true);
+    expect((await http.get('/api/rooms').set(asAdmin()).expect(200)).body.some((x: { id: number }) => x.id === room.id)).toBe(true);
+    expect((await http.get('/api/students').set(asAdmin()).expect(200)).body.some((x: { id: number }) => x.id === student.id)).toBe(true);
+    expect((await http.get('/api/enrollments').set(asAdmin()).expect(200)).body.some((x: { id: number }) => x.id === enr.id)).toBe(true);
+    expect((await http.get('/api/parents/relations').set(asAdmin()).expect(200)).body
       .some((x: { parentId: number; studentId: number }) => x.parentId === parentId && x.studentId === student.id)).toBe(true);
 
     // 파생 무결성: 신규 코스·수강이 스케줄 자원/코호트 유니버스에 반영(감사 A의 단일 소스 확인)
-    const resources = (await http.get('/api/schedule/resources').expect(200)).body;
+    const resources = (await http.get('/api/schedule/resources').set(asAdmin()).expect(200)).body;
     expect(resources.courses.some((c: { id: number }) => c.id === course.id)).toBe(true);
     expect(resources.students.some((s: { id: number }) => s.id === student.id)).toBe(true);
   });
@@ -80,15 +80,15 @@ describe('Asset persistence sweep (e2e)', () => {
     const event = (await http.post('/api/events').set(asAdmin())
       .send({ title: '자산 이벤트', type: 'event', startDate: '2099-02-01', endDate: '2099-02-01', priority: 'normal' }).expect(201)).body;
 
-    expect((await http.get(`/api/schedule?from=2099-01-01&to=2099-01-31`).expect(200)).body.some((x: { id: number }) => x.id === ses.id)).toBe(true);
-    expect((await http.get('/api/availability?ownerType=instructor&ownerId=1').expect(200)).body
+    expect((await http.get(`/api/schedule?from=2099-01-01&to=2099-01-31`).set(asAdmin()).expect(200)).body.some((x: { id: number }) => x.id === ses.id)).toBe(true);
+    expect((await http.get('/api/availability?ownerType=instructor&ownerId=1').set(asAdmin()).expect(200)).body
       .some((b: { weekday: number; startTime: string }) => b.weekday === 0 && b.startTime === '07:00')).toBe(true);
     expect((await http.get('/api/attendance').set(asAdmin()).expect(200)).body
       .some((a: { sessionId: number; studentId: number }) => a.sessionId === ses.id && a.studentId === 1)).toBe(true);
-    expect((await http.get('/api/counsel').expect(200)).body.some((c: { id: number }) => c.id === counsel.id)).toBe(true);
-    expect((await http.get('/api/counsel/rounds').expect(200)).body.some((r: { counselFormId: number }) => r.counselFormId === counsel.id)).toBe(true);
-    expect((await http.get(`/api/reports?sessionId=${ses.id}`).expect(200)).body.some((r: { id: number }) => r.id === report.id)).toBe(true);
-    expect((await http.get('/api/events').expect(200)).body.some((e: { id: number }) => e.id === event.id)).toBe(true);
+    expect((await http.get('/api/counsel').set(asAdmin()).expect(200)).body.some((c: { id: number }) => c.id === counsel.id)).toBe(true);
+    expect((await http.get('/api/counsel/rounds').set(asAdmin()).expect(200)).body.some((r: { counselFormId: number }) => r.counselFormId === counsel.id)).toBe(true);
+    expect((await http.get(`/api/reports?sessionId=${ses.id}`).set(asAdmin()).expect(200)).body.some((r: { id: number }) => r.id === report.id)).toBe(true);
+    expect((await http.get('/api/events').set(asAdmin()).expect(200)).body.some((e: { id: number }) => e.id === event.id)).toBe(true);
   });
 
   it('[감사 2026-07-02] 입력 가드 회귀: country 형식·enrollment FK·duration/amount 상한 = 400', async () => {
@@ -121,7 +121,7 @@ describe('Asset persistence sweep (e2e)', () => {
   it('재무: payments(청구→수납)와 expenses(요청→승인)가 저장되고 원장(transactions)에 기록된다', async () => {
     const txBefore = await listLen('/api/transactions');
     const pay = (await http.post('/api/payments').set(asAdmin())
-      .send({ studentId: 1, courseId: 10, amount: 111000, dueAt: '2099-03-01' }).expect(201)).body;
+      .send({ studentId: 1, amount: 111000, dueAt: '2099-03-01' }).expect(201)).body;
     await http.post(`/api/payments/${pay.id}/pay`).set(asAdmin()).send({ method: 'card' }).expect(201);
     const exp = (await http.post('/api/expenses').set(asAdmin())
       .send({ title: '자산 지출', amount: 5000, category: 'supplies', spentAt: '2099-03-02' }).expect(201)).body;

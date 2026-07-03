@@ -7,7 +7,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiCreatedResponse
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('events')
 @ApiBearerAuth()
@@ -17,6 +17,7 @@ export class EventsController {
   constructor(private readonly events: EventsService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '학원 이벤트/공지 목록(AcademyEvent[]) — 캘린더 표시(시작일 오름차순)' })
   @ApiOkResponse({ description: 'AcademyEvent[] — title·type·priority·startDate·endDate·allDay·memo' })
   findAll() {

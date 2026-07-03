@@ -1771,6 +1771,9 @@ components:
           - cash
           - point
           - etc
+        dueAt:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
       required:
       - studentId
       - amount
@@ -2007,6 +2010,13 @@ components:
           maximum: 480
           example: 90
           description: endTime 없을 때 사용(기본 60)
+        studentIds:
+          maxItems: 20
+          description: 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만
+            허용
+          type: array
+          items:
+            type: number
         topic:
           type: string
           maxLength: 200
@@ -2064,6 +2074,13 @@ components:
           minimum: 10
           maximum: 480
           example: 60
+        studentIds:
+          maxItems: 20
+          description: 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만
+            허용
+          type: array
+          items:
+            type: number
         roomId:
           type: number
           example: 2

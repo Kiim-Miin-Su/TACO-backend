@@ -14,6 +14,7 @@ export class ReportsController {
   constructor(private readonly reports: ReportsService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '보고서 목록(sessionId 필터 가능)' })
   @ApiQuery({ name: 'sessionId', required: false })
   findAll(@Query('sessionId') sessionId?: string) {
@@ -21,6 +22,7 @@ export class ReportsController {
   }
 
   @Get(':id')
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.reports.findOne(id);
   }

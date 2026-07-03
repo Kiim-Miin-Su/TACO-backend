@@ -7,6 +7,7 @@ describe('Payments PATCH (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let ADMIN = '';
+  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
   beforeAll(async () => {
     app = await createTestApp();

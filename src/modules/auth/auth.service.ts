@@ -29,12 +29,14 @@ export class AuthService {
   sign(claims: JwtClaims): string {
     return jwt.sign(claims, this.secret, {
       expiresIn: this.expiresIn as jwt.SignOptions['expiresIn'],
+      algorithm: 'HS256', // [보안 2026-07-03] 서명 알고리즘 고정
     });
   }
 
   verify(token: string): JwtClaims & jwt.JwtPayload {
     try {
-      return jwt.verify(token, this.secret) as JwtClaims & jwt.JwtPayload;
+      // [보안 2026-07-03] algorithms 화이트리스트 — 'none'·alg confusion(RS/HS 혼동) 공격 차단
+      return jwt.verify(token, this.secret, { algorithms: ['HS256'] }) as JwtClaims & jwt.JwtPayload;
     } catch {
       throw new UnauthorizedException('Invalid or expired token');
     }

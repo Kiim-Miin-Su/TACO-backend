@@ -3,7 +3,7 @@ import { ApiTags, ApiOperation, ApiOkResponse, ApiCreatedResponse } from '@nestj
 import { RoadmapsService } from './roadmaps.service';
 import { CreateRoadmapDto } from './dto/create-roadmap.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 
 // [참조/처리] /api/roadmaps REST(카탈로그 — courses/subjects와 동일하게 무가드).
 //  - GET /roadmaps: 로드맵 목록. GET /roadmaps/courses: M:N 링크 목록(프론트가 두 배열로 하이드레이트).
@@ -15,6 +15,7 @@ export class RoadmapsController {
   constructor(private readonly roadmaps: RoadmapsService) {}
 
   @Get()
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '로드맵 목록(Roadmap[])' })
   @ApiOkResponse({ description: 'Roadmap[] — title·targetGrade·durationWeeks·isActive' })
   findAll() {
@@ -22,6 +23,7 @@ export class RoadmapsController {
   }
 
   @Get('courses')
+  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '로드맵↔코스 링크(RoadmapCourse[]) — M:N 조인(sortOrder)' })
   @ApiOkResponse({ description: 'RoadmapCourse[] — roadmapId·courseId·sortOrder' })
   findAllCourses() {

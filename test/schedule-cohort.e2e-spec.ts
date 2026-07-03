@@ -17,7 +17,7 @@ describe('Schedule cohort integrity (e2e)', () => {
   let newStudentId = 0;
 
   const course10Rows = async () =>
-    (await http.get('/api/schedule').expect(200)).body.filter((r: { courseId: number }) => r.courseId === 10);
+    (await http.get('/api/schedule').set(asAdmin()).expect(200)).body.filter((r: { courseId: number }) => r.courseId === 10);
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -43,10 +43,10 @@ describe('Schedule cohort integrity (e2e)', () => {
 
     const rows = await course10Rows();
     for (const r of rows) expect(r.studentIds).toContain(newStudentId);
-    const res = (await http.get('/api/schedule/resources').expect(200)).body;
+    const res = (await http.get('/api/schedule/resources').set(asAdmin()).expect(200)).body;
     expect(res.students.map((s: { id: number }) => s.id)).toContain(newStudentId);
     // 개인 스케줄 필터(studentId)도 enrollments 역추적으로 동작
-    const mine = (await http.get(`/api/schedule?studentId=${newStudentId}`).expect(200)).body;
+    const mine = (await http.get(`/api/schedule?studentId=${newStudentId}`).set(asAdmin()).expect(200)).body;
     expect(mine.length).toBe(rows.length);
     expect(mine.every((r: { courseId: number }) => r.courseId === 10)).toBe(true);
   });
@@ -56,12 +56,12 @@ describe('Schedule cohort integrity (e2e)', () => {
 
     const rows = await course10Rows();
     for (const r of rows) expect(r.studentIds).not.toContain(newStudentId);
-    const res = (await http.get('/api/schedule/resources').expect(200)).body;
+    const res = (await http.get('/api/schedule/resources').set(asAdmin()).expect(200)).body;
     expect(res.students.map((s: { id: number }) => s.id)).not.toContain(newStudentId);
-    const mine = (await http.get(`/api/schedule?studentId=${newStudentId}`).expect(200)).body;
+    const mine = (await http.get(`/api/schedule?studentId=${newStudentId}`).set(asAdmin()).expect(200)).body;
     expect(mine.length).toBe(0);
     // 소프트삭제 — 학생 행 자체는 보존(status만 canceled)
-    const all = (await http.get('/api/students').expect(200)).body;
+    const all = (await http.get('/api/students').set(asAdmin()).expect(200)).body;
     const st = all.find((s: { id: number }) => s.id === newStudentId);
     expect(st).toBeDefined();
     expect(st.status).toBe('canceled');

@@ -115,7 +115,7 @@ describe('Assetization sweep 2 (e2e)', () => {
   it('payments.refund: paid→refunded + 원장 출금(역참조) + 멱등·미수납 400', async () => {
     const listLen = async () => ((await http.get('/api/transactions').set(asAdmin()).expect(200)).body as unknown[]).length;
     const pay = (await http.post('/api/payments').set(asAdmin())
-      .send({ studentId: 1, courseId: 10, amount: 220000, dueAt: '2099-06-02' }).expect(201)).body;
+      .send({ studentId: 1, amount: 220000, dueAt: '2099-06-02' }).expect(201)).body;
     await http.post(`/api/payments/${pay.id}/refund`).set(asAdmin()).expect(400); // 미수납 환불 금지
     await http.post(`/api/payments/${pay.id}/pay`).set(asAdmin()).send({ method: 'card' }).expect(201);
     const txBefore = await listLen();

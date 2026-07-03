@@ -6,12 +6,15 @@ import { createTestApp } from './setup-app';
 describe('Attendance API (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
+  let ADMIN = '';
+  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
   let TOKEN = '';
   const auth = () => ({ Authorization: `Bearer ${TOKEN}` });
 
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
+    ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     TOKEN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
   });
   afterAll(async () => { await app.close(); });

@@ -7,6 +7,7 @@ describe('Events API (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let ADMIN = '';
+  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -16,7 +17,7 @@ describe('Events API (e2e)', () => {
   afterAll(async () => { await app.close(); });
 
   it('GET /events — 시드 4건, 시작일 오름차순, 필드 정합', async () => {
-    const rows = (await http.get('/api/events').expect(200)).body;
+    const rows = (await http.get('/api/events').set(asAdmin()).expect(200)).body;
     expect(rows.length).toBeGreaterThanOrEqual(4);
     // 시작일 오름차순
     for (let i = 1; i < rows.length; i++) expect(rows[i - 1].startDate <= rows[i].startDate).toBe(true);

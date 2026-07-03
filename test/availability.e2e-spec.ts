@@ -6,6 +6,8 @@ import { createTestApp } from './setup-app';
 describe('Availability API (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
+  let ADMIN = '';
+  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
   // 스케줄 쓰기는 RolesGuard로 로그인 필수 → 데모 토큰(연동 테스트의 세션 생성용).
   let TOKEN = '';
@@ -14,6 +16,7 @@ describe('Availability API (e2e)', () => {
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
+    ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     const login = await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201);
     TOKEN = login.body.accessToken;
   });
@@ -29,7 +32,7 @@ describe('Availability API (e2e)', () => {
   });
 
   it('GET /availability?ownerType=student&ownerId=1 — 필터 조회', async () => {
-    const res = await http.get('/api/availability?ownerType=student&ownerId=1').expect(200);
+    const res = await http.get('/api/availability?ownerType=student&ownerId=1').set(asAdmin()).expect(200);
     expect(res.body.every((b: { ownerType: string; ownerId: number }) => b.ownerType === 'student' && b.ownerId === 1)).toBe(true);
   });
 
