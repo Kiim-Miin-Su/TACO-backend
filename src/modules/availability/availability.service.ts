@@ -70,6 +70,10 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   upsert(dto: UpsertAvailabilityDto, actorId?: number): AvailabilityBlock {
+    // [버그수정 2026-07-06] 자정 크로스(end<=start) 거부 — 세션과 동일 규칙. 시차 입력은 FE가 분할 저장(splitKstBand).
+    const asMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    if (asMin(dto.endTime) <= asMin(dto.startTime))
+      throw new BadRequestException('종료 시각이 시작보다 빠릅니다(자정을 넘는 블록은 두 개로 나눠 저장하세요)');
     this.assertOwner(dto.ownerType, dto.ownerId); // owner_id 참조 무결성(#7)
     this.assertNoOverlap(dto); // 겹침 방지(버그2)
     if (dto.id) {

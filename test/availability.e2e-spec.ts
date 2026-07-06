@@ -36,6 +36,13 @@ describe('Availability API (e2e)', () => {
     expect(res.body.every((b: { ownerType: string; ownerId: number }) => b.ownerType === 'student' && b.ownerId === 1)).toBe(true);
   });
 
+  it('[버그수정 2026-07-06] 자정 크로스(end<=start) → 400 (시차 입력은 FE가 분할 저장)', async () => {
+    await http.put('/api/availability')
+      .set(TH())
+      .send({ ownerType: 'student', ownerId: 1, kind: 'available', weekday: 5, startTime: '23:00', endTime: '01:00' })
+      .expect(400);
+  });
+
   it('참조 무결성(#7): 존재하지 않는 강의실 owner → 400', async () => {
     await http.put('/api/availability')
       .set(TH())
