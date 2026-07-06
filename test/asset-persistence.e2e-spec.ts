@@ -108,14 +108,18 @@ describe('Asset persistence sweep (e2e)', () => {
       .send({ studentId: 1, courseId: 10, amount: 999_999_999_999, dueAt: '2099-05-01' }).expect(400);
     await http.post('/api/expenses').set(asAdmin())
       .send({ title: '가드 지출', amount: 999_999_999_999, category: 'supplies', spentAt: '2099-05-01' }).expect(400);
-    // [자정 크로스] KST 저장 세션은 당일 오후→익일 오전으로 넘어갈 수 없다(설계상 거부 — 단일 날짜 세션만).
-    //  ① endTime < startTime(23:00→01:00) = "종료가 시작보다 빠름" 400
-    //  ② durationMinutes로 24:00 초과(23:00+120분) = addMinutes 범위 가드 400
-    //  해외 학생용 자정 크로스 "표시"는 프론트 tz 변환의 24:00 클램프가 담당(저장은 항상 KST 단일 날짜).
-    await http.post('/api/schedule').set(asAdmin())
-      .send({ courseId: 10, sessionDate: '2099-05-02', startTime: '23:00', endTime: '01:00' }).expect(400);
-    await http.post('/api/schedule').set(asAdmin())
-      .send({ courseId: 10, sessionDate: '2099-05-02', startTime: '23:00', durationMinutes: 120 }).expect(400);
+    // [R-9 2026-07-06] 자정 크로스 **정식 지원**(구 400 거부 폐지 — 옵션 B 단일 세션 모델):
+    //  ① endTime < startTime(23:00→01:00) = 익일 종료로 해석 → 201, duration 120
+    //  ② durationMinutes로 24:00 초과(23:00+120분) → 201
+    //  둘 다 endTime은 **미저장**(durationMinutes 파생 — '25:00' 같은 무효 HH:mm 금지)·sessionDate=시작일.
+    //  ①이 5/3 00~01시를 점유하므로 ②는 겹치지 않는 5/4에 생성(이틀 충돌 검사와 정합).
+    const x1 = (await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-05-02', startTime: '23:00', endTime: '01:00' }).expect(201)).body.row;
+    expect(x1.durationMinutes).toBe(120);
+    expect(x1.endTime == null).toBe(true);
+    const x2 = (await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-05-04', startTime: '23:00', durationMinutes: 120 }).expect(201)).body.row;
+    expect(x2.endTime == null).toBe(true);
   });
 
   it('재무: payments(청구→수납)와 expenses(요청→승인)가 저장되고 원장(transactions)에 기록된다', async () => {

@@ -32,8 +32,33 @@ function addMinutes(hhmm: string, mins: number): string {
   const t = h * 60 + m + mins;
   // [M3] 시리즈 델타 적용 시 자정 범위를 벗어나면 '0-4:-30' 같은 오염 문자열이 커밋될 수 있음(코드리뷰).
   //  여기서 400을 던지면 감싼 db.transaction이 시리즈 전체를 롤백한다(부분 오염 금지).
+  //  [R-9 2026-07-06] 이 가드는 이제 **시작시각**(시리즈 델타)과 24:00 미만 종료 파생에만 걸린다 —
+  //  자정 크로스 종료는 endTimeOf가 미리 undefined(파생 저장)로 분기하므로 이 함수에 도달하지 않는다.
   if (t < 0 || t >= 24 * 60) throw new BadRequestException(`시간 범위를 벗어납니다(${hhmm} ${mins >= 0 ? '+' : ''}${mins}분)`);
   return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
+}
+
+// ── [R-9 2026-07-06] 자정 크로스 수업 정식 지원(옵션 B — 단일 세션 모델) ──
+//  - 세션은 계속 **1레코드·sessionDate=시작일(KST)** — 분할 저장 금지(시수·출결·정산 이중 카운트 위험).
+//  - 입력 규칙: endTime < startTime → **익일 종료**로 해석(예: 23:00→01:00 = 120분). 같으면 400.
+//  - 저장 규칙: 종료가 24:00 이상이면 endTime을 **저장하지 않고**(HH:mm 계약 보호 — '25:00' 금지)
+//    durationMinutes로 파생한다. 조회(enrich)도 동일 — 크로스 세션의 endTime은 미제공(FE가 duration 파생).
+//  - 크로스 세션 duration 상한 = 480분(DTO [감사 H4]와 동일 — 시급 계산 오염 방지).
+//  - 충돌 검사는 conflict.util이 절대 분 좌표(±1일)로 이틀에 걸쳐 수행.
+const CROSS_MAX_MIN = 480;
+/** endTime 입력 → 진행 분. 음수(익일 종료)는 +1440 래핑. 0(같은 시각)은 호출부에서 400. */
+const durationFrom = (startTime: string, endTime: string): number => {
+  const d = toMin(endTime) - toMin(startTime);
+  return d < 0 ? d + 1440 : d;
+};
+/** 저장/응답용 endTime — 자정(24:00) 이상 종료면 undefined(durationMinutes 파생 규칙). */
+const endTimeOf = (startTime: string, durationMinutes: number): string | undefined =>
+  toMin(startTime) + durationMinutes >= 24 * 60 ? undefined : addMinutes(startTime, durationMinutes);
+/** 크로스 duration 검증(공통) — 0 이하=400(같은 시각), 크로스면 상한 480분. */
+function assertDuration(startTime: string, durationMinutes: number): void {
+  if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작과 같을 수 없습니다');
+  if (toMin(startTime) + durationMinutes >= 24 * 60 && durationMinutes > CROSS_MAX_MIN)
+    throw new BadRequestException(`자정 크로스 수업은 최대 ${CROSS_MAX_MIN}분(8시간)까지 가능합니다`);
 }
 const addDaysISO = (dateStr: string, days: number): string => {
   const d = new Date(dateStr + 'T00:00:00Z');
@@ -58,7 +83,8 @@ type SeedSeries = { courseId: number; instructorId: number; topic: string; roomI
 // 병합된 세션 필드(업데이트 적용 단위) — 이동/리사이즈/편집 공통.
 type MergedFields = {
   studentIds?: number[]; // 명시 코호트(v0.1.13)
-  sessionDate: string; startTime: string; endTime: string; durationMinutes: number;
+  // [R-9] endTime은 자정 크로스(익일 종료)면 undefined — durationMinutes 파생(단일 세션 모델)
+  sessionDate: string; startTime: string; endTime?: string; durationMinutes: number;
   courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string; color?: string;
   instructorAttendance?: ClassSession['instructorAttendance'];
   kind?: ClassSession['kind']; price?: number; // [v0.1.14]
@@ -252,14 +278,15 @@ export class ScheduleService implements OnModuleInit {
     const course = this.courseOf(dto.courseId)!;
 
     const startTime = dto.startTime;
+    // [R-9] endTime<startTime = 익일 종료(자정 크로스 — +1440 래핑). 같으면 400, 크로스 상한 480분.
     const durationMinutes = dto.endTime
-      ? toMin(dto.endTime) - toMin(startTime)
+      ? durationFrom(startTime, dto.endTime)
       : dto.durationMinutes ?? 60;
-    if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작보다 빠릅니다');
-    const endTime = dto.endTime ?? addMinutes(startTime, durationMinutes);
+    assertDuration(startTime, durationMinutes);
+    const endTime = endTimeOf(startTime, durationMinutes); // 크로스면 undefined(durationMinutes 파생 저장)
 
     const conflicts = detectConflicts(
-      { sessionDate: dto.sessionDate, startTime, endTime, instructorId, roomId: dto.roomId },
+      { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId },
       this.db.findAll<ClassSession>(SESSIONS),
       this.availability.list(),
     );
@@ -319,9 +346,9 @@ export class ScheduleService implements OnModuleInit {
     sessionDate: string; startTime: string; endTime?: string; durationMinutes?: number;
     instructorId?: number; roomId?: number; ignoreSessionId?: number;
   }): Conflict[] {
-    const endTime = input.endTime ?? (input.durationMinutes != null ? addMinutes(input.startTime, input.durationMinutes) : input.startTime);
+    // [R-9] endTime/durationMinutes를 그대로 전달 — conflict.util이 자정 크로스(익일 종료)까지 해석.
     return detectConflicts(
-      { sessionDate: input.sessionDate, startTime: input.startTime, endTime, instructorId: input.instructorId, roomId: input.roomId, ignoreSessionId: input.ignoreSessionId },
+      { sessionDate: input.sessionDate, startTime: input.startTime, endTime: input.endTime, durationMinutes: input.durationMinutes, instructorId: input.instructorId, roomId: input.roomId, ignoreSessionId: input.ignoreSessionId },
       this.db.findAll<ClassSession>(SESSIONS),
       this.availability.list(),
     );
@@ -368,7 +395,7 @@ export class ScheduleService implements OnModuleInit {
           fields: {
             sessionDate: addDaysISO(m.sessionDate, dayDelta),
             startTime: mStart,
-            endTime: addMinutes(mStart, primary.durationMinutes),
+            endTime: endTimeOf(mStart, primary.durationMinutes), // [R-9] 크로스면 undefined(파생 저장)
             durationMinutes: primary.durationMinutes,
             courseId: primary.courseId,
             instructorId: primary.instructorId,
@@ -387,7 +414,8 @@ export class ScheduleService implements OnModuleInit {
     const conflicts: Conflict[] = [];
     for (const f of [primary, ...seriesPatches.map((p) => p.fields)]) {
       conflicts.push(...detectConflicts(
-        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime, instructorId: f.instructorId, roomId: f.roomId },
+        // [R-9] 크로스 세션은 endTime이 undefined — durationMinutes로 이틀(±1일) 겹침 검사
+        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId },
         others, blocks,
       ));
     }
@@ -417,17 +445,18 @@ export class ScheduleService implements OnModuleInit {
   private mergeFields(cur: ClassSession, dto: UpdateScheduleDto): MergedFields {
     const sessionDate = dto.sessionDate ?? cur.sessionDate;
     const startTime = dto.startTime ?? cur.startTime ?? '00:00';
-    let endTime: string;
+    // [R-9 2026-07-06] 자정 크로스 정식 지원 — (구 [R-1b F4] 400 차단 규칙 대체):
+    //  · dto.endTime 경로: endTime<startTime = 익일 종료(+1440 래핑, 예: 23:00→01:00=120분).
+    //  · durationMinutes 경로(드래그 이동 = {startTime, durationMinutes} 패치): 자정 초과 허용.
+    //  어느 경로든 종료가 24:00 이상이면 endTime을 저장하지 않고(undefined) durationMinutes로 파생 —
+    //  '25:00' 같은 무효 HH:mm이 DB에 남지 않는다. 크로스 상한 480분(assertDuration).
     let durationMinutes: number;
-    if (dto.endTime) { endTime = dto.endTime; durationMinutes = toMin(endTime) - toMin(startTime); }
-    // [R-1b 2026-07-06] F4 확인: durationMinutes 경로(드래그 이동 = {startTime, durationMinutes} 패치)의
-    //  자정 초과(예: 23:30+90분='25:00')는 **이 파일 로컬 addMinutes의 [M3] 가드**가 400을 던져 저장 전에
-    //  차단된다(리뷰가 지목한 conflict.util.addMinutes는 겹침 파생 전용 — 저장 경로에서 미사용).
-    //  dto.endTime 경로는 DTO HHMM 정규식(2[0-3])이 24시 이상을 차단. e2e 회귀: schedule.e2e-spec F4 케이스.
-    else if (dto.durationMinutes != null) { durationMinutes = dto.durationMinutes; endTime = addMinutes(startTime, durationMinutes); }
-    // 종료/시수 미지정 → 시수 유지하되 종료는 시작 기준으로 재계산(이동 시 종료가 어긋나지 않게).
-    else { durationMinutes = cur.durationMinutes; endTime = addMinutes(startTime, durationMinutes); }
-    if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작보다 빠릅니다');
+    if (dto.endTime) durationMinutes = durationFrom(startTime, dto.endTime);
+    else if (dto.durationMinutes != null) durationMinutes = dto.durationMinutes;
+    // 종료/시수 미지정 → 시수 유지(이동 시 종료는 시작 기준 재파생 — 크로스 여부도 재판정).
+    else durationMinutes = cur.durationMinutes;
+    assertDuration(startTime, durationMinutes);
+    const endTime = endTimeOf(startTime, durationMinutes);
 
     const courseId = dto.courseId ?? cur.courseId;
     const course = this.courseOf(courseId);
@@ -454,7 +483,8 @@ export class ScheduleService implements OnModuleInit {
       ...s,
       kind: s.kind ?? 'class', // [v0.1.14] 시드·구데이터 하위호환(미지정=class)
       weekday: weekdayOf(s.sessionDate),
-      endTime: s.endTime ?? (s.startTime ? addMinutes(s.startTime, s.durationMinutes) : undefined),
+      // [R-9] 자정 크로스(시작+진행≥24:00)면 endTime 미제공 — FE가 durationMinutes로 파생(단일 규칙)
+      endTime: s.endTime ?? (s.startTime ? endTimeOf(s.startTime, s.durationMinutes) : undefined),
       courseName: c?.name ?? `course ${s.courseId}`,
       subjectName: this.subjectOf(c?.subjectId)?.name ?? '',
       instructorName: INSTRUCTORS[s.instructorId] ?? `강사 ${s.instructorId}`,

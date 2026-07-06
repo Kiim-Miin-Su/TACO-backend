@@ -29,7 +29,8 @@ export class CreateScheduleDto implements CreateClassSessionInput {
   @Matches(HHMM, { message: 'startTime must be HH:mm' })
   startTime!: string;
 
-  @ApiPropertyOptional({ example: '17:30', description: '미지정 시 start+duration 파생' })
+  // [R-9 2026-07-06] endTime < startTime = 익일 종료(자정 크로스)로 해석 — 서비스가 durationMinutes로 저장(파생)
+  @ApiPropertyOptional({ example: '17:30', description: '미지정 시 start+duration 파생. startTime보다 이르면 익일 종료(자정 크로스)' })
   @IsOptional() @Matches(HHMM, { message: 'endTime must be HH:mm' })
   endTime?: string;
 

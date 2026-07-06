@@ -1,4 +1,9 @@
 // 스케줄 충돌 검사(프론트 lib/domain/schedule.ts 와 동일 규칙을 백엔드에서 재현).
+// [R-9 2026-07-06] 자정 크로스 수업 정식 지원 — 세션은 1레코드(sessionDate=시작일·KST)이고 종료가
+//  자정을 넘을 수 있다(저장은 endTime 미기록 → durationMinutes 파생, 입력 endTime<startTime=익일 종료).
+//  겹침 검사는 "시작일 00:00 기준 절대 분(minute)" 좌표로 통일한다: 익일 종료=1440 초과,
+//  인접일(±1일) 세션은 날짜 차이×1440 오프셋으로 같은 좌표계에 놓고 비교 —
+//  [시작일 잔여]+[익일 00:00~] 이틀에 걸친 검사와 동치(듀레이션 상한 8h<24h라 스필은 ±1일뿐).
 import type { Conflict } from '@kms545487/contracts';
 import type { ClassSession } from './schedule.entity';
 import type { AvailabilityBlock } from '../availability/availability.entity';
@@ -7,19 +12,35 @@ const toMin = (hhmm: string): number => {
   const [h, m] = hhmm.split(':').map(Number);
   return h * 60 + m;
 };
+// 표시/파생 전용 — 자정 초과 시 '25:00' 형태가 되므로 **저장 값으로 쓰지 말 것**(HH:mm 계약).
 export const addMinutes = (hhmm: string, mins: number): string => {
   const t = toMin(hhmm) + mins;
   return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
 };
 export const weekdayOf = (dateStr: string): number =>
   new Date(dateStr + 'T00:00:00Z').getUTCDay();
-const overlaps = (aS: string, aE: string, bS: string, bE: string): boolean =>
-  toMin(aS) < toMin(bE) && toMin(bS) < toMin(aE);
+const addDaysISO = (dateStr: string, days: number): string => {
+  const d = new Date(dateStr + 'T00:00:00Z');
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+const dayDiffDays = (a: string, b: string): number =>
+  Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86_400_000);
+
+/** [R-9] 종료 분(시작일 00:00 기준, 자정 크로스=1440 초과).
+ *  endTime 없음 → start+duration 파생. endTime<startTime → 익일 종료(+1440)로 해석. */
+export const sessionEndMin = (startTime: string, endTime: string | undefined, durationMinutes: number): number => {
+  if (!endTime) return toMin(startTime) + durationMinutes;
+  const e = toMin(endTime);
+  const s = toMin(startTime);
+  return e < s ? e + 1440 : e;
+};
 
 export type Candidate = {
   sessionDate: string;
   startTime: string;
-  endTime: string;
+  endTime?: string; // [R-9] endTime<startTime = 익일 종료로 해석(자정 크로스)
+  durationMinutes?: number; // endTime 없을 때 종료 파생(자정 초과 허용)
   instructorId?: number;
   roomId?: number;
   ignoreSessionId?: number;
@@ -31,32 +52,47 @@ export function detectConflicts(
   blocks: AvailabilityBlock[],
 ): Conflict[] {
   const out: Conflict[] = [];
-  // 1) 이중예약(강사·강의실)
+  const cS = toMin(cand.startTime);
+  const cE = sessionEndMin(cand.startTime, cand.endTime, cand.durationMinutes ?? 0);
+  // 1) 이중예약(강사·강의실) — 후보 시작일 기준 절대 분 좌표 비교(±1일 세션 포함 — 자정 크로스 스필)
   for (const s of sessions) {
     if (s.id === cand.ignoreSessionId) continue;
     if (s.status === 'canceled' || s.status === 'no_show') continue; // 결강/취소는 시간 점유 아님
-    if (s.sessionDate !== cand.sessionDate || !s.startTime) continue;
-    const sEnd = s.endTime ?? addMinutes(s.startTime, s.durationMinutes);
-    if (!overlaps(cand.startTime, cand.endTime, s.startTime, sEnd)) continue;
+    if (!s.startTime) continue;
+    const dd = dayDiffDays(s.sessionDate, cand.sessionDate);
+    if (dd < -1 || dd > 1) continue; // 세션 상한 8h < 24h — 자정 스필은 인접 1일까지만
+    const off = dd * 1440;
+    const sS = off + toMin(s.startTime);
+    const sE = off + sessionEndMin(s.startTime, s.endTime, s.durationMinutes);
+    if (!(cS < sE && sS < cE)) continue;
     if (cand.instructorId != null && s.instructorId === cand.instructorId)
       out.push({ type: 'double_book', resource: 'instructor', resourceId: cand.instructorId, sessionId: s.id });
     if (cand.roomId != null && s.roomId === cand.roomId)
       out.push({ type: 'double_book', resource: 'room', resourceId: cand.roomId, sessionId: s.id });
   }
-  // 2) 불가시간(Block)
-  const wd = weekdayOf(cand.sessionDate);
-  for (const b of blocks) {
-    if (b.kind !== 'unavailable' || b.weekday !== wd) continue;
-    // 기간(effectiveFrom/effectiveTo) 밖의 주에는 적용 안 함 — "이번만/앞으로/기간" 반복 규칙 반영.
-    if (b.effectiveFrom && cand.sessionDate < b.effectiveFrom) continue;
-    if (b.effectiveTo && cand.sessionDate > b.effectiveTo) continue;
-    if (!overlaps(cand.startTime, cand.endTime, b.startTime, b.endTime)) continue;
-    // detail: 겹친 불가시간의 실제 시각(요일·시:분)을 담아 프론트가 사람이 읽을 수 있게 표시.
-    const blockDetail = `불가시간 ${b.startTime}–${b.endTime}`;
-    if (b.ownerType === 'instructor' && cand.instructorId === b.ownerId)
-      out.push({ type: 'unavailable', resource: 'instructor', resourceId: b.ownerId, detail: blockDetail });
-    if (b.ownerType === 'room' && cand.roomId === b.ownerId)
-      out.push({ type: 'unavailable', resource: 'room', resourceId: b.ownerId, detail: blockDetail });
+  // 2) 불가시간(Block) — 자정 크로스 후보는 [시작일 s~24:00] + [익일 00:00~잔여] 두 세그먼트로
+  //    각 날짜의 요일·effective 범위에 대해 검사(블록 자체는 end<=start 400이라 항상 같은 날).
+  const segs = cE > 1440
+    ? [
+        { date: cand.sessionDate, s: cS, e: 1440 },
+        { date: addDaysISO(cand.sessionDate, 1), s: 0, e: cE - 1440 },
+      ]
+    : [{ date: cand.sessionDate, s: cS, e: cE }];
+  for (const seg of segs) {
+    const wd = weekdayOf(seg.date);
+    for (const b of blocks) {
+      if (b.kind !== 'unavailable' || b.weekday !== wd) continue;
+      // 기간(effectiveFrom/effectiveTo) 밖의 주에는 적용 안 함 — "이번만/앞으로/기간" 반복 규칙 반영.
+      if (b.effectiveFrom && seg.date < b.effectiveFrom) continue;
+      if (b.effectiveTo && seg.date > b.effectiveTo) continue;
+      if (!(seg.s < toMin(b.endTime) && toMin(b.startTime) < seg.e)) continue;
+      // detail: 겹친 불가시간의 실제 시각(요일·시:분)을 담아 프론트가 사람이 읽을 수 있게 표시.
+      const blockDetail = `불가시간 ${b.startTime}–${b.endTime}`;
+      if (b.ownerType === 'instructor' && cand.instructorId === b.ownerId)
+        out.push({ type: 'unavailable', resource: 'instructor', resourceId: b.ownerId, detail: blockDetail });
+      if (b.ownerType === 'room' && cand.roomId === b.ownerId)
+        out.push({ type: 'unavailable', resource: 'room', resourceId: b.ownerId, detail: blockDetail });
+    }
   }
   return out;
 }

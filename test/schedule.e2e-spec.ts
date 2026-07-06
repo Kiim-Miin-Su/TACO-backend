@@ -132,12 +132,67 @@ describe("Schedule API (e2e)", () => {
     await http.patch(`/api/schedule/${id}`).set(TH()).send({ roomId: 9999 }).expect(400);
   });
 
-  // [R-1b 2026-07-06] F4 회귀: 드래그 이동 패치({startTime, durationMinutes})가 자정을 넘으면
-  // addMinutes('23:30',90)='25:00' 같은 무효 endTime이 저장되지 않고 400(서비스 로컬 addMinutes [M3] 가드).
-  it("PATCH /schedule/:id — durationMinutes 경로 자정 초과(endTime>24:00) → 400 [R-1b F4]", async () => {
+  // [R-9 2026-07-06] 자정 크로스 정식 지원 — 구 [R-1b F4] 400 거부를 대체.
+  // 드래그 이동 패치({startTime, durationMinutes})가 자정을 넘으면 이제 200: endTime을 저장하지 않고
+  // durationMinutes로 파생(단일 세션·sessionDate=시작일). '25:00' 같은 무효 HH:mm은 여전히 DB에 없음.
+  it("PATCH /schedule/:id — durationMinutes 경로 자정 초과 → 200·endTime 미저장(duration 파생) [R-9]", async () => {
     const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body;
-    const id = list[0].id;
-    await http.patch(`/api/schedule/${id}`).set(TH()).send({ startTime: "23:30", durationMinutes: 90 }).expect(400);
+    const orig = list[0];
+    const res = await http.patch(`/api/schedule/${orig.id}`).set(TH())
+      .send({ startTime: "23:30", durationMinutes: 90, force: true }).expect(200);
+    expect(res.body.row.startTime).toBe("23:30");
+    expect(res.body.row.durationMinutes).toBe(90); // 시수 보존(이중 계상 없음 — 1레코드)
+    expect(res.body.row.endTime == null).toBe(true); // 크로스 = endTime 미제공(FE가 duration 파생)
+    expect(res.body.row.sessionDate).toBe(orig.sessionDate); // sessionDate = 시작일 유지
+    // 원복(이후 테스트의 시드 레이아웃 보존)
+    await http.patch(`/api/schedule/${orig.id}`).set(TH())
+      .send({ startTime: orig.startTime, endTime: orig.endTime, force: true }).expect(200);
+  });
+
+  // [R-9 2026-07-06] 자정 크로스 생성·이틀 충돌 검사·시수 정합 — 옵션 B(단일 세션 모델) 회귀
+  describe("자정 크로스 수업 [R-9]", () => {
+    const D1 = "2099-06-01", D2 = "2099-06-02"; // 시드·주간 조회와 무관한 미래 날짜(hermetic)
+    let crossId = 0;
+    it("POST endTime<startTime(23:00→01:00) = 익일 종료 → 201·duration 120·endTime 미저장", async () => {
+      const res = await http.post("/api/schedule").set(TH())
+        .send({ courseId: 10, sessionDate: D1, startTime: "23:00", endTime: "01:00" }).expect(201);
+      crossId = res.body.row.id;
+      expect(res.body.row.durationMinutes).toBe(120);
+      expect(res.body.row.endTime == null).toBe(true);
+      expect(res.body.row.sessionDate).toBe(D1); // 1레코드·시작일 기준(분할 없음)
+    });
+    it("시수 정합: 시작일 조회에만 1회 포함(익일 조회 미포함 — 이중 카운트 없음)", async () => {
+      const day1 = (await http.get(`/api/schedule?from=${D1}&to=${D1}`).set(asAdmin()).expect(200)).body;
+      const day2 = (await http.get(`/api/schedule?from=${D2}&to=${D2}`).set(asAdmin()).expect(200)).body;
+      expect(day1.filter((r: { id: number }) => r.id === crossId)).toHaveLength(1);
+      expect(day2.some((r: { id: number }) => r.id === crossId)).toBe(false);
+    });
+    it("이틀 충돌 ①: 시작일 잔여(23:30~) 겹침 → 409 double_book", async () => {
+      const res = await http.post("/api/schedule").set(TH())
+        .send({ courseId: 10, sessionDate: D1, startTime: "23:30", durationMinutes: 30 }).expect(409);
+      expect(JSON.stringify(res.body)).toContain("double_book");
+    });
+    it("이틀 충돌 ②: 익일 스필(00:30~) 겹침 → 409 double_book(같은 강사)", async () => {
+      const res = await http.post("/api/schedule").set(TH())
+        .send({ courseId: 10, sessionDate: D2, startTime: "00:30", durationMinutes: 60 }).expect(409);
+      expect(JSON.stringify(res.body)).toContain("double_book");
+    });
+    it("익일 01:00 맞닿음은 비겹침 → 201", async () => {
+      const res = await http.post("/api/schedule").set(TH())
+        .send({ courseId: 10, sessionDate: D2, startTime: "01:00", durationMinutes: 60 }).expect(201);
+      await http.delete(`/api/schedule/${res.body.row.id}`).set(TH()).expect(200); // 정리
+    });
+    it("가드 유지: 시작=종료 400 · 크로스 상한 480분 초과(10:00→09:00=23h) 400 · '25:00' 형식 400", async () => {
+      await http.post("/api/schedule").set(TH())
+        .send({ courseId: 10, sessionDate: "2099-06-10", startTime: "10:00", endTime: "10:00" }).expect(400);
+      await http.post("/api/schedule").set(TH())
+        .send({ courseId: 10, sessionDate: "2099-06-10", startTime: "10:00", endTime: "09:00" }).expect(400);
+      await http.post("/api/schedule").set(TH())
+        .send({ courseId: 10, sessionDate: "2099-06-10", startTime: "23:00", endTime: "25:00" }).expect(400); // DTO HHMM
+    });
+    it("정리: 크로스 세션 삭제", async () => {
+      await http.delete(`/api/schedule/${crossId}`).set(TH()).expect(200);
+    });
   });
 
   it("PATCH /schedule/:id — 시리즈 전체(scope=all) 동반 이동(updated>1)", async () => {

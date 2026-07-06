@@ -19,7 +19,8 @@ export class UpdateScheduleDto implements UpdateClassSessionInput {
   @IsOptional() @Matches(HHMM, { message: 'startTime must be HH:mm' })
   startTime?: string;
 
-  @ApiPropertyOptional({ example: '16:00', description: '종료(HH:mm)' })
+  // [R-9 2026-07-06] endTime < startTime = 익일 종료(자정 크로스)로 해석 — 서비스가 durationMinutes로 저장(파생)
+  @ApiPropertyOptional({ example: '16:00', description: '종료(HH:mm). startTime보다 이르면 익일 종료(자정 크로스)' })
   @IsOptional() @Matches(HHMM, { message: 'endTime must be HH:mm' })
   endTime?: string;
 
