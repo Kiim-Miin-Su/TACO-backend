@@ -89,6 +89,26 @@ describe("Permission matrix (e2e)", () => {
     });
   });
 
+  // [TBO-16 #8] 수업 배정·변경·삭제 = manager 이상. 강사는 schedule-requests(승인 흐름)로만.
+  describe("수업 쓰기 manager 이상 — 강사 403·요청 경로 개방", () => {
+    const body = { courseId: 10, sessionDate: "2099-03-02", startTime: "10:00", endTime: "11:00" };
+    it("instructor → POST /schedule 403 (직접 배정 차단)", async () => {
+      await http.post("/api/schedule").set(auth("instructor")).send(body).expect(403);
+    });
+    it("instructor → PATCH /schedule/1 403 · DELETE /schedule/1 403", async () => {
+      await http.patch("/api/schedule/1").set(auth("instructor")).send({ startTime: "11:00" }).expect(403);
+      await http.delete("/api/schedule/1").set(auth("instructor")).expect(403);
+    });
+    it("instructor → POST /schedule-requests 201 (요청 경로는 개방)", async () => {
+      const res = await http.post("/api/schedule-requests").set(auth("instructor")).send(body).expect(201);
+      expect(res.body.row.status).toBe("pending");
+    });
+    it("manager → POST /schedule 201 (관리자 직접 배정 유지)", async () => {
+      const res = await http.post("/api/schedule").set(auth("manager")).send({ ...body, sessionDate: "2099-03-03", force: true }).expect(201);
+      expect(res.body.row.id).toBeGreaterThan(0);
+    });
+  });
+
   // [코드리뷰 2026-07-03 H1·H2] @Roles 누락으로 무인증 개방됐던 라우트 — 로그인 필수 회귀 방지.
   describe("무가드 회귀 방지 — conflicts 드라이런·users/exists 로그인 필수", () => {
     it("토큰 없음 → POST /schedule/conflicts 401", async () => {

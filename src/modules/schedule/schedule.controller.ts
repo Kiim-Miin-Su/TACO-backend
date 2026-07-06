@@ -7,7 +7,7 @@ import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('scheduling')
 @ApiBearerAuth()
@@ -58,7 +58,7 @@ export class ScheduleController {
 
   // POST /api/schedule — 세션 생성(추천→배정·수동 추가). 충돌 시 409(force=true면 적용).
   @Post()
-  @Roles(...STAFF_ROLES) // 로그인 필수(강사 본인 일정 포함) — 비로그인 401
+  @Roles(...ADMIN_ROLES) // [TBO-16 #8] 수업 배정 manager 이상 — 강사는 schedule-requests 승인 흐름으로
   @ApiOperation({ summary: '세션 생성(추천→배정·수동). FK 검증 + 충돌 검사(409 / force=true 강제). [로그인]' })
   @ApiCreatedResponse({ description: '{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[] }' })
   @ApiConflictResponse({ description: '{ message, conflicts: Conflict[] } — force=false에서 충돌 시' })
@@ -69,7 +69,7 @@ export class ScheduleController {
 
   // 이동·리사이즈·상세편집. 충돌 시 409 {message, conflicts} (force=true면 적용).
   @Patch(':id')
-  @Roles(...STAFF_ROLES) // 로그인 필수
+  @Roles(...ADMIN_ROLES) // [TBO-16 #8] 수업 변경 manager 이상
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiOperation({ summary: '세션 이동·리사이즈·상세편집(반복 scope 지원). 충돌 시 409. [로그인]' })
   @ApiOkResponse({ description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }' })
@@ -80,7 +80,7 @@ export class ScheduleController {
 
   // 세션 삭제
   @Delete(':id')
-  @Roles(...STAFF_ROLES) // 로그인 필수
+  @Roles(...ADMIN_ROLES) // [TBO-16 #8] 수업 삭제 manager 이상(soft delete)
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiOkResponse({ description: '{ id, deleted: true }' })
   @ApiOperation({ summary: '세션 삭제 [로그인]' })

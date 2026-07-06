@@ -260,13 +260,21 @@ describe("Schedule API (e2e)", () => {
       .expect(401);
   });
 
-  it("인가: 강사 토큰으로 세션 생성 → 201(로그인이면 역할 무관 허용)", async () => {
+  it("인가: 강사 토큰 세션 생성 → 403 (TBO-16 #8 — 배정은 manager 이상, 강사는 schedule-requests로)", async () => {
     const login = await http.post("/api/auth/login").send({ webId: "park_inst", password: "demo1234" }).expect(201);
+    const H = { Authorization: `Bearer ${login.body.accessToken}` };
     await http
       .post("/api/schedule")
-      .set({ Authorization: `Bearer ${login.body.accessToken}` })
+      .set(H)
       .send({ courseId: 10, sessionDate: addDaysISO(MON, 4), startTime: "08:00", durationMinutes: 60, force: true })
+      .expect(403);
+    // 같은 입력이 요청 경로로는 접수된다(pending) — 정책 전환의 짝 검증
+    const req = await http
+      .post("/api/schedule-requests")
+      .set(H)
+      .send({ courseId: 10, sessionDate: addDaysISO(MON, 4), startTime: "08:00", durationMinutes: 60 })
       .expect(201);
+    expect(req.body.row.status).toBe("pending");
   });
 
   it("인가: 읽기(GET)는 비로그인도 개방 → 200", async () => {
