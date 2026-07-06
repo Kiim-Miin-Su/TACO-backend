@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { hhmmToMin } from '../../common/time.util'; // [R-3 함수 통일]
 import { AuditService } from '../audit/audit.service';
 import { AvailabilityBlock, AVAILABILITY, AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
@@ -26,7 +27,7 @@ export class AvailabilityService implements OnModuleInit {
   // 겹침 방지(버그2): 같은 오너·같은 요일에 시간이 겹치는 블록이 이미 있으면 거부(자기 자신 제외).
   // "이미 불가/가용으로 지정된 시간"을 중복 지정하지 못하게 한다. 겹친 상대 시각을 메시지에 담아 경고.
   private assertNoOverlap(dto: UpsertAvailabilityDto): void {
-    const toMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    const toMin = hhmmToMin; // [R-3] 공통 유틸(로컬 중복 제거)
     const s = toMin(dto.startTime), e = toMin(dto.endTime);
     // 기간(effectiveFrom/effectiveTo)이 겹치는지 — 서로 다른 기간이면 같은 요일·시간이어도 공존 가능
     // ("이번만/앞으로" 분할 규칙). 미지정은 무한대(±)로 간주.
@@ -71,7 +72,7 @@ export class AvailabilityService implements OnModuleInit {
 
   upsert(dto: UpsertAvailabilityDto, actorId?: number): AvailabilityBlock {
     // [버그수정 2026-07-06] 자정 크로스(end<=start) 거부 — 세션과 동일 규칙. 시차 입력은 FE가 분할 저장(splitKstBand).
-    const asMin = (t: string) => { const [h, m] = t.split(':').map(Number); return h * 60 + m; };
+    const asMin = hhmmToMin; // [R-3] 공통 유틸(로컬 중복 제거)
     if (asMin(dto.endTime) <= asMin(dto.startTime))
       throw new BadRequestException('종료 시각이 시작보다 빠릅니다(자정을 넘는 블록은 두 개로 나눠 저장하세요)');
     this.assertOwner(dto.ownerType, dto.ownerId); // owner_id 참조 무결성(#7)

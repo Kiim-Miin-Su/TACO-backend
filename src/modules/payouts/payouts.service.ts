@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { hhmmToMin, minToHhmm } from '../../common/time.util'; // [R-3 함수 통일]
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Course, COURSES } from '../courses/course.entity';
 import { ReportsService } from '../reports/reports.service';
@@ -57,11 +58,9 @@ export class PayoutsService implements OnModuleInit {
       minutes: number,
       status: ClassSession['status'],
     ): number => {
-      const endH = String(Math.floor((this.hm(start) + minutes) / 60)).padStart(2, '0');
-      const endM = String((this.hm(start) + minutes) % 60).padStart(2, '0');
       const row = this.db.insert<SessionWithPayout>(SESSIONS, {
         courseId, instructorId, sessionDate: date, startTime: start,
-        endTime: `${endH}:${endM}`, durationMinutes: minutes, status,
+        endTime: minToHhmm(hhmmToMin(start) + minutes), durationMinutes: minutes, status,
         topic: '정규 수업', // 캘린더 표기는 실데이터 문구만(피드백 2026-07-02)
       } as Omit<SessionWithPayout, 'id' | 'createdAt' | 'updatedAt'>);
       return row.id;
@@ -88,11 +87,6 @@ export class PayoutsService implements OnModuleInit {
     const paid = this.generate(2, '2026-06-01', '2026-06-30');
     this.confirm(paid.id);
     this.pay(paid.id);
-  }
-
-  private hm(hhmm: string): number {
-    const [h, m] = hhmm.split(':').map(Number);
-    return h * 60 + m;
   }
 
   private round(n: number): number {

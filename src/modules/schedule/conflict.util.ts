@@ -7,25 +7,8 @@
 import type { Conflict } from '@kms545487/contracts';
 import type { ClassSession } from './schedule.entity';
 import type { AvailabilityBlock } from '../availability/availability.entity';
-
-const toMin = (hhmm: string): number => {
-  const [h, m] = hhmm.split(':').map(Number);
-  return h * 60 + m;
-};
-// 표시/파생 전용 — 자정 초과 시 '25:00' 형태가 되므로 **저장 값으로 쓰지 말 것**(HH:mm 계약).
-export const addMinutes = (hhmm: string, mins: number): string => {
-  const t = toMin(hhmm) + mins;
-  return `${String(Math.floor(t / 60)).padStart(2, '0')}:${String(t % 60).padStart(2, '0')}`;
-};
-export const weekdayOf = (dateStr: string): number =>
-  new Date(dateStr + 'T00:00:00Z').getUTCDay();
-const addDaysISO = (dateStr: string, days: number): string => {
-  const d = new Date(dateStr + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + days);
-  return d.toISOString().slice(0, 10);
-};
-const dayDiffDays = (a: string, b: string): number =>
-  Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86_400_000);
+// [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(중복 제거).
+import { hhmmToMin as toMin, weekdayOf, addDaysISO, dayDiff as dayDiffDays } from '../../common/time.util';
 
 /** [R-9] 종료 분(시작일 00:00 기준, 자정 크로스=1440 초과).
  *  endTime 없음 → start+duration 파생. endTime<startTime → 익일 종료(+1440)로 해석. */

@@ -11,6 +11,9 @@ import { Course, COURSES as COURSES_COL } from '../courses/course.entity';
 import { Subject, SUBJECTS as SUBJECTS_COL } from '../subjects/subject.entity';
 import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
+// [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
+//  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
+import { hhmmToMin as toMin, minToHhmm, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff } from '../../common/time.util';
 
 // [감사 A, 2026-07-02] 하드코딩 상수(STUDENTS_LBL/COURSE_STUDENTS/COURSES/SUBJECTS) 제거 —
 //  코호트·카탈로그는 실제 컬렉션(students/enrollments/courses/subjects)을 조회한다(단일 소스).
@@ -22,20 +25,16 @@ const INSTRUCTORS: Record<number, string> = { 1: '박지훈', 2: '정유진' };
 // 과목 색 폴백(표시용) — Subject 계약에 color가 없어 세션→코스 색이 모두 없을 때만 사용.
 const SUBJECT_FALLBACK_COLOR: Record<number, string> = { 1: '#0969da', 2: '#1a7f37' };
 
-// ── 날짜/시간 유틸(결정론적, KST 의존 없음) ──
-const pad = (n: number) => String(n).padStart(2, '0');
-const fmt = (d: Date) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
-const weekdayOf = (dateStr: string) => new Date(dateStr + 'T00:00:00Z').getUTCDay(); // 0(일)~6(토)
-const toMin = (hhmm: string) => { const [h, m] = hhmm.split(':').map(Number); return h * 60 + m; };
+// ── 날짜/시간 유틸(결정론적, KST 의존 없음) — primitive는 common/time.util(위 import) ──
+// [R-3] 가드형 addMinutes만 로컬 유지(허용형 minToHhmm 위에 범위 가드를 얹음 — util은 순수/허용형).
 function addMinutes(hhmm: string, mins: number): string {
-  const [h, m] = hhmm.split(':').map(Number);
-  const t = h * 60 + m + mins;
+  const t = toMin(hhmm) + mins;
   // [M3] 시리즈 델타 적용 시 자정 범위를 벗어나면 '0-4:-30' 같은 오염 문자열이 커밋될 수 있음(코드리뷰).
   //  여기서 400을 던지면 감싼 db.transaction이 시리즈 전체를 롤백한다(부분 오염 금지).
   //  [R-9 2026-07-06] 이 가드는 이제 **시작시각**(시리즈 델타)과 24:00 미만 종료 파생에만 걸린다 —
   //  자정 크로스 종료는 endTimeOf가 미리 undefined(파생 저장)로 분기하므로 이 함수에 도달하지 않는다.
   if (t < 0 || t >= 24 * 60) throw new BadRequestException(`시간 범위를 벗어납니다(${hhmm} ${mins >= 0 ? '+' : ''}${mins}분)`);
-  return `${pad(Math.floor(t / 60))}:${pad(t % 60)}`;
+  return minToHhmm(t);
 }
 
 // ── [R-9 2026-07-06] 자정 크로스 수업 정식 지원(옵션 B — 단일 세션 모델) ──
@@ -60,13 +59,6 @@ function assertDuration(startTime: string, durationMinutes: number): void {
   if (toMin(startTime) + durationMinutes >= 24 * 60 && durationMinutes > CROSS_MAX_MIN)
     throw new BadRequestException(`자정 크로스 수업은 최대 ${CROSS_MAX_MIN}분(8시간)까지 가능합니다`);
 }
-const addDaysISO = (dateStr: string, days: number): string => {
-  const d = new Date(dateStr + 'T00:00:00Z');
-  d.setUTCDate(d.getUTCDate() + days);
-  return fmt(d);
-};
-const dayDiff = (a: string, b: string): number =>
-  Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86_400_000);
 function mondayOfThisWeekUTC(): Date {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
