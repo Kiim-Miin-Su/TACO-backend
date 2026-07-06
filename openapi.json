@@ -32,7 +32,7 @@
         "parameters": [
           {
             "name": "token",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -81,7 +81,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -120,7 +130,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -149,7 +166,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -166,22 +190,20 @@
     "/api/auth/me": {
       "get": {
         "operationId": "AuthController_me",
-        "parameters": [
-          {
-            "name": "authorization",
-            "required": true,
-            "in": "header",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
+        "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
-        "summary": "토큰 검증 → claims.",
+        "summary": "토큰 검증 → claims. [로그인]",
         "tags": [
           "auth"
         ]
@@ -193,7 +215,7 @@
         "parameters": [
           {
             "name": "webId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -202,7 +224,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -216,7 +245,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -244,7 +283,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -266,7 +315,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -289,7 +345,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -320,7 +383,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -341,7 +411,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -355,7 +432,7 @@
         "parameters": [
           {
             "name": "studentId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -364,7 +441,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -386,7 +473,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -409,7 +503,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -423,7 +524,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -450,7 +561,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -478,7 +596,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -514,7 +639,14 @@
         },
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -542,7 +674,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -570,7 +709,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -589,7 +735,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -611,7 +767,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -634,7 +797,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -648,7 +818,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -670,7 +850,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -693,7 +880,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -707,7 +901,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -734,7 +938,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -762,7 +973,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -790,7 +1008,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -828,7 +1053,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -847,7 +1079,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -869,7 +1111,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -892,7 +1141,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -997,7 +1253,7 @@
         "parameters": [
           {
             "name": "entity",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -1005,7 +1261,7 @@
           },
           {
             "name": "entityId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -1013,7 +1269,7 @@
           },
           {
             "name": "actorId",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -1021,7 +1277,7 @@
           },
           {
             "name": "limit",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -1030,7 +1286,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "summary": "변경 이력 조회(최신순, 기본 200건) — entity/entityId/actorId 필터.",
@@ -1087,7 +1353,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1141,7 +1417,14 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1304,7 +1587,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1332,7 +1625,7 @@
           },
           {
             "name": "force",
-            "required": true,
+            "required": false,
             "in": "query",
             "schema": {
               "type": "string"
@@ -1380,7 +1673,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1438,7 +1738,17 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1466,7 +1776,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1495,7 +1812,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1523,7 +1847,14 @@
         ],
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1626,7 +1957,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1671,7 +2012,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -1700,7 +2048,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "security": [
@@ -2071,7 +2426,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2093,7 +2458,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2116,7 +2488,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2130,7 +2509,17 @@
         "parameters": [],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2152,7 +2541,14 @@
         },
         "responses": {
           "201": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2175,7 +2571,14 @@
         ],
         "responses": {
           "200": {
-            "description": ""
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
           }
         },
         "tags": [
@@ -2473,53 +2876,364 @@
     "schemas": {
       "SignupDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "webId": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 50
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "email": {
+            "type": "string",
+            "format": "email"
+          },
+          "password": {
+            "type": "string",
+            "minLength": 8,
+            "maxLength": 100
+          },
+          "role": {
+            "type": "string",
+            "enum": [
+              "instructor",
+              "manager",
+              "admin"
+            ]
+          }
+        },
+        "required": [
+          "webId",
+          "name",
+          "email",
+          "password"
+        ]
       },
       "LoginDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "webId": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "password": {
+            "type": "string",
+            "maxLength": 100
+          }
+        },
+        "required": [
+          "webId"
+        ]
       },
       "ApproveDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "role": {
+            "type": "string",
+            "enum": [
+              "instructor",
+              "manager",
+              "admin",
+              "super_admin"
+            ]
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
       },
       "CreateStudentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "englishName": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "grade": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "schoolName": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "residenceType": {
+            "type": "string",
+            "enum": [
+              "domestic",
+              "overseas"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "lead",
+              "active",
+              "paused",
+              "completed",
+              "canceled"
+            ]
+          },
+          "country": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "memo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name"
+        ]
       },
       "UpdateStudentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "englishName": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "grade": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 12
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "country": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}$"
+          },
+          "residenceType": {
+            "type": "string",
+            "enum": [
+              "domestic",
+              "overseas"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "lead",
+              "active",
+              "paused",
+              "completed",
+              "canceled"
+            ]
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
       },
       "CreateEnrollmentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "studentId": {
+            "type": "number"
+          },
+          "courseId": {
+            "type": "number"
+          },
+          "roadmapId": {
+            "type": "number"
+          },
+          "totalSessions": {
+            "type": "number",
+            "minimum": 0
+          },
+          "memo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "studentId",
+          "courseId"
+        ]
       },
       "CreatePaymentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "studentId": {
+            "type": "number"
+          },
+          "enrollmentId": {
+            "type": "number"
+          },
+          "payerParentId": {
+            "type": "number"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "card",
+              "transfer",
+              "cash",
+              "point",
+              "etc"
+            ]
+          },
+          "dueAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        },
+        "required": [
+          "studentId",
+          "amount"
+        ]
       },
       "UpdatePaymentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "amount": {
+            "type": "number",
+            "minimum": 0
+          },
+          "paymentMethod": {
+            "type": "string",
+            "enum": [
+              "card",
+              "transfer",
+              "cash",
+              "point",
+              "etc"
+            ]
+          },
+          "dueAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "memo": {
+            "type": "string"
+          }
+        }
       },
       "CreateSubjectDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 50
+          },
+          "name": {
+            "type": "string",
+            "maxLength": 50
+          }
+        },
+        "required": [
+          "code",
+          "name"
+        ]
       },
       "CreateCourseDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 20
+          },
+          "subjectId": {
+            "type": "number"
+          },
+          "instructorId": {
+            "type": "number"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0
+          },
+          "hourlyRate": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "required": [
+          "name",
+          "subjectId",
+          "instructorId",
+          "price",
+          "hourlyRate"
+        ]
       },
       "CreateExpenseDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "category": {
+            "type": "string",
+            "enum": [
+              "supplies",
+              "equipment",
+              "books",
+              "rent",
+              "utility",
+              "marketing",
+              "meal",
+              "etc"
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "amount": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "spentAt": {
+            "type": "string"
+          },
+          "vendor": {
+            "type": "string"
+          },
+          "memo": {
+            "type": "string"
+          },
+          "receiptUrl": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "category",
+          "title",
+          "amount",
+          "spentAt"
+        ]
       },
       "RejectExpenseDto": {
         "type": "object",
         "properties": {
           "reason": {
             "type": "string",
+            "maxLength": 200,
             "example": "증빙 누락 — 영수증 첨부 후 재신청",
             "description": "반려 사유(필수)"
           }
@@ -2530,7 +3244,29 @@
       },
       "CreateRoomDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "buildingId": {
+            "type": "number"
+          },
+          "capacity": {
+            "type": "number",
+            "minimum": 0
+          },
+          "color": {
+            "type": "string",
+            "pattern": "^#?([0-9A-F]{3}|[0-9A-F]{4}|[0-9A-F]{6}|[0-9A-F]{8})$"
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "name"
+        ]
       },
       "UpsertAvailabilityDto": {
         "type": "object",
@@ -2541,12 +3277,12 @@
             "description": "수정할 블록 id(없으면 신규 생성)"
           },
           "ownerType": {
-            "type": "string",
             "enum": [
               "student",
               "instructor",
               "room"
             ],
+            "type": "string",
             "example": "instructor",
             "description": "소유 자원 종류"
           },
@@ -2556,19 +3292,19 @@
             "description": "소유 자원 id(ownerType에 따라 students/users/rooms)"
           },
           "kind": {
-            "type": "string",
             "enum": [
               "available",
               "unavailable"
             ],
+            "type": "string",
             "example": "unavailable",
             "description": "가용/불가(기본 available)"
           },
           "weekday": {
             "type": "number",
-            "example": 1,
             "minimum": 0,
             "maximum": 6,
+            "example": 1,
             "description": "요일(0=일 ~ 6=토)"
           },
           "startTime": {
@@ -2664,6 +3400,7 @@
           },
           "sessionDate": {
             "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "example": "2026-06-30"
           },
           "startTime": {
@@ -2673,14 +3410,17 @@
           "endTime": {
             "type": "string",
             "example": "17:30",
-            "description": "미지정 시 start+duration 파생"
+            "description": "미지정 시 start+duration 파생. startTime보다 이르면 익일 종료(자정 크로스)"
           },
           "durationMinutes": {
             "type": "number",
+            "minimum": 10,
+            "maximum": 480,
             "example": 90,
             "description": "endTime 없을 때 사용(기본 60)"
           },
           "studentIds": {
+            "maxItems": 20,
             "description": "명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용",
             "type": "array",
             "items": {
@@ -2689,16 +3429,19 @@
           },
           "topic": {
             "type": "string",
+            "maxLength": 200,
             "example": "Reading: 추론 문제 전략",
             "description": "수업 주제"
           },
           "memo": {
             "type": "string",
+            "maxLength": 500,
             "example": "교재 3장 지참",
             "description": "메모"
           },
           "color": {
             "type": "string",
+            "maxLength": 20,
             "example": "#0969da",
             "description": "캘린더 색상 라벨(미지정 시 코스 색)"
           },
@@ -2708,7 +3451,6 @@
             "description": "반복 시리즈로 묶을 때(같은 seriesId)"
           },
           "status": {
-            "type": "string",
             "enum": [
               "scheduled",
               "held",
@@ -2716,6 +3458,7 @@
               "no_show",
               "makeup"
             ],
+            "type": "string",
             "example": "scheduled"
           },
           "force": {
@@ -2724,19 +3467,30 @@
             "description": "충돌이 있어도 강제 적용(기본 false → 충돌 시 409)"
           },
           "kind": {
-            "type": "string",
             "enum": [
               "class",
               "level_test",
               "counsel"
             ],
+            "type": "string",
             "example": "class",
             "description": "[v0.1.14] 세션 종류(기본 class) — 진단고사/상담 분류(캘린더 필터 축)"
           },
           "price": {
             "type": "number",
+            "minimum": 0,
+            "maximum": 100000000,
             "example": 50000,
             "description": "[v0.1.14] 세션 단건 가격(원) — 상담(kind=counsel) 등. 코스 정가와 별개"
+          },
+          "mode": {
+            "enum": [
+              "in_person",
+              "online"
+            ],
+            "type": "string",
+            "example": "in_person",
+            "description": "[v0.1.16] 수업방식(기본 in_person) — 대면/비대면. 강의실 유무와 독립"
           }
         },
         "required": [
@@ -2750,6 +3504,7 @@
         "properties": {
           "sessionDate": {
             "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "example": "2026-07-02",
             "description": "이동할 날짜(YYYY-MM-DD)"
           },
@@ -2761,13 +3516,16 @@
           "endTime": {
             "type": "string",
             "example": "16:00",
-            "description": "종료(HH:mm)"
+            "description": "종료(HH:mm). startTime보다 이르면 익일 종료(자정 크로스)"
           },
           "durationMinutes": {
             "type": "number",
+            "minimum": 10,
+            "maximum": 480,
             "example": 60
           },
           "studentIds": {
+            "maxItems": 20,
             "description": "명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용",
             "type": "array",
             "items": {
@@ -2790,7 +3548,6 @@
             "description": "코스 FK"
           },
           "status": {
-            "type": "string",
             "enum": [
               "scheduled",
               "held",
@@ -2798,40 +3555,44 @@
               "no_show",
               "makeup"
             ],
+            "type": "string",
             "example": "canceled",
             "description": "상태(취소/결강 등)"
           },
           "topic": {
             "type": "string",
+            "maxLength": 200,
             "example": "Reading: 근거 문장 매칭"
           },
           "memo": {
             "type": "string",
+            "maxLength": 500,
             "example": "워크북 지참"
           },
           "color": {
             "type": "string",
+            "maxLength": 20,
             "example": "#9a6700",
             "description": "캘린더 색상 라벨"
           },
           "instructorAttendance": {
-            "type": "string",
             "enum": [
               "present",
               "late",
               "absent",
               "makeup"
             ],
+            "type": "string",
             "example": "present",
             "description": "강사 출결(출석/지각/결석/보강)"
           },
           "scope": {
-            "type": "string",
             "enum": [
               "this",
               "this_and_following",
               "all"
             ],
+            "type": "string",
             "example": "this",
             "description": "반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)"
           },
@@ -2841,19 +3602,30 @@
             "description": "충돌이 있어도 강제 적용(기본 false → 충돌 시 409)"
           },
           "kind": {
-            "type": "string",
             "enum": [
               "class",
               "level_test",
               "counsel"
             ],
+            "type": "string",
             "example": "counsel",
             "description": "[v0.1.14] 세션 종류 변경"
           },
           "price": {
             "type": "number",
+            "minimum": 0,
+            "maximum": 100000000,
             "example": 50000,
             "description": "[v0.1.14] 세션 단건 가격(원)"
+          },
+          "mode": {
+            "enum": [
+              "in_person",
+              "online"
+            ],
+            "type": "string",
+            "example": "online",
+            "description": "[v0.1.16] 수업방식 변경(대면/비대면)"
           }
         }
       },
@@ -2877,6 +3649,7 @@
           },
           "sessionDate": {
             "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
             "example": "2026-07-10"
           },
           "startTime": {
@@ -2890,10 +3663,13 @@
           },
           "durationMinutes": {
             "type": "number",
+            "minimum": 10,
+            "maximum": 480,
             "example": 90,
             "description": "endTime 없을 때 사용(기본 60)"
           },
           "studentIds": {
+            "maxItems": 20,
             "description": "명시 코호트 — 코스 활성 수강생 부분집합(세션과 동일 검증)",
             "type": "array",
             "items": {
@@ -2902,16 +3678,17 @@
           },
           "topic": {
             "type": "string",
+            "maxLength": 200,
             "example": "Writing 보충",
             "description": "수업 주제"
           },
           "kind": {
-            "type": "string",
             "enum": [
               "class",
               "level_test",
               "counsel"
             ],
+            "type": "string",
             "example": "class"
           }
         },
@@ -2926,6 +3703,7 @@
         "properties": {
           "reason": {
             "type": "string",
+            "maxLength": 200,
             "example": "해당 시간 강의실 예약 불가 — 다른 시간 제안 바랍니다",
             "description": "반려 사유(필수)"
           }
@@ -2954,20 +3732,22 @@
           },
           "content": {
             "type": "string",
+            "maxLength": 4000,
             "example": "오늘 진도: 추론 문제 3세트. 정답률 향상.",
             "description": "보고서 본문(진도·피드백)"
           },
           "homework": {
             "type": "string",
+            "maxLength": 2000,
             "example": "워크북 12–15p",
             "description": "숙제(선택)"
           },
           "status": {
-            "type": "string",
             "enum": [
               "draft",
               "submitted"
             ],
+            "type": "string",
             "example": "submitted",
             "description": "기본 submitted(승인요청). draft 허용"
           }
@@ -2993,6 +3773,7 @@
         "properties": {
           "reason": {
             "type": "string",
+            "maxLength": 1000,
             "example": "진도 내용 보완 필요",
             "description": "반려 사유(강사에게 표시)"
           }
@@ -3028,6 +3809,7 @@
         "properties": {
           "amount": {
             "type": "number",
+            "minimum": 0,
             "example": 150000,
             "description": "실효 지급액(원). 자동 산정액은 보존됨"
           },
@@ -3053,47 +3835,414 @@
       },
       "CreateCounselDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "applicantName": {
+            "type": "string"
+          },
+          "applicantPhone": {
+            "type": "string"
+          },
+          "source": {
+            "type": "string",
+            "enum": [
+              "internal_form",
+              "naver_form",
+              "google_form",
+              "manual",
+              "etc"
+            ]
+          },
+          "assignedStaffId": {
+            "type": "number"
+          },
+          "interestSubjectId": {
+            "type": "number"
+          },
+          "interestCourseId": {
+            "type": "number"
+          },
+          "academyExpectation": {
+            "type": "string"
+          },
+          "desiredStartTime": {
+            "type": "string",
+            "enum": [
+              "immediately",
+              "within_1_month",
+              "within_2_3_months",
+              "undecided"
+            ]
+          },
+          "learningAtmosphere": {
+            "type": "string",
+            "enum": [
+              "self_directed",
+              "normal",
+              "needs_management"
+            ]
+          },
+          "studentIntention": {
+            "type": "string",
+            "enum": [
+              "student_wants",
+              "parent_only",
+              "unknown"
+            ]
+          },
+          "weakness": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "applicantName",
+          "source"
+        ]
       },
       "UpdateCounselDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "requested",
+              "pending",
+              "registered",
+              "dropped"
+            ]
+          },
+          "assignedStaffId": {
+            "type": "number"
+          },
+          "interestSubjectId": {
+            "type": "number"
+          },
+          "interestCourseId": {
+            "type": "number"
+          },
+          "academyExpectation": {
+            "type": "string"
+          },
+          "weakness": {
+            "type": "string"
+          }
+        }
       },
       "CreateCounselRoundDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "counselorId": {
+            "type": "number"
+          },
+          "summary": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "result": {
+            "type": "string",
+            "enum": [
+              "positive",
+              "neutral",
+              "negative",
+              "no_response",
+              "registered"
+            ]
+          },
+          "nextAction": {
+            "type": "string"
+          },
+          "nextContactAt": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          }
+        }
       },
       "CreateViewPresetDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "view": {
+            "type": "string",
+            "enum": [
+              "month",
+              "week",
+              "day"
+            ]
+          },
+          "periodFrom": {
+            "type": "string"
+          },
+          "periodTo": {
+            "type": "string"
+          },
+          "instructorIds": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "studentIds": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "roomIds": {
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "subjects": {
+            "maxItems": 30,
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "statuses": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "attended",
+                "late",
+                "absence",
+                "makeup"
+              ]
+            }
+          },
+          "groupOnly": {
+            "type": "boolean"
+          },
+          "q": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "colorBy": {
+            "type": "string",
+            "enum": [
+              "subject",
+              "instructor",
+              "room",
+              "student"
+            ]
+          },
+          "countryCode": {
+            "type": "string"
+          },
+          "paneCountryInstructor": {
+            "type": "string"
+          },
+          "paneCountryStudent": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "view",
+          "instructorIds",
+          "studentIds",
+          "roomIds",
+          "subjects",
+          "statuses",
+          "groupOnly"
+        ]
       },
       "CreateReportTemplateDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "homework": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "name",
+          "content"
+        ]
       },
       "CreateEventDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "notice",
+              "exam",
+              "holiday",
+              "closure",
+              "event"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": "string"
+          },
+          "allDay": {
+            "type": "boolean"
+          },
+          "memo": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "title",
+          "type",
+          "startDate",
+          "endDate"
+        ]
       },
       "UpsertAttendanceDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "sessionId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "studentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "late",
+              "absent",
+              "excused"
+            ]
+          }
+        },
+        "required": [
+          "sessionId",
+          "studentId",
+          "status"
+        ]
       },
       "CreateRoadmapDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "title": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "targetGrade": {
+            "type": "number",
+            "minimum": 0
+          },
+          "courseIds": {
+            "uniqueItems": true,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "title"
+        ]
       },
       "CreateParentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          },
+          "webId": {
+            "type": "string"
+          },
+          "relation": {
+            "type": "string"
+          },
+          "isPayer": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          },
+          "studentId": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "name",
+          "studentId"
+        ]
       },
       "LinkParentDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "parentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "studentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "relation": {
+            "type": "string"
+          },
+          "isPayer": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "parentId",
+          "studentId"
+        ]
       },
       "UpdateRelationDto": {
         "type": "object",
-        "properties": {}
+        "properties": {
+          "relation": {
+            "type": "string"
+          },
+          "isPayer": {
+            "type": "boolean"
+          },
+          "isPrimary": {
+            "type": "boolean"
+          }
+        }
       }
     }
   }

@@ -79,7 +79,7 @@ function mondayOfThisWeekUTC(): Date {
 // 주간 반복 시리즈 시드 정의 — 같은 시리즈는 한 seriesId를 공유(반복 편집 데모용).
 // instructorId·topic을 시드에 직접 명시(코스 시드와 정렬) — onModuleInit 실행 순서상
 // courses 컬렉션이 아직 비어 있을 수 있어 시드만큼은 컬렉션을 참조하지 않는다.
-type SeedSeries = { courseId: number; instructorId: number; topic: string; roomId: number; weekdayOffsets: number[]; startTime: string; durationMinutes: number };
+type SeedSeries = { courseId: number; instructorId: number; topic: string; roomId: number; weekdayOffsets: number[]; startTime: string; durationMinutes: number; mode?: ClassSession['mode'] };
 // 병합된 세션 필드(업데이트 적용 단위) — 이동/리사이즈/편집 공통.
 type MergedFields = {
   studentIds?: number[]; // 명시 코호트(v0.1.13)
@@ -88,6 +88,7 @@ type MergedFields = {
   courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string; color?: string;
   instructorAttendance?: ClassSession['instructorAttendance'];
   kind?: ClassSession['kind']; price?: number; // [v0.1.14]
+  mode?: ClassSession['mode']; // [v0.1.16] 수업방식
 };
 
 @Injectable()
@@ -110,8 +111,8 @@ export class ScheduleService implements OnModuleInit {
       { courseId: 10, instructorId: 1, topic: 'SAT Reading 정규', roomId: 1, weekdayOffsets: [0, 2, 4], startTime: '16:00', durationMinutes: 90 },
       // AP Calculus BC(강사2·강의실3) — 화·목 16:00
       { courseId: 11, instructorId: 2, topic: 'AP Calculus BC', roomId: 3, weekdayOffsets: [1, 3], startTime: '16:00', durationMinutes: 120 },
-      // TOEFL 정규(강사1·강의실2) — 월·수 18:00
-      { courseId: 12, instructorId: 1, topic: 'TOEFL 정규', roomId: 2, weekdayOffsets: [0, 2], startTime: '18:00', durationMinutes: 90 },
+      // TOEFL 정규(강사1·강의실2) — 월·수 18:00 · [v0.1.16] 비대면(미국 학생 수강 — 수업방식 필터 데모)
+      { courseId: 12, instructorId: 1, topic: 'TOEFL 정규', roomId: 2, weekdayOffsets: [0, 2], startTime: '18:00', durationMinutes: 90, mode: 'online' },
     ];
     let seriesId = 0;
     series.forEach((sr) => {
@@ -130,6 +131,7 @@ export class ScheduleService implements OnModuleInit {
           durationMinutes: sr.durationMinutes,
           status: 'scheduled',
           topic: sr.topic,
+          mode: sr.mode, // [v0.1.16] 미지정=enrich가 in_person 하위호환
         });
       });
     });
@@ -141,7 +143,7 @@ export class ScheduleService implements OnModuleInit {
     this.db.insert<ClassSession>(SESSIONS, {
       courseId: 12, instructorId: 1, roomId: 2,
       sessionDate: mon0, startTime: '12:30', endTime: '13:30', durationMinutes: 60,
-      status: 'scheduled', topic: 'TOEFL 정규 — 보강',
+      status: 'scheduled', topic: 'TOEFL 정규 — 보강', mode: 'online', // [v0.1.16]
     });
 
     // ── 과거 히스토리 시드(프론트 mock 이관) — 오늘 기준 상대 날짜. 지난 held/취소/보강 =
@@ -273,6 +275,7 @@ export class ScheduleService implements OnModuleInit {
     studentIds?: number[]; // 명시 코호트(v0.1.13)
     seriesId?: number; status?: ClassSession['status']; force?: boolean;
     kind?: ClassSession['kind']; price?: number; // [v0.1.14] 종류·세션 단건 가격
+    mode?: ClassSession['mode']; // [v0.1.16] 수업방식(기본 in_person)
   }, actorId?: number): { row: ScheduleRow; conflicts: Conflict[] } {
     const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
     const course = this.courseOf(dto.courseId)!;
@@ -310,6 +313,7 @@ export class ScheduleService implements OnModuleInit {
         durationMinutes,
         status: dto.status ?? 'scheduled',
         kind: dto.kind ?? 'class', // [v0.1.14] 기본 class(하위호환)
+        mode: dto.mode ?? 'in_person', // [v0.1.16] 기본 대면(하위호환)
         price: dto.price,
         topic: dto.topic ?? course.name,
         memo: dto.memo,
@@ -471,6 +475,7 @@ export class ScheduleService implements OnModuleInit {
       instructorAttendance: dto.instructorAttendance ?? cur.instructorAttendance,
       studentIds: dto.studentIds ?? cur.studentIds, // 명시 코호트(v0.1.13) — 검증은 update() 본문
       kind: dto.kind ?? cur.kind ?? 'class', // [v0.1.14]
+      mode: dto.mode ?? cur.mode ?? 'in_person', // [v0.1.16]
       price: dto.price ?? cur.price,
     };
   }
@@ -482,6 +487,7 @@ export class ScheduleService implements OnModuleInit {
     return {
       ...s,
       kind: s.kind ?? 'class', // [v0.1.14] 시드·구데이터 하위호환(미지정=class)
+      mode: s.mode ?? 'in_person', // [v0.1.16] 하위호환(미지정=대면)
       weekday: weekdayOf(s.sessionDate),
       // [R-9] 자정 크로스(시작+진행≥24:00)면 endTime 미제공 — FE가 durationMinutes로 파생(단일 규칙)
       endTime: s.endTime ?? (s.startTime ? endTimeOf(s.startTime, s.durationMinutes) : undefined),

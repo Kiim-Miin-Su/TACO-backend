@@ -37,6 +37,24 @@ describe("Schedule API (e2e)", () => {
     expect(Array.isArray(r.studentNames)).toBe(true);
   });
 
+  // [v0.1.16 오류2] 수업방식(mode) — 시드 비대면 존재·생성 기본값·PATCH 변경·merge 유지·검증
+  it("mode(수업방식): 시드 online 존재 + 생성 기본 in_person + PATCH 변경/유지 + 잘못된 값 400", async () => {
+    const rows = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body;
+    expect(rows.some((r: { mode?: string }) => r.mode === "online")).toBe(true); // 시드: TOEFL 정규 = 비대면
+    const created = (
+      await http.post("/api/schedule").set(TH())
+        .send({ courseId: 10, sessionDate: addDaysISO(MON, 5), startTime: "07:00", durationMinutes: 60, force: true })
+        .expect(201)
+    ).body.row;
+    expect(created.mode).toBe("in_person"); // 미지정=대면(하위호환)
+    const patched = (await http.patch(`/api/schedule/${created.id}`).set(TH()).send({ mode: "online", force: true }).expect(200)).body.row;
+    expect(patched.mode).toBe("online");
+    const after = (await http.patch(`/api/schedule/${created.id}`).set(TH()).send({ topic: "mode 유지 확인", force: true }).expect(200)).body.row;
+    expect(after.mode).toBe("online"); // merge가 mode 보존
+    await http.patch(`/api/schedule/${created.id}`).set(TH()).send({ mode: "hybrid" }).expect(400); // IsIn 검증
+    await http.delete(`/api/schedule/${created.id}`).set(TH()).expect(200); // 정리
+  });
+
   it("GET /schedule/resources — 강사·강의실·학생·코스 옵션", async () => {
     const res = await http.get("/api/schedule/resources").set(asAdmin()).expect(200);
     expect(res.body.instructors.length).toBeGreaterThan(0);

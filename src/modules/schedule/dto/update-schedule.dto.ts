@@ -1,7 +1,7 @@
 import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, IsBoolean, Max, IsArray, ArrayMaxSize } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import type { SessionStatus, RecurrenceScope, InstructorAttendanceStatus, SessionKind, UpdateClassSessionInput } from '@kms545487/contracts';
-import { SESSION_KINDS } from './create-schedule.dto';
+import type { SessionStatus, RecurrenceScope, InstructorAttendanceStatus, SessionKind, SessionMode, UpdateClassSessionInput } from '@kms545487/contracts';
+import { SESSION_KINDS, SESSION_MODES } from './create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const STATUSES: SessionStatus[] = ['scheduled', 'held', 'canceled', 'no_show', 'makeup'];
@@ -79,4 +79,8 @@ export class UpdateScheduleDto implements UpdateClassSessionInput {
   @ApiPropertyOptional({ example: 50000, description: '[v0.1.14] 세션 단건 가격(원)' })
   @IsOptional() @IsInt() @Min(0) @Max(100_000_000)
   price?: number;
+
+  @ApiPropertyOptional({ enum: SESSION_MODES, example: 'online', description: '[v0.1.16] 수업방식 변경(대면/비대면)' })
+  @IsOptional() @IsIn(SESSION_MODES)
+  mode?: SessionMode;
 }

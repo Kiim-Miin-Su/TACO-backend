@@ -1,10 +1,11 @@
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { SessionStatus, SessionKind, CreateClassSessionInput } from '@kms545487/contracts';
+import type { SessionStatus, SessionKind, SessionMode, CreateClassSessionInput } from '@kms545487/contracts';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const STATUSES: SessionStatus[] = ['scheduled', 'held', 'canceled', 'no_show', 'makeup'];
 export const SESSION_KINDS: SessionKind[] = ['class', 'level_test', 'counsel'];
+export const SESSION_MODES: SessionMode[] = ['in_person', 'online']; // [v0.1.16] 수업방식
 
 // 세션 생성(추천→배정·수동 추가) DTO. courseId+시작시각 필수, 강사/강의실은 선택(코스 기본 강사 사용).
 // [v0.1.14] implements CreateClassSessionInput — contracts 필드 drift를 tsc가 강제(감사 A1 해소).
@@ -73,4 +74,8 @@ export class CreateScheduleDto implements CreateClassSessionInput {
   @ApiPropertyOptional({ example: 50000, description: '[v0.1.14] 세션 단건 가격(원) — 상담(kind=counsel) 등. 코스 정가와 별개' })
   @IsOptional() @IsInt() @Min(0) @Max(100_000_000) // 금액 규칙 통일(@Max 1e8)
   price?: number;
+
+  @ApiPropertyOptional({ enum: SESSION_MODES, example: 'in_person', description: '[v0.1.16] 수업방식(기본 in_person) — 대면/비대면. 강의실 유무와 독립' })
+  @IsOptional() @IsIn(SESSION_MODES)
+  mode?: SessionMode;
 }
