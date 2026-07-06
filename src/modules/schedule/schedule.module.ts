@@ -4,9 +4,10 @@ import { AvailabilityModule } from '../availability/availability.module';
 import { ScheduleService } from './schedule.service';
 import { ScheduleController } from './schedule.controller';
 import { AuthModule } from '../auth/auth.module';
+import { AuditModule } from '../audit/audit.module';
 
 @Module({
-  imports: [RoomsModule, AvailabilityModule, AuthModule], // join·충돌 + RolesGuard(AuthService)
+  imports: [RoomsModule, AvailabilityModule, AuthModule, AuditModule], // join·충돌 + RolesGuard + 변경 이력
   controllers: [ScheduleController],
   providers: [ScheduleService],
   exports: [ScheduleService],

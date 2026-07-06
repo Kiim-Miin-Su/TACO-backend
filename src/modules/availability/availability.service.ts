@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { AuditService } from '../audit/audit.service';
 import { AvailabilityBlock, AVAILABILITY, AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
 import { RoomsService } from '../rooms/rooms.service';
@@ -10,6 +11,7 @@ type Seed = Omit<AvailabilityBlock, 'id' | 'createdAt' | 'updatedAt'>;
 export class AvailabilityService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
+    private readonly audit: AuditService, // [TBO-16 Q3] 가용/불가 변경 이력
     private readonly rooms: RoomsService,
   ) {}
 
@@ -67,7 +69,7 @@ export class AvailabilityService implements OnModuleInit {
     );
   }
 
-  upsert(dto: UpsertAvailabilityDto): AvailabilityBlock {
+  upsert(dto: UpsertAvailabilityDto, actorId?: number): AvailabilityBlock {
     this.assertOwner(dto.ownerType, dto.ownerId); // owner_id 참조 무결성(#7)
     this.assertNoOverlap(dto); // 겹침 방지(버그2)
     if (dto.id) {
@@ -79,7 +81,29 @@ export class AvailabilityService implements OnModuleInit {
           `블록 소유자가 일치하지 않습니다 (id=${dto.id}는 ${existing.ownerType} ${existing.ownerId} 소유)`,
         );
       }
-      const updated = this.db.update<AvailabilityBlock>(AVAILABILITY, dto.id, {
+      const beforeSnap = existing ? { ...existing } : undefined;
+      const updated = this.db.transaction(() => {
+        const u = this.db.update<AvailabilityBlock>(AVAILABILITY, dto.id!, {
+          kind: dto.kind ?? 'available',
+          weekday: dto.weekday,
+          startTime: dto.startTime,
+          endTime: dto.endTime,
+          effectiveFrom: dto.effectiveFrom,
+          effectiveTo: dto.effectiveTo,
+        });
+        if (u && actorId != null && beforeSnap) {
+          const diff = this.audit.diffOf(beforeSnap, u);
+          if (Object.keys(diff).length)
+            this.audit.log({ entity: AVAILABILITY, entityId: u.id, action: 'update', actorId, changes: diff });
+        }
+        return u;
+      });
+      if (updated) return updated;
+    }
+    return this.db.transaction(() => {
+      const created = this.db.insert<AvailabilityBlock>(AVAILABILITY, {
+        ownerType: dto.ownerType,
+        ownerId: dto.ownerId,
         kind: dto.kind ?? 'available',
         weekday: dto.weekday,
         startTime: dto.startTime,
@@ -87,21 +111,20 @@ export class AvailabilityService implements OnModuleInit {
         effectiveFrom: dto.effectiveFrom,
         effectiveTo: dto.effectiveTo,
       });
-      if (updated) return updated;
-    }
-    return this.db.insert<AvailabilityBlock>(AVAILABILITY, {
-      ownerType: dto.ownerType,
-      ownerId: dto.ownerId,
-      kind: dto.kind ?? 'available',
-      weekday: dto.weekday,
-      startTime: dto.startTime,
-      endTime: dto.endTime,
-      effectiveFrom: dto.effectiveFrom,
-      effectiveTo: dto.effectiveTo,
+      if (actorId != null)
+        this.audit.log({ entity: AVAILABILITY, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
+      return created;
     });
   }
 
-  remove(id: number): { id: number; deleted: boolean } {
-    return { id, deleted: this.db.remove(AVAILABILITY, id) };
+  // [v9] soft delete + before 스냅샷 audit(Q3) — 단일 tx
+  remove(id: number, actorId?: number): { id: number; deleted: boolean } {
+    const before = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
+    return this.db.transaction(() => {
+      const deleted = before ? this.db.remove(AVAILABILITY, id, actorId) : false;
+      if (deleted && actorId != null && before)
+        this.audit.log({ entity: AVAILABILITY, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf({ ...before }) as never });
+      return { id, deleted };
+    });
   }
 }

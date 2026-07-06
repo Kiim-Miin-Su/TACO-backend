@@ -1,12 +1,14 @@
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { SessionStatus } from '@kms545487/contracts';
+import type { SessionStatus, SessionKind, CreateClassSessionInput } from '@kms545487/contracts';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const STATUSES: SessionStatus[] = ['scheduled', 'held', 'canceled', 'no_show', 'makeup'];
+export const SESSION_KINDS: SessionKind[] = ['class', 'level_test', 'counsel'];
 
 // 세션 생성(추천→배정·수동 추가) DTO. courseId+시작시각 필수, 강사/강의실은 선택(코스 기본 강사 사용).
-export class CreateScheduleDto {
+// [v0.1.14] implements CreateClassSessionInput — contracts 필드 drift를 tsc가 강제(감사 A1 해소).
+export class CreateScheduleDto implements CreateClassSessionInput {
   @ApiProperty({ example: 10, description: '코스 FK(필수)' })
   @IsInt()
   courseId!: number;
@@ -62,4 +64,12 @@ export class CreateScheduleDto {
   @ApiPropertyOptional({ example: false, description: '충돌이 있어도 강제 적용(기본 false → 충돌 시 409)' })
   @IsOptional() @IsBoolean()
   force?: boolean;
+
+  @ApiPropertyOptional({ enum: SESSION_KINDS, example: 'class', description: '[v0.1.14] 세션 종류(기본 class) — 진단고사/상담 분류(캘린더 필터 축)' })
+  @IsOptional() @IsIn(SESSION_KINDS)
+  kind?: SessionKind;
+
+  @ApiPropertyOptional({ example: 50000, description: '[v0.1.14] 세션 단건 가격(원) — 상담(kind=counsel) 등. 코스 정가와 별개' })
+  @IsOptional() @IsInt() @Min(0) @Max(100_000_000) // 금액 규칙 통일(@Max 1e8)
+  price?: number;
 }

@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Put, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiOkResponse, ApiConflictResponse, ApiBadRequestResponse } from '@nestjs/swagger';
 import { AvailabilityService } from './availability.service';
 import { AvailabilityOwner } from './availability.entity';
@@ -31,8 +33,8 @@ export class AvailabilityController {
   @ApiOkResponse({ description: 'AvailabilityBlock(생성/수정 결과)' })
   @ApiConflictResponse({ description: '이미 지정된 가용/불가 시간과 겹침(겹친 시각 메시지 포함)' })
   @ApiBadRequestResponse({ description: '존재하지 않는 강의실 owner 등' })
-  upsert(@Body() dto: UpsertAvailabilityDto) {
-    return this.availability.upsert(dto);
+  upsert(@Body() dto: UpsertAvailabilityDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.availability.upsert(dto, req.user?.sub); // actor → audit_log(Q3)
   }
 
   @Delete(':id')
@@ -40,7 +42,7 @@ export class AvailabilityController {
   @ApiParam({ name: 'id', description: '블록 id' })
   @ApiOperation({ summary: '가용/불가 블록 삭제' })
   @ApiOkResponse({ description: '{ id, deleted: boolean }' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.availability.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.availability.remove(id, req.user?.sub); // actor → soft delete + audit
   }
 }

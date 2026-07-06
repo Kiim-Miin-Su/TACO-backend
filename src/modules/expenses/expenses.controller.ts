@@ -41,6 +41,6 @@ export class ExpensesController {
   @Post(':id/reject')
   @Roles(...ADMIN_ROLES)
   reject(@Param('id', ParseIntPipe) id: number, @Body() body: RejectExpenseDto) {
-    return this.expenses.reject(id, body?.reason);
+    return this.expenses.reject(id, body.reason); // [Q2] 사유 필수(DTO 강제)
   }
 }

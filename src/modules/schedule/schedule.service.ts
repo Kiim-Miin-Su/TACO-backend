@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import type { Conflict, ScheduleRow } from '@kms545487/contracts';
-import { InMemoryDatabase } from '../../database/in-memory.database';
+import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { RoomsService } from '../rooms/rooms.service';
 import { AvailabilityService } from '../availability/availability.service';
+import { AuditService } from '../audit/audit.service';
 import { ClassSession, SESSIONS } from './schedule.entity';
 import { detectConflicts } from './conflict.util';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
@@ -60,6 +61,7 @@ type MergedFields = {
   sessionDate: string; startTime: string; endTime: string; durationMinutes: number;
   courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string; color?: string;
   instructorAttendance?: ClassSession['instructorAttendance'];
+  kind?: ClassSession['kind']; price?: number; // [v0.1.14]
 };
 
 @Injectable()
@@ -70,6 +72,7 @@ export class ScheduleService implements OnModuleInit {
     private readonly db: InMemoryDatabase,
     private readonly rooms: RoomsService,
     private readonly availability: AvailabilityService,
+    private readonly audit: AuditService, // [TBO-16 #7] 세션 CRUD 변경 이력(tx 동반)
   ) {}
 
   // 이번 주 데모 수업 시드 — 주간 반복 시리즈 단위(같은 시리즈=한 seriesId). 충돌 없게 구성.
@@ -221,18 +224,32 @@ export class ScheduleService implements OnModuleInit {
   }
 
   // 세션 생성(추천→배정). FK 검증 + 충돌 검사(force 아니면 충돌 시 409).
+  /** [TBO-16 #9] 세션 입력 공통 검증(FK·코호트) — create와 schedule-requests가 **같은 함수** 사용(우회 경로 방지).
+   *  반환: 확정 instructorId(미지정=코스 기본 강사). */
+  validateSessionInput(input: { courseId: number; instructorId?: number; roomId?: number; studentIds?: number[] }): number {
+    const course = this.courseOf(input.courseId);
+    if (!course) throw new BadRequestException(`courseId ${input.courseId} 없음`);
+    const instructorId = input.instructorId ?? course.instructorId;
+    if (!INSTRUCTORS[instructorId]) throw new BadRequestException(`instructorId ${instructorId} 없음`);
+    if (input.roomId != null && !this.rooms.findAll().some((r) => r.id === input.roomId))
+      throw new BadRequestException(`roomId ${input.roomId} 없음`);
+    if (input.studentIds?.length) {
+      const allowed = new Set(this.activeStudentIds(input.courseId));
+      const bad = input.studentIds.filter((id) => !allowed.has(id));
+      if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
+    }
+    return instructorId;
+  }
+
   create(dto: {
     courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
     startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
     studentIds?: number[]; // 명시 코호트(v0.1.13)
     seriesId?: number; status?: ClassSession['status']; force?: boolean;
-  }): { row: ScheduleRow; conflicts: Conflict[] } {
-    const course = this.courseOf(dto.courseId);
-    if (!course) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
-    const instructorId = dto.instructorId ?? course.instructorId;
-    if (!INSTRUCTORS[instructorId]) throw new BadRequestException(`instructorId ${instructorId} 없음`);
-    if (dto.roomId != null && !this.rooms.findAll().some((r) => r.id === dto.roomId))
-      throw new BadRequestException(`roomId ${dto.roomId} 없음`);
+    kind?: ClassSession['kind']; price?: number; // [v0.1.14] 종류·세션 단건 가격
+  }, actorId?: number): { row: ScheduleRow; conflicts: Conflict[] } {
+    const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
+    const course = this.courseOf(dto.courseId)!;
 
     const startTime = dto.startTime;
     const durationMinutes = dto.endTime
@@ -240,13 +257,6 @@ export class ScheduleService implements OnModuleInit {
       : dto.durationMinutes ?? 60;
     if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작보다 빠릅니다');
     const endTime = dto.endTime ?? addMinutes(startTime, durationMinutes);
-
-    // [명시 코호트 v0.1.13] 학생 선택(단체) — 그 코스 활성 수강생의 부분집합만 허용(유령 코호트 방지)
-    if (dto.studentIds?.length) {
-      const allowed = new Set(this.activeStudentIds(dto.courseId));
-      const bad = dto.studentIds.filter((id) => !allowed.has(id));
-      if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
-    }
 
     const conflicts = detectConflicts(
       { sessionDate: dto.sessionDate, startTime, endTime, instructorId, roomId: dto.roomId },
@@ -259,29 +269,49 @@ export class ScheduleService implements OnModuleInit {
       throw new ConflictException({ message: '스케줄 충돌', conflicts });
     }
 
-    const row = this.db.insert<ClassSession>(SESSIONS, {
-      studentIds: dto.studentIds,
-      seriesId: dto.seriesId,
-      courseId: dto.courseId,
-      instructorId,
-      roomId: dto.roomId,
-      sessionDate: dto.sessionDate,
-      startTime,
-      endTime,
-      durationMinutes,
-      status: dto.status ?? 'scheduled',
-      topic: dto.topic ?? course.name,
-      memo: dto.memo,
-      color: dto.color ?? course.color,
+    // [원자성] 세션 생성 + 변경 이력(audit)이 함께 반영되거나 함께 롤백
+    const row = this.db.transaction(() => {
+      const created = this.db.insert<ClassSession>(SESSIONS, {
+        studentIds: dto.studentIds,
+        seriesId: dto.seriesId,
+        courseId: dto.courseId,
+        instructorId,
+        roomId: dto.roomId,
+        sessionDate: dto.sessionDate,
+        startTime,
+        endTime,
+        durationMinutes,
+        status: dto.status ?? 'scheduled',
+        kind: dto.kind ?? 'class', // [v0.1.14] 기본 class(하위호환)
+        price: dto.price,
+        topic: dto.topic ?? course.name,
+        memo: dto.memo,
+        color: dto.color ?? course.color,
+      });
+      if (actorId != null)
+        this.audit.log({ entity: SESSIONS, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
+      return created;
     });
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
     return { row: this.enrich(row, roomsMap), conflicts };
   }
 
-  // 세션 삭제. (데모: 단건 제거. 실DB에서는 출석/리포트 FK 처리 필요)
-  remove(id: number): { id: number; deleted: boolean } {
-    if (!this.db.findById<ClassSession>(SESSIONS, id)) throw new NotFoundException(`Session ${id} not found`);
-    return { id, deleted: this.db.remove(SESSIONS, id) };
+  // 세션 삭제 — [v9] soft delete(행 보존·deletedBy 기록) + audit before 스냅샷 + 동반 정리(출결·리포트) 단일 tx.
+  remove(id: number, actorId?: number): { id: number; deleted: boolean } {
+    const before = this.db.findById<ClassSession>(SESSIONS, id);
+    if (!before) throw new NotFoundException(`Session ${id} not found`);
+    return this.db.transaction(() => {
+      const snap = { ...before };
+      const deleted = this.db.remove(SESSIONS, id, actorId);
+      // 동반 soft delete(무결성·캐스케이드 — dbml v9 §33): 이 세션의 출결·리포트
+      for (const a of this.db.findByField<BaseRow & { sessionId: number }>('attendance', 'sessionId', id))
+        this.db.remove('attendance', a.id, actorId);
+      for (const r of this.db.findByField<BaseRow & { sessionId: number }>('session_reports', 'sessionId', id))
+        this.db.remove('session_reports', r.id, actorId);
+      if (actorId != null)
+        this.audit.log({ entity: SESSIONS, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf(snap) as never });
+      return { id, deleted };
+    });
   }
 
   // 충돌 드라이런(생성·이동 전 검사)
@@ -299,7 +329,7 @@ export class ScheduleService implements OnModuleInit {
 
   // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
   // scope(this_and_following|all)면 같은 seriesId 세션에 동일 날짜·시간 델타를 함께 적용.
-  update(id: number, dto: UpdateScheduleDto): { row: ScheduleRow; conflicts: Conflict[]; updated: number } {
+  update(id: number, dto: UpdateScheduleDto, actorId?: number): { row: ScheduleRow; conflicts: Conflict[]; updated: number } {
     // [명시 코호트 v0.1.13] 부분집합 검증 — create와 동일 규칙(함수 통일: activeStudentIds 단일 소스)
     if (dto.studentIds?.length) {
       const cur0 = this.db.findById<ClassSession>(SESSIONS, id);
@@ -369,8 +399,14 @@ export class ScheduleService implements OnModuleInit {
     }
 
     // 4) 일괄 적용(대상 먼저, 그 뒤 시리즈)
+    const beforeSnap = { ...cur }; // audit diff용(적용 전 상태 — cur는 라이브 행이라 사본 필수)
     const updated = this.db.update<ClassSession>(SESSIONS, id, primary)!;
     for (const p of seriesPatches) this.db.update<ClassSession>(SESSIONS, p.id, p.fields);
+    if (actorId != null) {
+      const diff = this.audit.diffOf(beforeSnap, updated);
+      if (Object.keys(diff).length)
+        this.audit.log({ entity: SESSIONS, entityId: id, action: 'update', actorId, changes: diff }); // 시리즈 동반은 대상 1건으로 대표(scope는 diff에 미포함)
+    }
 
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
     return { row: this.enrich(updated, roomsMap), conflicts, updated: 1 + seriesPatches.length };
@@ -401,6 +437,8 @@ export class ScheduleService implements OnModuleInit {
       color: dto.color ?? cur.color,
       instructorAttendance: dto.instructorAttendance ?? cur.instructorAttendance,
       studentIds: dto.studentIds ?? cur.studentIds, // 명시 코호트(v0.1.13) — 검증은 update() 본문
+      kind: dto.kind ?? cur.kind ?? 'class', // [v0.1.14]
+      price: dto.price ?? cur.price,
     };
   }
 
@@ -410,6 +448,7 @@ export class ScheduleService implements OnModuleInit {
     const studentIds = s.studentIds?.length ? s.studentIds.map(Number) : this.activeStudentIds(s.courseId);
     return {
       ...s,
+      kind: s.kind ?? 'class', // [v0.1.14] 시드·구데이터 하위호환(미지정=class)
       weekday: weekdayOf(s.sessionDate),
       endTime: s.endTime ?? (s.startTime ? addMinutes(s.startTime, s.durationMinutes) : undefined),
       courseName: c?.name ?? `course ${s.courseId}`,

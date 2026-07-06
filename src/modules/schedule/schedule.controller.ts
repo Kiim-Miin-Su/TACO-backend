@@ -1,4 +1,6 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiOkResponse, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { ScheduleService } from './schedule.service';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
@@ -61,8 +63,8 @@ export class ScheduleController {
   @ApiCreatedResponse({ description: '{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[] }' })
   @ApiConflictResponse({ description: '{ message, conflicts: Conflict[] } — force=false에서 충돌 시' })
   @ApiUnauthorizedResponse({ description: '토큰 없음(로그인 필요)' })
-  create(@Body() dto: CreateScheduleDto) {
-    return this.schedule.create(dto);
+  create(@Body() dto: CreateScheduleDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.schedule.create(dto, req.user?.sub); // actor → audit_log(create)
   }
 
   // 이동·리사이즈·상세편집. 충돌 시 409 {message, conflicts} (force=true면 적용).
@@ -72,8 +74,8 @@ export class ScheduleController {
   @ApiOperation({ summary: '세션 이동·리사이즈·상세편집(반복 scope 지원). 충돌 시 409. [로그인]' })
   @ApiOkResponse({ description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }' })
   @ApiConflictResponse({ description: '{ message, conflicts } — force=false에서 충돌 시' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleDto) {
-    return this.schedule.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.schedule.update(id, dto, req.user?.sub); // actor → audit_log(update diff)
   }
 
   // 세션 삭제
@@ -82,7 +84,7 @@ export class ScheduleController {
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiOkResponse({ description: '{ id, deleted: true }' })
   @ApiOperation({ summary: '세션 삭제 [로그인]' })
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.schedule.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.schedule.remove(id, req.user?.sub); // actor → soft delete deletedBy + audit 스냅샷
   }
 }

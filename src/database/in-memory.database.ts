@@ -144,8 +144,16 @@ export class InMemoryDatabase {
     }
   }
 
-  findAll<T extends BaseRow>(name: string): T[] {
-    return [...this.collection<T>(name)];
+  // ── soft delete 규약(v9 — TBO-16) ──
+  //  삭제된 행(deletedAt 세팅)은 모든 기본 조회(findAll/findById/findBy/findByField)에서 제외.
+  //  withDeleted 옵션으로만 노출(복원·감사 조회용). TypeORM softDelete/@DeleteDateColumn과 1:1.
+  private isActive(row: BaseRow): boolean {
+    return row.deletedAt == null;
+  }
+
+  findAll<T extends BaseRow>(name: string, opts?: { withDeleted?: boolean }): T[] {
+    const rows = this.collection<T>(name);
+    return opts?.withDeleted ? [...rows] : rows.filter((r) => this.isActive(r));
   }
 
   /**
@@ -169,18 +177,19 @@ export class InMemoryDatabase {
     return inserted;
   }
 
-  /** id 조회 — 인덱스로 O(1). */
-  findById<T extends BaseRow>(name: string, id: number): T | undefined {
+  /** id 조회 — 인덱스로 O(1). 삭제 행은 기본 미노출(withDeleted로만). */
+  findById<T extends BaseRow>(name: string, id: number, opts?: { withDeleted?: boolean }): T | undefined {
     const hit = this.ids(name).get(id) as T | undefined;
-    if (hit) return hit;
+    if (hit) return opts?.withDeleted || this.isActive(hit) ? hit : undefined;
     // 인덱스 미스 방어(직접 배열 조작 등 예외 상황) — 스캔 폴백 후 자가 치유
     const row = this.collection<T>(name).find((r) => r.id === id);
     if (row) this.ids(name).set(id, row);
-    return row;
+    if (!row) return undefined;
+    return opts?.withDeleted || this.isActive(row) ? row : undefined;
   }
 
   findBy<T extends BaseRow>(name: string, predicate: (row: T) => boolean): T[] {
-    return this.collection<T>(name).filter(predicate);
+    return this.collection<T>(name).filter((r) => this.isActive(r) && predicate(r));
   }
 
   /**
@@ -190,7 +199,8 @@ export class InMemoryDatabase {
    */
   findByField<T extends BaseRow>(name: string, field: keyof T & string, value: unknown): T[] {
     const buckets = this.ensureFieldIndex(name, field);
-    return [...((buckets.get(value) as Set<T> | undefined) ?? [])];
+    const set = (buckets.get(value) as Set<T> | undefined) ?? new Set<T>();
+    return [...set].filter((r) => this.isActive(r)); // 삭제 행 제외(버킷은 유지 — 복원 대비)
   }
 
   insert<T extends BaseRow>(name: string, data: Omit<T, keyof BaseRow>): T {
@@ -218,12 +228,27 @@ export class InMemoryDatabase {
     return row;
   }
 
-  remove(name: string, id: number): boolean {
-    const rows = this.collection(name);
-    const i = rows.findIndex((r) => r.id === id);
-    if (i < 0) return false;
-    this.indexRemove(name, rows[i]);
-    rows.splice(i, 1);
+  /**
+   * [v9 soft delete] 행 제거가 아닌 deletedAt/deletedBy 마킹 — "삭제하는 것들도 전부 DB에 저장".
+   * 활성 행만 삭제 가능(이미 삭제된 행은 false — 기존 not-found 시맨틱 유지).
+   * 행은 컬렉션·인덱스에 남지만 모든 기본 조회가 걸러낸다(unique 재검증도 활성 행만 = partial unique).
+   */
+  remove(name: string, id: number, deletedBy?: number): boolean {
+    const row = this.findById(name, id); // 활성 행만
+    if (!row) return false;
+    Object.assign(row, {
+      deletedAt: new Date().toISOString(),
+      deletedBy: deletedBy ?? null,
+      updatedAt: new Date().toISOString(),
+    });
+    return true;
+  }
+
+  /** 삭제 행 복원(관리자용 — audit_log의 delete 스냅샷과 함께 사용). */
+  restore(name: string, id: number): boolean {
+    const row = this.findById(name, id, { withDeleted: true });
+    if (!row || row.deletedAt == null) return false;
+    Object.assign(row, { deletedAt: null, deletedBy: null, updatedAt: new Date().toISOString() });
     return true;
   }
 }

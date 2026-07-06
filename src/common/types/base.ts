@@ -5,8 +5,13 @@
  */
 
 // 모든 in-memory 레코드의 공통 필드
+// [v9 soft delete — TBO-16] deletedAt(null/undefined=활성)·deletedBy(users FK).
+//  삭제 = 행 제거가 아닌 마킹(erd.dbml v9 §31). 조회는 DB 계층에서 기본 제외.
+//  예외(원장 transactions·audit_log)는 서비스에서 remove를 호출하지 않는 방식으로 보장.
 export type BaseRow = {
   id: number;
   createdAt: string;
   updatedAt: string;
+  deletedAt?: string | null;
+  deletedBy?: number | null;
 };

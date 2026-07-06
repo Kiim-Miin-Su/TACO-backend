@@ -1,6 +1,7 @@
 import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, IsBoolean, Max, IsArray, ArrayMaxSize } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import type { SessionStatus, RecurrenceScope, InstructorAttendanceStatus } from '@kms545487/contracts';
+import type { SessionStatus, RecurrenceScope, InstructorAttendanceStatus, SessionKind, UpdateClassSessionInput } from '@kms545487/contracts';
+import { SESSION_KINDS } from './create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const STATUSES: SessionStatus[] = ['scheduled', 'held', 'canceled', 'no_show', 'makeup'];
@@ -8,7 +9,8 @@ const SCOPES: RecurrenceScope[] = ['this', 'this_and_following', 'all'];
 const INSTRUCTOR_ATT: InstructorAttendanceStatus[] = ['present', 'late', 'absent', 'makeup'];
 
 // PATCH /schedule/:id — 이동·리사이즈·상세편집 공용 부분수정 DTO. 모든 필드 선택.
-export class UpdateScheduleDto {
+// [v0.1.14] implements UpdateClassSessionInput — contracts 필드 drift를 tsc가 강제(감사 A1 해소).
+export class UpdateScheduleDto implements UpdateClassSessionInput {
   @ApiPropertyOptional({ example: '2026-07-02', description: '이동할 날짜(YYYY-MM-DD)' })
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/)
   sessionDate?: string;
@@ -68,4 +70,12 @@ export class UpdateScheduleDto {
   @ApiPropertyOptional({ example: false, description: '충돌이 있어도 강제 적용(기본 false → 충돌 시 409)' })
   @IsOptional() @IsBoolean()
   force?: boolean;
+
+  @ApiPropertyOptional({ enum: SESSION_KINDS, example: 'counsel', description: '[v0.1.14] 세션 종류 변경' })
+  @IsOptional() @IsIn(SESSION_KINDS)
+  kind?: SessionKind;
+
+  @ApiPropertyOptional({ example: 50000, description: '[v0.1.14] 세션 단건 가격(원)' })
+  @IsOptional() @IsInt() @Min(0) @Max(100_000_000)
+  price?: number;
 }

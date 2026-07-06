@@ -4,6 +4,8 @@
 //  - LoggerMiddleware는 전 라우트에 적용(요청 로깅). 컨트롤러 전역 prefix 'api'는 main.ts/서버리스 진입점에서 설정.
 import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
 import { LoggerMiddleware } from './common/logger.middleware';
+import { AuditModule } from './modules/audit/audit.module';
+import { ScheduleRequestsModule } from './modules/schedule-requests/schedule-requests.module';
 import { DatabaseModule } from './database/database.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { HealthModule } from './modules/health/health.module';
@@ -46,6 +48,8 @@ import { ParentsModule } from './modules/parents/parents.module';
     RoomsModule,
     AvailabilityModule,
     ScheduleModule,
+    ScheduleRequestsModule, // TBO-16 #9 — 강사 수업 요청 승인 흐름
+    AuditModule, // TBO-16 #7 — 범용 변경 이력
     // 시수 측정·페이 정산(TBO-05)
     ReportsModule,
     PayoutsModule,

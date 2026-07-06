@@ -65,7 +65,7 @@ export class ExpensesService implements OnModuleInit {
       });
   }
 
-  reject(id: number, reason?: string): Expense {
+  reject(id: number, reason: string): Expense { // [Q2] 사유 필수
     const row = this.findOne(id);
     // [H2] approved 지출을 반려하면 이미 기록된 원장 출금과 어긋남 — requested만 반려 가능
     if (row.status !== 'requested') throw new BadRequestException(`반려 불가 상태(${row.status}) — requested만 반려 가능`);
