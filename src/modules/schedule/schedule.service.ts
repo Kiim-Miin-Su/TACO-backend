@@ -420,6 +420,10 @@ export class ScheduleService implements OnModuleInit {
     let endTime: string;
     let durationMinutes: number;
     if (dto.endTime) { endTime = dto.endTime; durationMinutes = toMin(endTime) - toMin(startTime); }
+    // [R-1b 2026-07-06] F4 확인: durationMinutes 경로(드래그 이동 = {startTime, durationMinutes} 패치)의
+    //  자정 초과(예: 23:30+90분='25:00')는 **이 파일 로컬 addMinutes의 [M3] 가드**가 400을 던져 저장 전에
+    //  차단된다(리뷰가 지목한 conflict.util.addMinutes는 겹침 파생 전용 — 저장 경로에서 미사용).
+    //  dto.endTime 경로는 DTO HHMM 정규식(2[0-3])이 24시 이상을 차단. e2e 회귀: schedule.e2e-spec F4 케이스.
     else if (dto.durationMinutes != null) { durationMinutes = dto.durationMinutes; endTime = addMinutes(startTime, durationMinutes); }
     // 종료/시수 미지정 → 시수 유지하되 종료는 시작 기준으로 재계산(이동 시 종료가 어긋나지 않게).
     else { durationMinutes = cur.durationMinutes; endTime = addMinutes(startTime, durationMinutes); }

@@ -132,6 +132,14 @@ describe("Schedule API (e2e)", () => {
     await http.patch(`/api/schedule/${id}`).set(TH()).send({ roomId: 9999 }).expect(400);
   });
 
+  // [R-1b 2026-07-06] F4 회귀: 드래그 이동 패치({startTime, durationMinutes})가 자정을 넘으면
+  // addMinutes('23:30',90)='25:00' 같은 무효 endTime이 저장되지 않고 400(서비스 로컬 addMinutes [M3] 가드).
+  it("PATCH /schedule/:id — durationMinutes 경로 자정 초과(endTime>24:00) → 400 [R-1b F4]", async () => {
+    const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body;
+    const id = list[0].id;
+    await http.patch(`/api/schedule/${id}`).set(TH()).send({ startTime: "23:30", durationMinutes: 90 }).expect(400);
+  });
+
   it("PATCH /schedule/:id — 시리즈 전체(scope=all) 동반 이동(updated>1)", async () => {
     // 시드: 코스10 시리즈(월·수·금) — 한 세션을 빈 시각으로 옮기되 scope=all
     const list = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body;
