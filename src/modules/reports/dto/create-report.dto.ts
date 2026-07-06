@@ -1,8 +1,10 @@
 import { IsInt, IsOptional, IsString, MaxLength, IsIn } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { UpsertSessionReportInput } from '@kms545487/contracts';
 
 // POST /reports — 수업 1회 학생별 보고서 작성. 세션 FK·(세션,학생) 중복·강사 일치 검증.
-export class CreateReportDto {
+// [v0.1.14 A1] implements UpsertSessionReportInput — instructorId·status drift를 contracts에 편입 후 연결.
+export class CreateReportDto implements UpsertSessionReportInput {
   @ApiProperty({ example: 1, description: '수업 세션 FK(class_sessions.id)' })
   @IsInt()
   sessionId!: number;

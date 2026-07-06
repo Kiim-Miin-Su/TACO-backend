@@ -4,6 +4,7 @@ import { IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // POST /payouts/generate — 기간 내 적격 세션을 묶어 정산서 생성
+// [A1 2026-07-06] 정산 생성은 CreatePayoutInput과 필드 상이(기간 자동 산정) + adjust/reject는 액션 전용 — 정산 API 재설계(TBO-15 self-service) 때 통합 검토(A1 제외).
 export class GeneratePayoutDto {
   @ApiProperty({ example: 1, description: '강사(users.id)' })
   @IsInt()

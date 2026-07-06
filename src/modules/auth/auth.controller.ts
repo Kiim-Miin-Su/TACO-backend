@@ -1,4 +1,5 @@
 import {
+  Req,
   Body,
   Controller,
   ForbiddenException,
@@ -12,6 +13,9 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { RolesGuard } from './roles.guard';
+import { Roles, STAFF_ROLES } from './roles.decorator';
+import type { Request } from 'express';
 import { AuthService, JwtClaims } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
@@ -100,12 +104,13 @@ export class AuthController {
     return this.users.setStatus(id, 'rejected');
   }
 
-  // 토큰 검증(claims 반환)
+  // 토큰 검증(claims 반환) — [A5 2026-07-06] 수동 Bearer 파싱 → RolesGuard 패턴 통일
+  //  (파싱·검증·401 처리를 가드 한 곳으로 — 로그인 계정 role은 전부 STAFF_ROLES 안이므로 동작 동일).
   @Get('me')
-  @ApiOperation({ summary: '토큰 검증 → claims.' })
-  me(@Headers('authorization') authorization?: string) {
-    const token = authorization?.replace(/^Bearer\s+/i, '');
-    if (!token) throw new UnauthorizedException('Missing bearer token');
-    return this.auth.verify(token);
+  @UseGuards(RolesGuard)
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '토큰 검증 → claims. [로그인]' })
+  me(@Req() req: Request & { user?: JwtClaims }) {
+    return req.user; // RolesGuard가 검증 후 부착한 claims(iat/exp 포함)
   }
 }

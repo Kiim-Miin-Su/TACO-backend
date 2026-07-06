@@ -1,10 +1,12 @@
 import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import type { UpdateStudentInput } from '@kms545487/contracts';
 
 // [피드백 2026-07-03] 캘린더 우측 패널에서 학생 정보 즉시 수정 —
 //  해외 학생의 출국/입국(country·residenceType 변경)과 갑작스런 그만둠(status) 대응.
 //  status 'canceled'는 DELETE(퇴원 처리 — 수강 동반 정리)와 달리 단순 상태 표기용으로도 허용하되,
 //  수강 정리가 필요한 퇴원은 기존 remove 흐름을 사용(프론트가 안내).
-export class UpdateStudentDto {
+// [v0.1.14 A1] implements UpdateStudentInput — country 누락 drift를 contracts에 보정 후 연결.
+export class UpdateStudentDto implements UpdateStudentInput {
   @IsOptional() @IsString() @MaxLength(20)
   name?: string;
 

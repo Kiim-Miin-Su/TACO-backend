@@ -5,6 +5,7 @@ const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // POST /schedule/conflicts — 생성·이동 전 충돌 드라이런(강사·강의실 이중예약, 불가시간 겹침)
+// [A1 2026-07-06] 드라이런 질의(저장 없음) — 엔티티 Input이 아니라 contracts 미승격(A1 제외).
 export class ConflictCheckDto {
   @ApiProperty({ example: '2026-06-29', description: '대상 날짜(YYYY-MM-DD)' })
   @Matches(DATE, { message: 'sessionDate must be YYYY-MM-DD' })

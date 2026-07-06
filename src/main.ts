@@ -3,6 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 import { LoggingInterceptor } from './common/logging.interceptor';
 
 // [env 2026-07-03] .env 로드 — 네이티브(Node 20.12+/22, 의존성 없음). AuthService 등이 process.env를
@@ -27,7 +28,8 @@ async function bootstrap() {
   app.useGlobalPipes(
     new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }) /* 미허용 필드 400(mass-assignment 방어) */,
   );
-  app.useGlobalInterceptors(new LoggingInterceptor()); // 모든 요청 로깅(docs/logging.md)
+  app.useGlobalInterceptors(new LoggingInterceptor()); // 모든 요청 로깅 category=http(docs/logging.md)
+  app.useGlobalFilters(new AllExceptionsFilter()); // [R3] 예외 응답 표준화 + category=error(스택 응답 미노출)
 
   // Swagger — http://localhost:3001/docs (JSON: /docs-json)
   const swaggerConfig = new DocumentBuilder()
