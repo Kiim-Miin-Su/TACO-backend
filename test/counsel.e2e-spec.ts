@@ -81,4 +81,59 @@ describe('Counsel API (e2e)', () => {
     const token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     await http.post('/api/counsel/99999/rounds').set({ Authorization: `Bearer ${token}` }).send({ summary: 'x' }).expect(404);
   });
+
+  // ── [2026-07-07] 취약점·엣지 케이스 보강 ──
+  describe('검증·엣지 (2026-07-07)', () => {
+    let TOKEN = '';
+    const TH = () => ({ Authorization: `Bearer ${TOKEN}` });
+    beforeAll(async () => {
+      TOKEN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
+    });
+
+    it('POST /counsel — 자유 텍스트 상한 초과 → 400(applicantName 60·weakness 500)', async () => {
+      await http.post('/api/counsel').set(TH())
+        .send({ applicantName: 'x'.repeat(61), source: 'manual' }).expect(400);
+      await http.post('/api/counsel').set(TH())
+        .send({ applicantName: 'ok', source: 'manual', weakness: 'w'.repeat(501) }).expect(400);
+      // 경계값(정확히 상한)은 통과
+      await http.post('/api/counsel').set(TH())
+        .send({ applicantName: 'n'.repeat(60), source: 'manual', weakness: 'w'.repeat(500) }).expect(201);
+    });
+
+    it('POST /counsel/:id/rounds — detail 상한(2000) 초과 → 400', async () => {
+      await http.post('/api/counsel/1/rounds').set(TH())
+        .send({ summary: 's', detail: 'd'.repeat(2001) }).expect(400);
+    });
+
+    it('POST /counsel — 생성 시 status는 항상 requested(정상 생성)', async () => {
+      const f = (await http.post('/api/counsel').set(TH())
+        .send({ applicantName: '신규접수', source: 'manual' }).expect(201)).body;
+      expect(f.status).toBe('requested'); // 서비스가 강제
+    });
+
+    it('POST /counsel — 미허용 필드(status·임의 키)는 forbidNonWhitelisted로 400(상태 주입 차단)', async () => {
+      // CreateCounselDto에 status 필드가 없어 클라가 초기 상태를 주입할 수 없다(400).
+      await http.post('/api/counsel').set(TH())
+        .send({ applicantName: 'ok', source: 'manual', status: 'registered' }).expect(400);
+      await http.post('/api/counsel').set(TH())
+        .send({ applicantName: 'ok', source: 'manual', hackerField: 1 }).expect(400);
+    });
+
+    it('PATCH /counsel/:id — 없는 interestSubjectId → 400(FK)', async () => {
+      await http.patch('/api/counsel/1').set(TH()).send({ interestSubjectId: 99999 }).expect(400);
+    });
+
+    it('PATCH /counsel/:id — 없는 폼 → 404', async () => {
+      await http.patch('/api/counsel/99999').set(TH()).send({ status: 'pending' }).expect(404);
+    });
+
+    it('POST /counsel/:id/rounds — nextContactAt 미지정이면 폼 동기화 안 함(기존 값 유지)', async () => {
+      // 폼3(신규): nextContactAt 없음 → 회차만 추가하고 nextContactAt 미전송 시 계속 미정
+      const before = (await http.get('/api/counsel').set(asAdmin()).expect(200)).body.find((f: { id: number }) => f.id === 3);
+      expect(before.nextContactAt == null).toBe(true);
+      await http.post('/api/counsel/3/rounds').set(TH()).send({ summary: '동기화 미대상' }).expect(201);
+      const after = (await http.get('/api/counsel').set(asAdmin()).expect(200)).body.find((f: { id: number }) => f.id === 3);
+      expect(after.nextContactAt == null).toBe(true); // 미전송 → 변경 없음
+    });
+  });
 });
