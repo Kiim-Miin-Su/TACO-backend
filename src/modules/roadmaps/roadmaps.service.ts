@@ -32,22 +32,26 @@ export class RoadmapsService implements OnModuleInit {
     return this.db.findAll<RoadmapCourse>(ROADMAP_COURSES);
   }
 
-  create(dto: CreateRoadmapDto): Roadmap {
+  async create(dto: CreateRoadmapDto): Promise<Roadmap> {
     const courseIds = dto.courseIds ?? [];
     // 코스 FK 검증 — 하나라도 없으면 링크를 만들지 않고 400(부분 생성 방지).
     for (const courseId of courseIds) {
       if (!this.db.findById<Course>(COURSES, courseId))
         throw new BadRequestException(`courseId ${courseId} 없음(존재하지 않는 코스)`);
     }
-    const roadmap = this.db.insert<Roadmap>(ROADMAPS, {
-      title: dto.title,
-      description: dto.description,
-      targetGrade: dto.targetGrade,
-      isActive: true,
+    // [무결성 2026-07-07] 로드맵 + 코스 링크 다중 insert 원자성 — 중간 실패 시 roadmap만 남아 링크 누락되던
+    //  부분 생성 위험 제거(db write-path 감사 지적). 단일 tx로 함께 반영/롤백.
+    return this.db.transaction(() => {
+      const roadmap = this.db.insert<Roadmap>(ROADMAPS, {
+        title: dto.title,
+        description: dto.description,
+        targetGrade: dto.targetGrade,
+        isActive: true,
+      });
+      courseIds.forEach((courseId, i) => {
+        this.db.insert<RoadmapCourse>(ROADMAP_COURSES, { roadmapId: roadmap.id, courseId, sortOrder: i });
+      });
+      return roadmap;
     });
-    courseIds.forEach((courseId, i) => {
-      this.db.insert<RoadmapCourse>(ROADMAP_COURSES, { roadmapId: roadmap.id, courseId, sortOrder: i });
-    });
-    return roadmap;
   }
 }
