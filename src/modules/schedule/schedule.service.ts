@@ -25,6 +25,15 @@ const INSTRUCTORS: Record<number, string> = { 1: '박지훈', 2: '정유진' };
 // 과목 색 폴백(표시용) — Subject 계약에 color가 없어 세션→코스 색이 모두 없을 때만 사용.
 const SUBJECT_FALLBACK_COLOR: Record<number, string> = { 1: '#0969da', 2: '#1a7f37' };
 
+// [R-3 2차] 세션 필드 기본값 단일 소스 — create·mergeFields·enrich가 공유(리터럴 중복 제거·단일 책임).
+//  하위호환 폴백값(구데이터·미지정 입력)을 한 곳에서 관리 → 필드 추가 시 여기만 갱신.
+const SESSION_DEFAULTS = {
+  kind: 'class',
+  mode: 'in_person',
+  status: 'scheduled',
+  durationMinutes: 60,
+} as const satisfies { kind: ClassSession['kind']; mode: ClassSession['mode']; status: ClassSession['status']; durationMinutes: number };
+
 // ── 날짜/시간 유틸(결정론적, KST 의존 없음) — primitive는 common/time.util(위 import) ──
 // [R-3] 가드형 addMinutes만 로컬 유지(허용형 minToHhmm 위에 범위 가드를 얹음 — util은 순수/허용형).
 function addMinutes(hhmm: string, mins: number): string {
@@ -276,7 +285,7 @@ export class ScheduleService implements OnModuleInit {
     // [R-9] endTime<startTime = 익일 종료(자정 크로스 — +1440 래핑). 같으면 400, 크로스 상한 480분.
     const durationMinutes = dto.endTime
       ? durationFrom(startTime, dto.endTime)
-      : dto.durationMinutes ?? 60;
+      : dto.durationMinutes ?? SESSION_DEFAULTS.durationMinutes;
     assertDuration(startTime, durationMinutes);
     const endTime = endTimeOf(startTime, durationMinutes); // 크로스면 undefined(durationMinutes 파생 저장)
 
@@ -303,9 +312,9 @@ export class ScheduleService implements OnModuleInit {
         startTime,
         endTime,
         durationMinutes,
-        status: dto.status ?? 'scheduled',
-        kind: dto.kind ?? 'class', // [v0.1.14] 기본 class(하위호환)
-        mode: dto.mode ?? 'in_person', // [v0.1.16] 기본 대면(하위호환)
+        status: dto.status ?? SESSION_DEFAULTS.status,
+        kind: dto.kind ?? SESSION_DEFAULTS.kind, // [v0.1.14] 기본 class(하위호환)
+        mode: dto.mode ?? SESSION_DEFAULTS.mode, // [v0.1.16] 기본 대면(하위호환)
         price: dto.price,
         topic: dto.topic ?? course.name,
         memo: dto.memo,
@@ -466,8 +475,8 @@ export class ScheduleService implements OnModuleInit {
       color: dto.color ?? cur.color,
       instructorAttendance: dto.instructorAttendance ?? cur.instructorAttendance,
       studentIds: dto.studentIds ?? cur.studentIds, // 명시 코호트(v0.1.13) — 검증은 update() 본문
-      kind: dto.kind ?? cur.kind ?? 'class', // [v0.1.14]
-      mode: dto.mode ?? cur.mode ?? 'in_person', // [v0.1.16]
+      kind: dto.kind ?? cur.kind ?? SESSION_DEFAULTS.kind, // [v0.1.14]
+      mode: dto.mode ?? cur.mode ?? SESSION_DEFAULTS.mode, // [v0.1.16]
       price: dto.price ?? cur.price,
     };
   }
@@ -478,8 +487,8 @@ export class ScheduleService implements OnModuleInit {
     const studentIds = s.studentIds?.length ? s.studentIds.map(Number) : this.activeStudentIds(s.courseId);
     return {
       ...s,
-      kind: s.kind ?? 'class', // [v0.1.14] 시드·구데이터 하위호환(미지정=class)
-      mode: s.mode ?? 'in_person', // [v0.1.16] 하위호환(미지정=대면)
+      kind: s.kind ?? SESSION_DEFAULTS.kind, // [v0.1.14] 시드·구데이터 하위호환(미지정=class)
+      mode: s.mode ?? SESSION_DEFAULTS.mode, // [v0.1.16] 하위호환(미지정=대면)
       weekday: weekdayOf(s.sessionDate),
       // [R-9] 자정 크로스(시작+진행≥24:00)면 endTime 미제공 — FE가 durationMinutes로 파생(단일 규칙)
       endTime: s.endTime ?? (s.startTime ? endTimeOf(s.startTime, s.durationMinutes) : undefined),
