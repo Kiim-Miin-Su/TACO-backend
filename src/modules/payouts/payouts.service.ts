@@ -29,11 +29,16 @@ export type MeasureResult = {
  * 시수 측정 + 페이 정산.
  *
  * 시수 적격성(참조 무결성 게이트, 모두 충족해야 시수가 채워짐):
- *   1) 세션이 실제 진행됨        → status === 'held'  (취소/노쇼/예정 제외)
+ *   1) 세션이 실제 진행됨        → status === 'held'  (취소/노쇼/예정·보강 제외)
+ *   1-b) 강사가 결석하지 않음      → instructorAttendance !== 'absent'  [TBO-19 시수 정책]
  *   2) 승인된 보고서 존재         → reports.status === 'approved'
  *   3) 코스 FK 유효(시급 조인)    → courses.id 존재
  *   4) 다른 정산서에 미연결        → session.payoutId == null (이중 계상 방지)
  * 페이 = Σ round(durationMinutes / 60 × course.hourlyRate)
+ *
+ * ⚠ [TBO-19 시수 정책 · 2026-07-07 — 잠정 비즈니스 로직, 추후 변경]
+ *   강사 결석·수업 미진행(취소/노쇼)·보강(makeup)은 우선 **시수 제외**(대표 결정). 지각은 인정(감산 없음).
+ *   변경 시 FE `lib/domain/schedule.countsForPay`와 **동시** 수정(단일 규칙). 정책 문서=docs/TODO.md TBO-19.
  */
 @Injectable()
 export class PayoutsService implements OnModuleInit {
@@ -105,7 +110,8 @@ export class PayoutsService implements OnModuleInit {
         s.instructorId === instructorId &&
         s.sessionDate >= from &&
         s.sessionDate <= to &&
-        s.status === 'held' && // (1) 진행 완료만
+        s.status === 'held' && // (1) 진행 완료만(보강·취소·노쇼·예정 제외)
+        s.instructorAttendance !== 'absent' && // (1-b) [TBO-19 시수 정책] 강사 결석 제외(잠정)
         approved.has(s.id) && // (2) 승인 보고서 존재
         s.payoutId == null, // (4) 미연결(이중 계상 방지)
     );
