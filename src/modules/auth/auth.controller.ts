@@ -72,8 +72,8 @@ export class AuthController {
     if (!acc.emailVerified) throw new ForbiddenException('이메일 인증이 필요합니다.');
     if (acc.status === 'pending') throw new ForbiddenException('대표 승인 대기 중입니다.');
     if (acc.status === 'rejected') throw new ForbiddenException('가입이 반려된 계정입니다.');
-    // [버그수정 2026-07-07] 강사 계정이면 도메인 강사 id를 토큰 클레임에 실어 FE가 본인 수업/시수를 해석하게 한다.
-    const claims: JwtClaims = { sub: acc.id, name: acc.name, roles: [acc.role], instructorId: acc.instructorId };
+    // [강사 식별자 통일 2026-07-07] sub(=users.id)가 곧 강사 식별자 — 별도 instructorId 클레임 불필요.
+    const claims: JwtClaims = { sub: acc.id, name: acc.name, roles: [acc.role] };
     return { accessToken: this.auth.sign(claims), account: { id: acc.id, name: acc.name, role: acc.role } };
   }
 

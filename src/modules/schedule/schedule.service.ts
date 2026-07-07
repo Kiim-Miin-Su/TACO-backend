@@ -11,6 +11,7 @@ import { Course, COURSES as COURSES_COL } from '../courses/course.entity';
 import { Subject, SUBJECTS as SUBJECTS_COL } from '../subjects/subject.entity';
 import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
+import { USERS, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
 import { hhmmToMin as toMin, minToHhmm, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff } from '../../common/time.util';
@@ -19,9 +20,8 @@ import { hhmmToMin as toMin, minToHhmm, weekdayOf, dateToYmd as fmt, addDaysISO,
 //  코호트·카탈로그는 실제 컬렉션(students/enrollments/courses/subjects)을 조회한다(단일 소스).
 //  이전엔 상수 + `status !== 'drop'`(존재하지 않는 상태값 — 실제 소프트삭제는 'canceled') 필터라
 //  학생 삭제·신규 수강이 캘린더에 반영되지 않는 무결성 버그가 있었다.
-// 강사만 상수 유지: users 시드와 스케줄 instructorId(1,2)의 식별자 정합이 아직 안 돼 있어(TBO-06 잔여)
-//  users 컬렉션으로 바꾸면 FK가 어긋난다. JWT/users 정합 후 교체할 것.
-const INSTRUCTORS: Record<number, string> = { 1: '박지훈', 2: '정유진' };
+// [강사 식별자 통일 2026-07-07] 강사 = users(role='instructor'), 강사 id = users.id.
+//  하드코딩 INSTRUCTORS 상수/브리지 폐기 — 이름/검증/피커는 instructorUsers/instructorName/isInstructor 헬퍼로 users 조회.
 // 과목 색 폴백(표시용) — Subject 계약에 color가 없어 세션→코스 색이 모두 없을 때만 사용.
 const SUBJECT_FALLBACK_COLOR: Record<number, string> = { 1: '#0969da', 2: '#1a7f37' };
 
@@ -178,6 +178,16 @@ export class ScheduleService implements OnModuleInit {
   private studentOf(id: number): Student | undefined {
     return this.db.findById<Student>(STUDENTS_COL, id);
   }
+  // [강사 식별자 통일] 강사 = users(role='instructor'), 강사 id = users.id.
+  private instructorUsers(): StaffAccount[] {
+    return this.db.findBy<StaffAccount>(USERS, (u) => u.role === 'instructor');
+  }
+  private instructorName(id?: number): string | undefined {
+    return id == null ? undefined : this.db.findById<StaffAccount>(USERS, id)?.name;
+  }
+  private isInstructor(id: number): boolean {
+    return this.db.findById<StaffAccount>(USERS, id)?.role === 'instructor';
+  }
   // 코호트 = 활성 수강(enrollment.status==='active') ∧ 학생 미삭제(status!=='canceled').
   //  students.remove(소프트삭제)가 학생·수강 모두 'canceled'로 정리하므로 삭제 즉시 코호트에서 빠진다.
   private activeStudentIds(courseId: number): number[] {
@@ -222,11 +232,11 @@ export class ScheduleService implements OnModuleInit {
       allSessions.find((s) => s.courseId === courseId)?.durationMinutes ?? 90;
     const courses = this.db.findAll<Course>(COURSES_COL);
     return {
-      instructors: Object.entries(INSTRUCTORS).map(([id, name]) => {
-        const c = courses.find((x) => x.instructorId === Number(id));
+      instructors: this.instructorUsers().map((u) => {
+        const c = courses.find((x) => x.instructorId === u.id);
         return {
-          type: 'instructor' as const, id: Number(id), name,
-          color: PALETTE[Number(id) % PALETTE.length],
+          type: 'instructor' as const, id: u.id, name: u.name,
+          color: PALETTE[u.id % PALETTE.length],
           sub: c ? this.subjectOf(c.subjectId)?.name : undefined,
         };
       }),
@@ -244,7 +254,7 @@ export class ScheduleService implements OnModuleInit {
         })),
       courses: courses.map((c) => ({
         id: c.id, name: c.name, instructorId: c.instructorId,
-        instructorName: INSTRUCTORS[c.instructorId],
+        instructorName: this.instructorName(c.instructorId) ?? '',
         subjectName: this.subjectOf(c.subjectId)?.name ?? '',
         color: c.color ?? SUBJECT_FALLBACK_COLOR[c.subjectId],
         durationMinutes: courseDuration(c.id),
@@ -259,7 +269,7 @@ export class ScheduleService implements OnModuleInit {
     const course = this.courseOf(input.courseId);
     if (!course) throw new BadRequestException(`courseId ${input.courseId} 없음`);
     const instructorId = input.instructorId ?? course.instructorId;
-    if (!INSTRUCTORS[instructorId]) throw new BadRequestException(`instructorId ${instructorId} 없음`);
+    if (!this.isInstructor(instructorId)) throw new BadRequestException(`instructorId ${instructorId} 없음`);
     if (input.roomId != null && !this.rooms.findAll().some((r) => r.id === input.roomId))
       throw new BadRequestException(`roomId ${input.roomId} 없음`);
     if (input.studentIds?.length) {
@@ -376,7 +386,7 @@ export class ScheduleService implements OnModuleInit {
 
     // 참조 무결성(FK) 검증
     if (dto.courseId != null && !this.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
-    if (dto.instructorId != null && !INSTRUCTORS[dto.instructorId]) throw new BadRequestException(`instructorId ${dto.instructorId} 없음`);
+    if (dto.instructorId != null && !this.isInstructor(dto.instructorId)) throw new BadRequestException(`instructorId ${dto.instructorId} 없음`);
     if (dto.roomId != null && !this.rooms.findAll().some((r) => r.id === dto.roomId)) throw new BadRequestException(`roomId ${dto.roomId} 없음`);
 
     // 1) 대상(primary) 세션의 새 필드 계산
@@ -494,7 +504,7 @@ export class ScheduleService implements OnModuleInit {
       endTime: s.endTime ?? (s.startTime ? endTimeOf(s.startTime, s.durationMinutes) : undefined),
       courseName: c?.name ?? `course ${s.courseId}`,
       subjectName: this.subjectOf(c?.subjectId)?.name ?? '',
-      instructorName: INSTRUCTORS[s.instructorId] ?? `강사 ${s.instructorId}`,
+      instructorName: this.instructorName(s.instructorId) ?? `강사 ${s.instructorId}`,
       roomName: s.roomId ? rooms.get(s.roomId)?.name : undefined,
       color: s.color ?? c?.color ?? (c ? SUBJECT_FALLBACK_COLOR[c.subjectId] : undefined), // 세션 → 코스 → 과목 폴백
       studentIds,

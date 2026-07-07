@@ -24,11 +24,8 @@ export type StaffAccount = {
   passwordHash: string;
   emailVerified: boolean;
   emailVerifyToken?: string;
-  // [버그수정 2026-07-07] 강사 계정 ↔ 도메인 강사 id 링크.
-  //  계정 id(users)와 도메인 강사 id(courses.instructorId·class_sessions.instructorId·payouts·availability owner)는
-  //  별개 식별자다. 로그인 강사가 "본인 수업/시수"를 조회하려면 이 링크로 도메인 강사 id를 해석한다.
-  //  role='instructor'일 때만 의미. (미링크 강사 계정은 도메인 강사와 미연결 — 데이터 정합 대상)
-  instructorId?: number;
+  // [강사 식별자 통일 2026-07-07] 강사의 도메인 식별자 = users.id 자체(별도 instructorId 브리지 폐기).
+  //  courses/class_sessions 등의 instructorId가 이 users.id를 직접 참조한다.
 } & BaseRow;
 
 // 외부 노출용(안전) 계정 뷰 — 해시·토큰 제외.

@@ -25,11 +25,13 @@ export class UsersService implements OnModuleInit {
 
   onModuleInit(): void {
     this.db.seed<StaffAccount>(USERS, [
-      // [버그수정 2026-07-07] park_inst(박지훈) 계정 = 도메인 강사 id 1 링크(courses/sessions가 참조하는 강사).
-      //  종전엔 계정 id(6)와 도메인 강사 id(1)가 무링크 → 로그인 강사가 본인 도메인 id를 해석 불가(FE DEMO_INSTRUCTOR_ID 하드코딩 원인).
-      { id: 6, webId: 'park_inst', name: '박지훈', email: 'park@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true, instructorId: 1 },
-      { id: 7, webId: 'admin', name: '김민수', email: 'admin@tnacademy.test', role: 'super_admin', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
-      { id: 8, webId: 'manager', name: '이지원', email: 'manager@tnacademy.test', role: 'manager', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
+      // [강사 식별자 통일 2026-07-07] users.id 자체가 강사 식별자다(별도 instructorId 브리지 폐기).
+      //  courses/class_sessions/payouts/reports/availability/counsel의 instructorId·assignedStaffId가 이 id를 참조.
+      //  강사 = id 1·2, 대표/매니저 = 3·4. (정유진은 우선 데모 계정 — 실제 강사는 추후 계정 발급)
+      { id: 1, webId: 'park_inst', name: '박지훈', email: 'park@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
+      { id: 2, webId: 'jung_inst', name: '정유진', email: 'jung@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
+      { id: 3, webId: 'admin', name: '김민수', email: 'admin@tnacademy.test', role: 'super_admin', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
+      { id: 4, webId: 'manager', name: '이지원', email: 'manager@tnacademy.test', role: 'manager', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
     ]);
   }
 
