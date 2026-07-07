@@ -2941,7 +2941,8 @@
             ]
           },
           "reason": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         }
       },
@@ -2991,7 +2992,8 @@
             "pattern": "^[A-Z]{2}$"
           },
           "memo": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         },
         "required": [
@@ -3059,10 +3061,12 @@
           },
           "totalSessions": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 1000
           },
           "memo": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         },
         "required": [
@@ -3112,7 +3116,8 @@
         "properties": {
           "amount": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 100000000
           },
           "paymentMethod": {
             "type": "string",
@@ -3129,7 +3134,8 @@
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
           },
           "memo": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         }
       },
@@ -3169,11 +3175,13 @@
           },
           "price": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 100000000
           },
           "hourlyRate": {
             "type": "number",
-            "minimum": 0
+            "minimum": 0,
+            "maximum": 100000000
           }
         },
         "required": [
@@ -3201,7 +3209,8 @@
             ]
           },
           "title": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 100
           },
           "amount": {
             "type": "number",
@@ -3209,16 +3218,20 @@
             "maximum": 100000000
           },
           "spentAt": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 30
           },
           "vendor": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 100
           },
           "memo": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           },
           "receiptUrl": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         },
         "required": [
@@ -3319,11 +3332,13 @@
           },
           "effectiveFrom": {
             "type": "string",
+            "maxLength": 10,
             "example": "2026-06-01",
             "description": "적용 시작일(선택)"
           },
           "effectiveTo": {
             "type": "string",
+            "maxLength": 10,
             "example": "2026-08-31",
             "description": "적용 종료일(선택)"
           }
@@ -3810,11 +3825,13 @@
           "amount": {
             "type": "number",
             "minimum": 0,
+            "maximum": 100000000,
             "example": 150000,
             "description": "실효 지급액(원). 자동 산정액은 보존됨"
           },
           "reason": {
             "type": "string",
+            "maxLength": 500,
             "example": "교통비 차감",
             "description": "수정 사유"
           }
@@ -3828,6 +3845,7 @@
         "properties": {
           "reason": {
             "type": "string",
+            "maxLength": 500,
             "example": "근태 확인 필요",
             "description": "반려 사유(강사에게 표시)"
           }
@@ -3837,10 +3855,12 @@
         "type": "object",
         "properties": {
           "applicantName": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 60
           },
           "applicantPhone": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 30
           },
           "source": {
             "type": "string",
@@ -3862,7 +3882,8 @@
             "type": "number"
           },
           "academyExpectation": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 1000
           },
           "desiredStartTime": {
             "type": "string",
@@ -3890,7 +3911,8 @@
             ]
           },
           "weakness": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         },
         "required": [
@@ -3920,10 +3942,12 @@
             "type": "number"
           },
           "academyExpectation": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 1000
           },
           "weakness": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         }
       },
@@ -3934,10 +3958,12 @@
             "type": "number"
           },
           "summary": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 300
           },
           "detail": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           },
           "result": {
             "type": "string",
@@ -3950,7 +3976,8 @@
             ]
           },
           "nextAction": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           },
           "nextContactAt": {
             "type": "string",
@@ -4081,7 +4108,8 @@
         "type": "object",
         "properties": {
           "title": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 100
           },
           "type": {
             "type": "string",
@@ -4111,7 +4139,8 @@
             "type": "boolean"
           },
           "memo": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 500
           }
         },
         "required": [
@@ -4152,10 +4181,12 @@
         "type": "object",
         "properties": {
           "title": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 100
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 2000
           },
           "targetGrade": {
             "type": "number",
@@ -4177,16 +4208,20 @@
         "type": "object",
         "properties": {
           "name": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 100
           },
           "phone": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 30
           },
           "webId": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 50
           },
           "relation": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 30
           },
           "isPayer": {
             "type": "boolean"
@@ -4216,7 +4251,8 @@
             "minimum": 1
           },
           "relation": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 30
           },
           "isPayer": {
             "type": "boolean"
@@ -4234,7 +4270,8 @@
         "type": "object",
         "properties": {
           "relation": {
-            "type": "string"
+            "type": "string",
+            "maxLength": 30
           },
           "isPayer": {
             "type": "boolean"
