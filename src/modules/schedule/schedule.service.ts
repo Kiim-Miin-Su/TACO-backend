@@ -280,14 +280,14 @@ export class ScheduleService implements OnModuleInit {
     return instructorId;
   }
 
-  create(dto: {
+  async create(dto: {
     courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
     startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
     studentIds?: number[]; // 명시 코호트(v0.1.13)
     seriesId?: number; status?: ClassSession['status']; force?: boolean;
     kind?: ClassSession['kind']; price?: number; // [v0.1.14] 종류·세션 단건 가격
     mode?: ClassSession['mode']; // [v0.1.16] 수업방식(기본 in_person)
-  }, actorId?: number): { row: ScheduleRow; conflicts: Conflict[] } {
+  }, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[] }> {
     const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
     const course = this.courseOf(dto.courseId)!;
 
@@ -311,7 +311,7 @@ export class ScheduleService implements OnModuleInit {
     }
 
     // [원자성] 세션 생성 + 변경 이력(audit)이 함께 반영되거나 함께 롤백
-    const row = this.db.transaction(() => {
+    const row = await this.db.transaction(() => {
       const created = this.db.insert<ClassSession>(SESSIONS, {
         studentIds: dto.studentIds,
         seriesId: dto.seriesId,
@@ -339,7 +339,7 @@ export class ScheduleService implements OnModuleInit {
   }
 
   // 세션 삭제 — [v9] soft delete(행 보존·deletedBy 기록) + audit before 스냅샷 + 동반 정리(출결·리포트) 단일 tx.
-  remove(id: number, actorId?: number): { id: number; deleted: boolean } {
+  async remove(id: number, actorId?: number): Promise<{ id: number; deleted: boolean }> {
     const before = this.db.findById<ClassSession>(SESSIONS, id);
     if (!before) throw new NotFoundException(`Session ${id} not found`);
     return this.db.transaction(() => {
@@ -371,7 +371,7 @@ export class ScheduleService implements OnModuleInit {
 
   // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
   // scope(this_and_following|all)면 같은 seriesId 세션에 동일 날짜·시간 델타를 함께 적용.
-  update(id: number, dto: UpdateScheduleDto, actorId?: number): { row: ScheduleRow; conflicts: Conflict[]; updated: number } {
+  async update(id: number, dto: UpdateScheduleDto, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }> {
     // [명시 코호트 v0.1.13] 부분집합 검증 — create와 동일 규칙(함수 통일: activeStudentIds 단일 소스)
     if (dto.studentIds?.length) {
       const cur0 = this.db.findById<ClassSession>(SESSIONS, id);
@@ -483,7 +483,8 @@ export class ScheduleService implements OnModuleInit {
       topic: dto.topic ?? (dto.courseId != null && course ? course.name : cur.topic),
       memo: dto.memo ?? cur.memo,
       color: dto.color ?? cur.color,
-      instructorAttendance: dto.instructorAttendance ?? cur.instructorAttendance,
+      // [TBO-19 Sprint2] clear=미표시로 초기화(우회 sentinel) · 아니면 기존 병합(?? cur)
+      instructorAttendance: dto.clearInstructorAttendance ? undefined : (dto.instructorAttendance ?? cur.instructorAttendance),
       studentIds: dto.studentIds ?? cur.studentIds, // 명시 코호트(v0.1.13) — 검증은 update() 본문
       kind: dto.kind ?? cur.kind ?? SESSION_DEFAULTS.kind, // [v0.1.14]
       mode: dto.mode ?? cur.mode ?? SESSION_DEFAULTS.mode, // [v0.1.16]
