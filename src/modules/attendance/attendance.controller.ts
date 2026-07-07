@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Put, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Put, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { AttendanceService } from './attendance.service';
 import { UpsertAttendanceDto } from './dto/upsert-attendance.dto';
@@ -30,7 +32,7 @@ export class AttendanceController {
   @Roles(...STAFF_ROLES) // 로그인 필수(강사가 마킹)
   @ApiOperation({ summary: '출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장' })
   @ApiOkResponse({ description: 'upsert된 Attendance' })
-  upsert(@Body() dto: UpsertAttendanceDto) {
-    return this.attendance.upsert(dto);
+  upsert(@Body() dto: UpsertAttendanceDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.attendance.upsert(dto, req.user?.sub); // actor → audit_log(출결 변경 이력)
   }
 }

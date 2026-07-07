@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { AuditService } from '../audit/audit.service'; // [출결 이력 2026-07-07] 학생 출결 변경도 audit_log에 기록
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Student, STUDENTS } from '../students/student.entity';
 import { Attendance, ATTENDANCE } from './attendance.entity';
@@ -13,7 +14,10 @@ import { UpsertAttendanceDto } from './dto/upsert-attendance.dto';
  */
 @Injectable()
 export class AttendanceService implements OnModuleInit {
-  constructor(private readonly db: InMemoryDatabase) {}
+  constructor(
+    private readonly db: InMemoryDatabase,
+    private readonly audit: AuditService, // 출결 변경 이력(tx 동반)
+  ) {}
 
   onModuleInit(): void {
     this.db.seed<Attendance>(ATTENDANCE, [
@@ -42,7 +46,9 @@ export class AttendanceService implements OnModuleInit {
   }
 
   // 출결 기록(upsert). FK 검증 → 기존 (session,student) 행 갱신 or 신규 삽입.
-  upsert(dto: UpsertAttendanceDto): Attendance {
+  // [출결 이력 2026-07-07] 변경(create/update)을 audit_log에 기록(강사 출결이 세션 PATCH로 audit되는 것과 대칭).
+  //  actorId(JWT sub)는 컨트롤러가 전달. upsert+audit을 한 tx로(이력 포함 원자성).
+  async upsert(dto: UpsertAttendanceDto, actorId?: number): Promise<Attendance> {
     // 1) 세션 FK
     if (!this.db.findById<ClassSession>(SESSIONS, dto.sessionId))
       throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
@@ -50,18 +56,30 @@ export class AttendanceService implements OnModuleInit {
     if (!this.db.findById<Student>(STUDENTS, dto.studentId))
       throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
 
-    // 3) (세션, 학생) 유니크 — 있으면 갱신, 없으면 삽입
-    const [existing] = this.db.findBy<Attendance>(
-      ATTENDANCE,
-      (a) => a.sessionId === dto.sessionId && a.studentId === dto.studentId, // (upsert 판별은 2키라 predicate 유지)
-    );
-    if (existing) {
-      return this.db.update<Attendance>(ATTENDANCE, existing.id, { status: dto.status }) as Attendance;
-    }
-    return this.db.insert<Attendance>(ATTENDANCE, {
-      sessionId: dto.sessionId,
-      studentId: dto.studentId,
-      status: dto.status,
+    return this.db.transaction(() => {
+      // 3) (세션, 학생) 유니크 — 있으면 갱신, 없으면 삽입
+      const [existing] = this.db.findBy<Attendance>(
+        ATTENDANCE,
+        (a) => a.sessionId === dto.sessionId && a.studentId === dto.studentId, // (upsert 판별은 2키라 predicate 유지)
+      );
+      if (existing) {
+        const before = { ...existing };
+        const updated = this.db.update<Attendance>(ATTENDANCE, existing.id, { status: dto.status }) as Attendance;
+        if (actorId != null) {
+          const diff = this.audit.diffOf(before, updated);
+          if (Object.keys(diff).length)
+            this.audit.log({ entity: ATTENDANCE, entityId: updated.id, action: 'update', actorId, changes: diff });
+        }
+        return updated;
+      }
+      const created = this.db.insert<Attendance>(ATTENDANCE, {
+        sessionId: dto.sessionId,
+        studentId: dto.studentId,
+        status: dto.status,
+      });
+      if (actorId != null)
+        this.audit.log({ entity: ATTENDANCE, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
+      return created;
     });
   }
 }

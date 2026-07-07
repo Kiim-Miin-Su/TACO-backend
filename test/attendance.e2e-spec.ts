@@ -70,4 +70,16 @@ describe('Attendance API (e2e)', () => {
     await http.get('/api/attendance').expect(401);
     await http.put('/api/attendance').send({ sessionId: 1, studentId: 1, status: 'present' }).expect(401);
   });
+
+  // [출결 이력 2026-07-07] 학생 출결 변경이 audit_log에 기록되는지(스케줄 audit과 대칭)
+  it('PUT /attendance — 변경이 audit_log에 기록(entity=attendance, action=update/create)', async () => {
+    await http.put('/api/attendance').set(auth())
+      .send({ sessionId: 1, studentId: 4, status: 'excused' }).expect(200); // 기존 갱신
+    const logs = (await http.get('/api/audit?entity=attendance').set(asAdmin()).expect(200)).body;
+    expect(logs.length).toBeGreaterThan(0);
+    expect(logs.every((l: { entity: string }) => l.entity === 'attendance')).toBe(true);
+    const latest = logs[0];
+    expect(['update', 'create']).toContain(latest.action);
+    expect(latest.actorId).toBeGreaterThan(0); // JWT sub 기록
+  });
 });
