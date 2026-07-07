@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, Matches, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Matches, Min, Max, MaxLength } from 'class-validator';
+import { TEXT, MAX_AMOUNT } from '../../../common/validation-limits'; // [보안] 상한 단일 소스
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -24,11 +25,13 @@ export class AdjustPayoutDto {
   @ApiProperty({ example: 150000, description: '실효 지급액(원). 자동 산정액은 보존됨' })
   @IsInt()
   @Min(0)
+  @Max(MAX_AMOUNT)
   amount!: number;
 
   @ApiPropertyOptional({ example: '교통비 차감', description: '수정 사유' })
   @IsOptional()
   @IsString()
+  @MaxLength(TEXT.memo)
   reason?: string;
 }
 
@@ -37,5 +40,6 @@ export class RejectPayoutDto {
   @ApiPropertyOptional({ example: '근태 확인 필요', description: '반려 사유(강사에게 표시)' })
   @IsOptional()
   @IsString()
+  @MaxLength(TEXT.memo)
   reason?: string;
 }

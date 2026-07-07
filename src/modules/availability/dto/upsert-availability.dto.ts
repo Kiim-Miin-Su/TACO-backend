@@ -1,6 +1,7 @@
-import { IsIn, IsInt, IsOptional, IsString, Matches, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Matches, Max, Min, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { UpsertAvailabilityInput, AvailabilityOwner, AvailabilityKind } from '@kms545487/contracts';
+import { TEXT } from '../../../common/validation-limits'; // [보안] 자유 텍스트 상한 단일 소스
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 
@@ -41,10 +42,12 @@ export class UpsertAvailabilityDto implements UpsertAvailabilityInput {
   @ApiPropertyOptional({ example: '2026-06-01', description: '적용 시작일(선택)' })
   @IsOptional()
   @IsString()
+  @MaxLength(TEXT.date)
   effectiveFrom?: string;
 
   @ApiPropertyOptional({ example: '2026-08-31', description: '적용 종료일(선택)' })
   @IsOptional()
   @IsString()
+  @MaxLength(TEXT.date)
   effectiveTo?: string;
 }

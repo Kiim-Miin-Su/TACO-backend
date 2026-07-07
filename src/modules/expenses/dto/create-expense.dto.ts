@@ -1,6 +1,7 @@
-import { IsIn, IsInt, IsOptional, IsString, Min, Max } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Min, Max, MaxLength } from 'class-validator';
 import type { CreateExpenseInput } from '@kms545487/contracts';
 import { ExpenseCategory } from '../expense.entity';
+import { TEXT } from '../../../common/validation-limits'; // [보안] 자유 텍스트 상한 단일 소스
 
 const CATEGORIES: ExpenseCategory[] = [
   'supplies', 'equipment', 'books', 'rent', 'utility', 'marketing', 'meal', 'etc',
@@ -11,6 +12,7 @@ export class CreateExpenseDto implements CreateExpenseInput {
   category!: ExpenseCategory;
 
   @IsString()
+  @MaxLength(TEXT.name)
   title!: string;
 
   @IsInt()
@@ -19,17 +21,21 @@ export class CreateExpenseDto implements CreateExpenseInput {
   amount!: number;
 
   @IsString()
+  @MaxLength(TEXT.short)
   spentAt!: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(TEXT.name)
   vendor?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(TEXT.memo)
   memo?: string;
 
   @IsOptional()
   @IsString()
+  @MaxLength(TEXT.url)
   receiptUrl?: string;
 }

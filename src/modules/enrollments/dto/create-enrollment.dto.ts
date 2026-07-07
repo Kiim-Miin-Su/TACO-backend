@@ -1,5 +1,6 @@
-import { IsInt, IsOptional, IsString, Min } from 'class-validator';
+import { IsInt, IsOptional, IsString, Min, Max, MaxLength } from 'class-validator';
 import type { CreateEnrollmentInput } from '@kms545487/contracts';
+import { TEXT, MAX_COUNT } from '../../../common/validation-limits'; // [보안] 상한 단일 소스
 
 export class CreateEnrollmentDto implements CreateEnrollmentInput {
   @IsInt()
@@ -15,9 +16,11 @@ export class CreateEnrollmentDto implements CreateEnrollmentInput {
   @IsOptional()
   @IsInt()
   @Min(0)
+  @Max(MAX_COUNT)
   totalSessions?: number;
 
   @IsOptional()
   @IsString()
+  @MaxLength(TEXT.memo)
   memo?: string;
 }

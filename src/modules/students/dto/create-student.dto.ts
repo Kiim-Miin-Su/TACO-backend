@@ -56,5 +56,6 @@ export class CreateStudentDto implements CreateStudentInput {
 
   @IsOptional()
   @IsString()
+  @MaxLength(500)
   memo?: string;
 }
