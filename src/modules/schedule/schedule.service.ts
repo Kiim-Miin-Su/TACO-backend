@@ -536,8 +536,11 @@ export class ScheduleService implements OnModuleInit {
       // [TBO-19 Sprint2] clear=미표시로 초기화(우회 sentinel) · 아니면 기존 병합(?? cur)
       instructorAttendance: dto.clearInstructorAttendance ? undefined : (dto.instructorAttendance ?? cur.instructorAttendance),
       studentIds: dto.studentIds ?? cur.studentIds, // 명시 코호트(v0.1.13) — 검증은 update() 본문
-      kind: dto.kind ?? cur.kind ?? SESSION_DEFAULTS.kind, // [v0.1.14]
-      mode: dto.mode ?? cur.mode ?? SESSION_DEFAULTS.mode, // [v0.1.16]
+      // [R-6 audit 노이즈 정리 2026-07-07] merge는 **보존만**(기본값 채우기 제거) — 기본값은 create()·enrich()가 담당.
+      //  종전 `?? SESSION_DEFAULTS`는 구/시드 세션(kind·mode 미저장)을 부분 PATCH할 때 undefined→기본값을
+      //  audit diff가 "변경"으로 잡아 이력이 지저분했음. 보존으로 바꿔 미변경 필드는 diff에 안 남음(읽기 기본값=enrich).
+      kind: dto.kind ?? cur.kind, // [v0.1.14] 미저장이면 undefined 유지(enrich가 read-time에 class 채움)
+      mode: dto.mode ?? cur.mode, // [v0.1.16] 미저장이면 undefined 유지(enrich가 read-time에 in_person 채움)
       price: dto.price ?? cur.price,
     };
   }
