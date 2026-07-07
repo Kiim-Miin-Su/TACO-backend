@@ -13,16 +13,18 @@ export type JwtClaims = {
  */
 @Injectable()
 export class AuthService {
-  // JWT_SECRET 권장(운영). 미설정 시 부팅을 막지 않고(서버리스 전체 다운 방지) 경고만 남기고
-  // 고정 기본키로 동작 — 데모는 즉시 사용 가능, 운영은 반드시 JWT_SECRET 설정 권장.
+  // [TBO-15 B2 · 2026-07-07] JWT_SECRET 운영 강제(fail-fast).
+  //  · 운영(NODE_ENV=production)에서 미설정 = 고정 dev키로 서명하는 치명적 취약 → **부팅 차단**(throw).
+  //  · 개발/데모/테스트에서는 종전대로 고정 dev키 + 경고(즉시 사용 가능, e2e 유지).
   private readonly secret: string = (() => {
     const s = process.env.JWT_SECRET;
-    if (!s) {
-      // eslint-disable-next-line no-console
-      console.warn('[auth] JWT_SECRET 미설정 — 기본 개발키 사용 중. 운영에서는 반드시 JWT_SECRET을 설정하세요.');
-      return 'dev-secret-change-me';
+    if (s) return s;
+    if (process.env.NODE_ENV === 'production') {
+      throw new Error('[auth] JWT_SECRET 환경변수가 설정되지 않았습니다 — 운영 배포에는 필수입니다(고정 개발키 서명 차단).');
     }
-    return s;
+    // eslint-disable-next-line no-console
+    console.warn('[auth] JWT_SECRET 미설정 — 개발 기본키 사용 중(운영에서는 반드시 설정).');
+    return 'dev-secret-change-me';
   })();
   private readonly expiresIn: string = process.env.JWT_EXPIRES_IN ?? '1h';
 
