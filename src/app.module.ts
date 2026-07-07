@@ -26,6 +26,7 @@ import { TransactionsModule } from './modules/transactions/transactions.module';
 import { ViewPresetsModule } from './modules/view-presets/view-presets.module';
 import { ReportTemplatesModule } from './modules/report-templates/report-templates.module';
 import { EventsModule } from './modules/events/events.module';
+import { InstructorContractsModule } from './modules/instructor-contracts/instructor-contracts.module'; // [TBO-19 Sprint4]
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
 import { ParentsModule } from './modules/parents/parents.module';
@@ -59,6 +60,7 @@ import { ParentsModule } from './modules/parents/parents.module';
     ViewPresetsModule,
     ReportTemplatesModule,
     EventsModule,
+    InstructorContractsModule, // [TBO-19 Sprint4] 강사 계약
     AttendanceModule,
     RoadmapsModule,
     ParentsModule,
