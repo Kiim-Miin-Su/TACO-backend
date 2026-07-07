@@ -33,6 +33,7 @@ export class AttendanceController {
   @ApiOperation({ summary: '출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장' })
   @ApiOkResponse({ description: 'upsert된 Attendance' })
   upsert(@Body() dto: UpsertAttendanceDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.attendance.upsert(dto, req.user?.sub); // actor → audit_log(출결 변경 이력)
+    // actor(sub·roles) → 소유권 검증(H1 IDOR) + audit_log(출결 변경 이력)
+    return this.attendance.upsert(dto, req.user?.sub, req.user?.roles);
   }
 }

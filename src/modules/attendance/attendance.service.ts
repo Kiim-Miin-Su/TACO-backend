@@ -1,6 +1,7 @@
-import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { AuditService } from '../audit/audit.service'; // [출결 이력 2026-07-07] 학생 출결 변경도 audit_log에 기록
+import { ADMIN_ROLES } from '../auth/roles.decorator';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Student, STUDENTS } from '../students/student.entity';
 import { Attendance, ATTENDANCE } from './attendance.entity';
@@ -47,14 +48,20 @@ export class AttendanceService implements OnModuleInit {
 
   // 출결 기록(upsert). FK 검증 → 기존 (session,student) 행 갱신 or 신규 삽입.
   // [출결 이력 2026-07-07] 변경(create/update)을 audit_log에 기록(강사 출결이 세션 PATCH로 audit되는 것과 대칭).
-  //  actorId(JWT sub)는 컨트롤러가 전달. upsert+audit을 한 tx로(이력 포함 원자성).
-  async upsert(dto: UpsertAttendanceDto, actorId?: number): Promise<Attendance> {
+  //  actorId·actorRoles(JWT sub·roles)는 컨트롤러가 전달. upsert+audit을 한 tx로(이력 포함 원자성).
+  //  [보안 2026-07-07 H1] 소유권 검증(IDOR 차단): 비관리자(강사)는 **본인 담당 세션**의 출결만 기록 가능.
+  //   관리자(ADMIN_ROLES)는 전 세션 허용. FE canStudent(=admin||ownSession)와 서버측 정합.
+  async upsert(dto: UpsertAttendanceDto, actorId?: number, actorRoles?: string[]): Promise<Attendance> {
     // 1) 세션 FK
-    if (!this.db.findById<ClassSession>(SESSIONS, dto.sessionId))
-      throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
+    const session = this.db.findById<ClassSession>(SESSIONS, dto.sessionId);
+    if (!session) throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
     // 2) 학생 FK
     if (!this.db.findById<Student>(STUDENTS, dto.studentId))
       throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
+    // 3) 소유권(IDOR 방지) — 비관리자는 담당 강사 세션만. actorId 미상(무인증 컨텍스트)이면 검사 생략.
+    const isAdmin = (actorRoles ?? []).some((r) => (ADMIN_ROLES as string[]).includes(r));
+    if (actorId != null && !isAdmin && session.instructorId !== actorId)
+      throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 기록할 수 있습니다.');
 
     return this.db.transaction(() => {
       // 3) (세션, 학생) 유니크 — 있으면 갱신, 없으면 삽입

@@ -1,4 +1,6 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import type { Request } from 'express';
+import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiForbiddenResponse } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
@@ -29,16 +31,17 @@ export class ReportsController {
 
   @Post()
   @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '보고서 작성(세션 FK·중복·강사 일치 검증). 기본 submitted(승인요청).' })
-  create(@Body() dto: CreateReportDto) {
-    return this.reports.create(dto);
+  @ApiOperation({ summary: '보고서 작성(세션 FK·중복·강사 일치·소유권 검증). 기본 submitted(승인요청).' })
+  create(@Body() dto: CreateReportDto, @Req() req: Request & { user?: JwtClaims }) {
+    // 소유권 검증(H2 IDOR): 비관리자는 본인 담당 세션만.
+    return this.reports.create(dto, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }
 
   @Post(':id/submit')
   @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '강사 제출(draft → submitted)' })
-  submit(@Param('id', ParseIntPipe) id: number) {
-    return this.reports.submit(id);
+  @ApiOperation({ summary: '강사 제출(draft → submitted) — 본인 보고서만' })
+  submit(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.reports.submit(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }
 
   // 관리자 승인/반려 — RolesGuard로 super_admin/manager/admin만 허용.

@@ -1,9 +1,14 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { ADMIN_ROLES } from '../auth/roles.decorator';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Course, COURSES } from '../courses/course.entity';
 import { SessionReportRow, SESSION_REPORTS } from './report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
+
+// [보안 2026-07-07 H2] 액터 컨텍스트 — 비관리자(강사)는 본인 세션·본인 보고서만 쓰기 가능(IDOR 차단).
+export type ReportActor = { id: number; roles: string[] };
+const actorIsAdmin = (actor?: ReportActor) => !!actor && actor.roles.some((r) => (ADMIN_ROLES as string[]).includes(r));
 
 /**
  * 수업 보고서 — 강사 제출 → 관리자 승인/반려.
@@ -48,12 +53,16 @@ export class ReportsService implements OnModuleInit {
     );
   }
 
-  create(dto: CreateReportDto): SessionReportRow {
+  create(dto: CreateReportDto, actor?: ReportActor): SessionReportRow {
     // 1) 세션 FK 검증
     const session = this.db.findById<ClassSession>(SESSIONS, dto.sessionId);
     if (!session) throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
 
-    // 2) 강사 일치(미지정 시 세션 강사로 채움)
+    // 2) 소유권(H2 IDOR 차단) — 비관리자(강사)는 본인 담당 세션에만 작성 가능.
+    if (actor && !actorIsAdmin(actor) && session.instructorId !== actor.id)
+      throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 보고서를 작성할 수 있습니다.');
+
+    // 3) 강사 일치(미지정 시 세션 강사로 채움)
     const instructorId = dto.instructorId ?? session.instructorId;
     if (instructorId !== session.instructorId)
       throw new BadRequestException(
@@ -83,8 +92,11 @@ export class ReportsService implements OnModuleInit {
   }
 
   // 강사: 작성완료 제출(draft → submitted)
-  submit(id: number): SessionReportRow {
+  submit(id: number, actor?: ReportActor): SessionReportRow {
     const r = this.findOne(id);
+    // 소유권(H2 IDOR 차단) — 비관리자는 본인 명의 보고서만 제출 가능.
+    if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
+      throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 제출할 수 있습니다.');
     if (r.status === 'approved') throw new BadRequestException('이미 승인된 보고서');
     return this.db.update<SessionReportRow>(SESSION_REPORTS, id, {
       status: 'submitted',

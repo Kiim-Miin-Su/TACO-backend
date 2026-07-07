@@ -132,6 +132,28 @@ describe("Permission matrix (e2e)", () => {
     });
   });
 
+  // [TBO-20 20-1 H1·H2] 소유권(IDOR) — 강사는 본인 담당 세션만 학생 출결·보고서 쓰기.
+  //  시드: 세션 20=강사1(park_inst) · 세션 21=강사2(jung_inst). 보고서 id 2=세션21·강사2.
+  describe("소유권(IDOR) — 강사는 본인 세션만 출결·보고서 쓰기", () => {
+    it("instructor(park) → PUT /attendance 타 강사 세션(21) 403", async () => {
+      await http.put("/api/attendance").set(auth("instructor")).send({ sessionId: 21, studentId: 2, status: "present" }).expect(403);
+    });
+    it("instructor(park) → PUT /attendance 본인 세션(20) 통과(403 아님)", async () => {
+      const res = await http.put("/api/attendance").set(auth("instructor")).send({ sessionId: 20, studentId: 1, status: "present" });
+      expect(res.status).not.toBe(403);
+    });
+    it("manager → PUT /attendance 타 강사 세션(21) 통과(관리자 우회)", async () => {
+      const res = await http.put("/api/attendance").set(auth("manager")).send({ sessionId: 21, studentId: 2, status: "present" });
+      expect(res.status).not.toBe(403);
+    });
+    it("instructor(park) → POST /reports 타 강사 세션(21) 403", async () => {
+      await http.post("/api/reports").set(auth("instructor")).send({ sessionId: 21, studentId: 2, instructorId: 2, content: "x" }).expect(403);
+    });
+    it("instructor(park) → POST /reports/2/submit 타 강사 보고서 403", async () => {
+      await http.post("/api/reports/2/submit").set(auth("instructor")).send({}).expect(403);
+    });
+  });
+
   // 백오피스 쓰기 액션은 RolesGuard(super_admin/manager/admin) 전용.
   // 가드가 핸들러보다 먼저 실행되므로 id가 유효하지 않아도 인가 결과(403/401)가 먼저 나온다.
   describe("RolesGuard — 관리자 전용 쓰기 액션 거부", () => {
