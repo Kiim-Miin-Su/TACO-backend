@@ -223,6 +223,56 @@ export class ScheduleService implements OnModuleInit {
       .sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')));
   }
 
+  // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터.
+  //  · 카운트(출/지/결/보강/미표시)는 **진행 회차(held·makeup)** 기준(마킹 대상).
+  //  · 인정 시수는 **시수 정책**(status='held' && 결석 아님 — 보강 제외, payouts와 동일 규칙).
+  //  ⚠ DB 이관(TBO-08): 지금은 in-memory 전 세션 스캔+집계 → Postgres에선 **class_sessions GROUP BY instructor_id**
+  //    (WHERE date BETWEEN·status IN, deleted_at IS NULL)로 승격. 규칙(카운트 모집단·시수)은 그대로 유지.
+  instructorAttendanceSummary(opts: { from?: string; to?: string; instructorId?: number }): {
+    from?: string; to?: string;
+    rows: Array<{
+      instructorId: number; instructorName: string;
+      held: number; present: number; late: number; absent: number; makeup: number; unmarked: number;
+      attendanceRate: number | null; teachingMinutes: number; teachingHours: number;
+    }>;
+    totals: { instructors: number; held: number; present: number; late: number; absent: number; makeup: number; unmarked: number; teachingHours: number };
+  } {
+    const sessions = this.list(opts).filter((r) => r.status === 'held' || r.status === 'makeup');
+    const byInst = new Map<number, ScheduleRow[]>();
+    for (const r of sessions) {
+      const k = Number(r.instructorId);
+      byInst.set(k, [...(byInst.get(k) ?? []), r]);
+    }
+    const rows = [...byInst.entries()]
+      .map(([instructorId, list]) => {
+        const c = { present: 0, late: 0, absent: 0, makeup: 0, unmarked: 0 };
+        let teachingMinutes = 0;
+        for (const s of list) {
+          const a = s.instructorAttendance;
+          if (a === 'present' || a === 'late' || a === 'absent' || a === 'makeup') c[a]++;
+          else c.unmarked++;
+          if (s.status === 'held' && a !== 'absent') teachingMinutes += s.durationMinutes || 0; // 시수 정책
+        }
+        const denom = c.present + c.late + c.absent;
+        const attendanceRate = denom ? Math.round(((c.present + c.late) / denom) * 100) : null;
+        return {
+          instructorId, instructorName: list[0]?.instructorName ?? `강사 ${instructorId}`,
+          held: list.length, present: c.present, late: c.late, absent: c.absent, makeup: c.makeup, unmarked: c.unmarked,
+          attendanceRate, teachingMinutes, teachingHours: Math.round((teachingMinutes / 60) * 100) / 100,
+        };
+      })
+      .sort((a, b) => a.instructorName.localeCompare(b.instructorName, 'ko'));
+    const totals = rows.reduce(
+      (t, r) => ({
+        instructors: t.instructors + 1, held: t.held + r.held, present: t.present + r.present, late: t.late + r.late,
+        absent: t.absent + r.absent, makeup: t.makeup + r.makeup, unmarked: t.unmarked + r.unmarked,
+        teachingHours: Math.round((t.teachingHours + r.teachingHours) * 100) / 100,
+      }),
+      { instructors: 0, held: 0, present: 0, late: 0, absent: 0, makeup: 0, unmarked: 0, teachingHours: 0 },
+    );
+    return { from: opts.from, to: opts.to, rows, totals };
+  }
+
   // 자원 피커(좌측 레일·필터)용 경량 목록 — 강사·강의실·학생.
   resources(): import('@kms545487/contracts').ScheduleResources {
     const PALETTE = ['#0969da', '#1a7f37', '#8250df', '#bf3989', '#9a6700', '#1b7c83'];

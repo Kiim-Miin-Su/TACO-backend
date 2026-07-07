@@ -47,6 +47,23 @@ export class ScheduleController {
     return this.schedule.resources();
   }
 
+  // [TBO-19] GET /api/schedule/instructor-attendance-summary — 강사 출결 현황 집계(관리자 대시보드)
+  //  정적 경로라 :id 라우트와 충돌 없음. 관리 지표(민감) → ADMIN_ROLES.
+  @Get('instructor-attendance-summary')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '강사 출결 현황 집계(기간·강사 필터) — 출/지/결/보강 카운트·출석률·인정 시수·총계' })
+  @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })
+  @ApiQuery({ name: 'instructorId', required: false })
+  instructorAttendanceSummary(
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+    @Query('instructorId') instructorId?: string,
+  ) {
+    return this.schedule.instructorAttendanceSummary({
+      from, to, instructorId: instructorId ? Number(instructorId) : undefined,
+    });
+  }
+
   // 충돌 드라이런(생성·이동 전 검사)
   @Post('conflicts')
   @Roles(...STAFF_ROLES) // [코드리뷰 2026-07-03 H1] @Roles 누락 → 무인증 접근 가능했음. 강사·강의실 가용성 탐지 차단
