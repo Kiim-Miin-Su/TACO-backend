@@ -5,6 +5,9 @@ export type JwtClaims = {
   sub: number; // user id
   name: string;
   roles: string[]; // user_roles
+  // [버그수정 2026-07-07] 강사 계정이면 도메인 강사 id(courses/sessions 참조) — FE가 "본인 수업/시수" 해석에 사용.
+  //  강사 아닌 계정은 미포함(undefined는 JSON 직렬화 시 제거되어 토큰에 안 실림).
+  instructorId?: number;
 }
 
 /**

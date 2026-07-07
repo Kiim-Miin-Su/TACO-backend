@@ -25,7 +25,9 @@ export class UsersService implements OnModuleInit {
 
   onModuleInit(): void {
     this.db.seed<StaffAccount>(USERS, [
-      { id: 6, webId: 'park_inst', name: '박지훈', email: 'park@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
+      // [버그수정 2026-07-07] park_inst(박지훈) 계정 = 도메인 강사 id 1 링크(courses/sessions가 참조하는 강사).
+      //  종전엔 계정 id(6)와 도메인 강사 id(1)가 무링크 → 로그인 강사가 본인 도메인 id를 해석 불가(FE DEMO_INSTRUCTOR_ID 하드코딩 원인).
+      { id: 6, webId: 'park_inst', name: '박지훈', email: 'park@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true, instructorId: 1 },
       { id: 7, webId: 'admin', name: '김민수', email: 'admin@tnacademy.test', role: 'super_admin', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
       { id: 8, webId: 'manager', name: '이지원', email: 'manager@tnacademy.test', role: 'manager', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
     ]);
