@@ -1438,6 +1438,51 @@
         ]
       }
     },
+    "/api/schedule/instructor-attendance-summary": {
+      "get": {
+        "operationId": "ScheduleController_instructorAttendanceSummary",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "instructorId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "강사 출결 현황 집계(기간·강사 필터) — 출/지/결/보강 카운트·출석률·인정 시수·총계",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/api/schedule/conflicts": {
       "post": {
         "operationId": "ScheduleController_conflicts",
@@ -2634,6 +2679,26 @@
         ]
       }
     },
+    "/api/instructor-contracts": {
+      "get": {
+        "operationId": "InstructorContractsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "InstructorContract[] — instructorId·monthlyHours·hourlyRate·periodStart·active"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "강사 계약 목록(InstructorContract[]) — 계약 시수·시급·기간(계약 관리)",
+        "tags": [
+          "instructor-contracts"
+        ]
+      }
+    },
     "/api/attendance": {
       "get": {
         "operationId": "AttendanceController_findAll",
@@ -3600,6 +3665,11 @@
             "type": "string",
             "example": "present",
             "description": "강사 출결(출석/지각/결석/보강)"
+          },
+          "clearInstructorAttendance": {
+            "type": "boolean",
+            "example": false,
+            "description": "강사 출결을 미표시로 초기화(clear)"
           },
           "scope": {
             "enum": [
