@@ -24,14 +24,14 @@ export class ScheduleRequestsService {
   ) {}
 
   /** 요청 생성(pending) — 세션과 동일 검증 + 참고용 충돌 목록 반환. */
-  create(dto: CreateScheduleRequestDto, requesterId: number): { row: RequestRow; conflicts: Conflict[] } {
+  async create(dto: CreateScheduleRequestDto, requesterId: number): Promise<{ row: RequestRow; conflicts: Conflict[] }> {
     const instructorId = this.schedule.validateSessionInput(dto); // FK·코호트(함수 통일)
     // 참고용 충돌 드라이런(승인 시점에 재검사가 확정본)
     const conflicts = this.schedule.checkConflicts({
       sessionDate: dto.sessionDate, startTime: dto.startTime, endTime: dto.endTime,
       durationMinutes: dto.durationMinutes, instructorId, roomId: dto.roomId,
     });
-    const row = this.db.transaction(() => {
+    const row = await this.db.transaction(() => {
       const created = this.db.insert<RequestRow>(SCHEDULE_REQUESTS, {
         requesterId,
         courseId: dto.courseId,
@@ -62,11 +62,11 @@ export class ScheduleRequestsService {
   }
 
   /** 승인 — [요청 상태 + 세션 생성(충돌 409·force 재검사) + 역참조 + audit] 단일 tx 원자화. */
-  approve(id: number, decidedBy: number, force?: boolean): { request: RequestRow; conflicts: Conflict[] } {
+  async approve(id: number, decidedBy: number, force?: boolean): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
     const req = this.mustPending(id);
-    return this.db.transaction(() => {
+    return this.db.transaction(async () => {
       // 기존 createSession 경로 그대로 — FK·코호트 재검증 + 충돌 409(force면 강제) + create audit(actor=승인자)
-      const { row: session, conflicts } = this.schedule.create({
+      const { row: session, conflicts } = await this.schedule.create({
         courseId: req.courseId, instructorId: req.instructorId, roomId: req.roomId,
         sessionDate: req.sessionDate, startTime: req.startTime, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic,
@@ -81,7 +81,7 @@ export class ScheduleRequestsService {
   }
 
   /** 반려 — 사유 필수(DTO 강제). */
-  reject(id: number, decidedBy: number, reason: string): RequestRow {
+  async reject(id: number, decidedBy: number, reason: string): Promise<RequestRow> {
     this.mustPending(id);
     return this.db.transaction(() => {
       const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, id, {
@@ -93,7 +93,7 @@ export class ScheduleRequestsService {
   }
 
   /** 본인 pending 요청 철회(soft delete) — 강사용. 타인 요청은 403. */
-  withdraw(id: number, requesterId: number): { id: number; deleted: boolean } {
+  async withdraw(id: number, requesterId: number): Promise<{ id: number; deleted: boolean }> {
     const req = this.mustPending(id);
     if (req.requesterId !== requesterId) throw new ForbiddenException('본인 요청만 철회할 수 있습니다');
     return this.db.transaction(() => {

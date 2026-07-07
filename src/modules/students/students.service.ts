@@ -53,7 +53,7 @@ export class StudentsService implements OnModuleInit {
     return this.db.update<Student>(STUDENTS, id, { ...dto }) as Student;
   }
 
-  remove(id: number): Student {
+  async remove(id: number): Promise<Student> {
     // [원자성] 학생 소프트삭제 + 활성 수강 일괄 canceled(부분 정리 잔존 금지)
     return this.db.transaction(() => {
     const student = this.db.findById<Student>(STUDENTS, id);

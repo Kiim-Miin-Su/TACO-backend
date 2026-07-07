@@ -39,7 +39,7 @@ export class CounselService implements OnModuleInit {
   }
 
   // 회차 추가 — roundNo 자동 증가, 부모 폼 FK 검증 + nextContactAt 동기화(배지 단일 소스).
-  createRound(formId: number, dto: CreateCounselRoundDto): CounselRound {
+  async createRound(formId: number, dto: CreateCounselRoundDto): Promise<CounselRound> {
     // [원자성] 회차 기록 + 폼 nextContactAt 동기화가 함께(다음 일정 불일치 방지)
     return this.db.transaction(() => {
     this.findForm(formId);

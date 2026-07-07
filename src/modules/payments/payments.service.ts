@@ -53,7 +53,7 @@ export class PaymentsService implements OnModuleInit {
     return this.db.update<Payment>(PAYMENTS, id, { ...dto }) as Payment;
   }
 
-  markPaid(id: number): Payment {
+  async markPaid(id: number): Promise<Payment> {
     // [원자성] 수납 상태 갱신 + 통합 원장 입금 1줄이 함께(원장 누락 방지)
     return this.db.transaction(() => {
     const row = this.findOne(id);
@@ -81,7 +81,7 @@ export class PaymentsService implements OnModuleInit {
 
   // [원장 완결성 2026-07-03] 환불 — 수납의 역방향 출금을 원장에 기록(실DB 가정 감사에서 발견된 공백).
   //  paid 상태에서만 가능(멱등 — 재클릭/미수납 환불 400), 전액 환불(부분 환불은 partial_refund 확장 여지).
-  refund(id: number): Payment {
+  async refund(id: number): Promise<Payment> {
     return this.db.transaction(() => {
       const row = this.findOne(id);
       if (row.status !== 'paid') throw new BadRequestException('수납 완료(paid) 상태에서만 환불할 수 있습니다.');

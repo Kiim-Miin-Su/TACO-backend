@@ -52,7 +52,7 @@ export class PayoutsService implements OnModuleInit {
   //  · 강사1: 적격 3건(미정산) + 게이트 데모(보고서 없음·취소) → UI에서 산정/생성 시연
   //  · 강사2: 적격 3건 → generate→confirm→pay로 '지급완료' 정산서 + 원장 출금 1줄
   // 현재 주(MON~SUN)·강사1 쿼리와 겹치지 않게 6/8~6/19로 한정(e2e 불간섭).
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
     if (this.db.findAll<InstructorPayoutRow>(PAYOUTS).length) return; // 이미 시드됨
 
     const make = (
@@ -89,9 +89,9 @@ export class PayoutsService implements OnModuleInit {
     withApprovedReport(make(11, 2, '2026-06-09', '16:00', 120, 'held'), 2);
     withApprovedReport(make(11, 2, '2026-06-11', '16:00', 120, 'held'), 2);
     withApprovedReport(make(11, 2, '2026-06-16', '16:00', 120, 'held'), 2);
-    const paid = this.generate(2, '2026-06-01', '2026-06-30');
+    const paid = await this.generate(2, '2026-06-01', '2026-06-30');
     this.confirm(paid.id);
-    this.pay(paid.id);
+    await this.pay(paid.id);
   }
 
   private round(n: number): number {
@@ -153,7 +153,7 @@ export class PayoutsService implements OnModuleInit {
   }
 
   // 정산서 생성(pending) + 세션 연결(payoutId·페이 스냅샷 기록 → 이중 계상 방지).
-  generate(instructorId: number, from: string, to: string): InstructorPayoutRow {
+  async generate(instructorId: number, from: string, to: string): Promise<InstructorPayoutRow> {
     // [원자성] 정산서 생성 + 세션 payoutId 연결이 함께 성공/실패(이중계상 방지 불변식 보호)
     return this.db.transaction(() => {
     const m = this.measure(instructorId, from, to);
@@ -218,7 +218,7 @@ export class PayoutsService implements OnModuleInit {
   }
 
   // 관리자 반려(→ rejected) + 연결 세션 회수(payoutId 해제 → 재산정 가능).
-  reject(id: number, reason?: string): InstructorPayoutRow {
+  async reject(id: number, reason?: string): Promise<InstructorPayoutRow> {
     // [원자성] 반려 상태 + 연결 세션 전량 회수(부분 회수 잔존 금지)
     return this.db.transaction(() => {
     const p = this.findOne(id);
@@ -241,7 +241,7 @@ export class PayoutsService implements OnModuleInit {
   }
 
   // 지급 완료(confirmed → paid) + 통합 원장 출금 1줄 기록.
-  pay(id: number): { payout: InstructorPayoutRow; transaction: TransactionRow } {
+  async pay(id: number): Promise<{ payout: InstructorPayoutRow; transaction: TransactionRow }> {
     // [원자성] 지급 상태 + 통합 원장 출금 1줄이 함께 기록(원장 누락/유령 지급 방지)
     return this.db.transaction(() => {
     const p = this.findOne(id);

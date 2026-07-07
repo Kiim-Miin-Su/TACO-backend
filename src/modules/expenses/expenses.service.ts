@@ -44,7 +44,7 @@ export class ExpensesService implements OnModuleInit {
     });
   }
 
-  approve(id: number): Expense {
+  async approve(id: number): Promise<Expense> {
     // [원자성] 지출 승인 + 통합 원장 출금 1줄이 함께(원장 누락 방지)
     return this.db.transaction(() => {
     const row = this.findOne(id);

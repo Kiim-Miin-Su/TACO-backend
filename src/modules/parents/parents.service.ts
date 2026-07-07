@@ -39,7 +39,7 @@ export class ParentsService implements OnModuleInit {
   }
 
   // 신규 보호자 + 학생 연결(intake).
-  create(dto: CreateParentDto): { parent: Parent; relation: ParentStudent } {
+  async create(dto: CreateParentDto): Promise<{ parent: Parent; relation: ParentStudent }> {
     // [원자성] 보호자 생성 + 학생 연결(+기존 대표 강등)이 함께 — 고아 보호자/이중 대표 방지
     return this.db.transaction(() => {    if (!this.db.findById<Student>(STUDENTS, dto.studentId))
       throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);

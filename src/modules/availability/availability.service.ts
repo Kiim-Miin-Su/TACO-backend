@@ -70,7 +70,7 @@ export class AvailabilityService implements OnModuleInit {
     );
   }
 
-  upsert(dto: UpsertAvailabilityDto, actorId?: number): AvailabilityBlock {
+  async upsert(dto: UpsertAvailabilityDto, actorId?: number): Promise<AvailabilityBlock> {
     // [버그수정 2026-07-06] 자정 크로스(end<=start) 거부 — 세션과 동일 규칙. 시차 입력은 FE가 분할 저장(splitKstBand).
     const asMin = hhmmToMin; // [R-3] 공통 유틸(로컬 중복 제거)
     if (asMin(dto.endTime) <= asMin(dto.startTime))
@@ -87,7 +87,7 @@ export class AvailabilityService implements OnModuleInit {
         );
       }
       const beforeSnap = existing ? { ...existing } : undefined;
-      const updated = this.db.transaction(() => {
+      const updated = await this.db.transaction(() => {
         const u = this.db.update<AvailabilityBlock>(AVAILABILITY, dto.id!, {
           kind: dto.kind ?? 'available',
           weekday: dto.weekday,
@@ -123,7 +123,7 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   // [v9] soft delete + before 스냅샷 audit(Q3) — 단일 tx
-  remove(id: number, actorId?: number): { id: number; deleted: boolean } {
+  async remove(id: number, actorId?: number): Promise<{ id: number; deleted: boolean }> {
     const before = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
     return this.db.transaction(() => {
       const deleted = before ? this.db.remove(AVAILABILITY, id, actorId) : false;

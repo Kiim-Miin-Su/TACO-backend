@@ -117,23 +117,21 @@ export class InMemoryDatabase {
   }
 
   // ── 트랜잭션: 다중 쓰기의 원자성(전부 반영 or 전부 롤백) ──
-  transaction<R>(fn: () => R): R {
+  // [async 전환 2026-07-07] fn은 동기/비동기 모두 허용(await) — TypeORM `dataSource.transaction(async em=>…)` 이관 대비.
+  //  현재 콜백 내 쓰기는 동기 db 호출이지만, 서비스/컨트롤러 시그니처를 async로 통일해 이관 시 배관을 미리 완료한다.
+  //  ⚠ in-memory 스냅샷 롤백은 콜백 실행 중 다른 요청의 쓰기가 끼어들지 않는 단일 실행 전제(테스트·서버리스 단일 인스턴스).
+  //  ⚠ 중첩: savepoint 아님 — 내부 tx 예외를 외곽에서 삼키면 부분 쓰기가 섞인다. 내부 tx 예외는 반드시 재던질 것.
+  async transaction<R>(fn: () => R | Promise<R>): Promise<R> {
     if (this.txDepth > 0) {
-      // 중첩: 외곽 트랜잭션의 스냅샷이 이미 전체를 보호 — 그대로 실행.
-      // ⚠ savepoint 아님: 내부 tx의 예외를 외곽 안에서 catch하고 삼키면 내부의 부분 쓰기가
-      //   외곽 커밋에 섞인다. 내부 tx 예외는 반드시 재던질 것(코드리뷰 2026-07-02).
       this.txDepth++;
-      try { return fn(); } finally { this.txDepth--; }
+      try { return await fn(); } finally { this.txDepth--; }
     }
     // 스냅샷(깊은 복사) — 행 mutate(update)까지 원복 가능해야 하므로 structuredClone.
     const storeSnap = structuredClone(this.store);
     const seqSnap = new Map(this.sequences);
     this.txDepth = 1;
     try {
-      const result = fn();
-      // [M2] async 콜백은 스냅샷 경계 밖에서 쓰기가 일어나 롤백이 무의미 — 명시적으로 거부.
-      if (result instanceof Promise) throw new Error('transaction(fn): fn은 동기 함수여야 합니다(async 미지원)');
-      return result;
+      return await fn();
     } catch (e) {
       this.store = storeSnap;
       this.sequences = seqSnap;
