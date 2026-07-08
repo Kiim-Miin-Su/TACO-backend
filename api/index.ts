@@ -4,6 +4,7 @@ import { ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "../src/app.module";
 import { AllExceptionsFilter } from "../src/common/all-exceptions.filter";
+import { webCorsOrigins } from "../src/common/cors-origin";
 import { LoggingInterceptor } from "../src/common/logging.interceptor";
 
 // 서버리스(@vercel/node)는 런타임 컴파일에서 데코레이터 메타데이터/Swagger 플러그인이
@@ -28,10 +29,9 @@ let cachedServer: ((req: unknown, res: unknown) => void) | undefined;
 async function bootstrapServer() {
   const app = await NestFactory.create(AppModule);
 
-  // WEB_ORIGIN: 콤마로 여러 도메인 지정 가능. 운영은 반드시 실제 프론트 도메인 지정.
-  const webOrigin = process.env.WEB_ORIGIN;
+  // WEB_ORIGIN: 콤마로 여러 도메인 지정 가능. 미지정 시 현재 Vercel 프론트 alias를 허용.
   app.enableCors({
-    origin: webOrigin ? webOrigin.split(',').map((s) => s.trim()).filter(Boolean) : process.env.NODE_ENV === "production" ? false : "http://localhost:3000",
+    origin: webCorsOrigins(),
     credentials: true,
   });
   app.setGlobalPrefix("api");

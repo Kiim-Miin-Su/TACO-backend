@@ -4,6 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import { webCorsOrigins } from './common/cors-origin';
 import { LoggingInterceptor } from './common/logging.interceptor';
 
 // [env 2026-07-03] .env 로드 — 네이티브(Node 20.12+/22, 의존성 없음). AuthService 등이 process.env를
@@ -17,10 +18,9 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // 프론트(Next.js)와 분리 운영 — CORS 허용.
-  // WEB_ORIGIN: 콤마로 여러 도메인 지정 가능. 미지정 시 로컬 개발 기본값(localhost:3000).
-  const webOrigin = process.env.WEB_ORIGIN;
+  // WEB_ORIGIN: 콤마로 여러 도메인 지정 가능. 미지정 시 로컬/현재 Vercel 프론트 alias 기본값.
   app.enableCors({
-    origin: webOrigin ? webOrigin.split(',').map((s) => s.trim()).filter(Boolean) : 'http://localhost:3000',
+    origin: webCorsOrigins(),
     credentials: true,
   });
 
