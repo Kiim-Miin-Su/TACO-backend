@@ -1,12 +1,13 @@
 import { IsIn, IsInt, IsOptional, IsString, Matches, Max, Min, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { UpsertAvailabilityInput, AvailabilityOwner, AvailabilityKind } from '@kms545487/contracts';
+import type { AvailabilityOwner, AvailabilityKind } from '@kms545487/contracts';
 import { TEXT } from '../../../common/validation-limits'; // [보안] 자유 텍스트 상한 단일 소스
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+type AvailabilityKindEx = AvailabilityKind | 'online_only';
 
 // PUT /availability — 가용/불가 시간 블록 생성·수정(id 있으면 수정). 같은 오너·요일 겹침 시 409.
-export class UpsertAvailabilityDto implements UpsertAvailabilityInput {
+export class UpsertAvailabilityDto {
   @ApiPropertyOptional({ example: 5, description: '수정할 블록 id(없으면 신규 생성)' })
   @IsOptional()
   @IsInt()
@@ -20,10 +21,10 @@ export class UpsertAvailabilityDto implements UpsertAvailabilityInput {
   @IsInt()
   ownerId!: number;
 
-  @ApiPropertyOptional({ enum: ['available', 'unavailable'], example: 'unavailable', description: '가용/불가(기본 available)' })
+  @ApiPropertyOptional({ enum: ['available', 'unavailable', 'online_only'], example: 'unavailable', description: '가용/불가/온라인만 가능(기본 available)' })
   @IsOptional()
-  @IsIn(['available', 'unavailable'])
-  kind?: AvailabilityKind;
+  @IsIn(['available', 'unavailable', 'online_only'])
+  kind?: AvailabilityKindEx;
 
   @ApiProperty({ example: 1, minimum: 0, maximum: 6, description: '요일(0=일 ~ 6=토)' })
   @IsInt()

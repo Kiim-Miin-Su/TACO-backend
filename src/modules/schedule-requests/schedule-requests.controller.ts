@@ -24,9 +24,9 @@ export class ScheduleRequestsController {
 
   @Post()
   @Roles(...STAFF_ROLES) // 강사 포함 — 요청은 누구나(직원), 확정은 관리자
-  @ApiOperation({ summary: '수업 요청 생성(pending) — 세션과 동일 FK·코호트 검증 + 참고용 충돌 목록. [로그인]' })
+  @ApiOperation({ summary: '요청 생성(pending) — 수업 생성 또는 가용시간 변경 승인 요청. [로그인]' })
   create(@Body() dto: CreateScheduleRequestDto, @Req() req: AuthedRequest) {
-    return this.requests.create(dto, req.user!.sub);
+    return this.requests.create(dto, req.user!.sub, req.user!.roles);
   }
 
   @Get()

@@ -9,6 +9,7 @@ import type { ClassSession } from './schedule.entity';
 import type { AvailabilityBlock } from '../availability/availability.entity';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(중복 제거).
 import { hhmmToMin as toMin, weekdayOf, addDaysISO, dayDiff as dayDiffDays } from '../../common/time.util';
+type AvailabilityKindEx = AvailabilityBlock['kind'] | 'online_only';
 
 /** [R-9] 종료 분(시작일 00:00 기준, 자정 크로스=1440 초과).
  *  endTime 없음 → start+duration 파생. endTime<startTime → 익일 종료(+1440)로 해석. */
@@ -27,6 +28,7 @@ export type Candidate = {
   instructorId?: number;
   roomId?: number;
   ignoreSessionId?: number;
+  mode?: ClassSession['mode'];
 };
 
 export function detectConflicts(
@@ -64,13 +66,15 @@ export function detectConflicts(
   for (const seg of segs) {
     const wd = weekdayOf(seg.date);
     for (const b of blocks) {
-      if (b.kind !== 'unavailable' || b.weekday !== wd) continue;
+      const kind = b.kind as AvailabilityKindEx;
+      if ((kind !== 'unavailable' && kind !== 'online_only') || b.weekday !== wd) continue;
+      if (kind === 'online_only' && (cand.mode ?? 'in_person') === 'online') continue;
       // 기간(effectiveFrom/effectiveTo) 밖의 주에는 적용 안 함 — "이번만/앞으로/기간" 반복 규칙 반영.
       if (b.effectiveFrom && seg.date < b.effectiveFrom) continue;
       if (b.effectiveTo && seg.date > b.effectiveTo) continue;
       if (!(seg.s < toMin(b.endTime) && toMin(b.startTime) < seg.e)) continue;
       // detail: 겹친 불가시간의 실제 시각(요일·시:분)을 담아 프론트가 사람이 읽을 수 있게 표시.
-      const blockDetail = `불가시간 ${b.startTime}–${b.endTime}`;
+      const blockDetail = kind === 'online_only' ? `온라인만 가능 ${b.startTime}–${b.endTime}` : `불가시간 ${b.startTime}–${b.endTime}`;
       if (b.ownerType === 'instructor' && cand.instructorId === b.ownerId)
         out.push({ type: 'unavailable', resource: 'instructor', resourceId: b.ownerId, detail: blockDetail });
       if (b.ownerType === 'room' && cand.roomId === b.ownerId)

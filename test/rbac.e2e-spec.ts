@@ -29,7 +29,7 @@ describe('RBAC hardening (e2e)', () => {
   const studentBody = { name: 'RBAC 테스트학생' };
   const courseBody = { name: 'RBAC 테스트강좌', subjectId: 1, instructorId: 1, price: 100000, hourlyRate: 50000 };
   const parentBody = { name: 'RBAC 보호자', studentId: 3 };
-  const availBody = { ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday: 2, startTime: '16:00', endTime: '17:00' };
+  const availBody = { ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday: 6, startTime: '06:00', endTime: '07:00' };
 
   const expect2xx = (status: number) => {
     expect(status).toBeGreaterThanOrEqual(200);

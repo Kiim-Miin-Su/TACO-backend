@@ -110,4 +110,56 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     const upd = audit.find((a: { action: string }) => a.action === 'update');
     expect(upd?.changes?.startTime?.after).toBe('11:00'); // 누가·언제·무엇을·어떻게(diff)
   });
+
+  it('가용시간 훼손: 강사 직접 변경은 승인 필요 409 → 요청 생성 → 관리자 승인 시 availability audit 기록', async () => {
+    // 강사1 월요일 available(14:00-20:00) 안에 미래 수업을 하나 만든 뒤, available을 16:00까지 줄이면 수업이 밖으로 밀린다.
+    await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-03-02', startTime: '16:30', endTime: '17:30', force: true })
+      .expect(201);
+    const blocks = (await http.get('/api/availability?ownerType=instructor&ownerId=1').set(asAdmin()).expect(200)).body;
+    const monAvailable = blocks.find((b: { kind: string; weekday: number; startTime: string }) =>
+      b.kind === 'available' && b.weekday === 1 && b.startTime === '14:00');
+    expect(monAvailable?.id).toBeGreaterThan(0);
+
+    const shrink = {
+      id: monAvailable.id, ownerType: 'instructor', ownerId: 1, kind: 'available',
+      weekday: 1, startTime: '14:00', endTime: '16:00',
+    };
+    const blocked = await http.put('/api/availability').set(asInst()).send(shrink).expect(409);
+    expect(blocked.body).toMatchObject({ approvalRequired: true });
+    expect(blocked.body.impactedSessions?.some((s: { sessionDate: string }) => s.sessionDate === '2099-03-02')).toBe(true);
+
+    const req = (await http.post('/api/schedule-requests').set(asInst())
+      .send({
+        requestKind: 'availability_upsert',
+        targetAvailabilityId: monAvailable.id,
+        availabilityOwnerType: 'instructor',
+        availabilityOwnerId: 1,
+        availabilityKind: 'available',
+        availabilityWeekday: 1,
+        availabilityStartTime: '14:00',
+        availabilityEndTime: '16:00',
+      })
+      .expect(201)).body.row;
+    expect(req).toMatchObject({ status: 'pending', requestKind: 'availability_upsert', targetAvailabilityId: monAvailable.id });
+    expect(req.impactSessionIds).toEqual(expect.arrayContaining([expect.any(Number)]));
+
+    const approved = (await http.post(`/api/schedule-requests/${req.id}/approve`).set(asAdmin()).expect(201)).body.request;
+    expect(approved.status).toBe('approved');
+    const changed = (await http.get('/api/availability?ownerType=instructor&ownerId=1').set(asAdmin()).expect(200)).body
+      .find((b: { id: number }) => b.id === monAvailable.id);
+    expect(changed.endTime).toBe('16:00');
+    const audit = (await http.get(`/api/audit?entity=availability_blocks&entityId=${monAvailable.id}`).set(asAdmin()).expect(200)).body;
+    expect(audit.some((a: { action: string; changes?: { endTime?: { after?: string } } }) => a.action === 'update' && a.changes?.endTime?.after === '16:00')).toBe(true);
+  });
+
+  it('online_only: 온라인만 가능 블록은 대면 수업을 막고 온라인 수업은 허용한다', async () => {
+    await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 11, sessionDate: '2099-03-02', startTime: '20:30', endTime: '21:30' })
+      .expect(409);
+    const online = (await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 11, sessionDate: '2099-03-02', startTime: '20:30', endTime: '21:30', mode: 'online' })
+      .expect(201)).body.row;
+    expect(online.mode).toBe('online');
+  });
 });

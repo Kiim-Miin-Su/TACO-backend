@@ -1233,6 +1233,31 @@
         ]
       }
     },
+    "/api/availability/impact": {
+      "post": {
+        "operationId": "AvailabilityController_impact",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAvailabilityDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "{ impactedSessions: AvailabilityImpact[] }"
+          }
+        },
+        "summary": "가용/불가 변경 영향 미리보기 — 기존 수업 침범 시 승인 요청 모달용",
+        "tags": [
+          "availability"
+        ]
+      }
+    },
     "/api/availability/{id}": {
       "delete": {
         "operationId": "AvailabilityController_remove",
@@ -1619,7 +1644,7 @@
             "bearer": []
           }
         ],
-        "summary": "수업 요청 생성(pending) — 세션과 동일 FK·코호트 검증 + 참고용 충돌 목록. [로그인]",
+        "summary": "요청 생성(pending) — 수업 생성 또는 가용시간 변경 승인 요청. [로그인]",
         "tags": [
           "schedule-requests"
         ]
@@ -3462,11 +3487,12 @@
           "kind": {
             "enum": [
               "available",
-              "unavailable"
+              "unavailable",
+              "online_only"
             ],
             "type": "string",
             "example": "unavailable",
-            "description": "가용/불가(기본 available)"
+            "description": "가용/불가/온라인만 가능(기본 available)"
           },
           "weekday": {
             "type": "number",
@@ -3807,10 +3833,20 @@
       "CreateScheduleRequestDto": {
         "type": "object",
         "properties": {
+          "requestKind": {
+            "enum": [
+              "session_create",
+              "availability_upsert",
+              "availability_delete"
+            ],
+            "type": "string",
+            "example": "session_create",
+            "description": "요청 종류(기본 session_create)"
+          },
           "courseId": {
             "type": "number",
             "example": 10,
-            "description": "코스 FK(필수)"
+            "description": "코스 FK(session_create 필수)"
           },
           "instructorId": {
             "type": "number",
@@ -3825,12 +3861,13 @@
           "sessionDate": {
             "type": "string",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "example": "2026-07-10"
+            "example": "2026-07-10",
+            "description": "session_create 필수"
           },
           "startTime": {
             "type": "string",
             "example": "16:00",
-            "description": "HH:mm — KST 단일 진실원(세션과 동일 규약)"
+            "description": "HH:mm — KST 단일 진실원(session_create 필수)"
           },
           "endTime": {
             "type": "string",
@@ -3865,13 +3902,65 @@
             ],
             "type": "string",
             "example": "class"
+          },
+          "targetAvailabilityId": {
+            "type": "number",
+            "example": 3,
+            "description": "availability_delete 또는 availability_upsert 수정 대상 블록 id"
+          },
+          "availabilityOwnerType": {
+            "enum": [
+              "student",
+              "instructor",
+              "room"
+            ],
+            "type": "string",
+            "example": "instructor",
+            "description": "availability_upsert 필수"
+          },
+          "availabilityOwnerId": {
+            "type": "number",
+            "example": 1,
+            "description": "availability_upsert 필수"
+          },
+          "availabilityKind": {
+            "enum": [
+              "available",
+              "unavailable",
+              "online_only"
+            ],
+            "type": "string",
+            "example": "unavailable",
+            "description": "availability_upsert 필수"
+          },
+          "availabilityWeekday": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 6,
+            "example": 1,
+            "description": "availability_upsert 필수(0=일)"
+          },
+          "availabilityStartTime": {
+            "type": "string",
+            "example": "16:00",
+            "description": "availability_upsert 필수"
+          },
+          "availabilityEndTime": {
+            "type": "string",
+            "example": "18:00",
+            "description": "availability_upsert 필수"
+          },
+          "availabilityEffectiveFrom": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-01"
+          },
+          "availabilityEffectiveTo": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-08-31"
           }
-        },
-        "required": [
-          "courseId",
-          "sessionDate",
-          "startTime"
-        ]
+        }
       },
       "RejectScheduleRequestDto": {
         "type": "object",

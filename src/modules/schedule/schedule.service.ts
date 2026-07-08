@@ -361,7 +361,7 @@ export class ScheduleService implements OnModuleInit {
     const endTime = endTimeOf(startTime, durationMinutes); // 크로스면 undefined(durationMinutes 파생 저장)
 
     const conflicts = detectConflicts(
-      { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId },
+      { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, mode: dto.mode ?? SESSION_DEFAULTS.mode },
       this.db.findAll<ClassSession>(SESSIONS),
       this.availability.list(),
     );
@@ -420,11 +420,11 @@ export class ScheduleService implements OnModuleInit {
   // 충돌 드라이런(생성·이동 전 검사)
   checkConflicts(input: {
     sessionDate: string; startTime: string; endTime?: string; durationMinutes?: number;
-    instructorId?: number; roomId?: number; ignoreSessionId?: number;
+    instructorId?: number; roomId?: number; ignoreSessionId?: number; mode?: ClassSession['mode'];
   }): Conflict[] {
     // [R-9] endTime/durationMinutes를 그대로 전달 — conflict.util이 자정 크로스(익일 종료)까지 해석.
     return detectConflicts(
-      { sessionDate: input.sessionDate, startTime: input.startTime, endTime: input.endTime, durationMinutes: input.durationMinutes, instructorId: input.instructorId, roomId: input.roomId, ignoreSessionId: input.ignoreSessionId },
+      { sessionDate: input.sessionDate, startTime: input.startTime, endTime: input.endTime, durationMinutes: input.durationMinutes, instructorId: input.instructorId, roomId: input.roomId, ignoreSessionId: input.ignoreSessionId, mode: input.mode },
       this.db.findAll<ClassSession>(SESSIONS),
       this.availability.list(),
     );
@@ -491,7 +491,7 @@ export class ScheduleService implements OnModuleInit {
     for (const f of [primary, ...seriesPatches.map((p) => p.fields)]) {
       conflicts.push(...detectConflicts(
         // [R-9] 크로스 세션은 endTime이 undefined — durationMinutes로 이틀(±1일) 겹침 검사
-        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId },
+        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, mode: f.mode },
         others, blocks,
       ));
     }

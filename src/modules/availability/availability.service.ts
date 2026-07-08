@@ -1,15 +1,26 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { hhmmToMin } from '../../common/time.util'; // [R-3 함수 통일]
+import { hhmmToMin, weekdayOf } from '../../common/time.util'; // [R-3 함수 통일]
 import { AuditService } from '../audit/audit.service';
 import { hasAdminRole } from '../auth/roles.decorator';
 import { Student, STUDENTS } from '../students/student.entity';
 import { StaffAccount, USERS } from '../users/user.entity';
-import { AvailabilityBlock, AVAILABILITY, AvailabilityOwner } from './availability.entity';
+import { AvailabilityBlock, AVAILABILITY, AvailabilityKind, AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
 import { RoomsService } from '../rooms/rooms.service';
+import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
+import { sessionEndMin } from '../schedule/conflict.util';
 
 type Seed = Omit<AvailabilityBlock, 'id' | 'createdAt' | 'updatedAt'>;
+type AvailabilityKindEx = AvailabilityKind | 'online_only';
+type AvailabilityBlockEx = Omit<AvailabilityBlock, 'kind'> & { kind: AvailabilityKindEx };
+export type AvailabilityImpact = {
+  sessionId: number;
+  sessionDate: string;
+  startTime?: string;
+  endTime?: string;
+  reason: 'available_removed' | 'unavailable_overlap' | 'online_only_overlap';
+};
 
 @Injectable()
 export class AvailabilityService implements OnModuleInit {
@@ -63,7 +74,7 @@ export class AvailabilityService implements OnModuleInit {
   // 데모 가용/불가(Block) 시드. unavailable = 차단(주간 표에서 회색).
   onModuleInit(): void {
     if (this.db.findAll<AvailabilityBlock>(AVAILABILITY).length) return;
-    const seed: Seed[] = [
+    const seed = [
       // 강사1 점심 차단(월~금 12:00–13:00)
       ...[1, 2, 3, 4, 5].map((wd) => ({ ownerType: 'instructor' as AvailabilityOwner, ownerId: 1, kind: 'unavailable' as const, weekday: wd, startTime: '12:00', endTime: '13:00' })),
       // 강의실 B201 금요일 오후 차단(행사)
@@ -71,18 +82,126 @@ export class AvailabilityService implements OnModuleInit {
       // 강사2 가용(화·목 16:00–20:00)
       { ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 2, startTime: '16:00', endTime: '20:00' },
       { ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 4, startTime: '16:00', endTime: '20:00' },
+      // 강사2 온라인만 가능(월 20:00–22:00) — 비대면 가능 슬롯 데모/충돌 기준.
+      { ownerType: 'instructor', ownerId: 2, kind: 'online_only', weekday: 1, startTime: '20:00', endTime: '22:00' },
       // 강사1 가용(월·수·금 14:00–20:00) — 추천은 강사가 명시한 가용 안에서만 잡힘(무결성)
       { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
       { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 3, startTime: '14:00', endTime: '20:00' },
       { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 5, startTime: '14:00', endTime: '20:00' },
     ];
-    seed.forEach((b) => this.db.insert<AvailabilityBlock>(AVAILABILITY, b));
+    seed.forEach((b) => this.db.insert<AvailabilityBlock>(AVAILABILITY, b as Seed));
   }
 
   list(ownerType?: AvailabilityOwner, ownerId?: number): AvailabilityBlock[] {
     return this.db.findBy<AvailabilityBlock>(AVAILABILITY, (b) =>
       (ownerType ? b.ownerType === ownerType : true) && (ownerId ? b.ownerId === ownerId : true),
     );
+  }
+
+  findOne(id: number): AvailabilityBlock | undefined {
+    return this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
+  }
+
+  previewUpsertImpact(dto: UpsertAvailabilityDto): AvailabilityImpact[] {
+    if (dto.ownerType !== 'instructor') return [];
+    const existing = dto.id ? this.db.findById<AvailabilityBlock>(AVAILABILITY, dto.id) : undefined;
+    const next: AvailabilityBlockEx = {
+      id: dto.id ?? -1,
+      ownerType: dto.ownerType,
+      ownerId: dto.ownerId,
+      kind: (dto.kind ?? 'available') as AvailabilityKindEx,
+      weekday: dto.weekday,
+      startTime: dto.startTime,
+      endTime: dto.endTime,
+      effectiveFrom: dto.effectiveFrom,
+      effectiveTo: dto.effectiveTo,
+      createdAt: existing?.createdAt ?? new Date().toISOString(),
+      updatedAt: existing?.updatedAt ?? new Date().toISOString(),
+    };
+    const impact = this.impactOfRestrictiveBlock(next);
+    if (existing?.kind === 'available') impact.push(...this.impactOfAvailableRemoval(existing, next));
+    return this.dedupeImpact(impact);
+  }
+
+  previewDeleteImpact(id: number): AvailabilityImpact[] {
+    const existing = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
+    if (!existing || existing.ownerType !== 'instructor') return [];
+    return existing.kind === 'available' ? this.impactOfAvailableRemoval(existing, null) : [];
+  }
+
+  private impactSessionsForInstructor(ownerId: number, weekday: number, from?: string, to?: string): ClassSession[] {
+    return this.db.findBy<ClassSession>(SESSIONS, (s) =>
+      s.instructorId === ownerId &&
+      weekdayOf(s.sessionDate) === weekday &&
+      (!from || s.sessionDate >= from) &&
+      (!to || s.sessionDate <= to) &&
+      s.status !== 'canceled' && s.status !== 'no_show' &&
+      !s.deletedAt,
+    );
+  }
+
+  private impactOfRestrictiveBlock(b: AvailabilityBlockEx): AvailabilityImpact[] {
+    if (b.kind === 'available') return [];
+    const bS = hhmmToMin(b.startTime), bE = hhmmToMin(b.endTime);
+    return this.impactSessionsForInstructor(Number(b.ownerId), b.weekday, b.effectiveFrom, b.effectiveTo)
+      .filter((s) => this.sessionOverlapsBlock(s, bS, bE))
+      .filter((s) => b.kind === 'unavailable' || (s.mode ?? 'in_person') !== 'online')
+      .map((s) => ({
+        sessionId: s.id,
+        sessionDate: s.sessionDate,
+        startTime: s.startTime,
+        endTime: s.endTime,
+        reason: b.kind === 'online_only' ? 'online_only_overlap' : 'unavailable_overlap',
+      }));
+  }
+
+  private impactOfAvailableRemoval(before: AvailabilityBlock, after: AvailabilityBlockEx | null): AvailabilityImpact[] {
+    const beforeS = hhmmToMin(before.startTime), beforeE = hhmmToMin(before.endTime);
+    const afterS = after ? hhmmToMin(after.startTime) : 0;
+    const afterE = after ? hhmmToMin(after.endTime) : 0;
+    const afterCoversDate = (s: ClassSession) =>
+      !!after && (!after.effectiveFrom || s.sessionDate >= after.effectiveFrom) && (!after.effectiveTo || s.sessionDate <= after.effectiveTo);
+    return this.impactSessionsForInstructor(Number(before.ownerId), before.weekday, before.effectiveFrom, before.effectiveTo)
+      .filter((s) => this.sessionOverlapsBlock(s, beforeS, beforeE))
+      .filter((s) =>
+        !after ||
+        after.kind !== 'available' ||
+        after.ownerType !== before.ownerType ||
+        Number(after.ownerId) !== Number(before.ownerId) ||
+        after.weekday !== before.weekday ||
+        !afterCoversDate(s) ||
+        !this.sessionOverlapsBlock(s, afterS, afterE))
+      .map((s) => ({ sessionId: s.id, sessionDate: s.sessionDate, startTime: s.startTime, endTime: s.endTime, reason: 'available_removed' }));
+  }
+
+  private sessionOverlapsBlock(s: ClassSession, bS: number, bE: number): boolean {
+    if (!s.startTime) return false;
+    const sS = hhmmToMin(s.startTime);
+    const sE = sessionEndMin(s.startTime, s.endTime, s.durationMinutes);
+    return sS < bE && bS < Math.min(sE, 1440);
+  }
+
+  private dedupeImpact(items: AvailabilityImpact[]): AvailabilityImpact[] {
+    const seen = new Set<number>();
+    return items.filter((x) => {
+      if (seen.has(x.sessionId)) return false;
+      seen.add(x.sessionId);
+      return true;
+    });
+  }
+
+  private assertApprovalNotRequired(dto: UpsertAvailabilityDto, actorRoles?: string[]): void {
+    if (hasAdminRole(actorRoles)) return;
+    const impacted = this.previewUpsertImpact(dto);
+    if (impacted.length)
+      throw new ConflictException({ message: '매니저 승인 필요', approvalRequired: true, impactedSessions: impacted });
+  }
+
+  private assertDeleteApprovalNotRequired(id: number, actorRoles?: string[]): void {
+    if (hasAdminRole(actorRoles)) return;
+    const impacted = this.previewDeleteImpact(id);
+    if (impacted.length)
+      throw new ConflictException({ message: '매니저 승인 필요', approvalRequired: true, impactedSessions: impacted });
   }
 
   async upsert(dto: UpsertAvailabilityDto, actorId?: number, actorRoles?: string[]): Promise<AvailabilityBlock> {
@@ -93,6 +212,7 @@ export class AvailabilityService implements OnModuleInit {
     this.assertOwner(dto.ownerType, dto.ownerId); // owner_id 참조 무결성(#7)
     this.assertActorOwner(dto.ownerType, dto.ownerId, actorId, actorRoles); // [TBO-21] 강사 create/update owner IDOR 차단
     this.assertNoOverlap(dto); // 겹침 방지(버그2)
+    this.assertApprovalNotRequired(dto, actorRoles); // [TBO-22 C2] 수업 영향 가용 변경은 승인 요청으로 전환
     if (dto.id) {
       // [취약점 수정 2026-07-03] id 지정 갱신은 **소유자 일치**를 강제 — 임의 id로 남의(다른
       //  강사·학생·강의실) 블록을 변조하는 크로스-오너 공격 차단. 소유자 이전은 삭제 후 재생성으로만.
@@ -105,7 +225,7 @@ export class AvailabilityService implements OnModuleInit {
       const beforeSnap = existing ? { ...existing } : undefined;
       const updated = await this.db.transaction(() => {
         const u = this.db.update<AvailabilityBlock>(AVAILABILITY, dto.id!, {
-          kind: dto.kind ?? 'available',
+          kind: (dto.kind ?? 'available') as AvailabilityKind,
           weekday: dto.weekday,
           startTime: dto.startTime,
           endTime: dto.endTime,
@@ -125,7 +245,7 @@ export class AvailabilityService implements OnModuleInit {
       const created = this.db.insert<AvailabilityBlock>(AVAILABILITY, {
         ownerType: dto.ownerType,
         ownerId: dto.ownerId,
-        kind: dto.kind ?? 'available',
+        kind: (dto.kind ?? 'available') as AvailabilityKind,
         weekday: dto.weekday,
         startTime: dto.startTime,
         endTime: dto.endTime,
@@ -142,6 +262,7 @@ export class AvailabilityService implements OnModuleInit {
   async remove(id: number, actorId?: number, actorRoles?: string[]): Promise<{ id: number; deleted: boolean }> {
     const before = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
     if (before) this.assertActorOwner(before.ownerType, before.ownerId, actorId, actorRoles);
+    this.assertDeleteApprovalNotRequired(id, actorRoles);
     return this.db.transaction(() => {
       const deleted = before ? this.db.remove(AVAILABILITY, id, actorId) : false;
       if (deleted && actorId != null && before)

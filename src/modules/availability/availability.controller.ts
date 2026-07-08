@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiOkResponse, ApiConflictResponse, ApiBadRequestResponse } from '@nestjs/swagger';
@@ -35,6 +35,14 @@ export class AvailabilityController {
   @ApiBadRequestResponse({ description: '존재하지 않는 강의실 owner 등' })
   upsert(@Body() dto: UpsertAvailabilityDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.availability.upsert(dto, req.user?.sub, req.user?.roles); // actor → audit_log(Q3)
+  }
+
+  @Post('impact')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '가용/불가 변경 영향 미리보기 — 기존 수업 침범 시 승인 요청 모달용' })
+  @ApiOkResponse({ description: '{ impactedSessions: AvailabilityImpact[] }' })
+  impact(@Body() dto: UpsertAvailabilityDto) {
+    return { impactedSessions: this.availability.previewUpsertImpact(dto) };
   }
 
   @Delete(':id')

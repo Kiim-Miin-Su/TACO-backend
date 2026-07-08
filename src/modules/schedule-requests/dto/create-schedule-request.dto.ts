@@ -1,14 +1,29 @@
-import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
+import { IsDefined, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { SessionKind, CreateScheduleRequestInput } from '@kms545487/contracts';
+import type { AvailabilityKind, AvailabilityOwner, SessionKind, CreateScheduleRequestInput } from '@kms545487/contracts';
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+type RequestKind = 'session_create' | 'availability_upsert' | 'availability_delete';
+type AvailabilityKindEx = AvailabilityKind | 'online_only';
+const REQUEST_KINDS: RequestKind[] = ['session_create', 'availability_upsert', 'availability_delete'];
+const AVAILABILITY_KINDS: AvailabilityKindEx[] = ['available', 'unavailable', 'online_only'];
+const OWNER_TYPES: AvailabilityOwner[] = ['student', 'instructor', 'room'];
+
+const isSessionCreate = (o: CreateScheduleRequestDto): boolean => !o.requestKind || o.requestKind === 'session_create';
+const isAvailabilityUpsert = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'availability_upsert';
+const isAvailabilityDelete = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'availability_delete';
+const isAvailabilityRequest = (o: CreateScheduleRequestDto): boolean => isAvailabilityUpsert(o) || isAvailabilityDelete(o);
 
 // 강사 수업 요청(승인 대기) 생성 — 세션 생성과 동일 검증 규약(FK·코호트·시간 형식).
 // [v0.1.14] implements CreateScheduleRequestInput — contracts drift를 tsc가 강제.
 export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
-  @ApiProperty({ example: 10, description: '코스 FK(필수)' })
+  @ApiPropertyOptional({ enum: REQUEST_KINDS, example: 'session_create', description: '요청 종류(기본 session_create)' })
+  @IsOptional() @IsIn(REQUEST_KINDS)
+  requestKind?: RequestKind;
+
+  @ApiPropertyOptional({ example: 10, description: '코스 FK(session_create 필수)' })
+  @ValidateIf(isSessionCreate)
   @IsInt()
   courseId!: number;
 
@@ -20,11 +35,13 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @IsOptional() @IsInt()
   roomId?: number;
 
-  @ApiProperty({ example: '2026-07-10' })
+  @ApiPropertyOptional({ example: '2026-07-10', description: 'session_create 필수' })
+  @ValidateIf(isSessionCreate)
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   sessionDate!: string;
 
-  @ApiProperty({ example: '16:00', description: 'HH:mm — KST 단일 진실원(세션과 동일 규약)' })
+  @ApiPropertyOptional({ example: '16:00', description: 'HH:mm — KST 단일 진실원(session_create 필수)' })
+  @ValidateIf(isSessionCreate)
   @Matches(HHMM, { message: 'startTime must be HH:mm' })
   startTime!: string;
 
@@ -47,4 +64,47 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @ApiPropertyOptional({ enum: SESSION_KINDS, example: 'class' })
   @IsOptional() @IsIn(SESSION_KINDS)
   kind?: SessionKind;
+
+  @ApiPropertyOptional({ example: 3, description: 'availability_delete 또는 availability_upsert 수정 대상 블록 id' })
+  @ValidateIf((o) => isAvailabilityRequest(o) && (isAvailabilityDelete(o) || o.targetAvailabilityId != null))
+  @IsDefined() @IsInt()
+  targetAvailabilityId?: number;
+
+  @ApiPropertyOptional({ enum: OWNER_TYPES, example: 'instructor', description: 'availability_upsert 필수' })
+  @ValidateIf(isAvailabilityUpsert)
+  @IsIn(OWNER_TYPES)
+  availabilityOwnerType?: AvailabilityOwner;
+
+  @ApiPropertyOptional({ example: 1, description: 'availability_upsert 필수' })
+  @ValidateIf(isAvailabilityUpsert)
+  @IsInt()
+  availabilityOwnerId?: number;
+
+  @ApiPropertyOptional({ enum: AVAILABILITY_KINDS, example: 'unavailable', description: 'availability_upsert 필수' })
+  @ValidateIf(isAvailabilityUpsert)
+  @IsIn(AVAILABILITY_KINDS)
+  availabilityKind?: AvailabilityKindEx;
+
+  @ApiPropertyOptional({ example: 1, minimum: 0, maximum: 6, description: 'availability_upsert 필수(0=일)' })
+  @ValidateIf(isAvailabilityUpsert)
+  @IsInt() @Min(0) @Max(6)
+  availabilityWeekday?: number;
+
+  @ApiPropertyOptional({ example: '16:00', description: 'availability_upsert 필수' })
+  @ValidateIf(isAvailabilityUpsert)
+  @Matches(HHMM, { message: 'availabilityStartTime must be HH:mm' })
+  availabilityStartTime?: string;
+
+  @ApiPropertyOptional({ example: '18:00', description: 'availability_upsert 필수' })
+  @ValidateIf(isAvailabilityUpsert)
+  @Matches(HHMM, { message: 'availabilityEndTime must be HH:mm' })
+  availabilityEndTime?: string;
+
+  @ApiPropertyOptional({ example: '2026-07-01' })
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  availabilityEffectiveFrom?: string;
+
+  @ApiPropertyOptional({ example: '2026-08-31' })
+  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/)
+  availabilityEffectiveTo?: string;
 }
