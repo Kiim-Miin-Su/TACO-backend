@@ -4230,6 +4230,73 @@
           },
           "paneCountryStudent": {
             "type": "string"
+          },
+          "modeFilters": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "in_person",
+                "online"
+              ]
+            }
+          },
+          "kstFixed": {
+            "type": "boolean"
+          },
+          "compactCols": {
+            "type": "boolean"
+          },
+          "manualPanes": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "uid": {
+                  "type": "number"
+                },
+                "dim": {
+                  "enum": [
+                    "instructor",
+                    "student",
+                    "subject",
+                    "room"
+                  ],
+                  "type": "string"
+                },
+                "ids": {
+                  "type": "array",
+                  "items": {
+                    "type": "number"
+                  }
+                },
+                "countryCode": {
+                  "type": "string"
+                },
+                "modeFilters": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "rangeFrom": {
+                  "type": "string"
+                },
+                "rangeTo": {
+                  "type": "string"
+                },
+                "pickedDates": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "dim",
+                "ids"
+              ]
+            }
           }
         },
         "required": [

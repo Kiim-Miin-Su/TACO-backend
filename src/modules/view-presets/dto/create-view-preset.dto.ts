@@ -1,5 +1,5 @@
 import {
-  ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength,
+  ArrayMaxSize, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Matches, MaxLength,
 } from 'class-validator';
 import type { CreateViewPresetInput } from '@kms545487/contracts';
 
@@ -52,4 +52,25 @@ export class CreateViewPresetDto implements CreateViewPresetInput {
 
   @IsOptional() @Matches(CC_RE)
   paneCountryStudent?: string;
+
+  @IsOptional() @IsArray() @IsIn(['in_person', 'online'], { each: true })
+  modeFilters?: string[];
+
+  @IsOptional() @IsBoolean()
+  kstFixed?: boolean;
+
+  @IsOptional() @IsBoolean()
+  compactCols?: boolean;
+
+  @IsOptional() @IsArray() @ArrayMaxSize(12) @IsObject({ each: true })
+  manualPanes?: {
+    uid?: number;
+    dim: 'instructor' | 'student' | 'room' | 'subject';
+    ids: number[];
+    countryCode?: string;
+    modeFilters?: string[];
+    rangeFrom?: string;
+    rangeTo?: string;
+    pickedDates?: string[];
+  }[];
 }
