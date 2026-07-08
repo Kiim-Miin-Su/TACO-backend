@@ -23,9 +23,9 @@ export class AttendanceController {
   @ApiOperation({ summary: '출결 목록(Attendance[]) — sessionId 지정 시 해당 세션만' })
   @ApiQuery({ name: 'sessionId', required: false, type: Number })
   @ApiOkResponse({ description: 'Attendance[] — sessionId·studentId·status' })
-  findAll(@Query('sessionId') sessionId?: string) {
-    if (sessionId !== undefined) return this.attendance.findBySession(Number(sessionId));
-    return this.attendance.findAll();
+  findAll(@Req() req: Request & { user?: JwtClaims }, @Query('sessionId') sessionId?: string) {
+    if (sessionId !== undefined) return this.attendance.findBySessionForActor(Number(sessionId), req.user?.sub, req.user?.roles);
+    return this.attendance.findAllForActor(req.user?.sub, req.user?.roles);
   }
 
   @Put()

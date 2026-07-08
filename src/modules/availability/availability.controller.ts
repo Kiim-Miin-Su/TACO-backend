@@ -34,7 +34,7 @@ export class AvailabilityController {
   @ApiConflictResponse({ description: '이미 지정된 가용/불가 시간과 겹침(겹친 시각 메시지 포함)' })
   @ApiBadRequestResponse({ description: '존재하지 않는 강의실 owner 등' })
   upsert(@Body() dto: UpsertAvailabilityDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.availability.upsert(dto, req.user?.sub); // actor → audit_log(Q3)
+    return this.availability.upsert(dto, req.user?.sub, req.user?.roles); // actor → audit_log(Q3)
   }
 
   @Delete(':id')
@@ -43,6 +43,6 @@ export class AvailabilityController {
   @ApiOperation({ summary: '가용/불가 블록 삭제' })
   @ApiOkResponse({ description: '{ id, deleted: boolean }' })
   remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
-    return this.availability.remove(id, req.user?.sub); // actor → soft delete + audit
+    return this.availability.remove(id, req.user?.sub, req.user?.roles); // actor → soft delete + audit
   }
 }

@@ -274,15 +274,26 @@ export class ScheduleService implements OnModuleInit {
   }
 
   // 자원 피커(좌측 레일·필터)용 경량 목록 — 강사·강의실·학생.
-  resources(): import('@kms545487/contracts').ScheduleResources {
+  resources(scope?: { instructorId?: number }): import('@kms545487/contracts').ScheduleResources {
     const PALETTE = ['#0969da', '#1a7f37', '#8250df', '#bf3989', '#9a6700', '#1b7c83'];
     // 코스 진행시간은 그 코스의 기존 세션에서 파생(단일 소스). 세션 없으면 기본 90분.
     const allSessions = this.db.findAll<ClassSession>(SESSIONS);
     const courseDuration = (courseId: number): number =>
       allSessions.find((s) => s.courseId === courseId)?.durationMinutes ?? 90;
-    const courses = this.db.findAll<Course>(COURSES_COL);
+    const courses = this.db
+      .findAll<Course>(COURSES_COL)
+      .filter((c) => scope?.instructorId == null || Number(c.instructorId) === Number(scope.instructorId));
+    const scopedCourseIds = new Set(courses.map((c) => Number(c.id)));
+    const scopedStudentIds = scope?.instructorId == null
+      ? null
+      : new Set(
+          this.db
+            .findAll<Enrollment>(ENROLLMENTS_COL)
+            .filter((e) => e.status === 'active' && scopedCourseIds.has(Number(e.courseId)))
+            .map((e) => Number(e.studentId)),
+        );
     return {
-      instructors: this.instructorUsers().map((u) => {
+      instructors: this.instructorUsers().filter((u) => scope?.instructorId == null || Number(u.id) === Number(scope.instructorId)).map((u) => {
         const c = courses.find((x) => x.instructorId === u.id);
         return {
           type: 'instructor' as const, id: u.id, name: u.name,
@@ -296,7 +307,7 @@ export class ScheduleService implements OnModuleInit {
       })),
       // 학생 = students 컬렉션(단일 소스). 소프트삭제(canceled)만 제외 — 신규 등록·삭제가 즉시 반영.
       students: this.db
-        .findBy<Student>(STUDENTS_COL, (s) => s.status !== 'canceled')
+        .findBy<Student>(STUDENTS_COL, (s) => s.status !== 'canceled' && (scopedStudentIds == null || scopedStudentIds.has(Number(s.id))))
         .map((s) => ({
           type: 'student' as const, id: s.id, name: s.name,
           color: PALETTE[(s.id + 2) % PALETTE.length],

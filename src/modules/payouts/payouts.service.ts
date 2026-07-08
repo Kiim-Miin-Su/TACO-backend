@@ -188,13 +188,19 @@ export class PayoutsService implements OnModuleInit {
     return this.db.findAll<InstructorPayoutRow>(PAYOUTS);
   }
 
+  findByInstructor(instructorId: number): InstructorPayoutRow[] {
+    return this.db
+      .findByField<InstructorPayoutRow>(PAYOUTS, 'instructorId', instructorId)
+      .sort((a, b) => (b.periodStart + b.createdAt).localeCompare(a.periodStart + a.createdAt));
+  }
+
   findOne(id: number): InstructorPayoutRow {
     const row = this.db.findById<InstructorPayoutRow>(PAYOUTS, id);
     if (!row) throw new NotFoundException(`Payout ${id} not found`);
     return row;
   }
 
-  // 관리자 확정(pending → confirmed)
+  // 대표 확정(pending → confirmed)
   confirm(id: number): InstructorPayoutRow {
     const p = this.findOne(id);
     if (p.status !== 'pending') throw new BadRequestException(`확정 불가 상태(${p.status})`);
@@ -204,7 +210,7 @@ export class PayoutsService implements OnModuleInit {
     }) as InstructorPayoutRow;
   }
 
-  // 관리자 급여 수정(pending/confirmed) — 자동 산정액은 보존, 실효 지급액만 덮어씀.
+  // 대표 급여 수정(pending/confirmed) — 자동 산정액은 보존, 실효 지급액만 덮어씀.
   adjust(id: number, amount: number, reason?: string): InstructorPayoutRow {
     const p = this.findOne(id);
     if (p.status === 'paid' || p.status === 'rejected')
@@ -217,7 +223,7 @@ export class PayoutsService implements OnModuleInit {
     }) as InstructorPayoutRow;
   }
 
-  // 관리자 반려(→ rejected) + 연결 세션 회수(payoutId 해제 → 재산정 가능).
+  // 대표 반려(→ rejected) + 연결 세션 회수(payoutId 해제 → 재산정 가능).
   async reject(id: number, reason?: string): Promise<InstructorPayoutRow> {
     // [원자성] 반려 상태 + 연결 세션 전량 회수(부분 회수 잔존 금지)
     return this.db.transaction(() => {

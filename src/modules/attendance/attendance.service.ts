@@ -1,7 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { AuditService } from '../audit/audit.service'; // [출결 이력 2026-07-07] 학생 출결 변경도 audit_log에 기록
-import { ADMIN_ROLES } from '../auth/roles.decorator';
+import { hasAdminRole } from '../auth/roles.decorator';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Student, STUDENTS } from '../students/student.entity';
 import { Attendance, ATTENDANCE } from './attendance.entity';
@@ -46,6 +46,23 @@ export class AttendanceService implements OnModuleInit {
     return this.db.findByField<Attendance>(ATTENDANCE, 'sessionId', sessionId); // 인덱스 조회
   }
 
+  findAllForActor(actorId?: number, actorRoles?: string[]): Attendance[] {
+    if (actorId == null || hasAdminRole(actorRoles)) return this.findAll();
+    const ownSessionIds = new Set(
+      this.db.findByField<ClassSession>(SESSIONS, 'instructorId', actorId).map((s) => Number(s.id)),
+    );
+    return this.findAll().filter((a) => ownSessionIds.has(Number(a.sessionId)));
+  }
+
+  findBySessionForActor(sessionId: number, actorId?: number, actorRoles?: string[]): Attendance[] {
+    if (actorId != null && !hasAdminRole(actorRoles)) {
+      const session = this.db.findById<ClassSession>(SESSIONS, sessionId);
+      if (session && Number(session.instructorId) !== Number(actorId))
+        throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 조회할 수 있습니다.');
+    }
+    return this.findBySession(sessionId);
+  }
+
   // 출결 기록(upsert). FK 검증 → 기존 (session,student) 행 갱신 or 신규 삽입.
   // [출결 이력 2026-07-07] 변경(create/update)을 audit_log에 기록(강사 출결이 세션 PATCH로 audit되는 것과 대칭).
   //  actorId·actorRoles(JWT sub·roles)는 컨트롤러가 전달. upsert+audit을 한 tx로(이력 포함 원자성).
@@ -59,7 +76,7 @@ export class AttendanceService implements OnModuleInit {
     if (!this.db.findById<Student>(STUDENTS, dto.studentId))
       throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
     // 3) 소유권(IDOR 방지) — 비관리자는 담당 강사 세션만. actorId 미상(무인증 컨텍스트)이면 검사 생략.
-    const isAdmin = (actorRoles ?? []).some((r) => (ADMIN_ROLES as string[]).includes(r));
+    const isAdmin = hasAdminRole(actorRoles);
     if (actorId != null && !isAdmin && session.instructorId !== actorId)
       throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 기록할 수 있습니다.');
 

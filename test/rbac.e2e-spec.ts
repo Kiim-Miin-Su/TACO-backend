@@ -65,9 +65,17 @@ describe('RBAC hardening (e2e)', () => {
 
   describe('PUT /api/availability (STAFF_ROLES)', () => {
     it('토큰 없음 → 401', () => http.put('/api/availability').send(availBody).expect(401));
-    it('강사 토큰 → 통과(2xx)', async () => {
+    it('강사 토큰 → 본인 강사 owner만 통과(2xx)', async () => {
       const res = await http.put('/api/availability').set(bearer(INST)).send(availBody);
       expect2xx(res.status);
+    });
+    it('강사 토큰 → 타 강사/학생/강의실 owner는 403', async () => {
+      await http.put('/api/availability').set(bearer(INST))
+        .send({ ...availBody, ownerId: 2, weekday: 6, startTime: '08:00', endTime: '09:00' }).expect(403);
+      await http.put('/api/availability').set(bearer(INST))
+        .send({ ownerType: 'student', ownerId: 1, kind: 'available', weekday: 6, startTime: '09:00', endTime: '10:00' }).expect(403);
+      await http.put('/api/availability').set(bearer(INST))
+        .send({ ownerType: 'room', ownerId: 1, kind: 'unavailable', weekday: 6, startTime: '10:00', endTime: '11:00' }).expect(403);
     });
     it('관리자 토큰 → 2xx', async () => {
       // 강사 케이스와 겹치지 않는 별도 블록(다른 요일)으로 인가만 순수 확인.

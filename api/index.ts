@@ -3,6 +3,7 @@ import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
 import { DocumentBuilder, SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "../src/app.module";
+import { AllExceptionsFilter } from "../src/common/all-exceptions.filter";
 import { LoggingInterceptor } from "../src/common/logging.interceptor";
 
 // 서버리스(@vercel/node)는 런타임 컴파일에서 데코레이터 메타데이터/Swagger 플러그인이
@@ -27,15 +28,16 @@ let cachedServer: ((req: unknown, res: unknown) => void) | undefined;
 async function bootstrapServer() {
   const app = await NestFactory.create(AppModule);
 
-  // WEB_ORIGIN: 콤마로 여러 도메인 지정 가능. 미지정 시 모든 오리진 허용(데모). 운영은 도메인 지정 권장.
+  // WEB_ORIGIN: 콤마로 여러 도메인 지정 가능. 운영은 반드시 실제 프론트 도메인 지정.
   const webOrigin = process.env.WEB_ORIGIN;
   app.enableCors({
-    origin: webOrigin ? webOrigin.split(',').map((s) => s.trim()).filter(Boolean) : true,
+    origin: webOrigin ? webOrigin.split(',').map((s) => s.trim()).filter(Boolean) : process.env.NODE_ENV === "production" ? false : "http://localhost:3000",
     credentials: true,
   });
   app.setGlobalPrefix("api");
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   app.useGlobalInterceptors(new LoggingInterceptor()); // 모든 요청 로깅(docs/logging.md)
+  app.useGlobalFilters(new AllExceptionsFilter()); // 예외 응답 표준화 + category=error
 
   const config = new DocumentBuilder()
     .setTitle("TACO ERP API")

@@ -186,7 +186,7 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
     await http.get(`/api/payouts/preview?instructorId=${INSTRUCTOR}&from=${SUN}&to=${MON}`).set(asAdmin()).expect(400);
   });
 
-  // ── RolesGuard 인가(TBO-07) — 관리자 액션은 super_admin/manager/admin 전용 ──
+  // ── RolesGuard 인가(TBO-21) — 정산 전체 생성/확정/지급은 super_admin 전용 ──
   it("인가: 비로그인으로 정산서 생성 → 401", async () => {
     await http.post("/api/payouts/generate").send({ instructorId: INSTRUCTOR, from: MON, to: SUN }).expect(401);
   });

@@ -2,7 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
 
-// 결제(payments) 청구 정정(PATCH) e2e — 관리자 전용, 수납 완료여도 정정 허용.
+// 결제(payments) 청구 정정(PATCH) e2e — 대표(CEO) 전용, 수납 완료여도 정정 허용.
 describe('Payments PATCH (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;

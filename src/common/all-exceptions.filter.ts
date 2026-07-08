@@ -6,6 +6,7 @@
 import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus, Logger } from '@nestjs/common';
 import type { Request, Response } from 'express';
 import { logLine } from './log-line';
+import { safeUrlForLog } from './log-redaction';
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -16,11 +17,13 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const res = ctx.getResponse<Response>();
     const req = ctx.getRequest<Request>();
 
+    const path = safeUrlForLog(req.originalUrl);
+
     if (exception instanceof HttpException) {
       const status = exception.getStatus();
       const body = exception.getResponse();
       const line = logLine('error', {
-        kind: 'HttpException', method: req.method, path: req.originalUrl, status,
+        kind: 'HttpException', method: req.method, path, status,
         message: exception.message,
       });
       if (status >= 500) this.logger.error(line);
@@ -35,7 +38,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const status = HttpStatus.INTERNAL_SERVER_ERROR;
     const err = exception as Error;
     this.logger.error(
-      logLine('error', { kind: 'Unhandled', method: req.method, path: req.originalUrl, status, message: err?.message }),
+      logLine('error', { kind: 'Unhandled', method: req.method, path, status, message: err?.message }),
       err?.stack,
     );
     res.status(status).json({ statusCode: status, message: 'Internal server error' });

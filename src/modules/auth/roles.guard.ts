@@ -3,7 +3,7 @@
 //  2) Reflector로 핸들러/클래스의 @Roles(...) 메타(ROLES_KEY)를 읽어 교집합 검사(불충족 시 403).
 //     [주의] @Roles가 없으면 이 가드는 **검사 없이 통과 = 공개**다(아래 39행). "로그인만 필요"가 아님.
 //     → 로그인 필수 라우트는 반드시 @Roles(...STAFF_ROLES)를 명시할 것. (코드리뷰 2026-07-03 D1 — H1·H2 원인)
-//  참조처: events/expenses/payouts/reports 등 관리자 전용 쓰기 컨트롤러. AuthModule을 import해야 주입됨.
+//  참조처: reports/schedule-requests/events 등 역할 제한 컨트롤러. AuthModule을 import해야 주입됨.
 import {
   CanActivate,
   ExecutionContext,

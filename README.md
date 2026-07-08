@@ -96,4 +96,5 @@ sub-resource가 있는 sessions·counsel을 먼저 구현 권장.
 - `GET /schedule?studentId=` — 학생 활성 수강 코스의 세션만(코호트 역추적, status≠drop).
 - `ScheduleRow.studentIds/studentNames` enrich(코호트). `availability` PUT/DELETE 클라이언트 연동.
 - e2e(jest+supertest): `test/schedule.e2e-spec.ts`·`test/availability.e2e-spec.ts` — 참조 무결성·충돌·시리즈 스코프. `npm run test:e2e`.
-- 보안 점검: `docs/SECURITY-review-2026-06-29.md`.
+- 보안 점검 이력: `docs/archive/SECURITY-review-2026-06-29.md`.
+- 현재 프로젝트 문서 입구: 루트 `docs/README.md`와 `docs/CODEX.md`.

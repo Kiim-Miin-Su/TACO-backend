@@ -20,7 +20,7 @@ export class GeneratePayoutDto {
   to!: string;
 }
 
-// POST /payouts/:id/adjust — 관리자 급여 수정(실효 지급액 덮어쓰기)
+// POST /payouts/:id/adjust — 대표 급여 수정(실효 지급액 덮어쓰기)
 export class AdjustPayoutDto {
   @ApiProperty({ example: 150000, description: '실효 지급액(원). 자동 산정액은 보존됨' })
   @IsInt()
@@ -35,7 +35,7 @@ export class AdjustPayoutDto {
   reason?: string;
 }
 
-// POST /payouts/:id/reject — 관리자 반려(+연결 세션 회수)
+// POST /payouts/:id/reject — 대표 반려(+연결 세션 회수)
 export class RejectPayoutDto {
   @ApiPropertyOptional({ example: '근태 확인 필요', description: '반려 사유(강사에게 표시)' })
   @IsOptional()

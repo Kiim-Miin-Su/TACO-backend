@@ -266,6 +266,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 결제·수납 목록 [대표]
       tags:
       - payments
     post:
@@ -282,6 +283,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 신규 청구 생성 [대표]
       tags:
       - payments
   /api/payments/{id}:
@@ -298,6 +300,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 결제·수납 상세 [대표]
       tags:
       - payments
     patch:
@@ -319,6 +322,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 청구 금액·수단·기한 정정 [대표]
       tags:
       - payments
   /api/payments/{id}/refund:
@@ -335,6 +339,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 수납 환불 + 원장 역방향 출금 기록 [대표]
       tags:
       - payments
   /api/payments/{id}/pay:
@@ -351,6 +356,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 수납 완료 처리 + 통합 원장 입금 기록 [대표]
       tags:
       - payments
   /api/subjects:
@@ -436,6 +442,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 지출 목록 [대표]
       tags:
       - expenses
     post:
@@ -452,6 +459,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 지출 요청 생성 [대표]
       tags:
       - expenses
   /api/expenses/{id}:
@@ -468,6 +476,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 지출 상세 [대표]
       tags:
       - expenses
   /api/expenses/{id}/approve:
@@ -484,6 +493,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 지출 승인 + 통합 원장 출금 기록 [대표]
       tags:
       - expenses
   /api/expenses/{id}/reject:
@@ -506,6 +516,7 @@ paths:
           description: ''
       security:
       - bearer: []
+      summary: 지출 반려(사유 필수) [대표]
       tags:
       - expenses
   /api/rooms:
@@ -703,6 +714,33 @@ paths:
       security:
       - bearer: []
       summary: 자원 피커 — 강사·강의실·학생·코스 옵션(FK 정렬). 좌측 레일·배정 폼용.
+      tags:
+      - scheduling
+  /api/schedule/instructor-attendance-summary:
+    get:
+      operationId: ScheduleController_instructorAttendanceSummary
+      parameters:
+      - name: from
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: to
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: instructorId
+        required: false
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+      security:
+      - bearer: []
+      summary: 강사 출결 현황 집계(기간·강사 필터) — 출/지/결/보강 카운트·출석률·인정 시수·총계
       tags:
       - scheduling
   /api/schedule/conflicts:
@@ -992,7 +1030,7 @@ paths:
           description: ''
       security:
       - bearer: []
-      summary: 정산서 목록 [관리자]
+      summary: 정산서 목록 [대표]
       tags:
       - payouts
   /api/payouts/preview:
@@ -1019,7 +1057,41 @@ paths:
           description: ''
       security:
       - bearer: []
-      summary: '시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서.'
+      summary: '시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서. [대표]'
+      tags:
+      - payouts
+  /api/payouts/me:
+    get:
+      operationId: PayoutsController_findMine
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      security:
+      - bearer: []
+      summary: 내 정산서 목록 [강사 본인]
+      tags:
+      - payouts
+  /api/payouts/me/preview:
+    get:
+      operationId: PayoutsController_previewMine
+      parameters:
+      - name: from
+        required: true
+        in: query
+        schema:
+          type: string
+      - name: to
+        required: true
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+      security:
+      - bearer: []
+      summary: 내 시수×시급 산정 미리보기 [강사 본인]
       tags:
       - payouts
   /api/payouts/{id}:
@@ -1056,10 +1128,10 @@ paths:
         '401':
           description: 토큰 없음
         '403':
-          description: 권한 없음(관리자 전용)
+          description: 권한 없음(대표 전용)
       security:
       - bearer: []
-      summary: 정산서 생성(pending) — 적격 세션 묶음·시급 조인 산정·세션 연결. [관리자]
+      summary: 정산서 생성(pending) — 적격 세션 묶음·시급 조인 산정·세션 연결. [대표]
       tags:
       - payouts
   /api/payouts/{id}/confirm:
@@ -1077,7 +1149,7 @@ paths:
           description: 정산서(status=confirmed)
       security:
       - bearer: []
-      summary: 관리자 확정(pending → confirmed) [관리자]
+      summary: 대표 확정(pending → confirmed) [대표]
       tags:
       - payouts
   /api/payouts/{id}/adjust:
@@ -1101,7 +1173,7 @@ paths:
           description: 정산서(computedAmount 보존, adjustedAmount·amount 갱신)
       security:
       - bearer: []
-      summary: 관리자 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존) [관리자]
+      summary: 대표 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존) [대표]
       tags:
       - payouts
   /api/payouts/{id}/reject:
@@ -1125,7 +1197,7 @@ paths:
           description: 정산서(status=rejected, rejectedReason)
       security:
       - bearer: []
-      summary: 관리자 반려(→ rejected) + 연결 세션 회수(재산정 가능) [관리자]
+      summary: 대표 반려(→ rejected) + 연결 세션 회수(재산정 가능) [대표]
       tags:
       - payouts
   /api/payouts/{id}/pay:
@@ -1145,9 +1217,21 @@ paths:
           description: confirmed 상태가 아님
       security:
       - bearer: []
-      summary: 지급 완료(confirmed → paid) + 통합 원장 출금 기록 [관리자]
+      summary: 지급 완료(confirmed → paid) + 통합 원장 출금 기록 [대표]
       tags:
       - payouts
+  /api/instructor-contracts:
+    get:
+      operationId: InstructorContractsController_findAll
+      parameters: []
+      responses:
+        '200':
+          description: InstructorContract[] — instructorId·monthlyHours·hourlyRate·periodStart·active
+      security:
+      - bearer: []
+      summary: 강사 계약 목록(InstructorContract[]) — 계약 시수·시급·기간(계약 관리)
+      tags:
+      - instructor-contracts
   /api/counsel:
     get:
       operationId: CounselController_findForms
@@ -1247,7 +1331,9 @@ paths:
       responses:
         '200':
           description: Transaction[] — direction(in/out)·category·label·amount·method·occurredAt
-      summary: 입·출금 통합 원장(Transaction[]) — 대시보드 매출/지출 집계용
+      security:
+      - bearer: []
+      summary: 입·출금 통합 원장(Transaction[]) — 대시보드 매출/지출 집계용 [대표]
       tags:
       - transactions
   /api/view-presets:

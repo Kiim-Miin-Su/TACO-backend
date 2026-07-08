@@ -7,7 +7,7 @@ import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES, isInstructorOnly } from '../auth/roles.decorator';
 
 @ApiTags('scheduling')
 @ApiBearerAuth()
@@ -24,16 +24,18 @@ export class ScheduleController {
   @ApiQuery({ name: 'instructorId', required: false }) @ApiQuery({ name: 'roomId', required: false })
   @ApiQuery({ name: 'studentId', required: false, description: '학생 코호트(enrollment status≠drop) 역추적' })
   list(
+    @Req() req: Request & { user?: JwtClaims },
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('instructorId') instructorId?: string,
     @Query('roomId') roomId?: string,
     @Query('studentId') studentId?: string,
   ) {
+    const instructorScope = isInstructorOnly(req.user?.roles) ? req.user?.sub : instructorId ? Number(instructorId) : undefined;
     return this.schedule.list({
       from,
       to,
-      instructorId: instructorId ? Number(instructorId) : undefined,
+      instructorId: instructorScope,
       roomId: roomId ? Number(roomId) : undefined,
       studentId: studentId ? Number(studentId) : undefined,
     });
@@ -43,8 +45,8 @@ export class ScheduleController {
   @Get('resources')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '자원 피커 — 강사·강의실·학생·코스 옵션(FK 정렬). 좌측 레일·배정 폼용.' })
-  resources() {
-    return this.schedule.resources();
+  resources(@Req() req: Request & { user?: JwtClaims }) {
+    return this.schedule.resources(isInstructorOnly(req.user?.roles) ? { instructorId: req.user?.sub } : undefined);
   }
 
   // [TBO-19] GET /api/schedule/instructor-attendance-summary — 강사 출결 현황 집계(관리자 대시보드)

@@ -1,9 +1,8 @@
 // [참조/처리] 루트 모듈. DatabaseModule(전역 인메모리 DB) + 모든 도메인 feature 모듈을 조립.
 //  - 각 feature 모듈 서비스는 onModuleInit에서 시드 → 부팅 시 데이터 준비(프론트가 REST로 하이드레이트).
 //  - 관리자 쓰기 모듈(events/expenses/payouts/reports)은 AuthModule을 import해 RolesGuard(AuthService) 주입.
-//  - LoggerMiddleware는 전 라우트에 적용(요청 로깅). 컨트롤러 전역 prefix 'api'는 main.ts/서버리스 진입점에서 설정.
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common';
-import { LoggerMiddleware } from './common/logger.middleware';
+//  - HTTP access log는 main.ts의 LoggingInterceptor가 담당. 컨트롤러 전역 prefix 'api'는 main.ts/서버리스 진입점에서 설정.
+import { Module } from '@nestjs/common';
 import { AuditModule } from './modules/audit/audit.module';
 import { ScheduleRequestsModule } from './modules/schedule-requests/schedule-requests.module';
 import { DatabaseModule } from './database/database.module';
@@ -66,9 +65,4 @@ import { ParentsModule } from './modules/parents/parents.module';
     ParentsModule,
   ],
 })
-export class AppModule implements NestModule {
-  // 모든 요청 로깅(디버깅)
-  configure(consumer: MiddlewareConsumer): void {
-    consumer.apply(LoggerMiddleware).forRoutes('*');
-  }
-}
+export class AppModule {}

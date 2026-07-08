@@ -1,7 +1,10 @@
-import { BadRequestException, ConflictException, Injectable, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { hhmmToMin } from '../../common/time.util'; // [R-3 함수 통일]
 import { AuditService } from '../audit/audit.service';
+import { hasAdminRole } from '../auth/roles.decorator';
+import { Student, STUDENTS } from '../students/student.entity';
+import { StaffAccount, USERS } from '../users/user.entity';
 import { AvailabilityBlock, AVAILABILITY, AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
 import { RoomsService } from '../rooms/rooms.service';
@@ -16,11 +19,23 @@ export class AvailabilityService implements OnModuleInit {
     private readonly rooms: RoomsService,
   ) {}
 
-  // owner_id 참조 무결성(#7): room은 실제 테이블이므로 즉시 검증.
-  // instructor/student는 데모 하드코딩이라 DB 승격 시 검증 추가(현재는 통과).
+  // owner_id 참조 무결성(#7): owner 3종 모두 실제 컬렉션 기준으로 검증.
   private assertOwner(ownerType: AvailabilityOwner, ownerId: number): void {
-    if (ownerType === 'room' && !this.rooms.findAll().some((r) => r.id === ownerId)) {
+    if (ownerType === 'room' && !this.rooms.findAll().some((r) => Number(r.id) === Number(ownerId))) {
       throw new BadRequestException(`roomId ${ownerId} 없음(존재하지 않는 강의실)`);
+    }
+    if (ownerType === 'instructor' && this.db.findById<StaffAccount>(USERS, ownerId)?.role !== 'instructor')
+      throw new BadRequestException(`instructorId ${ownerId} 없음(존재하지 않는 강사)`);
+    const student = ownerType === 'student' ? this.db.findById<Student>(STUDENTS, ownerId) : undefined;
+    if (ownerType === 'student' && (!student || student.status === 'canceled'))
+      throw new BadRequestException(`studentId ${ownerId} 없음(존재하지 않는 학생)`);
+  }
+
+  private assertActorOwner(ownerType: AvailabilityOwner, ownerId: number, actorId?: number, actorRoles?: string[]): void {
+    if (hasAdminRole(actorRoles)) return;
+    if (actorId == null) throw new ForbiddenException('로그인한 사용자만 가용/불가 블록을 변경할 수 있습니다.');
+    if (ownerType !== 'instructor' || Number(ownerId) !== Number(actorId)) {
+      throw new ForbiddenException('강사는 본인 강사 가용/불가 블록만 변경할 수 있습니다.');
     }
   }
 
@@ -70,12 +85,13 @@ export class AvailabilityService implements OnModuleInit {
     );
   }
 
-  async upsert(dto: UpsertAvailabilityDto, actorId?: number): Promise<AvailabilityBlock> {
+  async upsert(dto: UpsertAvailabilityDto, actorId?: number, actorRoles?: string[]): Promise<AvailabilityBlock> {
     // [버그수정 2026-07-06] 자정 크로스(end<=start) 거부 — 세션과 동일 규칙. 시차 입력은 FE가 분할 저장(splitKstBand).
     const asMin = hhmmToMin; // [R-3] 공통 유틸(로컬 중복 제거)
     if (asMin(dto.endTime) <= asMin(dto.startTime))
       throw new BadRequestException('종료 시각이 시작보다 빠릅니다(자정을 넘는 블록은 두 개로 나눠 저장하세요)');
     this.assertOwner(dto.ownerType, dto.ownerId); // owner_id 참조 무결성(#7)
+    this.assertActorOwner(dto.ownerType, dto.ownerId, actorId, actorRoles); // [TBO-21] 강사 create/update owner IDOR 차단
     this.assertNoOverlap(dto); // 겹침 방지(버그2)
     if (dto.id) {
       // [취약점 수정 2026-07-03] id 지정 갱신은 **소유자 일치**를 강제 — 임의 id로 남의(다른
@@ -123,8 +139,9 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   // [v9] soft delete + before 스냅샷 audit(Q3) — 단일 tx
-  async remove(id: number, actorId?: number): Promise<{ id: number; deleted: boolean }> {
+  async remove(id: number, actorId?: number, actorRoles?: string[]): Promise<{ id: number; deleted: boolean }> {
     const before = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
+    if (before) this.assertActorOwner(before.ownerType, before.ownerId, actorId, actorRoles);
     return this.db.transaction(() => {
       const deleted = before ? this.db.remove(AVAILABILITY, id, actorId) : false;
       if (deleted && actorId != null && before)

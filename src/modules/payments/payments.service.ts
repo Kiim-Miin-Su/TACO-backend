@@ -47,7 +47,7 @@ export class PaymentsService implements OnModuleInit {
     });
   }
 
-  // 청구 정정(금액·수단·기한·메모). 수납 완료여도 관리자 정정 허용 — 존재 검증.
+  // 청구 정정(금액·수단·기한·메모). 수납 완료여도 대표 정정 허용 — 존재 검증.
   update(id: number, dto: UpdatePaymentDto): Payment {
     this.findOne(id);
     return this.db.update<Payment>(PAYMENTS, id, { ...dto }) as Payment;

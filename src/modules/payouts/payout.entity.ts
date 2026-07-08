@@ -7,7 +7,7 @@ export { TRANSACTIONS } from '../transactions/transaction.entity';
 /**
  * 정산서 상태.
  *  pending   — 산정 완료(승인 대기)
- *  confirmed — 관리자 확정
+ *  confirmed — 대표 확정
  *  paid      — 지급 완료(통합 원장에 출금 기록)
  *  rejected  — 반려(연결 세션 회수 → 재산정 가능)  ※ 계약 PayoutStatus 확장
  */
@@ -31,7 +31,7 @@ export type InstructorPayoutRow = {
   sessionCount: number; // 정산 대상 세션 수
   totalMinutes: number; // 총 시수(분)
   computedAmount: number; // 시수×시급 자동 산정액(불변 기준)
-  adjustedAmount?: number; // 관리자 급여 수정액(있으면 우선)
+  adjustedAmount?: number; // 대표 급여 수정액(있으면 우선)
   adjustReason?: string;
   amount: number; // 실효 지급액 = adjustedAmount ?? computedAmount
   status: PayoutStatus;
