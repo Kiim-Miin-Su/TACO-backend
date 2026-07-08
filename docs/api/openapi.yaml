@@ -9,28 +9,28 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/SignupDto"
+              $ref: '#/components/schemas/SignupDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
       summary: 가입 신청(대표 승인 대기). 인증 메일 발송.
       tags:
-        - auth
+      - auth
   /api/auth/verify-email:
     get:
       operationId: AuthController_verifyEmail
       parameters:
-        - name: token
-          required: false
-          in: query
-          schema:
-            type: string
+      - name: token
+        required: false
+        in: query
+        schema:
+          type: string
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
       summary: 이메일 인증(token).
       tags:
-        - auth
+      - auth
   /api/auth/login:
     post:
       operationId: AuthController_login
@@ -40,20 +40,20 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/LoginDto"
+              $ref: '#/components/schemas/LoginDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
       summary: 로그인(비밀번호 해시 검증 + 상태 게이트).
       tags:
-        - auth
+      - auth
   /api/auth/pending:
     get:
       operationId: AuthController_pending
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -61,97 +61,97 @@ paths:
                 items:
                   type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 승인 대기 계정 목록(대표 전용).
       tags:
-        - auth
-  "/api/auth/approve/{id}":
+      - auth
+  /api/auth/approve/{id}:
     post:
       operationId: AuthController_approve
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ApproveDto"
+              $ref: '#/components/schemas/ApproveDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 가입 승인(active 전환, 역할 지정 가능) — 대표 전용.
       tags:
-        - auth
-  "/api/auth/reject/{id}":
+      - auth
+  /api/auth/reject/{id}:
     post:
       operationId: AuthController_reject
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 가입 반려 — 대표 전용.
       tags:
-        - auth
+      - auth
   /api/auth/me:
     get:
       operationId: AuthController_me
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       summary: 토큰 검증 → claims. [로그인]
       tags:
-        - auth
+      - auth
   /api/users/exists:
     get:
       operationId: UsersController_exists
       parameters:
-        - name: webId
-          required: false
-          in: query
-          schema:
-            type: string
+      - name: webId
+        required: false
+        in: query
+        schema:
+          type: string
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - Users
+      - Users
   /api/users:
     get:
       operationId: UsersController_list
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -159,23 +159,23 @@ paths:
                 items:
                   type: object
       tags:
-        - Users
+      - Users
   /api/health:
     get:
       operationId: HealthController_check
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
       tags:
-        - Health
+      - Health
   /api/students:
     get:
       operationId: StudentsController_findAll
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -183,7 +183,7 @@ paths:
                 items:
                   type: object
       tags:
-        - Students
+      - Students
     post:
       operationId: StudentsController_create
       parameters: []
@@ -192,86 +192,86 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateStudentDto"
+              $ref: '#/components/schemas/CreateStudentDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - Students
-  "/api/students/{id}":
+      - Students
+  /api/students/{id}:
     get:
       operationId: StudentsController_findOne
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - Students
+      - Students
     patch:
       operationId: StudentsController_update
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateStudentDto"
+              $ref: '#/components/schemas/UpdateStudentDto'
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - Students
+      - Students
     delete:
       operationId: StudentsController_remove
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - Students
+      - Students
   /api/enrollments:
     get:
       operationId: EnrollmentsController_findAll
       parameters:
-        - name: studentId
-          required: false
-          in: query
-          schema:
-            type: string
+      - name: studentId
+        required: false
+        in: query
+        schema:
+          type: string
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -279,7 +279,7 @@ paths:
                 items:
                   type: object
       tags:
-        - Enrollments
+      - Enrollments
     post:
       operationId: EnrollmentsController_create
       parameters: []
@@ -288,41 +288,41 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateEnrollmentDto"
+              $ref: '#/components/schemas/CreateEnrollmentDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - Enrollments
-  "/api/enrollments/{id}":
+      - Enrollments
+  /api/enrollments/{id}:
     get:
       operationId: EnrollmentsController_findOne
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - Enrollments
+      - Enrollments
   /api/payments:
     get:
       operationId: PaymentsController_findAll
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -330,10 +330,10 @@ paths:
                 items:
                   type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 결제·수납 목록 [대표]
       tags:
-        - payments
+      - payments
     post:
       operationId: PaymentsController_create
       parameters: []
@@ -342,115 +342,115 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreatePaymentDto"
+              $ref: '#/components/schemas/CreatePaymentDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 신규 청구 생성 [대표]
       tags:
-        - payments
-  "/api/payments/{id}":
+      - payments
+  /api/payments/{id}:
     get:
       operationId: PaymentsController_findOne
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 결제·수납 상세 [대표]
       tags:
-        - payments
+      - payments
     patch:
       operationId: PaymentsController_update
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdatePaymentDto"
+              $ref: '#/components/schemas/UpdatePaymentDto'
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 청구 금액·수단·기한 정정 [대표]
       tags:
-        - payments
-  "/api/payments/{id}/refund":
+      - payments
+  /api/payments/{id}/refund:
     post:
       operationId: PaymentsController_refund
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 수납 환불 + 원장 역방향 출금 기록 [대표]
       tags:
-        - payments
-  "/api/payments/{id}/pay":
+      - payments
+  /api/payments/{id}/pay:
     post:
       operationId: PaymentsController_markPaid
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 수납 완료 처리 + 통합 원장 입금 기록 [대표]
       tags:
-        - payments
+      - payments
   /api/subjects:
     get:
       operationId: SubjectsController_findAll
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -458,7 +458,7 @@ paths:
                 items:
                   type: object
       tags:
-        - subjects
+      - subjects
     post:
       operationId: SubjectsController_create
       parameters: []
@@ -467,41 +467,41 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateSubjectDto"
+              $ref: '#/components/schemas/CreateSubjectDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - subjects
-  "/api/subjects/{id}":
+      - subjects
+  /api/subjects/{id}:
     get:
       operationId: SubjectsController_findOne
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - subjects
+      - subjects
   /api/courses:
     get:
       operationId: CoursesController_findAll
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -509,7 +509,7 @@ paths:
                 items:
                   type: object
       tags:
-        - courses
+      - courses
     post:
       operationId: CoursesController_create
       parameters: []
@@ -518,41 +518,41 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateCourseDto"
+              $ref: '#/components/schemas/CreateCourseDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - courses
-  "/api/courses/{id}":
+      - courses
+  /api/courses/{id}:
     get:
       operationId: CoursesController_findOne
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - courses
+      - courses
   /api/expenses:
     get:
       operationId: ExpensesController_findAll
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -560,10 +560,10 @@ paths:
                 items:
                   type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 지출 목록 [대표]
       tags:
-        - expenses
+      - expenses
     post:
       operationId: ExpensesController_create
       parameters: []
@@ -572,95 +572,95 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateExpenseDto"
+              $ref: '#/components/schemas/CreateExpenseDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 지출 요청 생성 [대표]
       tags:
-        - expenses
-  "/api/expenses/{id}":
+      - expenses
+  /api/expenses/{id}:
     get:
       operationId: ExpensesController_findOne
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 지출 상세 [대표]
       tags:
-        - expenses
-  "/api/expenses/{id}/approve":
+      - expenses
+  /api/expenses/{id}/approve:
     post:
       operationId: ExpensesController_approve
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 지출 승인 + 통합 원장 출금 기록 [대표]
       tags:
-        - expenses
-  "/api/expenses/{id}/reject":
+      - expenses
+  /api/expenses/{id}/reject:
     post:
       operationId: ExpensesController_reject
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RejectExpenseDto"
+              $ref: '#/components/schemas/RejectExpenseDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 지출 반려(사유 필수) [대표]
       tags:
-        - expenses
+      - expenses
   /api/rooms:
     get:
       operationId: RoomsController_findAll
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -668,7 +668,7 @@ paths:
                 items:
                   type: object
       tags:
-        - rooms
+      - rooms
     post:
       operationId: RoomsController_create
       parameters: []
@@ -677,59 +677,58 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateRoomDto"
+              $ref: '#/components/schemas/CreateRoomDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - rooms
-  "/api/rooms/{id}":
+      - rooms
+  /api/rooms/{id}:
     get:
       operationId: RoomsController_findOne
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - rooms
+      - rooms
   /api/availability:
     get:
       operationId: AvailabilityController_list
       parameters:
-        - name: ownerType
-          required: false
-          in: query
-          schema:
-            enum:
-              - student
-              - instructor
-              - room
-            type: string
-        - name: ownerId
-          required: false
-          in: query
-          schema:
-            type: string
+      - name: ownerType
+        required: false
+        in: query
+        schema:
+          enum:
+          - student
+          - instructor
+          - room
+          type: string
+      - name: ownerId
+        required: false
+        in: query
+        schema:
+          type: string
       responses:
-        "200":
-          description: AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday,
-            startTime, endTime }
+        '200':
+          description: AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday, startTime, endTime }
       summary: 가용/불가 블록 목록(ownerType·ownerId 필터)
       tags:
-        - availability
+      - availability
     put:
       operationId: AvailabilityController_upsert
       parameters: []
@@ -738,17 +737,17 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpsertAvailabilityDto"
+              $ref: '#/components/schemas/UpsertAvailabilityDto'
       responses:
-        "200":
+        '200':
           description: AvailabilityBlock(생성/수정 결과)
-        "400":
+        '400':
           description: 존재하지 않는 강의실 owner 등
-        "409":
+        '409':
           description: 이미 지정된 가용/불가 시간과 겹침(겹친 시각 메시지 포함)
       summary: 가용/불가 블록 생성·수정(id 있으면 수정). 같은 오너·요일 겹침 시 409.
       tags:
-        - availability
+      - availability
   /api/availability/impact:
     post:
       operationId: AvailabilityController_impact
@@ -758,56 +757,56 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpsertAvailabilityDto"
+              $ref: '#/components/schemas/UpsertAvailabilityDto'
       responses:
-        "200":
-          description: "{ impactedSessions: AvailabilityImpact[] }"
+        '200':
+          description: '{ impactedSessions: AvailabilityImpact[] }'
       summary: 가용/불가 변경 영향 미리보기 — 기존 수업 침범 시 승인 요청 모달용
       tags:
-        - availability
-  "/api/availability/{id}":
+      - availability
+  /api/availability/{id}:
     delete:
       operationId: AvailabilityController_remove
       parameters:
-        - name: id
-          required: true
-          in: path
-          description: 블록 id
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        description: 블록 id
+        schema:
+          type: number
       responses:
-        "200":
-          description: "{ id, deleted: boolean }"
+        '200':
+          description: '{ id, deleted: boolean }'
       summary: 가용/불가 블록 삭제
       tags:
-        - availability
+      - availability
   /api/audit:
     get:
       operationId: AuditController_list
       parameters:
-        - name: entity
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: entityId
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: actorId
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: limit
-          required: false
-          in: query
-          schema:
-            type: string
+      - name: entity
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: entityId
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: actorId
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: limit
+        required: false
+        in: query
+        schema:
+          type: string
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -816,40 +815,40 @@ paths:
                   type: object
       summary: 변경 이력 조회(최신순, 기본 200건) — entity/entityId/actorId 필터.
       tags:
-        - audit
+      - audit
   /api/schedule:
     get:
       operationId: ScheduleController_list
       parameters:
-        - name: from
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: to
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: instructorId
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: roomId
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: studentId
-          required: false
-          in: query
-          description: 학생 코호트(enrollment status≠drop) 역추적
-          schema:
-            type: string
+      - name: from
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: to
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: instructorId
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: roomId
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: studentId
+        required: false
+        in: query
+        description: 학생 코호트(enrollment status≠drop) 역추적
+        schema:
+          type: string
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -857,10 +856,10 @@ paths:
                 items:
                   type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 스케줄 조회(기간·강사·강의실·학생 필터). studentId는 학생 활성 수강 코스의 세션만.
       tags:
-        - scheduling
+      - scheduling
     post:
       operationId: ScheduleController_create
       parameters: []
@@ -869,63 +868,62 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateScheduleDto"
+              $ref: '#/components/schemas/CreateScheduleDto'
       responses:
-        "201":
-          description: "{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[]
-            }"
-        "401":
+        '201':
+          description: '{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[] }'
+        '401':
           description: 토큰 없음(로그인 필요)
-        "409":
-          description: "{ message, conflicts: Conflict[] } — force=false에서 충돌 시"
+        '409':
+          description: '{ message, conflicts: Conflict[] } — force=false에서 충돌 시'
       security:
-        - bearer: []
+      - bearer: []
       summary: 세션 생성(추천→배정·수동). FK 검증 + 충돌 검사(409 / force=true 강제). [로그인]
       tags:
-        - scheduling
+      - scheduling
   /api/schedule/resources:
     get:
       operationId: ScheduleController_resources
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 자원 피커 — 강사·강의실·학생·코스 옵션(FK 정렬). 좌측 레일·배정 폼용.
       tags:
-        - scheduling
+      - scheduling
   /api/schedule/instructor-attendance-summary:
     get:
       operationId: ScheduleController_instructorAttendanceSummary
       parameters:
-        - name: from
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: to
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: instructorId
-          required: false
-          in: query
-          schema:
-            type: string
+      - name: from
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: to
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: instructorId
+        required: false
+        in: query
+        schema:
+          type: string
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
       security:
-        - bearer: []
+      - bearer: []
       summary: 강사 출결 현황 집계(기간·강사 필터) — 출/지/결/보강 카운트·출석률·인정 시수·총계
       tags:
-        - scheduling
+      - scheduling
   /api/schedule/conflicts:
     post:
       operationId: ScheduleController_conflicts
@@ -935,59 +933,58 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ConflictCheckDto"
+              $ref: '#/components/schemas/ConflictCheckDto'
       responses:
-        "200":
+        '200':
           description: Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }
       security:
-        - bearer: []
+      - bearer: []
       summary: 충돌 드라이런 — 생성·이동 전 강사·강의실 이중예약/불가시간 겹침 검사 [로그인]
       tags:
-        - scheduling
-  "/api/schedule/{id}":
+      - scheduling
+  /api/schedule/{id}:
     patch:
       operationId: ScheduleController_update
       parameters:
-        - name: id
-          required: true
-          in: path
-          description: 세션 id
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        description: 세션 id
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateScheduleDto"
+              $ref: '#/components/schemas/UpdateScheduleDto'
       responses:
-        "200":
-          description: "{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반
-            수) }"
-        "409":
-          description: "{ message, conflicts } — force=false에서 충돌 시"
+        '200':
+          description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }'
+        '409':
+          description: '{ message, conflicts } — force=false에서 충돌 시'
       security:
-        - bearer: []
+      - bearer: []
       summary: 세션 이동·리사이즈·상세편집(반복 scope 지원). 충돌 시 409. [로그인]
       tags:
-        - scheduling
+      - scheduling
     delete:
       operationId: ScheduleController_remove
       parameters:
-        - name: id
-          required: true
-          in: path
-          description: 세션 id
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        description: 세션 id
+        schema:
+          type: number
       responses:
-        "200":
-          description: "{ id, deleted: true }"
+        '200':
+          description: '{ id, deleted: true }'
       security:
-        - bearer: []
+      - bearer: []
       summary: 세션 삭제 [로그인]
       tags:
-        - scheduling
+      - scheduling
   /api/schedule-requests:
     post:
       operationId: ScheduleRequestsController_create
@@ -997,30 +994,30 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateScheduleRequestDto"
+              $ref: '#/components/schemas/CreateScheduleRequestDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
       security:
-        - bearer: []
+      - bearer: []
       summary: 요청 생성(pending) — 수업 생성 또는 가용시간 변경 승인 요청. [로그인]
       tags:
-        - schedule-requests
+      - schedule-requests
     get:
       operationId: ScheduleRequestsController_list
       parameters:
-        - name: status
-          required: false
-          in: query
-          schema:
-            enum:
-              - pending
-              - approved
-              - rejected
-            type: string
+      - name: status
+        required: false
+        in: query
+        schema:
+          enum:
+          - pending
+          - approved
+          - rejected
+          type: string
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -1028,88 +1025,88 @@ paths:
                 items:
                   type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 요청 목록(최신순) — 강사는 본인 요청만, 관리자는 전체(status 필터). [로그인]
       tags:
-        - schedule-requests
-  "/api/schedule-requests/{id}/approve":
+      - schedule-requests
+  /api/schedule-requests/{id}/approve:
     post:
       operationId: ScheduleRequestsController_approve
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
-        - name: force
-          required: false
-          in: query
-          schema:
-            type: string
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      - name: force
+        required: false
+        in: query
+        schema:
+          type: string
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
       security:
-        - bearer: []
+      - bearer: []
       summary: 요청 승인 → createSession 재사용(충돌 409, force=true 강제) + 역참조 + audit. [관리자]
       tags:
-        - schedule-requests
-  "/api/schedule-requests/{id}/reject":
+      - schedule-requests
+  /api/schedule-requests/{id}/reject:
     post:
       operationId: ScheduleRequestsController_reject
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RejectScheduleRequestDto"
+              $ref: '#/components/schemas/RejectScheduleRequestDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 요청 반려 — 사유 필수(Q2). [관리자]
       tags:
-        - schedule-requests
-  "/api/schedule-requests/{id}":
+      - schedule-requests
+  /api/schedule-requests/{id}:
     delete:
       operationId: ScheduleRequestsController_withdraw
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
       security:
-        - bearer: []
+      - bearer: []
       summary: 본인 pending 요청 철회(soft delete) — 타인 요청 403. [로그인]
       tags:
-        - schedule-requests
+      - schedule-requests
   /api/reports:
     get:
       operationId: ReportsController_findAll
       parameters:
-        - name: sessionId
-          required: false
-          in: query
-          schema:
-            type: string
+      - name: sessionId
+        required: false
+        in: query
+        schema:
+          type: string
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -1117,10 +1114,10 @@ paths:
                 items:
                   type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 보고서 목록(sessionId 필터 가능)
       tags:
-        - reports
+      - reports
     post:
       operationId: ReportsController_create
       parameters: []
@@ -1129,117 +1126,117 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateReportDto"
+              $ref: '#/components/schemas/CreateReportDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 보고서 작성(세션 FK·중복·강사 일치·소유권 검증). 기본 submitted(승인요청).
       tags:
-        - reports
-  "/api/reports/{id}":
+      - reports
+  /api/reports/{id}:
     get:
       operationId: ReportsController_findOne
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       tags:
-        - reports
-  "/api/reports/{id}/submit":
+      - reports
+  /api/reports/{id}/submit:
     post:
       operationId: ReportsController_submit
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 강사 제출(draft → submitted) — 본인 보고서만
       tags:
-        - reports
-  "/api/reports/{id}/approve":
+      - reports
+  /api/reports/{id}/approve:
     post:
       operationId: ReportsController_approve
       parameters:
-        - name: id
-          required: true
-          in: path
-          description: 보고서 id
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        description: 보고서 id
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/ApproveReportDto"
+              $ref: '#/components/schemas/ApproveReportDto'
       responses:
-        "201":
+        '201':
           description: SessionReport(status=approved, approvedAt·approvedBy)
-        "403":
+        '403':
           description: 권한 없음(관리자 전용)
       security:
-        - bearer: []
+      - bearer: []
       summary: 관리자 승인(submitted → approved) — 시수 적격 편입 [관리자]
       tags:
-        - reports
-  "/api/reports/{id}/reject":
+      - reports
+  /api/reports/{id}/reject:
     post:
       operationId: ReportsController_reject
       parameters:
-        - name: id
-          required: true
-          in: path
-          description: 보고서 id
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        description: 보고서 id
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RejectReportDto"
+              $ref: '#/components/schemas/RejectReportDto'
       responses:
-        "201":
+        '201':
           description: SessionReport(status=rejected, rejectedReason)
       security:
-        - bearer: []
+      - bearer: []
       summary: 관리자 반려(→ rejected, 사유 보존) [관리자]
       tags:
-        - reports
+      - reports
   /api/payouts:
     get:
       operationId: PayoutsController_findAll
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -1247,48 +1244,48 @@ paths:
                 items:
                   type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 정산서 목록 [대표]
       tags:
-        - payouts
+      - payouts
   /api/payouts/preview:
     get:
       operationId: PayoutsController_preview
       parameters:
-        - name: instructorId
-          required: true
-          in: query
-          schema:
-            type: number
-        - name: from
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: to
-          required: true
-          in: query
-          schema:
-            type: string
+      - name: instructorId
+        required: true
+        in: query
+        schema:
+          type: number
+      - name: from
+        required: true
+        in: query
+        schema:
+          type: string
+      - name: to
+        required: true
+        in: query
+        schema:
+          type: string
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
-      summary: "시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서. [대표]"
+      - bearer: []
+      summary: '시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서. [대표]'
       tags:
-        - payouts
+      - payouts
   /api/payouts/me:
     get:
       operationId: PayoutsController_findMine
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -1296,56 +1293,56 @@ paths:
                 items:
                   type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 내 정산서 목록 [강사 본인]
       tags:
-        - payouts
+      - payouts
   /api/payouts/me/preview:
     get:
       operationId: PayoutsController_previewMine
       parameters:
-        - name: from
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: to
-          required: true
-          in: query
-          schema:
-            type: string
+      - name: from
+        required: true
+        in: query
+        schema:
+          type: string
+      - name: to
+        required: true
+        in: query
+        schema:
+          type: string
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       summary: 내 시수×시급 산정 미리보기 [강사 본인]
       tags:
-        - payouts
-  "/api/payouts/{id}":
+      - payouts
+  /api/payouts/{id}:
     get:
       operationId: PayoutsController_findOne
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       security:
-        - bearer: []
+      - bearer: []
       tags:
-        - payouts
+      - payouts
   /api/payouts/generate:
     post:
       operationId: PayoutsController_generate
@@ -1355,120 +1352,119 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/GeneratePayoutDto"
+              $ref: '#/components/schemas/GeneratePayoutDto'
       responses:
-        "201":
-          description: "생성된 정산서(InstructorPayout): status=pending, amount, sessionCount,
-            totalMinutes, lines[]"
-        "400":
+        '201':
+          description: '생성된 정산서(InstructorPayout): status=pending, amount, sessionCount, totalMinutes, lines[]'
+        '400':
           description: 적격 세션 0(이미 연결/기간 오류)
-        "401":
+        '401':
           description: 토큰 없음
-        "403":
+        '403':
           description: 권한 없음(대표 전용)
       security:
-        - bearer: []
+      - bearer: []
       summary: 정산서 생성(pending) — 적격 세션 묶음·시급 조인 산정·세션 연결. [대표]
       tags:
-        - payouts
-  "/api/payouts/{id}/confirm":
+      - payouts
+  /api/payouts/{id}/confirm:
     post:
       operationId: PayoutsController_confirm
       parameters:
-        - name: id
-          required: true
-          in: path
-          description: 정산서 id
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        description: 정산서 id
+        schema:
+          type: number
       responses:
-        "201":
+        '201':
           description: 정산서(status=confirmed)
       security:
-        - bearer: []
+      - bearer: []
       summary: 대표 확정(pending → confirmed) [대표]
       tags:
-        - payouts
-  "/api/payouts/{id}/adjust":
+      - payouts
+  /api/payouts/{id}/adjust:
     post:
       operationId: PayoutsController_adjust
       parameters:
-        - name: id
-          required: true
-          in: path
-          description: 정산서 id
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        description: 정산서 id
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/AdjustPayoutDto"
+              $ref: '#/components/schemas/AdjustPayoutDto'
       responses:
-        "201":
+        '201':
           description: 정산서(computedAmount 보존, adjustedAmount·amount 갱신)
       security:
-        - bearer: []
+      - bearer: []
       summary: 대표 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존) [대표]
       tags:
-        - payouts
-  "/api/payouts/{id}/reject":
+      - payouts
+  /api/payouts/{id}/reject:
     post:
       operationId: PayoutsController_reject
       parameters:
-        - name: id
-          required: true
-          in: path
-          description: 정산서 id
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        description: 정산서 id
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/RejectPayoutDto"
+              $ref: '#/components/schemas/RejectPayoutDto'
       responses:
-        "201":
+        '201':
           description: 정산서(status=rejected, rejectedReason)
       security:
-        - bearer: []
+      - bearer: []
       summary: 대표 반려(→ rejected) + 연결 세션 회수(재산정 가능) [대표]
       tags:
-        - payouts
-  "/api/payouts/{id}/pay":
+      - payouts
+  /api/payouts/{id}/pay:
     post:
       operationId: PayoutsController_pay
       parameters:
-        - name: id
-          required: true
-          in: path
-          description: 정산서 id
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        description: 정산서 id
+        schema:
+          type: number
       responses:
-        "201":
-          description: "{ payout: status=paid, transaction: 원장 출금 1건 }"
-        "400":
+        '201':
+          description: '{ payout: status=paid, transaction: 원장 출금 1건 }'
+        '400':
           description: confirmed 상태가 아님
       security:
-        - bearer: []
+      - bearer: []
       summary: 지급 완료(confirmed → paid) + 통합 원장 출금 기록 [대표]
       tags:
-        - payouts
+      - payouts
   /api/counsel:
     get:
       operationId: CounselController_findForms
       parameters: []
       responses:
-        "200":
+        '200':
           description: CounselForm[] — 신청자·상태·관심 과목/코스·다음 상담일 등
       security:
-        - bearer: []
+      - bearer: []
       summary: 상담 접수 목록(CounselForm[])
       tags:
-        - counsel
+      - counsel
     post:
       operationId: CounselController_createForm
       parameters: []
@@ -1477,98 +1473,97 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateCounselDto"
+              $ref: '#/components/schemas/CreateCounselDto'
       responses:
-        "201":
+        '201':
           description: 생성된 CounselForm
       security:
-        - bearer: []
+      - bearer: []
       summary: 상담 접수 생성 — status=requested
       tags:
-        - counsel
+      - counsel
   /api/counsel/rounds:
     get:
       operationId: CounselController_findRounds
       parameters:
-        - name: counselFormId
-          required: false
-          in: query
-          schema:
-            type: string
+      - name: counselFormId
+        required: false
+        in: query
+        schema:
+          type: string
       responses:
-        "200":
+        '200':
           description: CounselRound[] — 회차·요약·결과·다음 액션
       security:
-        - bearer: []
+      - bearer: []
       summary: 상담 회차 목록(CounselRound[]). counselFormId로 필터.
       tags:
-        - counsel
-  "/api/counsel/{id}":
+      - counsel
+  /api/counsel/{id}:
     patch:
       operationId: CounselController_updateForm
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateCounselDto"
+              $ref: '#/components/schemas/UpdateCounselDto'
       responses:
-        "200":
+        '200':
           description: 수정된 CounselForm
       security:
-        - bearer: []
+      - bearer: []
       summary: 상담 폼 수정(상태 전환·담당자·관심사)
       tags:
-        - counsel
-  "/api/counsel/{id}/rounds":
+      - counsel
+  /api/counsel/{id}/rounds:
     post:
       operationId: CounselController_createRound
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateCounselRoundDto"
+              $ref: '#/components/schemas/CreateCounselRoundDto'
       responses:
-        "201":
+        '201':
           description: 생성된 CounselRound
       security:
-        - bearer: []
+      - bearer: []
       summary: 상담 회차 추가 — roundNo 자동, 폼 nextContactAt 동기화
       tags:
-        - counsel
+      - counsel
   /api/transactions:
     get:
       operationId: TransactionsController_findAll
       parameters: []
       responses:
-        "200":
-          description: Transaction[] —
-            direction(in/out)·category·label·amount·method·occurredAt
+        '200':
+          description: Transaction[] — direction(in/out)·category·label·amount·method·occurredAt
       security:
-        - bearer: []
+      - bearer: []
       summary: 입·출금 통합 원장(Transaction[]) — 대시보드 매출/지출 집계용 [대표]
       tags:
-        - transactions
+      - transactions
   /api/view-presets:
     get:
       operationId: ViewPresetsController_findAll
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -1576,7 +1571,7 @@ paths:
                 items:
                   type: object
       tags:
-        - view-presets
+      - view-presets
     post:
       operationId: ViewPresetsController_create
       parameters: []
@@ -1585,41 +1580,41 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateViewPresetDto"
+              $ref: '#/components/schemas/CreateViewPresetDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - view-presets
-  "/api/view-presets/{id}":
+      - view-presets
+  /api/view-presets/{id}:
     delete:
       operationId: ViewPresetsController_remove
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - view-presets
+      - view-presets
   /api/report-templates:
     get:
       operationId: ReportTemplatesController_findAll
       parameters: []
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
@@ -1627,7 +1622,7 @@ paths:
                 items:
                   type: object
       tags:
-        - report-templates
+      - report-templates
     post:
       operationId: ReportTemplatesController_create
       parameters: []
@@ -1636,46 +1631,46 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateReportTemplateDto"
+              $ref: '#/components/schemas/CreateReportTemplateDto'
       responses:
-        "201":
-          description: ""
+        '201':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - report-templates
-  "/api/report-templates/{id}":
+      - report-templates
+  /api/report-templates/{id}:
     delete:
       operationId: ReportTemplatesController_remove
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       responses:
-        "200":
-          description: ""
+        '200':
+          description: ''
           content:
             application/json:
               schema:
                 type: object
       tags:
-        - report-templates
+      - report-templates
   /api/events:
     get:
       operationId: EventsController_findAll
       parameters: []
       responses:
-        "200":
+        '200':
           description: AcademyEvent[] — title·type·priority·startDate·endDate·allDay·memo
       security:
-        - bearer: []
+      - bearer: []
       summary: 학원 이벤트/공지 목록(AcademyEvent[]) — 캘린더 표시(시작일 오름차순)
       tags:
-        - events
+      - events
     post:
       operationId: EventsController_create
       parameters: []
@@ -1684,45 +1679,44 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateEventDto"
+              $ref: '#/components/schemas/CreateEventDto'
       responses:
-        "201":
+        '201':
           description: 생성된 AcademyEvent
       security:
-        - bearer: []
+      - bearer: []
       summary: 학원 이벤트 발행(관리자) — 캘린더 구간 유효성 검증
       tags:
-        - events
+      - events
   /api/instructor-contracts:
     get:
       operationId: InstructorContractsController_findAll
       parameters: []
       responses:
-        "200":
-          description: InstructorContract[] —
-            instructorId·monthlyHours·hourlyRate·periodStart·active
+        '200':
+          description: InstructorContract[] — instructorId·monthlyHours·hourlyRate·periodStart·active
       security:
-        - bearer: []
+      - bearer: []
       summary: 강사 계약 목록(InstructorContract[]) — 계약 시수·시급·기간(계약 관리)
       tags:
-        - instructor-contracts
+      - instructor-contracts
   /api/attendance:
     get:
       operationId: AttendanceController_findAll
       parameters:
-        - name: sessionId
-          required: false
-          in: query
-          schema:
-            type: number
+      - name: sessionId
+        required: false
+        in: query
+        schema:
+          type: number
       responses:
-        "200":
+        '200':
           description: Attendance[] — sessionId·studentId·status
       security:
-        - bearer: []
+      - bearer: []
       summary: 출결 목록(Attendance[]) — sessionId 지정 시 해당 세션만
       tags:
-        - attendance
+      - attendance
     put:
       operationId: AttendanceController_upsert
       parameters: []
@@ -1731,25 +1725,25 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpsertAttendanceDto"
+              $ref: '#/components/schemas/UpsertAttendanceDto'
       responses:
-        "200":
+        '200':
           description: upsert된 Attendance
       security:
-        - bearer: []
+      - bearer: []
       summary: 출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장
       tags:
-        - attendance
+      - attendance
   /api/roadmaps:
     get:
       operationId: RoadmapsController_findAll
       parameters: []
       responses:
-        "200":
+        '200':
           description: Roadmap[] — title·targetGrade·durationWeeks·isActive
       summary: 로드맵 목록(Roadmap[])
       tags:
-        - roadmaps
+      - roadmaps
     post:
       operationId: RoadmapsController_create
       parameters: []
@@ -1758,33 +1752,33 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateRoadmapDto"
+              $ref: '#/components/schemas/CreateRoadmapDto'
       responses:
-        "201":
+        '201':
           description: 생성된 Roadmap
       summary: 로드맵 생성 — courseIds(코스 FK) 순서대로 링크
       tags:
-        - roadmaps
+      - roadmaps
   /api/roadmaps/courses:
     get:
       operationId: RoadmapsController_findAllCourses
       parameters: []
       responses:
-        "200":
+        '200':
           description: RoadmapCourse[] — roadmapId·courseId·sortOrder
       summary: 로드맵↔코스 링크(RoadmapCourse[]) — M:N 조인(sortOrder)
       tags:
-        - roadmaps
+      - roadmaps
   /api/parents:
     get:
       operationId: ParentsController_findAll
       parameters: []
       responses:
-        "200":
+        '200':
           description: Parent[] — name·phone·kakaoAvailable
       summary: 보호자 목록(Parent[])
       tags:
-        - parents
+      - parents
     post:
       operationId: ParentsController_create
       parameters: []
@@ -1793,23 +1787,23 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/CreateParentDto"
+              $ref: '#/components/schemas/CreateParentDto'
       responses:
-        "201":
-          description: "{ parent, relation }"
+        '201':
+          description: '{ parent, relation }'
       summary: 보호자 등록 + 학생 연결 — studentId FK 검증, 대표 불변
       tags:
-        - parents
+      - parents
   /api/parents/relations:
     get:
       operationId: ParentsController_findAllRelations
       parameters: []
       responses:
-        "200":
+        '200':
           description: ParentStudent[] — parentId·studentId·relation·isPayer·isPrimary
       summary: 학생↔보호자 관계(ParentStudent[]) — M:N(대표/납부자)
       tags:
-        - parents
+      - parents
   /api/parents/link:
     post:
       operationId: ParentsController_link
@@ -1819,34 +1813,34 @@ paths:
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/LinkParentDto"
+              $ref: '#/components/schemas/LinkParentDto'
       responses:
-        "201":
+        '201':
           description: 생성된 ParentStudent
       summary: 기존 보호자를 학생에 연결(형제 M:N) — FK·유니크·대표 불변
       tags:
-        - parents
-  "/api/parents/relations/{id}":
+      - parents
+  /api/parents/relations/{id}:
     patch:
       operationId: ParentsController_updateRelation
       parameters:
-        - name: id
-          required: true
-          in: path
-          schema:
-            type: number
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: "#/components/schemas/UpdateRelationDto"
+              $ref: '#/components/schemas/UpdateRelationDto'
       responses:
-        "200":
+        '200':
           description: 수정된 ParentStudent
       summary: 관계 수정(대표 이전·납부자 변경) — 대표 지정 시 기존 대표 강등
       tags:
-        - parents
+      - parents
 info:
   title: TACO ERP API
   description: TnAcademy 백오피스 API (in-memory). 빌드 타임 생성 스펙.
@@ -1882,14 +1876,14 @@ components:
         role:
           type: string
           enum:
-            - instructor
-            - manager
-            - admin
+          - instructor
+          - manager
+          - admin
       required:
-        - webId
-        - name
-        - email
-        - password
+      - webId
+      - name
+      - email
+      - password
     LoginDto:
       type: object
       properties:
@@ -1900,17 +1894,17 @@ components:
           type: string
           maxLength: 100
       required:
-        - webId
+      - webId
     ApproveDto:
       type: object
       properties:
         role:
           type: string
           enum:
-            - instructor
-            - manager
-            - admin
-            - super_admin
+          - instructor
+          - manager
+          - admin
+          - super_admin
         reason:
           type: string
           maxLength: 500
@@ -1936,16 +1930,16 @@ components:
         residenceType:
           type: string
           enum:
-            - domestic
-            - overseas
+          - domestic
+          - overseas
         status:
           type: string
           enum:
-            - lead
-            - active
-            - paused
-            - completed
-            - canceled
+          - lead
+          - active
+          - paused
+          - completed
+          - canceled
         country:
           type: string
           pattern: ^[A-Z]{2}$
@@ -1953,7 +1947,7 @@ components:
           type: string
           maxLength: 500
       required:
-        - name
+      - name
     UpdateStudentDto:
       type: object
       properties:
@@ -1976,16 +1970,16 @@ components:
         residenceType:
           type: string
           enum:
-            - domestic
-            - overseas
+          - domestic
+          - overseas
         status:
           type: string
           enum:
-            - lead
-            - active
-            - paused
-            - completed
-            - canceled
+          - lead
+          - active
+          - paused
+          - completed
+          - canceled
         memo:
           type: string
           maxLength: 500
@@ -2006,8 +2000,8 @@ components:
           type: string
           maxLength: 500
       required:
-        - studentId
-        - courseId
+      - studentId
+      - courseId
     CreatePaymentDto:
       type: object
       properties:
@@ -2024,17 +2018,17 @@ components:
         paymentMethod:
           type: string
           enum:
-            - card
-            - transfer
-            - cash
-            - point
-            - etc
+          - card
+          - transfer
+          - cash
+          - point
+          - etc
         dueAt:
           type: string
           pattern: ^\d{4}-\d{2}-\d{2}$
       required:
-        - studentId
-        - amount
+      - studentId
+      - amount
     UpdatePaymentDto:
       type: object
       properties:
@@ -2045,11 +2039,11 @@ components:
         paymentMethod:
           type: string
           enum:
-            - card
-            - transfer
-            - cash
-            - point
-            - etc
+          - card
+          - transfer
+          - cash
+          - point
+          - etc
         dueAt:
           type: string
           pattern: ^\d{4}-\d{2}-\d{2}$
@@ -2066,8 +2060,8 @@ components:
           type: string
           maxLength: 50
       required:
-        - code
-        - name
+      - code
+      - name
     CreateCourseDto:
       type: object
       properties:
@@ -2090,25 +2084,25 @@ components:
           minimum: 0
           maximum: 100000000
       required:
-        - name
-        - subjectId
-        - instructorId
-        - price
-        - hourlyRate
+      - name
+      - subjectId
+      - instructorId
+      - price
+      - hourlyRate
     CreateExpenseDto:
       type: object
       properties:
         category:
           type: string
           enum:
-            - supplies
-            - equipment
-            - books
-            - rent
-            - utility
-            - marketing
-            - meal
-            - etc
+          - supplies
+          - equipment
+          - books
+          - rent
+          - utility
+          - marketing
+          - meal
+          - etc
         title:
           type: string
           maxLength: 100
@@ -2129,10 +2123,10 @@ components:
           type: string
           maxLength: 500
       required:
-        - category
-        - title
-        - amount
-        - spentAt
+      - category
+      - title
+      - amount
+      - spentAt
     RejectExpenseDto:
       type: object
       properties:
@@ -2142,7 +2136,7 @@ components:
           example: 증빙 누락 — 영수증 첨부 후 재신청
           description: 반려 사유(필수)
       required:
-        - reason
+      - reason
     CreateRoomDto:
       type: object
       properties:
@@ -2160,7 +2154,7 @@ components:
         isActive:
           type: boolean
       required:
-        - name
+      - name
     UpsertAvailabilityDto:
       type: object
       properties:
@@ -2170,9 +2164,9 @@ components:
           description: 수정할 블록 id(없으면 신규 생성)
         ownerType:
           enum:
-            - student
-            - instructor
-            - room
+          - student
+          - instructor
+          - room
           type: string
           example: instructor
           description: 소유 자원 종류
@@ -2182,9 +2176,9 @@ components:
           description: 소유 자원 id(ownerType에 따라 students/users/rooms)
         kind:
           enum:
-            - available
-            - unavailable
-            - online_only
+          - available
+          - unavailable
+          - online_only
           type: string
           example: unavailable
           description: 가용/불가/온라인만 가능(기본 available)
@@ -2196,42 +2190,42 @@ components:
           description: 요일(0=일 ~ 6=토)
         startTime:
           type: string
-          example: 12:00
+          example: '12:00'
           description: 시작(HH:mm)
         endTime:
           type: string
-          example: 13:00
+          example: '13:00'
           description: 종료(HH:mm)
         effectiveFrom:
           type: string
           maxLength: 10
-          example: 2026-06-01
+          example: '2026-06-01'
           description: 적용 시작일(선택)
         effectiveTo:
           type: string
           maxLength: 10
-          example: 2026-08-31
+          example: '2026-08-31'
           description: 적용 종료일(선택)
       required:
-        - ownerType
-        - ownerId
-        - weekday
-        - startTime
-        - endTime
+      - ownerType
+      - ownerId
+      - weekday
+      - startTime
+      - endTime
     ConflictCheckDto:
       type: object
       properties:
         sessionDate:
           type: string
-          example: 2026-06-29
+          example: '2026-06-29'
           description: 대상 날짜(YYYY-MM-DD)
         startTime:
           type: string
-          example: 14:00
+          example: '14:00'
           description: 시작(HH:mm)
         endTime:
           type: string
-          example: 15:00
+          example: '15:00'
           description: 종료(HH:mm). 미지정 시 durationMinutes로 파생
         durationMinutes:
           type: number
@@ -2250,8 +2244,8 @@ components:
           example: 5
           description: 검사에서 제외할 세션 id(자기 자신 이동 시)
       required:
-        - sessionDate
-        - startTime
+      - sessionDate
+      - startTime
     CreateScheduleDto:
       type: object
       properties:
@@ -2270,13 +2264,13 @@ components:
         sessionDate:
           type: string
           pattern: ^\d{4}-\d{2}-\d{2}$
-          example: 2026-06-30
+          example: '2026-06-30'
         startTime:
           type: string
-          example: 16:00
+          example: '16:00'
         endTime:
           type: string
-          example: 17:30
+          example: '17:30'
           description: 미지정 시 start+duration 파생. startTime보다 이르면 익일 종료(자정 크로스)
         durationMinutes:
           type: number
@@ -2293,7 +2287,7 @@ components:
         topic:
           type: string
           maxLength: 200
-          example: "Reading: 추론 문제 전략"
+          example: 'Reading: 추론 문제 전략'
           description: 수업 주제
         memo:
           type: string
@@ -2303,7 +2297,7 @@ components:
         color:
           type: string
           maxLength: 20
-          example: "#0969da"
+          example: '#0969da'
           description: 캘린더 색상 라벨(미지정 시 코스 색)
         seriesId:
           type: number
@@ -2311,11 +2305,11 @@ components:
           description: 반복 시리즈로 묶을 때(같은 seriesId)
         status:
           enum:
-            - scheduled
-            - held
-            - canceled
-            - no_show
-            - makeup
+          - scheduled
+          - held
+          - canceled
+          - no_show
+          - makeup
           type: string
           example: scheduled
         force:
@@ -2324,44 +2318,44 @@ components:
           description: 충돌이 있어도 강제 적용(기본 false → 충돌 시 409)
         kind:
           enum:
-            - class
-            - level_test
-            - counsel
+          - class
+          - level_test
+          - counsel
           type: string
           example: class
-          description: "[v0.1.14] 세션 종류(기본 class) — 진단고사/상담 분류(캘린더 필터 축)"
+          description: '[v0.1.14] 세션 종류(기본 class) — 진단고사/상담 분류(캘린더 필터 축)'
         price:
           type: number
           minimum: 0
           maximum: 100000000
           example: 50000
-          description: "[v0.1.14] 세션 단건 가격(원) — 상담(kind=counsel) 등. 코스 정가와 별개"
+          description: '[v0.1.14] 세션 단건 가격(원) — 상담(kind=counsel) 등. 코스 정가와 별개'
         mode:
           enum:
-            - in_person
-            - online
+          - in_person
+          - online
           type: string
           example: in_person
-          description: "[v0.1.16] 수업방식(기본 in_person) — 대면/비대면. 강의실 유무와 독립"
+          description: '[v0.1.16] 수업방식(기본 in_person) — 대면/비대면. 강의실 유무와 독립'
       required:
-        - courseId
-        - sessionDate
-        - startTime
+      - courseId
+      - sessionDate
+      - startTime
     UpdateScheduleDto:
       type: object
       properties:
         sessionDate:
           type: string
           pattern: ^\d{4}-\d{2}-\d{2}$
-          example: 2026-07-02
+          example: '2026-07-02'
           description: 이동할 날짜(YYYY-MM-DD)
         startTime:
           type: string
-          example: 15:00
+          example: '15:00'
           description: 시작(HH:mm)
         endTime:
           type: string
-          example: 16:00
+          example: '16:00'
           description: 종료(HH:mm). startTime보다 이르면 익일 종료(자정 크로스)
         durationMinutes:
           type: number
@@ -2388,18 +2382,18 @@ components:
           description: 코스 FK
         status:
           enum:
-            - scheduled
-            - held
-            - canceled
-            - no_show
-            - makeup
+          - scheduled
+          - held
+          - canceled
+          - no_show
+          - makeup
           type: string
           example: canceled
           description: 상태(취소/결강 등)
         topic:
           type: string
           maxLength: 200
-          example: "Reading: 근거 문장 매칭"
+          example: 'Reading: 근거 문장 매칭'
         memo:
           type: string
           maxLength: 500
@@ -2407,14 +2401,14 @@ components:
         color:
           type: string
           maxLength: 20
-          example: "#9a6700"
+          example: '#9a6700'
           description: 캘린더 색상 라벨
         instructorAttendance:
           enum:
-            - present
-            - late
-            - absent
-            - makeup
+          - present
+          - late
+          - absent
+          - makeup
           type: string
           example: present
           description: 강사 출결(출석/지각/결석/보강)
@@ -2424,45 +2418,45 @@ components:
           description: 강사 출결을 미표시로 초기화(clear)
         scope:
           enum:
-            - this
-            - this_and_following
-            - all
+          - this
+          - this_and_following
+          - all
           type: string
           example: this
-          description: "반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)"
+          description: '반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)'
         force:
           type: boolean
           example: false
           description: 충돌이 있어도 강제 적용(기본 false → 충돌 시 409)
         kind:
           enum:
-            - class
-            - level_test
-            - counsel
+          - class
+          - level_test
+          - counsel
           type: string
           example: counsel
-          description: "[v0.1.14] 세션 종류 변경"
+          description: '[v0.1.14] 세션 종류 변경'
         price:
           type: number
           minimum: 0
           maximum: 100000000
           example: 50000
-          description: "[v0.1.14] 세션 단건 가격(원)"
+          description: '[v0.1.14] 세션 단건 가격(원)'
         mode:
           enum:
-            - in_person
-            - online
+          - in_person
+          - online
           type: string
           example: online
-          description: "[v0.1.16] 수업방식 변경(대면/비대면)"
+          description: '[v0.1.16] 수업방식 변경(대면/비대면)'
     CreateScheduleRequestDto:
       type: object
       properties:
         requestKind:
           enum:
-            - session_create
-            - availability_upsert
-            - availability_delete
+          - session_create
+          - availability_upsert
+          - availability_delete
           type: string
           example: session_create
           description: 요청 종류(기본 session_create)
@@ -2481,15 +2475,15 @@ components:
         sessionDate:
           type: string
           pattern: ^\d{4}-\d{2}-\d{2}$
-          example: 2026-07-10
+          example: '2026-07-10'
           description: session_create 필수
         startTime:
           type: string
-          example: 16:00
+          example: '16:00'
           description: HH:mm — KST 단일 진실원(session_create 필수)
         endTime:
           type: string
-          example: 17:30
+          example: '17:30'
         durationMinutes:
           type: number
           minimum: 10
@@ -2509,20 +2503,27 @@ components:
           description: 수업 주제
         kind:
           enum:
-            - class
-            - level_test
-            - counsel
+          - class
+          - level_test
+          - counsel
           type: string
           example: class
+        mode:
+          enum:
+          - in_person
+          - online
+          type: string
+          example: in_person
+          description: '[C2D] 수업방식 — 요청 단계 보존, 승인 시 세션 mode로 반영(미지정=in_person)'
         targetAvailabilityId:
           type: number
           example: 3
           description: availability_delete 또는 availability_upsert 수정 대상 블록 id
         availabilityOwnerType:
           enum:
-            - student
-            - instructor
-            - room
+          - student
+          - instructor
+          - room
           type: string
           example: instructor
           description: availability_upsert 필수
@@ -2532,9 +2533,9 @@ components:
           description: availability_upsert 필수
         availabilityKind:
           enum:
-            - available
-            - unavailable
-            - online_only
+          - available
+          - unavailable
+          - online_only
           type: string
           example: unavailable
           description: availability_upsert 필수
@@ -2546,20 +2547,20 @@ components:
           description: availability_upsert 필수(0=일)
         availabilityStartTime:
           type: string
-          example: 16:00
+          example: '16:00'
           description: availability_upsert 필수
         availabilityEndTime:
           type: string
-          example: 18:00
+          example: '18:00'
           description: availability_upsert 필수
         availabilityEffectiveFrom:
           type: string
           pattern: ^\d{4}-\d{2}-\d{2}$
-          example: 2026-07-01
+          example: '2026-07-01'
         availabilityEffectiveTo:
           type: string
           pattern: ^\d{4}-\d{2}-\d{2}$
-          example: 2026-08-31
+          example: '2026-08-31'
     RejectScheduleRequestDto:
       type: object
       properties:
@@ -2569,7 +2570,7 @@ components:
           example: 해당 시간 강의실 예약 불가 — 다른 시간 제안 바랍니다
           description: 반려 사유(필수)
       required:
-        - reason
+      - reason
     CreateReportDto:
       type: object
       properties:
@@ -2588,7 +2589,7 @@ components:
         content:
           type: string
           maxLength: 4000
-          example: "오늘 진도: 추론 문제 3세트. 정답률 향상."
+          example: '오늘 진도: 추론 문제 3세트. 정답률 향상.'
           description: 보고서 본문(진도·피드백)
         homework:
           type: string
@@ -2597,15 +2598,15 @@ components:
           description: 숙제(선택)
         status:
           enum:
-            - draft
-            - submitted
+          - draft
+          - submitted
           type: string
           example: submitted
           description: 기본 submitted(승인요청). draft 허용
       required:
-        - sessionId
-        - studentId
-        - content
+      - sessionId
+      - studentId
+      - content
     ApproveReportDto:
       type: object
       properties:
@@ -2630,16 +2631,16 @@ components:
           description: 강사(users.id)
         from:
           type: string
-          example: 2026-06-01
+          example: '2026-06-01'
           description: 정산 기간 시작(YYYY-MM-DD)
         to:
           type: string
-          example: 2026-06-30
+          example: '2026-06-30'
           description: 정산 기간 종료(YYYY-MM-DD)
       required:
-        - instructorId
-        - from
-        - to
+      - instructorId
+      - from
+      - to
     AdjustPayoutDto:
       type: object
       properties:
@@ -2655,7 +2656,7 @@ components:
           example: 교통비 차감
           description: 수정 사유
       required:
-        - amount
+      - amount
     RejectPayoutDto:
       type: object
       properties:
@@ -2676,11 +2677,11 @@ components:
         source:
           type: string
           enum:
-            - internal_form
-            - naver_form
-            - google_form
-            - manual
-            - etc
+          - internal_form
+          - naver_form
+          - google_form
+          - manual
+          - etc
         assignedStaffId:
           type: number
         interestSubjectId:
@@ -2693,38 +2694,38 @@ components:
         desiredStartTime:
           type: string
           enum:
-            - immediately
-            - within_1_month
-            - within_2_3_months
-            - undecided
+          - immediately
+          - within_1_month
+          - within_2_3_months
+          - undecided
         learningAtmosphere:
           type: string
           enum:
-            - self_directed
-            - normal
-            - needs_management
+          - self_directed
+          - normal
+          - needs_management
         studentIntention:
           type: string
           enum:
-            - student_wants
-            - parent_only
-            - unknown
+          - student_wants
+          - parent_only
+          - unknown
         weakness:
           type: string
           maxLength: 500
       required:
-        - applicantName
-        - source
+      - applicantName
+      - source
     UpdateCounselDto:
       type: object
       properties:
         status:
           type: string
           enum:
-            - requested
-            - pending
-            - registered
-            - dropped
+          - requested
+          - pending
+          - registered
+          - dropped
         assignedStaffId:
           type: number
         interestSubjectId:
@@ -2751,11 +2752,11 @@ components:
         result:
           type: string
           enum:
-            - positive
-            - neutral
-            - negative
-            - no_response
-            - registered
+          - positive
+          - neutral
+          - negative
+          - no_response
+          - registered
         nextAction:
           type: string
           maxLength: 500
@@ -2771,9 +2772,9 @@ components:
         view:
           type: string
           enum:
-            - month
-            - week
-            - day
+          - month
+          - week
+          - day
         periodFrom:
           type: string
         periodTo:
@@ -2803,10 +2804,10 @@ components:
           items:
             type: string
             enum:
-              - attended
-              - late
-              - absence
-              - makeup
+            - attended
+            - late
+            - absence
+            - makeup
         groupOnly:
           type: boolean
         q:
@@ -2815,10 +2816,10 @@ components:
         colorBy:
           type: string
           enum:
-            - subject
-            - instructor
-            - room
-            - student
+          - subject
+          - instructor
+          - room
+          - student
         countryCode:
           type: string
         paneCountryInstructor:
@@ -2830,8 +2831,8 @@ components:
           items:
             type: string
             enum:
-              - in_person
-              - online
+            - in_person
+            - online
         kstFixed:
           type: boolean
         compactCols:
@@ -2845,10 +2846,10 @@ components:
                 type: number
               dim:
                 enum:
-                  - instructor
-                  - student
-                  - subject
-                  - room
+                - instructor
+                - student
+                - subject
+                - room
                 type: string
               ids:
                 type: array
@@ -2869,17 +2870,17 @@ components:
                 items:
                   type: string
             required:
-              - dim
-              - ids
+            - dim
+            - ids
       required:
-        - name
-        - view
-        - instructorIds
-        - studentIds
-        - roomIds
-        - subjects
-        - statuses
-        - groupOnly
+      - name
+      - view
+      - instructorIds
+      - studentIds
+      - roomIds
+      - subjects
+      - statuses
+      - groupOnly
     CreateReportTemplateDto:
       type: object
       properties:
@@ -2893,8 +2894,8 @@ components:
           type: string
           maxLength: 1000
       required:
-        - name
-        - content
+      - name
+      - content
     CreateEventDto:
       type: object
       properties:
@@ -2904,17 +2905,17 @@ components:
         type:
           type: string
           enum:
-            - notice
-            - exam
-            - holiday
-            - closure
-            - event
+          - notice
+          - exam
+          - holiday
+          - closure
+          - event
         priority:
           type: string
           enum:
-            - low
-            - normal
-            - high
+          - low
+          - normal
+          - high
         startDate:
           type: string
         endDate:
@@ -2925,10 +2926,10 @@ components:
           type: string
           maxLength: 500
       required:
-        - title
-        - type
-        - startDate
-        - endDate
+      - title
+      - type
+      - startDate
+      - endDate
     UpsertAttendanceDto:
       type: object
       properties:
@@ -2941,14 +2942,14 @@ components:
         status:
           type: string
           enum:
-            - present
-            - late
-            - absent
-            - excused
+          - present
+          - late
+          - absent
+          - excused
       required:
-        - sessionId
-        - studentId
-        - status
+      - sessionId
+      - studentId
+      - status
     CreateRoadmapDto:
       type: object
       properties:
@@ -2967,7 +2968,7 @@ components:
           items:
             type: number
       required:
-        - title
+      - title
     CreateParentDto:
       type: object
       properties:
@@ -2991,8 +2992,8 @@ components:
           type: number
           minimum: 1
       required:
-        - name
-        - studentId
+      - name
+      - studentId
     LinkParentDto:
       type: object
       properties:
@@ -3010,8 +3011,8 @@ components:
         isPrimary:
           type: boolean
       required:
-        - parentId
-        - studentId
+      - parentId
+      - studentId
     UpdateRelationDto:
       type: object
       properties:

@@ -178,4 +178,30 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       .expect(201)).body.row;
     expect(online.mode).toBe('online');
   });
+
+  it('[C2D] 요청 mode 보존: mode=online 요청 승인 → 세션 mode=online · 미지정 요청 → in_person 기본', async () => {
+    // ① mode=online 요청 → pending row에 mode 보존 → 승인 세션 mode=online
+    const made = (await http.post('/api/schedule-requests').set(asInst())
+      .send({ courseId: 10, sessionDate: '2099-04-06', startTime: '09:00', endTime: '10:00', mode: 'online', topic: 'C2D 보존' })
+      .expect(201)).body.row;
+    expect(made.mode).toBe('online');
+    const ok = (await http.post(`/api/schedule-requests/${made.id}/approve`).set(asAdmin()).expect(201)).body;
+    const created = (await http.get('/api/schedule').set(asAdmin()).expect(200)).body
+      .find((r: { id: number }) => r.id === ok.request.createdSessionId);
+    expect(created.mode).toBe('online');
+
+    // ② mode 미지정 → 승인 세션은 SESSION_DEFAULTS(in_person)
+    const plain = (await http.post('/api/schedule-requests').set(asInst())
+      .send({ courseId: 10, sessionDate: '2099-04-06', startTime: '10:30', endTime: '11:30' })
+      .expect(201)).body.row;
+    const ok2 = (await http.post(`/api/schedule-requests/${plain.id}/approve`).set(asAdmin()).expect(201)).body;
+    const created2 = (await http.get('/api/schedule').set(asAdmin()).expect(200)).body
+      .find((r: { id: number }) => r.id === ok2.request.createdSessionId);
+    expect(created2.mode).toBe('in_person');
+
+    // ③ 잘못된 mode 값은 400 (화이트리스트)
+    await http.post('/api/schedule-requests').set(asInst())
+      .send({ courseId: 10, sessionDate: '2099-04-06', startTime: '12:00', endTime: '13:00', mode: 'hybrid' })
+      .expect(400);
+  });
 });

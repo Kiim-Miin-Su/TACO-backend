@@ -5,7 +5,7 @@
 //  - 반려: 사유 **필수**(Q2). 승인/반려 모두 audit_log 기록(approve/reject).
 //  - 배지: pending 건수는 프론트 lib/tasks.ts 단일 소스에 편입(R1 — 별도 카운트 금지).
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AvailabilityKind, AvailabilityOwner, ScheduleRequest, Conflict } from '@kms545487/contracts';
+import type { AvailabilityKind, AvailabilityOwner, ScheduleRequest, SessionMode, Conflict } from '@kms545487/contracts';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { ScheduleService } from '../schedule/schedule.service';
 import { AuditService } from '../audit/audit.service';
@@ -20,6 +20,7 @@ type ScheduleRequestKindEx = 'session_create' | 'availability_upsert' | 'availab
 type AvailabilityKindEx = AvailabilityKind | 'online_only';
 type RequestRow = ScheduleRequest & BaseRow & {
   requestKind?: ScheduleRequestKindEx;
+  mode?: SessionMode; // [C2D] 수업방식 보존(contracts 게시 전 로컬 표기 — src에는 반영됨)
   targetAvailabilityId?: number;
   availabilityOwnerType?: AvailabilityOwner;
   availabilityOwnerId?: number;
@@ -52,6 +53,7 @@ export class ScheduleRequestsService {
     const conflicts = this.schedule.checkConflicts({
       sessionDate: dto.sessionDate!, startTime: dto.startTime!, endTime: dto.endTime,
       durationMinutes: dto.durationMinutes, instructorId, roomId: dto.roomId,
+      mode: dto.mode, // [C2D] online_only 가용 판정이 요청 mode 기준으로(드라이런도 승인과 동일 조건)
     });
     const row = await this.db.transaction(() => {
       const created = this.db.insert<RequestRow>(SCHEDULE_REQUESTS, {
@@ -65,6 +67,7 @@ export class ScheduleRequestsService {
         endTime: dto.endTime,
         durationMinutes: dto.durationMinutes ?? 60,
         kind: dto.kind ?? 'class',
+        mode: dto.mode, // [C2D] 보존(미지정=승인 시 SESSION_DEFAULTS.in_person)
         topic: dto.topic,
         studentIds: dto.studentIds,
         status: 'pending',
@@ -158,7 +161,8 @@ export class ScheduleRequestsService {
         courseId: req.courseId!, instructorId: req.instructorId, roomId: req.roomId,
         sessionDate: req.sessionDate!, startTime: req.startTime!, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic,
-        studentIds: req.studentIds, kind: req.kind, force,
+        studentIds: req.studentIds, kind: req.kind, mode: req.mode, force, // [C2D] mode 보존
+
       }, decidedBy);
       const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(), createdSessionId: session.id,

@@ -1,6 +1,6 @@
 import { IsDefined, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { AvailabilityKind, AvailabilityOwner, SessionKind, CreateScheduleRequestInput } from '@kms545487/contracts';
+import type { AvailabilityKind, AvailabilityOwner, SessionKind, SessionMode, CreateScheduleRequestInput } from '@kms545487/contracts';
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -8,6 +8,7 @@ type RequestKind = 'session_create' | 'availability_upsert' | 'availability_dele
 type AvailabilityKindEx = AvailabilityKind | 'online_only';
 const REQUEST_KINDS: RequestKind[] = ['session_create', 'availability_upsert', 'availability_delete'];
 const AVAILABILITY_KINDS: AvailabilityKindEx[] = ['available', 'unavailable', 'online_only'];
+const SESSION_MODES: SessionMode[] = ['in_person', 'online'];
 const OWNER_TYPES: AvailabilityOwner[] = ['student', 'instructor', 'room'];
 
 const isSessionCreate = (o: CreateScheduleRequestDto): boolean => !o.requestKind || o.requestKind === 'session_create';
@@ -64,6 +65,10 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @ApiPropertyOptional({ enum: SESSION_KINDS, example: 'class' })
   @IsOptional() @IsIn(SESSION_KINDS)
   kind?: SessionKind;
+
+  @ApiPropertyOptional({ enum: SESSION_MODES, example: 'in_person', description: '[C2D] 수업방식 — 요청 단계 보존, 승인 시 세션 mode로 반영(미지정=in_person)' })
+  @IsOptional() @IsIn(SESSION_MODES)
+  mode?: SessionMode;
 
   @ApiPropertyOptional({ example: 3, description: 'availability_delete 또는 availability_upsert 수정 대상 블록 id' })
   @ValidateIf((o) => isAvailabilityRequest(o) && (isAvailabilityDelete(o) || o.targetAvailabilityId != null))

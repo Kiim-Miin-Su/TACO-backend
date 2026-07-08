@@ -3903,6 +3903,15 @@
             "type": "string",
             "example": "class"
           },
+          "mode": {
+            "enum": [
+              "in_person",
+              "online"
+            ],
+            "type": "string",
+            "example": "in_person",
+            "description": "[C2D] 수업방식 — 요청 단계 보존, 승인 시 세션 mode로 반영(미지정=in_person)"
+          },
           "targetAvailabilityId": {
             "type": "number",
             "example": 3,
