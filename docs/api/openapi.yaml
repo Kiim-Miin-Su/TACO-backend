@@ -1051,6 +1051,49 @@ paths:
       summary: 요청 승인 → createSession 재사용(충돌 409, force=true 강제) + 역참조 + audit. [관리자]
       tags:
       - schedule-requests
+  /api/schedule-requests/{id}:
+    patch:
+      operationId: ScheduleRequestsController_update
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateScheduleRequestDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: '[C2C-b] pending 요청 수정(관리자) — 종류·대상 전환 금지, 생성과 동일 검증 재사용, audit update diff. [관리자]'
+      tags:
+      - schedule-requests
+    delete:
+      operationId: ScheduleRequestsController_withdraw
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+      security:
+      - bearer: []
+      summary: 본인 pending 요청 철회(soft delete) — 타인 요청 403. [로그인]
+      tags:
+      - schedule-requests
   /api/schedule-requests/{id}/reject:
     post:
       operationId: ScheduleRequestsController_reject
@@ -1076,23 +1119,6 @@ paths:
       security:
       - bearer: []
       summary: 요청 반려 — 사유 필수(Q2). [관리자]
-      tags:
-      - schedule-requests
-  /api/schedule-requests/{id}:
-    delete:
-      operationId: ScheduleRequestsController_withdraw
-      parameters:
-      - name: id
-        required: true
-        in: path
-        schema:
-          type: number
-      responses:
-        '200':
-          description: ''
-      security:
-      - bearer: []
-      summary: 본인 pending 요청 철회(soft delete) — 타인 요청 403. [로그인]
       tags:
       - schedule-requests
   /api/reports:
@@ -2553,6 +2579,84 @@ components:
           type: string
           example: '18:00'
           description: availability_upsert 필수
+        availabilityEffectiveFrom:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+          example: '2026-07-01'
+        availabilityEffectiveTo:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+          example: '2026-08-31'
+    UpdateScheduleRequestDto:
+      type: object
+      properties:
+        courseId:
+          type: number
+          example: 10
+          description: 코스 FK — 변경 시 기본 강사 재해석(생성과 동일)
+        instructorId:
+          type: number
+          example: 1
+        roomId:
+          type: number
+          example: 2
+        sessionDate:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+          example: '2026-07-10'
+        startTime:
+          type: string
+          example: '16:00'
+        endTime:
+          type: string
+          example: '17:30'
+        durationMinutes:
+          type: number
+          minimum: 10
+          maximum: 480
+          example: 90
+        studentIds:
+          maxItems: 20
+          description: 명시 코호트 — 세션과 동일 부분집합 검증
+          type: array
+          items:
+            type: number
+        topic:
+          type: string
+          maxLength: 200
+          example: Writing 보충
+        kind:
+          enum:
+          - class
+          - level_test
+          - counsel
+          type: string
+          example: class
+        mode:
+          enum:
+          - in_person
+          - online
+          type: string
+          example: online
+          description: '[C2D] 수업방식'
+        availabilityKind:
+          enum:
+          - available
+          - unavailable
+          - online_only
+          type: string
+          description: availability_upsert 전용
+        availabilityWeekday:
+          type: number
+          minimum: 0
+          maximum: 6
+          example: 1
+        availabilityStartTime:
+          type: string
+          example: '14:00'
+        availabilityEndTime:
+          type: string
+          example: '18:00'
         availabilityEffectiveFrom:
           type: string
           pattern: ^\d{4}-\d{2}-\d{2}$

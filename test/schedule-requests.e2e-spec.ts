@@ -204,4 +204,54 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       .send({ courseId: 10, sessionDate: '2099-04-06', startTime: '12:00', endTime: '13:00', mode: 'hybrid' })
       .expect(400);
   });
+
+  it('[C2C-b] 요청 수정(PATCH): 관리자 값 반영+audit diff → 승인 시 수정값 세션 · 강사 403 · 종류전환 400 · 비pending 400', async () => {
+    const made = (await http.post('/api/schedule-requests').set(asInst())
+      .send({ courseId: 10, sessionDate: '2099-05-04', startTime: '09:00', endTime: '10:00', mode: 'in_person' })
+      .expect(201)).body.row;
+    // 강사 수정 403(관리자 전용)
+    await http.patch(`/api/schedule-requests/${made.id}`).set(asInst()).send({ topic: 'x' }).expect(403);
+    // 불변 필드(requestKind) 전송 → forbidNonWhitelisted 400
+    await http.patch(`/api/schedule-requests/${made.id}`).set(asAdmin()).send({ requestKind: 'availability_delete' }).expect(400);
+    // 잘못된 FK 400(생성과 동일 검증 재사용)
+    await http.patch(`/api/schedule-requests/${made.id}`).set(asAdmin()).send({ courseId: 9999 }).expect(400);
+    // 관리자 수정 → 값 반영(pending 유지)
+    const upd = (await http.patch(`/api/schedule-requests/${made.id}`).set(asAdmin())
+      .send({ startTime: '11:00', endTime: '12:00', mode: 'online', topic: '수정됨' }).expect(200)).body;
+    expect(upd).toMatchObject({ startTime: '11:00', endTime: '12:00', mode: 'online', topic: '수정됨', status: 'pending' });
+    // audit update diff(누가·무엇을 — before/after)
+    const audit = (await http.get(`/api/audit?entity=schedule_requests&entityId=${made.id}`).set(asAdmin()).expect(200)).body;
+    const u = audit.find((a: { action: string }) => a.action === 'update');
+    expect(u.changes.startTime).toMatchObject({ before: '09:00', after: '11:00' });
+    expect(u.changes.mode).toMatchObject({ after: 'online' });
+    // 승인 → 수정값으로 세션 생성
+    const ok = (await http.post(`/api/schedule-requests/${made.id}/approve`).set(asAdmin()).expect(201)).body;
+    const created = (await http.get('/api/schedule').set(asAdmin()).expect(200)).body
+      .find((r: { id: number }) => r.id === ok.request.createdSessionId);
+    expect(created).toMatchObject({ startTime: '11:00', mode: 'online' });
+    // 비pending(approved) 수정 400
+    await http.patch(`/api/schedule-requests/${made.id}`).set(asAdmin()).send({ topic: 'y' }).expect(400);
+  });
+
+  it('[C2C-b] availability 요청 수정: upsert=시간 변경 시 impact/요약 재계산 · delete=수정 불가 400', async () => {
+    // 전용 블록 생성(토요일 09-10, 세션 없음 — 결정적)
+    const blk = (await http.put('/api/availability').set(asAdmin())
+      .send({ ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 6, startTime: '09:00', endTime: '10:00' })
+      .expect(200)).body;
+    // upsert 요청(시간 축소) 생성 → 관리자 수정(다른 시간) → 요약 재계산 반영
+    const up = (await http.post('/api/schedule-requests').set(asInst())
+      .send({ requestKind: 'availability_upsert', targetAvailabilityId: blk.id, availabilityOwnerType: 'instructor', availabilityOwnerId: 1, availabilityKind: 'available', availabilityWeekday: 6, availabilityStartTime: '09:00', availabilityEndTime: '09:30' })
+      .expect(201)).body.row;
+    const upd = (await http.patch(`/api/schedule-requests/${up.id}`).set(asAdmin())
+      .send({ availabilityEndTime: '09:45' }).expect(200)).body;
+    expect(upd.availabilityEndTime).toBe('09:45');
+    expect(upd.changeSummary).toContain('09:00–09:45');
+    // owner 전환 시도(불변 필드) → 400
+    await http.patch(`/api/schedule-requests/${up.id}`).set(asAdmin()).send({ availabilityOwnerId: 2 }).expect(400);
+    await http.delete(`/api/schedule-requests/${up.id}`).set(asInst()).expect(200); // 정리
+    // delete 요청은 수정 불가
+    const del = (await http.post('/api/schedule-requests').set(asInst())
+      .send({ requestKind: 'availability_delete', targetAvailabilityId: blk.id }).expect(201)).body.row;
+    await http.patch(`/api/schedule-requests/${del.id}`).set(asAdmin()).send({ availabilityStartTime: '10:00' }).expect(400);
+  });
 });

@@ -10,6 +10,7 @@ import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.databas
 import { ScheduleService } from '../schedule/schedule.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateScheduleRequestDto } from './dto/create-schedule-request.dto';
+import { UpdateScheduleRequestDto } from './dto/update-schedule-request.dto';
 import { AvailabilityService } from '../availability/availability.service';
 import { hasAdminRole } from '../auth/roles.decorator';
 import { UpsertAvailabilityDto } from '../availability/dto/upsert-availability.dto';
@@ -196,6 +197,37 @@ export class ScheduleRequestsService {
       })!;
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy });
       return { request: updated, conflicts: [] };
+    });
+  }
+
+  /** [C2C-b 청크2] pending 요청 수정(관리자) — 생성 경로와 동일 검증 재사용 + audit update diff.
+   *  불변: requestKind·targetAvailabilityId·availability owner(DTO에 없음 → forbidNonWhitelisted 400).
+   *  availability_delete는 수정 항목이 없어 400(반려 후 재요청). availability_upsert는 impact/요약 재계산. */
+  async update(id: number, dto: UpdateScheduleRequestDto, actorId: number): Promise<RequestRow> {
+    const req = this.mustPending(id);
+    if (req.requestKind === 'availability_delete') {
+      throw new BadRequestException('삭제 요청은 수정할 항목이 없습니다 — 반려 후 재요청하세요.');
+    }
+    const patch: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(dto)) if (v !== undefined) patch[k] = v;
+    if (!Object.keys(patch).length) throw new BadRequestException('수정할 필드가 없습니다');
+    const merged = { ...req, ...patch } as RequestRow;
+    if (!req.requestKind || req.requestKind === 'session_create') {
+      // FK·코호트 재검증 + 코스 변경 시 기본 강사 재해석(생성 경로와 동일 규칙)
+      patch.instructorId = this.schedule.validateSessionInput({ ...merged, courseId: merged.courseId! });
+    } else {
+      // availability_upsert — owner/target 불변(원요청자 소유 유지), 겹침·FK·기간 재검증 후 impact 재계산
+      const upsert = this.toAvailabilityUpsert(merged as unknown as CreateScheduleRequestDto);
+      this.availability.validateRequestableUpsert(upsert, req.requesterId, ['admin']);
+      const impact = this.availability.previewUpsertImpact(upsert);
+      patch.impactSessionIds = impact.map((x) => x.sessionId);
+      patch.changeSummary = this.availabilitySummary('availability_upsert', upsert, impact.length);
+    }
+    return this.db.transaction(() => {
+      const before = { ...req };
+      const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, id, patch as Partial<RequestRow>)!;
+      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'update', actorId, changes: this.audit.diffOf(before, updated) as never });
+      return updated;
     });
   }
 

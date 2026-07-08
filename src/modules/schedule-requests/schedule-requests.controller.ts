@@ -1,12 +1,13 @@
 // 강사 수업 요청 → 매니저 승인/반려 (TBO-16 #9).
 //  RBAC: 생성·조회·철회=STAFF(강사 포함 — 조회는 강사면 본인 것만 강제), 승인/반려=ADMIN(manager 이상).
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ScheduleRequestsService } from './schedule-requests.service';
 import { CreateScheduleRequestDto } from './dto/create-schedule-request.dto';
 import { RejectScheduleRequestDto } from './dto/reject-schedule-request.dto';
+import { UpdateScheduleRequestDto } from './dto/update-schedule-request.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 
@@ -45,6 +46,14 @@ export class ScheduleRequestsController {
   @ApiOperation({ summary: '요청 승인 → createSession 재사용(충돌 409, force=true 강제) + 역참조 + audit. [관리자]' })
   approve(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest, @Query('force') force?: string) {
     return this.requests.approve(id, req.user!.sub, force === 'true');
+  }
+
+  @Patch(':id')
+  @Roles(...ADMIN_ROLES)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: '[C2C-b] pending 요청 수정(관리자) — 종류·대상 전환 금지, 생성과 동일 검증 재사용, audit update diff. [관리자]' })
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleRequestDto, @Req() req: AuthedRequest) {
+    return this.requests.update(id, dto, req.user!.sub);
   }
 
   @Post(':id/reject')
