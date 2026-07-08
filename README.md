@@ -10,7 +10,7 @@ npm run dev        # http://localhost:3001/api (watch)
 npm run build && npm start
 ```
 
-- 환경변수: `PORT`(기본 3001), `WEB_ORIGIN`(CORS, 로컬 기본 `http://localhost:3000`, 운영 기본 `https://taco-frontend-tau.vercel.app`), `JWT_SECRET`, `JWT_EXPIRES_IN` — `.env.example` 참고
+- 환경변수: `PORT`(기본 3001), `WEB_ORIGIN`(CORS 추가 허용 origin, 로컬 기본 `http://localhost:3000`, 운영 기본 `https://taco-frontend-tau.vercel.app`도 항상 포함), `JWT_SECRET`, `JWT_EXPIRES_IN` — `.env.example` 참고
 - **API 문서(Swagger): http://localhost:3001/docs** (스펙 JSON: `/docs-json`)
 
 ## Docker (로컬 테스트 → AWS 배포)

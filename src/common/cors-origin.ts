@@ -7,6 +7,9 @@ export function webCorsOrigins(): string[] {
     .map((origin) => origin.trim())
     .filter(Boolean);
 
-  if (configured.length > 0) return configured;
-  return process.env.NODE_ENV === 'production' ? [PRODUCTION_WEB_ORIGIN] : [LOCAL_WEB_ORIGIN];
+  const defaults = process.env.NODE_ENV === 'production'
+    ? [PRODUCTION_WEB_ORIGIN]
+    : [LOCAL_WEB_ORIGIN];
+
+  return Array.from(new Set([...configured, ...defaults]));
 }
