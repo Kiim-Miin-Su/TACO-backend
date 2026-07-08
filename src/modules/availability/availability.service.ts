@@ -66,7 +66,8 @@ export class AvailabilityService implements OnModuleInit {
       rangesOverlap(dto.effectiveFrom, dto.effectiveTo, b.effectiveFrom, b.effectiveTo),
     )[0];
     if (clash) {
-      const kindLabel = clash.kind === 'unavailable' ? '불가시간' : '가용시간';
+      const clashKind = clash.kind as AvailabilityKindEx;
+      const kindLabel = clashKind === 'unavailable' ? '불가시간' : clashKind === 'online_only' ? '온라인만 가능' : '가용시간';
       throw new ConflictException(`이미 지정된 ${kindLabel}(${clash.startTime}–${clash.endTime})과 겹칩니다.`);
     }
   }
@@ -204,14 +205,21 @@ export class AvailabilityService implements OnModuleInit {
       throw new ConflictException({ message: '매니저 승인 필요', approvalRequired: true, impactedSessions: impacted });
   }
 
+  validateRequestableUpsert(dto: UpsertAvailabilityDto, actorId?: number, actorRoles?: string[]): void {
+    const asMin = hhmmToMin;
+    if (asMin(dto.endTime) <= asMin(dto.startTime))
+      throw new BadRequestException('종료 시각이 시작보다 빠릅니다(자정을 넘는 블록은 두 개로 나눠 저장하세요)');
+    this.assertOwner(dto.ownerType, dto.ownerId);
+    this.assertActorOwner(dto.ownerType, dto.ownerId, actorId, actorRoles);
+    this.assertNoOverlap(dto);
+  }
+
   async upsert(dto: UpsertAvailabilityDto, actorId?: number, actorRoles?: string[]): Promise<AvailabilityBlock> {
     // [버그수정 2026-07-06] 자정 크로스(end<=start) 거부 — 세션과 동일 규칙. 시차 입력은 FE가 분할 저장(splitKstBand).
     const asMin = hhmmToMin; // [R-3] 공통 유틸(로컬 중복 제거)
     if (asMin(dto.endTime) <= asMin(dto.startTime))
       throw new BadRequestException('종료 시각이 시작보다 빠릅니다(자정을 넘는 블록은 두 개로 나눠 저장하세요)');
-    this.assertOwner(dto.ownerType, dto.ownerId); // owner_id 참조 무결성(#7)
-    this.assertActorOwner(dto.ownerType, dto.ownerId, actorId, actorRoles); // [TBO-21] 강사 create/update owner IDOR 차단
-    this.assertNoOverlap(dto); // 겹침 방지(버그2)
+    this.validateRequestableUpsert(dto, actorId, actorRoles); // owner·IDOR·겹침 검증(요청 생성 경로와 동일)
     this.assertApprovalNotRequired(dto, actorRoles); // [TBO-22 C2] 수업 영향 가용 변경은 승인 요청으로 전환
     if (dto.id) {
       // [취약점 수정 2026-07-03] id 지정 갱신은 **소유자 일치**를 강제 — 임의 id로 남의(다른

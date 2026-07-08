@@ -81,6 +81,7 @@ export class ScheduleRequestsService {
     if (dto.targetAvailabilityId != null && !target) {
       throw new BadRequestException(`availability ${dto.targetAvailabilityId} not found`);
     }
+    if (upsert) this.availability.validateRequestableUpsert(upsert, requesterId, requesterRoles);
     if (!hasAdminRole(requesterRoles)) {
       const ownerType = upsert?.ownerType ?? target?.ownerType;
       const ownerId = upsert?.ownerId ?? target?.ownerId;

@@ -153,6 +153,22 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     expect(audit.some((a: { action: string; changes?: { endTime?: { after?: string } } }) => a.action === 'update' && a.changes?.endTime?.after === '16:00')).toBe(true);
   });
 
+  it('availability 요청 검증: 기존 블록과 겹치는 변경은 pending 요청으로 접수하지 않는다', async () => {
+    await http.post('/api/schedule-requests').set(asInst())
+      .send({
+        requestKind: 'availability_upsert',
+        availabilityOwnerType: 'instructor',
+        availabilityOwnerId: 1,
+        availabilityKind: 'available',
+        availabilityWeekday: 3,
+        availabilityStartTime: '15:00',
+        availabilityEndTime: '17:30',
+        availabilityEffectiveFrom: '2099-03-03',
+        availabilityEffectiveTo: '2099-03-03',
+      })
+      .expect(409);
+  });
+
   it('online_only: 온라인만 가능 블록은 대면 수업을 막고 온라인 수업은 허용한다', async () => {
     await http.post('/api/schedule').set(asAdmin())
       .send({ courseId: 11, sessionDate: '2099-03-02', startTime: '20:30', endTime: '21:30' })
