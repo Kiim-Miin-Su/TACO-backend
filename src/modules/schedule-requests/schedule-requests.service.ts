@@ -6,7 +6,7 @@
 //  - 배지: pending 건수는 프론트 lib/tasks.ts 단일 소스에 편입(R1 — 별도 카운트 금지).
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AvailabilityKind, AvailabilityOwner, RecurrenceScope, ScheduleRequest, SessionMode, Conflict } from '@kms545487/contracts';
-import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
+import type { BaseRow } from '../../database/in-memory.database';
 import { ScheduleService } from '../schedule/schedule.service';
 import { AuditService } from '../audit/audit.service';
 import { CreateScheduleRequestDto } from './dto/create-schedule-request.dto';
@@ -14,6 +14,7 @@ import { UpdateScheduleRequestDto } from './dto/update-schedule-request.dto';
 import { AvailabilityService } from '../availability/availability.service';
 import { hasAdminRole } from '../auth/roles.decorator';
 import { UpsertAvailabilityDto } from '../availability/dto/upsert-availability.dto';
+import { ScheduleRequestsStore } from './schedule-requests.store';
 
 export const SCHEDULE_REQUESTS = 'schedule_requests';
 
@@ -41,7 +42,7 @@ type RequestRow = ScheduleRequest & BaseRow & {
 @Injectable()
 export class ScheduleRequestsService {
   constructor(
-    private readonly db: InMemoryDatabase,
+    private readonly store: ScheduleRequestsStore,
     private readonly schedule: ScheduleService,
     private readonly availability: AvailabilityService,
     private readonly audit: AuditService,
@@ -65,8 +66,8 @@ export class ScheduleRequestsService {
       durationMinutes: dto.durationMinutes, instructorId, roomId: dto.roomId,
       mode: dto.mode, // [C2D] online_only 가용 판정이 요청 mode 기준으로(드라이런도 승인과 동일 조건)
     });
-    const row = await this.db.transaction(() => {
-      const created = this.db.insert<RequestRow>(SCHEDULE_REQUESTS, {
+    const row = await this.store.transaction(async () => {
+      const created = await this.store.insert<RequestRow>({
         requesterId,
         requestKind: 'session_create',
         courseId: dto.courseId!,
@@ -114,8 +115,8 @@ export class ScheduleRequestsService {
       durationMinutes: merged.durationMinutes, instructorId: merged.instructorId, roomId: merged.roomId,
       ignoreSessionId: target.id, mode: merged.mode,
     });
-    const row = await this.db.transaction(() => {
-      const created = this.db.insert<RequestRow>(SCHEDULE_REQUESTS, {
+    const row = await this.store.transaction(async () => {
+      const created = await this.store.insert<RequestRow>({
         requesterId,
         requestKind: 'session_update',
         targetSessionId: target.id,
@@ -148,8 +149,8 @@ export class ScheduleRequestsService {
     if (!hasAdminRole(requesterRoles) && Number(target.instructorId) !== Number(requesterId)) {
       throw new ForbiddenException('강사는 본인 수업 삭제만 요청할 수 있습니다.');
     }
-    const row = await this.db.transaction(() => {
-      const created = this.db.insert<RequestRow>(SCHEDULE_REQUESTS, {
+    const row = await this.store.transaction(async () => {
+      const created = await this.store.insert<RequestRow>({
         requesterId,
         requestKind: 'session_delete',
         targetSessionId: target.id,
@@ -205,8 +206,8 @@ export class ScheduleRequestsService {
       ? this.availability.previewUpsertImpact(upsert!)
       : this.availability.previewDeleteImpact(dto.targetAvailabilityId!);
     const requestedBlock = upsert ?? target;
-    const row = await this.db.transaction(() => {
-      const created = this.db.insert<RequestRow>(SCHEDULE_REQUESTS, {
+    const row = await this.store.transaction(async () => {
+      const created = await this.store.insert<RequestRow>({
         requestKind: dto.requestKind,
         requesterId,
         targetAvailabilityId: dto.targetAvailabilityId,
@@ -249,17 +250,17 @@ export class ScheduleRequestsService {
   }
 
   /** 목록 — 관리자=전체(status 필터), 강사=본인 요청만(컨트롤러에서 requesterId 강제). */
-  list(q: { status?: ScheduleRequest['status']; requesterId?: number }): RequestRow[] {
+  async list(q: { status?: ScheduleRequest['status']; requesterId?: number }): Promise<RequestRow[]> {
     let rows = q.status
-      ? this.db.findByField<RequestRow>(SCHEDULE_REQUESTS, 'status', q.status)
-      : this.db.findAll<RequestRow>(SCHEDULE_REQUESTS);
+      ? await this.store.findByField<RequestRow>('status', q.status)
+      : await this.store.findAll<RequestRow>();
     if (q.requesterId != null) rows = rows.filter((r) => r.requesterId === q.requesterId);
     return rows.sort((a, b) => b.id - a.id);
   }
 
   /** 승인 — [요청 상태 + 세션 생성(충돌 409·force 재검사) + 역참조 + audit] 단일 tx 원자화. */
   async approve(id: number, decidedBy: number, force?: boolean): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
-    const req = this.mustPending(id);
+    const req = await this.mustPending(id);
     if (req.requestKind === 'availability_upsert' || req.requestKind === 'availability_delete') {
       return this.approveAvailability(req, decidedBy);
     }
@@ -269,7 +270,7 @@ export class ScheduleRequestsService {
     if (req.requestKind === 'session_delete') {
       return this.approveSessionDelete(req, decidedBy);
     }
-    return this.db.transaction(async () => {
+    return this.store.transaction(async () => {
       const before = { ...req };
       // 기존 createSession 경로 그대로 — FK·코호트 재검증 + 충돌 409(force면 강제) + create audit(actor=승인자)
       const { row: session, conflicts } = await this.schedule.create({
@@ -279,9 +280,9 @@ export class ScheduleRequestsService {
         studentIds: req.studentIds, kind: req.kind, mode: req.mode, force, // [C2D] mode 보존
 
       }, decidedBy);
-      const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, id, {
+      const updated = this.mustStored(await this.store.update<RequestRow>(id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(), createdSessionId: session.id,
-      })!;
+      }));
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts };
     });
@@ -289,7 +290,7 @@ export class ScheduleRequestsService {
 
   private async approveSessionUpdate(req: RequestRow, decidedBy: number, force?: boolean): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
     if (req.targetSessionId == null) throw new BadRequestException('변경할 세션 id가 없습니다.');
-    return this.db.transaction(async () => {
+    return this.store.transaction(async () => {
       const before = { ...req };
       const { conflicts } = await this.schedule.update(req.targetSessionId!, {
         courseId: req.courseId, instructorId: req.instructorId, roomId: req.roomId,
@@ -297,9 +298,9 @@ export class ScheduleRequestsService {
         durationMinutes: req.durationMinutes, topic: req.topic, studentIds: req.studentIds,
         kind: req.kind, mode: req.mode, scope: req.scope, force,
       }, decidedBy);
-      const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, req.id, {
+      const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
-      })!;
+      }));
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts };
     });
@@ -307,19 +308,19 @@ export class ScheduleRequestsService {
 
   private async approveSessionDelete(req: RequestRow, decidedBy: number): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
     if (req.targetSessionId == null) throw new BadRequestException('삭제할 세션 id가 없습니다.');
-    return this.db.transaction(async () => {
+    return this.store.transaction(async () => {
       const before = { ...req };
       await this.schedule.remove(req.targetSessionId!, decidedBy);
-      const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, req.id, {
+      const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
-      })!;
+      }));
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts: [] };
     });
   }
 
   private async approveAvailability(req: RequestRow, decidedBy: number): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
-    return this.db.transaction(async () => {
+    return this.store.transaction(async () => {
       const before = { ...req };
       if (req.requestKind === 'availability_upsert') {
         await this.availability.upsert({
@@ -338,9 +339,9 @@ export class ScheduleRequestsService {
       } else {
         throw new BadRequestException('삭제할 availability id가 없습니다.');
       }
-      const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, req.id, {
+      const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
-      })!;
+      }));
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts: [] };
     });
@@ -350,7 +351,7 @@ export class ScheduleRequestsService {
    *  불변: requestKind·targetAvailabilityId·availability owner(DTO에 없음 → forbidNonWhitelisted 400).
    *  availability_delete는 수정 항목이 없어 400(반려 후 재요청). availability_upsert는 impact/요약 재계산. */
   async update(id: number, dto: UpdateScheduleRequestDto, actorId: number): Promise<RequestRow> {
-    const req = this.mustPending(id);
+    const req = await this.mustPending(id);
     if (req.requestKind === 'availability_delete' || req.requestKind === 'session_delete') {
       throw new BadRequestException('삭제 요청은 수정할 항목이 없습니다 — 반려 후 재요청하세요.');
     }
@@ -369,9 +370,9 @@ export class ScheduleRequestsService {
       patch.impactSessionIds = impact.map((x) => x.sessionId);
       patch.changeSummary = this.availabilitySummary('availability_upsert', upsert, impact.length);
     }
-    return this.db.transaction(() => {
+    return this.store.transaction(async () => {
       const before = { ...req };
-      const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, id, patch as Partial<RequestRow>)!;
+      const updated = this.mustStored(await this.store.update<RequestRow>(id, patch as Partial<RequestRow>));
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'update', actorId, changes: this.audit.diffOf(before, updated) as never });
       return updated;
     });
@@ -379,11 +380,11 @@ export class ScheduleRequestsService {
 
   /** 반려 — 사유 필수(DTO 강제). */
   async reject(id: number, decidedBy: number, reason: string): Promise<RequestRow> {
-    this.mustPending(id);
-    return this.db.transaction(() => {
-      const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, id, {
+    await this.mustPending(id);
+    return this.store.transaction(async () => {
+      const updated = this.mustStored(await this.store.update<RequestRow>(id, {
         status: 'rejected', reason, decidedBy, decidedAt: new Date().toISOString(),
-      })!;
+      }));
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'reject', actorId: decidedBy, reason });
       return updated;
     });
@@ -391,19 +392,24 @@ export class ScheduleRequestsService {
 
   /** 본인 pending 요청 철회(soft delete) — 강사용. 타인 요청은 403. */
   async withdraw(id: number, requesterId: number): Promise<{ id: number; deleted: boolean }> {
-    const req = this.mustPending(id);
+    const req = await this.mustPending(id);
     if (req.requesterId !== requesterId) throw new ForbiddenException('본인 요청만 철회할 수 있습니다');
-    return this.db.transaction(() => {
-      const deleted = this.db.remove(SCHEDULE_REQUESTS, id, requesterId);
+    return this.store.transaction(async () => {
+      const deleted = await this.store.remove(id, requesterId);
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'delete', actorId: requesterId, changes: this.audit.snapshotOf({ ...req }) as never });
       return { id, deleted };
     });
   }
 
-  private mustPending(id: number): RequestRow {
-    const req = this.db.findById<RequestRow>(SCHEDULE_REQUESTS, id);
+  private async mustPending(id: number): Promise<RequestRow> {
+    const req = await this.store.findById<RequestRow>(id);
     if (!req) throw new NotFoundException(`Request ${id} not found`);
     if (req.status !== 'pending') throw new BadRequestException(`이미 처리된 요청입니다(${req.status})`);
     return req;
+  }
+
+  private mustStored(row: RequestRow | undefined): RequestRow {
+    if (!row) throw new NotFoundException('Request row disappeared while updating');
+    return row;
   }
 }
