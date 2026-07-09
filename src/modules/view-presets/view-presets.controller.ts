@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { ViewPresetsService } from './view-presets.service';
 import { CreateViewPresetDto } from './dto/create-view-preset.dto';
@@ -22,6 +22,12 @@ export class ViewPresetsController {
   @Roles(...STAFF_ROLES)
   create(@Body() dto: CreateViewPresetDto) {
     return this.presets.create(dto);
+  }
+
+  @Patch(':id')
+  @Roles(...STAFF_ROLES)
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateViewPresetDto) {
+    return this.presets.update(id, dto);
   }
 
   @Delete(':id')

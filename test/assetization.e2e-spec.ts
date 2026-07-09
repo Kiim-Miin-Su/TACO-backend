@@ -23,7 +23,7 @@ describe('Assetization sweep 2 (e2e)', () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it('view-presets: 저장·목록·이름 중복 400·삭제 (+비로그인 401)', async () => {
+  it('view-presets: 저장·목록·수정·이름 중복 400·삭제 (+비로그인 401)', async () => {
     const body = {
       name: '미국 학생 주간', view: 'week', instructorIds: [], studentIds: [1], roomIds: [],
       subjects: [], statuses: [], groupOnly: false, countryCode: 'US',
@@ -32,9 +32,12 @@ describe('Assetization sweep 2 (e2e)', () => {
     const created = (await http.post('/api/view-presets').set(asAdmin()).send(body).expect(201)).body;
     expect(created.countryCode).toBe('US');
     await http.post('/api/view-presets').set(asAdmin()).send(body).expect(400); // 이름 중복(실DB unique 정합)
+    const updated = (await http.patch(`/api/view-presets/${created.id}`).set(asAdmin())
+      .send({ ...body, view: 'day', countryCode: 'GB', compactCols: true }).expect(200)).body;
+    expect(updated).toMatchObject({ id: created.id, view: 'day', countryCode: 'GB', compactCols: true });
     await http.post('/api/view-presets').set(asAdmin()).send({ ...body, name: 'x', countryCode: 'usa' }).expect(400); // 코드 형식
     const list = (await http.get('/api/view-presets').set(asAdmin()).expect(200)).body;
-    expect(list.some((p: { id: number }) => p.id === created.id)).toBe(true);
+    expect(list.some((p: { id: number; view: string }) => p.id === created.id && p.view === 'day')).toBe(true);
     await http.delete(`/api/view-presets/${created.id}`).set(asAdmin()).expect(200);
     expect((await http.get('/api/view-presets').set(asAdmin()).expect(200)).body
       .some((p: { id: number }) => p.id === created.id)).toBe(false);

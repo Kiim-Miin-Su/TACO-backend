@@ -20,6 +20,14 @@ export class ViewPresetsService {
     return this.db.insert<ViewPreset>(VIEW_PRESETS, { ...dto });
   }
 
+  update(id: number, dto: CreateViewPresetDto): ViewPreset {
+    const row = this.db.findById<ViewPreset>(VIEW_PRESETS, id);
+    if (!row) throw new NotFoundException(`ViewPreset ${id} not found`);
+    const dup = this.findAll().find((p) => p.id !== id && p.name === dto.name);
+    if (dup) throw new BadRequestException(`같은 이름의 프리셋이 이미 있습니다: ${dto.name}`);
+    return this.db.update<ViewPreset>(VIEW_PRESETS, id, { ...dto })!;
+  }
+
   remove(id: number): ViewPreset {
     const row = this.db.findById<ViewPreset>(VIEW_PRESETS, id);
     if (!row) throw new NotFoundException(`ViewPreset ${id} not found`);

@@ -17,11 +17,12 @@ import { UpsertAvailabilityDto } from '../availability/dto/upsert-availability.d
 
 export const SCHEDULE_REQUESTS = 'schedule_requests';
 
-type ScheduleRequestKindEx = 'session_create' | 'availability_upsert' | 'availability_delete';
+type ScheduleRequestKindEx = 'session_create' | 'session_update' | 'availability_upsert' | 'availability_delete';
 type AvailabilityKindEx = AvailabilityKind | 'online_only';
 type RequestRow = ScheduleRequest & BaseRow & {
   requestKind?: ScheduleRequestKindEx;
   mode?: SessionMode; // [C2D] 수업방식 보존(contracts 게시 전 로컬 표기 — src에는 반영됨)
+  targetSessionId?: number;
   targetAvailabilityId?: number;
   availabilityOwnerType?: AvailabilityOwner;
   availabilityOwnerId?: number;
@@ -48,6 +49,9 @@ export class ScheduleRequestsService {
   async create(dto: CreateScheduleRequestDto, requesterId: number, requesterRoles?: string[]): Promise<{ row: RequestRow; conflicts: Conflict[] }> {
     if (dto.requestKind === 'availability_upsert' || dto.requestKind === 'availability_delete') {
       return { row: await this.createAvailabilityRequest(dto, requesterId, requesterRoles), conflicts: [] };
+    }
+    if (dto.requestKind === 'session_update') {
+      return this.createSessionUpdateRequest(dto, requesterId, requesterRoles);
     }
     const instructorId = this.schedule.validateSessionInput({ ...dto, courseId: dto.courseId! }); // FK·코호트(함수 통일)
     // 참고용 충돌 드라이런(승인 시점에 재검사가 확정본)
@@ -77,6 +81,66 @@ export class ScheduleRequestsService {
       return created;
     });
     return { row, conflicts };
+  }
+
+  private async createSessionUpdateRequest(dto: CreateScheduleRequestDto, requesterId: number, requesterRoles?: string[]): Promise<{ row: RequestRow; conflicts: Conflict[] }> {
+    const target = this.schedule.list({}).find((s) => s.id === dto.targetSessionId);
+    if (!target) throw new NotFoundException(`Session ${dto.targetSessionId} not found`);
+    if (!hasAdminRole(requesterRoles) && Number(target.instructorId) !== Number(requesterId)) {
+      throw new ForbiddenException('강사는 본인 수업 변경만 요청할 수 있습니다.');
+    }
+    const merged = {
+      courseId: dto.courseId ?? target.courseId,
+      instructorId: dto.instructorId ?? target.instructorId,
+      roomId: dto.roomId ?? target.roomId,
+      sessionDate: dto.sessionDate ?? target.sessionDate,
+      startTime: dto.startTime ?? target.startTime,
+      endTime: dto.endTime ?? target.endTime,
+      durationMinutes: dto.durationMinutes ?? target.durationMinutes,
+      studentIds: dto.studentIds ?? target.studentIds,
+      topic: dto.topic ?? target.topic,
+      kind: dto.kind ?? target.kind,
+      mode: dto.mode ?? target.mode,
+    };
+    this.schedule.validateSessionInput(merged);
+    const conflicts = this.schedule.checkConflicts({
+      sessionDate: merged.sessionDate!, startTime: merged.startTime!, endTime: merged.endTime,
+      durationMinutes: merged.durationMinutes, instructorId: merged.instructorId, roomId: merged.roomId,
+      ignoreSessionId: target.id, mode: merged.mode,
+    });
+    const row = await this.db.transaction(() => {
+      const created = this.db.insert<RequestRow>(SCHEDULE_REQUESTS, {
+        requesterId,
+        requestKind: 'session_update',
+        targetSessionId: target.id,
+        courseId: merged.courseId,
+        instructorId: merged.instructorId,
+        roomId: merged.roomId,
+        sessionDate: merged.sessionDate,
+        startTime: merged.startTime,
+        endTime: merged.endTime,
+        durationMinutes: merged.durationMinutes,
+        kind: merged.kind,
+        mode: merged.mode,
+        topic: merged.topic,
+        studentIds: merged.studentIds,
+        impactSessionIds: [target.id],
+        changeSummary: this.sessionUpdateSummary(target, merged),
+        status: 'pending',
+      } as unknown as Omit<RequestRow, keyof BaseRow>);
+      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
+      return created;
+    });
+    return { row, conflicts };
+  }
+
+  private sessionUpdateSummary(before: { sessionDate?: string; startTime?: string; endTime?: string; roomId?: number; instructorId?: number }, after: { sessionDate?: string; startTime?: string; endTime?: string; roomId?: number; instructorId?: number }): string {
+    const changes: string[] = [];
+    if (before.sessionDate !== after.sessionDate) changes.push(`${before.sessionDate} -> ${after.sessionDate}`);
+    if (before.startTime !== after.startTime || before.endTime !== after.endTime) changes.push(`${before.startTime ?? ''}-${before.endTime ?? ''} -> ${after.startTime ?? ''}-${after.endTime ?? ''}`);
+    if (before.instructorId !== after.instructorId) changes.push(`강사 ${before.instructorId} -> ${after.instructorId}`);
+    if (before.roomId !== after.roomId) changes.push(`강의실 ${before.roomId ?? '-'} -> ${after.roomId ?? '-'}`);
+    return changes.length ? `수업 변경 요청 · ${changes.join(' · ')}` : '수업 변경 요청';
   }
 
   private async createAvailabilityRequest(dto: CreateScheduleRequestDto, requesterId: number, requesterRoles?: string[]): Promise<RequestRow> {
@@ -157,6 +221,9 @@ export class ScheduleRequestsService {
     if (req.requestKind === 'availability_upsert' || req.requestKind === 'availability_delete') {
       return this.approveAvailability(req, decidedBy);
     }
+    if (req.requestKind === 'session_update') {
+      return this.approveSessionUpdate(req, decidedBy, force);
+    }
     return this.db.transaction(async () => {
       const before = { ...req };
       // 기존 createSession 경로 그대로 — FK·코호트 재검증 + 충돌 409(force면 강제) + create audit(actor=승인자)
@@ -171,6 +238,24 @@ export class ScheduleRequestsService {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(), createdSessionId: session.id,
       })!;
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
+      return { request: updated, conflicts };
+    });
+  }
+
+  private async approveSessionUpdate(req: RequestRow, decidedBy: number, force?: boolean): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
+    if (req.targetSessionId == null) throw new BadRequestException('변경할 세션 id가 없습니다.');
+    return this.db.transaction(async () => {
+      const before = { ...req };
+      const { conflicts } = await this.schedule.update(req.targetSessionId!, {
+        courseId: req.courseId, instructorId: req.instructorId, roomId: req.roomId,
+        sessionDate: req.sessionDate, startTime: req.startTime, endTime: req.endTime,
+        durationMinutes: req.durationMinutes, topic: req.topic, studentIds: req.studentIds,
+        kind: req.kind, mode: req.mode, force,
+      }, decidedBy);
+      const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, req.id, {
+        status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
+      })!;
+      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts };
     });
   }
@@ -215,7 +300,7 @@ export class ScheduleRequestsService {
     for (const [k, v] of Object.entries(dto)) if (v !== undefined) patch[k] = v;
     if (!Object.keys(patch).length) throw new BadRequestException('수정할 필드가 없습니다');
     const merged = { ...req, ...patch } as RequestRow;
-    if (!req.requestKind || req.requestKind === 'session_create') {
+    if (!req.requestKind || req.requestKind === 'session_create' || req.requestKind === 'session_update') {
       // FK·코호트 재검증 + 코스 변경 시 기본 강사 재해석(생성 경로와 동일 규칙)
       patch.instructorId = this.schedule.validateSessionInput({ ...merged, courseId: merged.courseId! });
     } else {

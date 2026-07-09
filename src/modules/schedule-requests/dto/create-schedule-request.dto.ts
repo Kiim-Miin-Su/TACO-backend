@@ -4,14 +4,15 @@ import type { AvailabilityKind, AvailabilityOwner, SessionKind, SessionMode, Cre
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-type RequestKind = 'session_create' | 'availability_upsert' | 'availability_delete';
+type RequestKind = 'session_create' | 'session_update' | 'availability_upsert' | 'availability_delete';
 type AvailabilityKindEx = AvailabilityKind | 'online_only';
-const REQUEST_KINDS: RequestKind[] = ['session_create', 'availability_upsert', 'availability_delete'];
+const REQUEST_KINDS: RequestKind[] = ['session_create', 'session_update', 'availability_upsert', 'availability_delete'];
 const AVAILABILITY_KINDS: AvailabilityKindEx[] = ['available', 'unavailable', 'online_only'];
 const SESSION_MODES: SessionMode[] = ['in_person', 'online'];
 const OWNER_TYPES: AvailabilityOwner[] = ['student', 'instructor', 'room'];
 
 const isSessionCreate = (o: CreateScheduleRequestDto): boolean => !o.requestKind || o.requestKind === 'session_create';
+const isSessionRequest = (o: CreateScheduleRequestDto): boolean => isSessionCreate(o) || o.requestKind === 'session_update';
 const isAvailabilityUpsert = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'availability_upsert';
 const isAvailabilityDelete = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'availability_delete';
 const isAvailabilityRequest = (o: CreateScheduleRequestDto): boolean => isAvailabilityUpsert(o) || isAvailabilityDelete(o);
@@ -22,6 +23,11 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @ApiPropertyOptional({ enum: REQUEST_KINDS, example: 'session_create', description: '요청 종류(기본 session_create)' })
   @IsOptional() @IsIn(REQUEST_KINDS)
   requestKind?: RequestKind;
+
+  @ApiPropertyOptional({ example: 20, description: 'session_update 대상 세션 id' })
+  @ValidateIf((o) => o.requestKind === 'session_update')
+  @IsDefined() @IsInt()
+  targetSessionId?: number;
 
   @ApiPropertyOptional({ example: 10, description: '코스 FK(session_create 필수)' })
   @ValidateIf(isSessionCreate)
@@ -37,12 +43,12 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   roomId?: number;
 
   @ApiPropertyOptional({ example: '2026-07-10', description: 'session_create 필수' })
-  @ValidateIf(isSessionCreate)
+  @ValidateIf(isSessionRequest)
   @Matches(/^\d{4}-\d{2}-\d{2}$/)
   sessionDate!: string;
 
   @ApiPropertyOptional({ example: '16:00', description: 'HH:mm — KST 단일 진실원(session_create 필수)' })
-  @ValidateIf(isSessionCreate)
+  @ValidateIf(isSessionRequest)
   @Matches(HHMM, { message: 'startTime must be HH:mm' })
   startTime!: string;
 

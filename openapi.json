@@ -2678,6 +2678,44 @@
       }
     },
     "/api/view-presets/{id}": {
+      "patch": {
+        "operationId": "ViewPresetsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateViewPresetDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "view-presets"
+        ]
+      },
       "delete": {
         "operationId": "ViewPresetsController_remove",
         "parameters": [
@@ -3880,12 +3918,18 @@
           "requestKind": {
             "enum": [
               "session_create",
+              "session_update",
               "availability_upsert",
               "availability_delete"
             ],
             "type": "string",
             "example": "session_create",
             "description": "요청 종류(기본 session_create)"
+          },
+          "targetSessionId": {
+            "type": "number",
+            "example": 20,
+            "description": "session_update 대상 세션 id"
           },
           "courseId": {
             "type": "number",
@@ -4396,12 +4440,12 @@
             "maxLength": 40
           },
           "view": {
-            "type": "string",
             "enum": [
               "month",
               "week",
               "day"
-            ]
+            ],
+            "type": "string"
           },
           "periodFrom": {
             "type": "string"

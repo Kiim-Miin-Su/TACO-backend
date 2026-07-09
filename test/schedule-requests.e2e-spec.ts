@@ -10,14 +10,17 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
   let http: ReturnType<typeof request>;
   let ADMIN = '';
   let INST = '';
+  let INST2 = '';
   const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
   const asInst = () => ({ Authorization: `Bearer ${INST}` });
+  const asInst2 = () => ({ Authorization: `Bearer ${INST2}` });
 
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
     ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     INST = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
+    INST2 = (await http.post('/api/auth/login').send({ webId: 'jung_inst', password: 'demo1234' }).expect(201)).body.accessToken;
   });
   afterAll(async () => { await app.close(); });
 
@@ -103,6 +106,58 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       .find((a: { action: string }) => a.action === 'approve');
     expect(approveAudit.changes.status).toMatchObject({ before: 'pending', after: 'approved' });
     expect(approveAudit.changes.createdSessionId.after).toBe(approved.createdSessionId);
+  });
+
+  it('[C3] 수업 변경 요청: 강사 drag/resize 결과를 pending으로 저장 → 관리자 승인 시 기존 세션 업데이트 + audit', async () => {
+    const target = (await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-07-01', startTime: '16:00', endTime: '17:00', force: true, topic: '변경 대상 수업' })
+      .expect(201)).body.row;
+
+    await http.post('/api/schedule-requests').set(asInst2())
+      .send({
+        requestKind: 'session_update',
+        targetSessionId: target.id,
+        sessionDate: '2099-07-01',
+        startTime: '17:30',
+        endTime: '18:30',
+        topic: '권한 없는 변경',
+      })
+      .expect(403);
+
+    const made = (await http.post('/api/schedule-requests').set(asInst())
+      .send({
+        requestKind: 'session_update',
+        targetSessionId: target.id,
+        sessionDate: '2099-07-01',
+        startTime: '17:30',
+        endTime: '18:30',
+        topic: '드래그 변경 요청',
+      })
+      .expect(201)).body.row;
+    expect(made).toMatchObject({
+      status: 'pending',
+      requestKind: 'session_update',
+      targetSessionId: target.id,
+      impactSessionIds: [target.id],
+      startTime: '17:30',
+      endTime: '18:30',
+    });
+    expect(made.changeSummary).toContain('16:00-17:00 -> 17:30-18:30');
+
+    const ok = (await http.post(`/api/schedule-requests/${made.id}/approve`).set(asAdmin()).expect(201)).body;
+    expect(ok.request).toMatchObject({ status: 'approved', targetSessionId: target.id });
+
+    const rows = (await http.get('/api/schedule?from=2099-07-01&to=2099-07-01').set(asAdmin()).expect(200)).body;
+    const updated = rows.find((s: { id: number }) => s.id === target.id);
+    expect(updated).toMatchObject({ startTime: '17:30', endTime: '18:30', topic: '드래그 변경 요청' });
+
+    const sessionAudit = (await http.get(`/api/audit?entity=class_sessions&entityId=${target.id}`).set(asAdmin()).expect(200)).body;
+    const sessionUpdate = sessionAudit.find((a: { action: string; changes?: Record<string, { before?: unknown; after?: unknown }> }) =>
+      a.action === 'update' && a.changes?.startTime?.after === '17:30');
+    expect(sessionUpdate).toBeDefined();
+    expect(sessionUpdate!.changes?.endTime).toMatchObject({ before: '17:00', after: '18:30' });
+    const requestAudit = (await http.get(`/api/audit?entity=schedule_requests&entityId=${made.id}`).set(asAdmin()).expect(200)).body;
+    expect(requestAudit.find((a: { action: string }) => a.action === 'approve')?.changes.status).toMatchObject({ before: 'pending', after: 'approved' });
   });
 
   it('철회(soft delete): 본인 pending만 — 목록에서 사라지되 audit에 delete 스냅샷 잔존', async () => {

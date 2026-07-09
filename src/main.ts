@@ -18,7 +18,7 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   // 프론트(Next.js)와 분리 운영 — CORS 허용.
-  // WEB_ORIGIN: 콤마로 여러 도메인 지정 가능. 미지정 시 로컬/현재 Vercel 프론트 alias 기본값.
+  // 로컬은 QA 포트가 바뀔 수 있어 전체 origin 허용(origin=true), production은 WEB_ORIGIN/Vercel allowlist.
   app.enableCors({
     origin: webCorsOrigins(),
     credentials: true,
