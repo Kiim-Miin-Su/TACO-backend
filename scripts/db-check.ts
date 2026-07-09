@@ -1,10 +1,14 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
+import { loadLocalEnv } from '../src/config/load-env';
+import { directDatabaseUrl } from '../src/database/database-url';
 
-const url = process.env.DATABASE_URL_UNPOOLED || process.env.DATABASE_URL;
+loadLocalEnv();
+
+const url = directDatabaseUrl();
 
 if (!url) {
-  console.error('DATABASE_URL or DATABASE_URL_UNPOOLED is required for db:check');
+  console.error('DATABASE_URL_UNPOOLED, DATABASE_URL, POSTGRES_URL_NON_POOLING, or POSTGRES_URL is required for db:check');
   process.exit(1);
 }
 const dbUrl = url;

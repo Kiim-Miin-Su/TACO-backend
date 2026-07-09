@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { DataSource } from 'typeorm';
+import { runtimeDatabaseUrl } from './database-url';
 
 export type DatabaseConnectionStatus = {
   runtimeStore: 'in-memory' | 'postgres';
@@ -34,7 +35,7 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
   private lastError: string | null = null;
 
   get configured(): boolean {
-    return !!process.env.DATABASE_URL;
+    return !!runtimeDatabaseUrl();
   }
 
   get ready(): boolean {
@@ -46,9 +47,9 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
   }
 
   async onModuleInit(): Promise<void> {
-    const url = process.env.DATABASE_URL;
+    const url = runtimeDatabaseUrl();
     if (!url) {
-      this.logger.log('DATABASE_URL not set — running with in-memory store');
+      this.logger.log('DATABASE_URL/POSTGRES_URL not set — running with in-memory store');
       return;
     }
 
@@ -86,7 +87,7 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
   }
 
   async ping(): Promise<DatabaseConnectionStatus> {
-    const url = process.env.DATABASE_URL;
+    const url = runtimeDatabaseUrl();
     const info = url ? safeUrlInfo(url) : {};
     if (!url) {
       return { runtimeStore: 'in-memory', configured: false, ready: false };

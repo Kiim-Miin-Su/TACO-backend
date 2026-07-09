@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { loadLocalEnv } from './config/load-env';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
@@ -15,6 +16,7 @@ for (const f of ['.env', '.env.local']) {
 }
 
 async function bootstrap() {
+  loadLocalEnv();
   const app = await NestFactory.create(AppModule);
 
   // 프론트(Next.js)와 분리 운영 — CORS 허용.
