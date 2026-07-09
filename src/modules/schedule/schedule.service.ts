@@ -137,13 +137,13 @@ export class ScheduleService implements OnModuleInit {
       });
     });
 
-    // 테스트용 겹침 픽스처: 강사1(박지훈)의 점심 불가시간(월 12:00–13:00) 위에 놓인 세션.
-    // 캘린더에서 강사1 선택 시 회색 불가 밴드와 겹치는 수업이 보이고, 충돌 검사 데모가 가능.
+    // 보강 픽스처: 강사1(박지훈)의 점심 불가시간(월 12:00-13:00)과 겹치지 않게 둔다.
+    // 불가시간과 실제 수업이 겹치는 시드는 운영 논리상 모순이므로 e2e로 금지한다.
     const mon0 = fmt(mon);
     // 표기는 실제 데이터(강사·수업명)로 깔끔하게 — "데모" 문구 금지(피드백 2026-07-02).
     this.db.insert<ClassSession>(SESSIONS, {
       courseId: 12, instructorId: 1, roomId: 2,
-      sessionDate: mon0, startTime: '12:30', endTime: '13:30', durationMinutes: 60,
+      sessionDate: mon0, startTime: '13:00', endTime: '14:00', durationMinutes: 60,
       status: 'scheduled', topic: 'TOEFL 정규 — 보강', mode: 'online', // [v0.1.16]
     });
 

@@ -71,12 +71,30 @@ describe("Schedule API (e2e)", () => {
     expect(c11.durationMinutes).toBe(120);
   });
 
-  it("겹침 픽스처: 강사1 점심 불가시간 위 세션이 시드에 존재", async () => {
-    const rows = (await http.get(`/api/schedule?from=${MON}&to=${SUN}&instructorId=1`).set(asAdmin()).expect(200)).body;
-    const overlap = rows.find(
-      (r: { sessionDate: string; startTime: string }) => r.sessionDate === MON && r.startTime === "12:30",
-    );
-    expect(overlap).toBeTruthy(); // 강사1 점심(12:00–13:00)과 겹치는 데모 세션
+  it("시드 무결성: 불가시간/온라인만 가능 블록과 실제 수업이 겹치지 않는다", async () => {
+    const rows = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body;
+    const blocks = (await http.get("/api/availability").set(asAdmin()).expect(200)).body;
+    const toMin = (hhmm: string) => {
+      const [h, m] = hhmm.split(":").map(Number);
+      return h * 60 + m;
+    };
+    const weekdayOf = (iso: string) => new Date(`${iso}T00:00:00Z`).getUTCDay();
+    const overlaps = rows.flatMap((r: { id: number; instructorId: number; roomId?: number; sessionDate: string; startTime?: string; endTime?: string; durationMinutes: number; mode?: string; courseName: string }) => {
+      if (!r.startTime) return [];
+      const s = toMin(r.startTime);
+      const e = r.endTime ? toMin(r.endTime) : s + r.durationMinutes;
+      return blocks
+        .filter((b: { kind: string; weekday: number; ownerType: string; ownerId: number; startTime: string; endTime: string; effectiveFrom?: string; effectiveTo?: string }) =>
+          (b.kind === "unavailable" || (b.kind === "online_only" && (r.mode ?? "in_person") !== "online")) &&
+          b.weekday === weekdayOf(r.sessionDate) &&
+          (!b.effectiveFrom || r.sessionDate >= b.effectiveFrom) &&
+          (!b.effectiveTo || r.sessionDate <= b.effectiveTo) &&
+          ((b.ownerType === "instructor" && b.ownerId === r.instructorId) || (b.ownerType === "room" && b.ownerId === r.roomId)) &&
+          s < toMin(b.endTime) && toMin(b.startTime) < e,
+        )
+        .map((b: { kind: string; startTime: string; endTime: string }) => `${r.id}:${r.courseName}:${r.startTime}-${r.endTime} overlaps ${b.kind}:${b.startTime}-${b.endTime}`);
+    });
+    expect(overlaps).toEqual([]);
   });
 
   it("GET /schedule?studentId=2 — 학생2 코호트(코스11) 세션만", async () => {
