@@ -61,6 +61,10 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     expect(ok.request.createdSessionId).toBeGreaterThan(0);
     const rows = (await http.get(`/api/schedule?from=2099-01-04&to=2099-01-04`).set(asAdmin()).expect(200)).body;
     expect(rows.some((s: { id: number }) => s.id === ok.request.createdSessionId)).toBe(true);
+    const audit = (await http.get(`/api/audit?entity=schedule_requests&entityId=${pending.id}`).set(asAdmin()).expect(200)).body;
+    const approved = audit.find((a: { action: string }) => a.action === 'approve');
+    expect(approved.changes.status).toMatchObject({ before: 'pending', after: 'approved' });
+    expect(approved.changes.createdSessionId.after).toBe(ok.request.createdSessionId);
     // 이미 처리된 요청 재승인 400
     await http.post(`/api/schedule-requests/${pending.id}/approve?force=true`).set(asAdmin()).expect(400);
   });
@@ -72,6 +76,33 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     const rej = (await http.post(`/api/schedule-requests/${req1.id}/reject`).set(asAdmin())
       .send({ reason: '해당 요일 강의실 부족' }).expect(201)).body;
     expect(rej).toMatchObject({ status: 'rejected', reason: '해당 요일 강의실 부족' });
+  });
+
+  it('QA 흐름: 강사 요청 2건 → 관리자 승인/반려 → 승인 세션 렌더 조회 + audit diff', async () => {
+    const base = { courseId: 10, sessionDate: '2099-06-01', kind: 'class' as const };
+    const toApprove = (await http.post('/api/schedule-requests').set(asInst())
+      .send({ ...base, startTime: '08:00', endTime: '09:00', topic: 'QA 승인 요청' })
+      .expect(201)).body.row;
+    const toReject = (await http.post('/api/schedule-requests').set(asInst())
+      .send({ ...base, startTime: '09:30', endTime: '10:30', topic: 'QA 반려 요청' })
+      .expect(201)).body.row;
+
+    const pending = (await http.get('/api/schedule-requests?status=pending').set(asAdmin()).expect(200)).body;
+    expect(pending.some((r: { id: number }) => r.id === toApprove.id)).toBe(true);
+    expect(pending.some((r: { id: number }) => r.id === toReject.id)).toBe(true);
+
+    const approved = (await http.post(`/api/schedule-requests/${toApprove.id}/approve?force=true`).set(asAdmin()).expect(201)).body.request;
+    expect(approved).toMatchObject({ status: 'approved', createdSessionId: expect.any(Number) });
+    const rejected = (await http.post(`/api/schedule-requests/${toReject.id}/reject`).set(asAdmin())
+      .send({ reason: 'QA 반려 사유' }).expect(201)).body;
+    expect(rejected).toMatchObject({ status: 'rejected', reason: 'QA 반려 사유' });
+
+    const rows = (await http.get('/api/schedule?from=2099-06-01&to=2099-06-01').set(asAdmin()).expect(200)).body;
+    expect(rows.some((s: { id: number; topic?: string }) => s.id === approved.createdSessionId && s.topic === 'QA 승인 요청')).toBe(true);
+    const approveAudit = (await http.get(`/api/audit?entity=schedule_requests&entityId=${toApprove.id}`).set(asAdmin()).expect(200)).body
+      .find((a: { action: string }) => a.action === 'approve');
+    expect(approveAudit.changes.status).toMatchObject({ before: 'pending', after: 'approved' });
+    expect(approveAudit.changes.createdSessionId.after).toBe(approved.createdSessionId);
   });
 
   it('철회(soft delete): 본인 pending만 — 목록에서 사라지되 audit에 delete 스냅샷 잔존', async () => {
@@ -151,6 +182,9 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     expect(changed.endTime).toBe('16:00');
     const audit = (await http.get(`/api/audit?entity=availability_blocks&entityId=${monAvailable.id}`).set(asAdmin()).expect(200)).body;
     expect(audit.some((a: { action: string; changes?: { endTime?: { after?: string } } }) => a.action === 'update' && a.changes?.endTime?.after === '16:00')).toBe(true);
+    const reqAudit = (await http.get(`/api/audit?entity=schedule_requests&entityId=${req.id}`).set(asAdmin()).expect(200)).body;
+    const reqApproved = reqAudit.find((a: { action: string }) => a.action === 'approve');
+    expect(reqApproved.changes.status).toMatchObject({ before: 'pending', after: 'approved' });
   });
 
   it('availability 요청 검증: 기존 블록과 겹치는 변경은 pending 요청으로 접수하지 않는다', async () => {
@@ -252,6 +286,16 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     // delete 요청은 수정 불가
     const del = (await http.post('/api/schedule-requests').set(asInst())
       .send({ requestKind: 'availability_delete', targetAvailabilityId: blk.id }).expect(201)).body.row;
+    expect(del).toMatchObject({
+      requestKind: 'availability_delete',
+      targetAvailabilityId: blk.id,
+      availabilityOwnerType: 'instructor',
+      availabilityOwnerId: 1,
+      availabilityKind: 'available',
+      availabilityWeekday: 6,
+      availabilityStartTime: '09:00',
+      availabilityEndTime: '10:00',
+    });
     await http.patch(`/api/schedule-requests/${del.id}`).set(asAdmin()).send({ availabilityStartTime: '10:00' }).expect(400);
   });
 });

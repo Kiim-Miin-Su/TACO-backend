@@ -99,19 +99,20 @@ export class ScheduleRequestsService {
     const impact = dto.requestKind === 'availability_upsert'
       ? this.availability.previewUpsertImpact(upsert!)
       : this.availability.previewDeleteImpact(dto.targetAvailabilityId!);
+    const requestedBlock = upsert ?? target;
     const row = await this.db.transaction(() => {
       const created = this.db.insert<RequestRow>(SCHEDULE_REQUESTS, {
         requestKind: dto.requestKind,
         requesterId,
         targetAvailabilityId: dto.targetAvailabilityId,
-        availabilityOwnerType: upsert?.ownerType,
-        availabilityOwnerId: upsert?.ownerId,
-        availabilityKind: upsert?.kind ?? 'available',
-        availabilityWeekday: upsert?.weekday,
-        availabilityStartTime: upsert?.startTime,
-        availabilityEndTime: upsert?.endTime,
-        availabilityEffectiveFrom: upsert?.effectiveFrom,
-        availabilityEffectiveTo: upsert?.effectiveTo,
+        availabilityOwnerType: requestedBlock?.ownerType,
+        availabilityOwnerId: requestedBlock?.ownerId,
+        availabilityKind: requestedBlock?.kind,
+        availabilityWeekday: requestedBlock?.weekday,
+        availabilityStartTime: requestedBlock?.startTime,
+        availabilityEndTime: requestedBlock?.endTime,
+        availabilityEffectiveFrom: requestedBlock?.effectiveFrom,
+        availabilityEffectiveTo: requestedBlock?.effectiveTo,
         impactSessionIds: impact.map((x) => x.sessionId),
         changeSummary: this.availabilitySummary(dto.requestKind!, upsert, impact.length),
         status: 'pending',
@@ -157,6 +158,7 @@ export class ScheduleRequestsService {
       return this.approveAvailability(req, decidedBy);
     }
     return this.db.transaction(async () => {
+      const before = { ...req };
       // 기존 createSession 경로 그대로 — FK·코호트 재검증 + 충돌 409(force면 강제) + create audit(actor=승인자)
       const { row: session, conflicts } = await this.schedule.create({
         courseId: req.courseId!, instructorId: req.instructorId, roomId: req.roomId,
@@ -168,13 +170,14 @@ export class ScheduleRequestsService {
       const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(), createdSessionId: session.id,
       })!;
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'approve', actorId: decidedBy });
+      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts };
     });
   }
 
   private async approveAvailability(req: RequestRow, decidedBy: number): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
     return this.db.transaction(async () => {
+      const before = { ...req };
       if (req.requestKind === 'availability_upsert') {
         await this.availability.upsert({
           id: req.targetAvailabilityId,
@@ -195,7 +198,7 @@ export class ScheduleRequestsService {
       const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
       })!;
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy });
+      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts: [] };
     });
   }
