@@ -2516,6 +2516,7 @@ components:
           enum:
           - session_create
           - session_update
+          - session_delete
           - availability_upsert
           - availability_delete
           type: string
@@ -2524,7 +2525,7 @@ components:
         targetSessionId:
           type: number
           example: 20
-          description: session_update 대상 세션 id
+          description: session_update/session_delete 대상 세션 id
         courseId:
           type: number
           example: 10

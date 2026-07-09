@@ -4,15 +4,16 @@ import type { AvailabilityKind, AvailabilityOwner, SessionKind, SessionMode, Cre
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-type RequestKind = 'session_create' | 'session_update' | 'availability_upsert' | 'availability_delete';
+type RequestKind = 'session_create' | 'session_update' | 'session_delete' | 'availability_upsert' | 'availability_delete';
 type AvailabilityKindEx = AvailabilityKind | 'online_only';
-const REQUEST_KINDS: RequestKind[] = ['session_create', 'session_update', 'availability_upsert', 'availability_delete'];
+const REQUEST_KINDS: RequestKind[] = ['session_create', 'session_update', 'session_delete', 'availability_upsert', 'availability_delete'];
 const AVAILABILITY_KINDS: AvailabilityKindEx[] = ['available', 'unavailable', 'online_only'];
 const SESSION_MODES: SessionMode[] = ['in_person', 'online'];
 const OWNER_TYPES: AvailabilityOwner[] = ['student', 'instructor', 'room'];
 
 const isSessionCreate = (o: CreateScheduleRequestDto): boolean => !o.requestKind || o.requestKind === 'session_create';
 const isSessionRequest = (o: CreateScheduleRequestDto): boolean => isSessionCreate(o) || o.requestKind === 'session_update';
+const isSessionTargetRequest = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'session_update' || o.requestKind === 'session_delete';
 const isAvailabilityUpsert = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'availability_upsert';
 const isAvailabilityDelete = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'availability_delete';
 const isAvailabilityRequest = (o: CreateScheduleRequestDto): boolean => isAvailabilityUpsert(o) || isAvailabilityDelete(o);
@@ -24,8 +25,8 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @IsOptional() @IsIn(REQUEST_KINDS)
   requestKind?: RequestKind;
 
-  @ApiPropertyOptional({ example: 20, description: 'session_update 대상 세션 id' })
-  @ValidateIf((o) => o.requestKind === 'session_update')
+  @ApiPropertyOptional({ example: 20, description: 'session_update/session_delete 대상 세션 id' })
+  @ValidateIf(isSessionTargetRequest)
   @IsDefined() @IsInt()
   targetSessionId?: number;
 

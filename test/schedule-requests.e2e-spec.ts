@@ -160,6 +160,41 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     expect(requestAudit.find((a: { action: string }) => a.action === 'approve')?.changes.status).toMatchObject({ before: 'pending', after: 'approved' });
   });
 
+  it('[C4] 수업 삭제 요청: 강사 삭제 액션 → pending → 관리자 승인 시 세션 soft delete + audit', async () => {
+    const target = (await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-07-02', startTime: '14:00', endTime: '15:00', force: true, topic: '삭제 요청 대상' })
+      .expect(201)).body.row;
+
+    await http.post('/api/schedule-requests').set(asInst2())
+      .send({ requestKind: 'session_delete', targetSessionId: target.id })
+      .expect(403);
+
+    const made = (await http.post('/api/schedule-requests').set(asInst())
+      .send({ requestKind: 'session_delete', targetSessionId: target.id })
+      .expect(201)).body.row;
+    expect(made).toMatchObject({
+      status: 'pending',
+      requestKind: 'session_delete',
+      targetSessionId: target.id,
+      impactSessionIds: [target.id],
+      sessionDate: '2099-07-02',
+      startTime: '14:00',
+    });
+
+    await http.patch(`/api/schedule-requests/${made.id}`).set(asAdmin()).send({ topic: '수정 불가' }).expect(400);
+
+    const ok = (await http.post(`/api/schedule-requests/${made.id}/approve`).set(asAdmin()).expect(201)).body;
+    expect(ok.request).toMatchObject({ status: 'approved', targetSessionId: target.id });
+
+    const rows = (await http.get('/api/schedule?from=2099-07-02&to=2099-07-02').set(asAdmin()).expect(200)).body;
+    expect(rows.some((s: { id: number }) => s.id === target.id)).toBe(false);
+
+    const sessionAudit = (await http.get(`/api/audit?entity=class_sessions&entityId=${target.id}`).set(asAdmin()).expect(200)).body;
+    expect(sessionAudit.find((a: { action: string }) => a.action === 'delete')?.changes.__row.before.id).toBe(target.id);
+    const requestAudit = (await http.get(`/api/audit?entity=schedule_requests&entityId=${made.id}`).set(asAdmin()).expect(200)).body;
+    expect(requestAudit.find((a: { action: string }) => a.action === 'approve')?.changes.status).toMatchObject({ before: 'pending', after: 'approved' });
+  });
+
   it('철회(soft delete): 본인 pending만 — 목록에서 사라지되 audit에 delete 스냅샷 잔존', async () => {
     const req2 = (await http.post('/api/schedule-requests').set(asInst())
       .send({ ...SLOT, sessionDate: '2099-01-06' }).expect(201)).body.row;
