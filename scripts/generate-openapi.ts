@@ -5,6 +5,7 @@ import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { writeFileSync } from 'fs';
 import { join } from 'path';
+import { dump } from 'js-yaml';
 import { AppModule } from '../src/app.module';
 
 async function main(): Promise<void> {
@@ -20,9 +21,10 @@ async function main(): Promise<void> {
   // 프로젝트 루트(=npm 실행 cwd)에 기록 — 컴파일 위치(dist/scripts)에 무관하게 backend/openapi.json.
   const out = join(process.cwd(), 'openapi.json');
   writeFileSync(out, JSON.stringify(document, null, 2));
+  writeFileSync(join(process.cwd(), 'docs/api/openapi.yaml'), dump(document, { noRefs: true, lineWidth: 120, noArrayIndent: true }));
   await app.close();
   // eslint-disable-next-line no-console
-  console.log(`openapi.json 생성 완료 — paths=${Object.keys(document.paths).length}, schemas=${Object.keys(document.components?.schemas ?? {}).length}`);
+  console.log(`openapi 생성 완료 — paths=${Object.keys(document.paths).length}, schemas=${Object.keys(document.components?.schemas ?? {}).length}`);
 }
 
 main().catch((e) => {

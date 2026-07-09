@@ -272,8 +272,24 @@
             "description": ""
           }
         },
+        "summary": "API health check",
         "tags": [
-          "Health"
+          "health"
+        ]
+      }
+    },
+    "/api/health/db": {
+      "get": {
+        "operationId": "HealthController_database",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "Database connection check. In-memory remains runtime store until Postgres cutover.",
+        "tags": [
+          "health"
         ]
       }
     },
