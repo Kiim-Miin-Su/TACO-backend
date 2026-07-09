@@ -2581,6 +2581,19 @@ components:
           type: string
           example: in_person
           description: '[C2D] 수업방식 — 요청 단계 보존, 승인 시 세션 mode로 반영(미지정=in_person)'
+        requestReason:
+          type: string
+          maxLength: 500
+          example: 학부모 요청으로 30분 늦춰야 합니다.
+          description: 요청자가 제출한 사유(반려 사유와 분리)
+        scope:
+          enum:
+          - this
+          - this_and_following
+          - all
+          type: string
+          example: this
+          description: session_update 반복 수업 적용 범위
         targetAvailabilityId:
           type: number
           example: 3
@@ -2679,6 +2692,19 @@ components:
           type: string
           example: online
           description: '[C2D] 수업방식'
+        requestReason:
+          type: string
+          maxLength: 500
+          example: 학부모 요청으로 30분 늦춰야 합니다.
+          description: 요청자가 제출한 사유(반려 사유와 분리)
+        scope:
+          enum:
+          - this
+          - this_and_following
+          - all
+          type: string
+          example: this
+          description: session_update 반복 수업 적용 범위
         availabilityKind:
           enum:
           - available

@@ -5,7 +5,7 @@
 //  - 반려: 사유 **필수**(Q2). 승인/반려 모두 audit_log 기록(approve/reject).
 //  - 배지: pending 건수는 프론트 lib/tasks.ts 단일 소스에 편입(R1 — 별도 카운트 금지).
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AvailabilityKind, AvailabilityOwner, ScheduleRequest, SessionMode, Conflict } from '@kms545487/contracts';
+import type { AvailabilityKind, AvailabilityOwner, RecurrenceScope, ScheduleRequest, SessionMode, Conflict } from '@kms545487/contracts';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { ScheduleService } from '../schedule/schedule.service';
 import { AuditService } from '../audit/audit.service';
@@ -34,6 +34,8 @@ type RequestRow = ScheduleRequest & BaseRow & {
   availabilityEffectiveTo?: string;
   impactSessionIds?: number[];
   changeSummary?: string;
+  requestReason?: string;
+  scope?: RecurrenceScope;
 };
 
 @Injectable()
@@ -78,6 +80,7 @@ export class ScheduleRequestsService {
         mode: dto.mode, // [C2D] 보존(미지정=승인 시 SESSION_DEFAULTS.in_person)
         topic: dto.topic,
         studentIds: dto.studentIds,
+        requestReason: dto.requestReason,
         status: 'pending',
       } as unknown as Omit<RequestRow, keyof BaseRow>);
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
@@ -127,6 +130,8 @@ export class ScheduleRequestsService {
         mode: merged.mode,
         topic: merged.topic,
         studentIds: merged.studentIds,
+        requestReason: dto.requestReason,
+        scope: dto.scope ?? 'this',
         impactSessionIds: [target.id],
         changeSummary: this.sessionUpdateSummary(target, merged),
         status: 'pending',
@@ -159,6 +164,7 @@ export class ScheduleRequestsService {
         mode: target.mode,
         topic: target.topic,
         studentIds: target.studentIds,
+        requestReason: dto.requestReason,
         impactSessionIds: [target.id],
         changeSummary: `수업 삭제 요청 · ${target.sessionDate} ${target.startTime ?? ''}${target.endTime ? `-${target.endTime}` : ''}`,
         status: 'pending',
@@ -214,6 +220,7 @@ export class ScheduleRequestsService {
         availabilityEffectiveTo: requestedBlock?.effectiveTo,
         impactSessionIds: impact.map((x) => x.sessionId),
         changeSummary: this.availabilitySummary(dto.requestKind!, upsert, impact.length),
+        requestReason: dto.requestReason,
         status: 'pending',
       } as Omit<RequestRow, keyof BaseRow>);
       this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
@@ -288,7 +295,7 @@ export class ScheduleRequestsService {
         courseId: req.courseId, instructorId: req.instructorId, roomId: req.roomId,
         sessionDate: req.sessionDate, startTime: req.startTime, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic, studentIds: req.studentIds,
-        kind: req.kind, mode: req.mode, force,
+        kind: req.kind, mode: req.mode, scope: req.scope, force,
       }, decidedBy);
       const updated = this.db.update<RequestRow>(SCHEDULE_REQUESTS, req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),

@@ -1,12 +1,13 @@
 import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import type { AvailabilityKind, SessionKind, SessionMode } from '@kms545487/contracts';
+import type { AvailabilityKind, RecurrenceScope, SessionKind, SessionMode } from '@kms545487/contracts';
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 type AvailabilityKindEx = AvailabilityKind | 'online_only';
 const AVAILABILITY_KINDS: AvailabilityKindEx[] = ['available', 'unavailable', 'online_only'];
 const SESSION_MODES: SessionMode[] = ['in_person', 'online'];
+const RECURRENCE_SCOPES: RecurrenceScope[] = ['this', 'this_and_following', 'all'];
 
 // [C2C-b 청크2] pending 요청 수정(관리자 전용) — 전 필드 optional.
 //  불변 필드(요청 종류·대상 블록·availability owner)는 DTO에 없음 → 전역 forbidNonWhitelisted가 400으로 차단.
@@ -55,6 +56,14 @@ export class UpdateScheduleRequestDto {
   @ApiPropertyOptional({ enum: SESSION_MODES, example: 'online', description: '[C2D] 수업방식' })
   @IsOptional() @IsIn(SESSION_MODES)
   mode?: SessionMode;
+
+  @ApiPropertyOptional({ example: '학부모 요청으로 30분 늦춰야 합니다.', description: '요청자가 제출한 사유(반려 사유와 분리)' })
+  @IsOptional() @IsString() @MaxLength(500)
+  requestReason?: string;
+
+  @ApiPropertyOptional({ enum: RECURRENCE_SCOPES, example: 'this', description: 'session_update 반복 수업 적용 범위' })
+  @IsOptional() @IsIn(RECURRENCE_SCOPES)
+  scope?: RecurrenceScope;
 
   @ApiPropertyOptional({ enum: AVAILABILITY_KINDS, description: 'availability_upsert 전용' })
   @IsOptional() @IsIn(AVAILABILITY_KINDS)

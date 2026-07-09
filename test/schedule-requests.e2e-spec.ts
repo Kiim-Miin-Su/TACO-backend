@@ -121,6 +121,8 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
         startTime: '17:30',
         endTime: '18:30',
         topic: '권한 없는 변경',
+        requestReason: '권한 테스트',
+        scope: 'this',
       })
       .expect(403);
 
@@ -132,6 +134,8 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
         startTime: '17:30',
         endTime: '18:30',
         topic: '드래그 변경 요청',
+        requestReason: '학부모 요청으로 30분 늦춥니다.',
+        scope: 'this',
       })
       .expect(201)).body.row;
     expect(made).toMatchObject({
@@ -141,11 +145,15 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       impactSessionIds: [target.id],
       startTime: '17:30',
       endTime: '18:30',
+      requestReason: '학부모 요청으로 30분 늦춥니다.',
+      scope: 'this',
     });
     expect(made.changeSummary).toContain('16:00-17:00 -> 17:30-18:30');
 
     const ok = (await http.post(`/api/schedule-requests/${made.id}/approve`).set(asAdmin()).expect(201)).body;
     expect(ok.request).toMatchObject({ status: 'approved', targetSessionId: target.id });
+    const pendingAfter = (await http.get('/api/schedule-requests?status=pending').set(asAdmin()).expect(200)).body;
+    expect(pendingAfter.some((r: { id: number }) => r.id === made.id)).toBe(false);
 
     const rows = (await http.get('/api/schedule?from=2099-07-01&to=2099-07-01').set(asAdmin()).expect(200)).body;
     const updated = rows.find((s: { id: number }) => s.id === target.id);
@@ -158,6 +166,44 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     expect(sessionUpdate!.changes?.endTime).toMatchObject({ before: '17:00', after: '18:30' });
     const requestAudit = (await http.get(`/api/audit?entity=schedule_requests&entityId=${made.id}`).set(asAdmin()).expect(200)).body;
     expect(requestAudit.find((a: { action: string }) => a.action === 'approve')?.changes.status).toMatchObject({ before: 'pending', after: 'approved' });
+  });
+
+  it('[C3b] 반복 수업 변경 요청: 사유와 적용 범위를 저장하고 승인 시 이후 세션까지 업데이트한다', async () => {
+    const seriesId = 990901;
+    const first = (await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, seriesId, sessionDate: '2099-08-03', startTime: '08:00', endTime: '09:00', force: true, topic: '반복 변경 1' })
+      .expect(201)).body.row;
+    const second = (await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, seriesId, sessionDate: '2099-08-10', startTime: '08:00', endTime: '09:00', force: true, topic: '반복 변경 2' })
+      .expect(201)).body.row;
+
+    const made = (await http.post('/api/schedule-requests').set(asInst())
+      .send({
+        requestKind: 'session_update',
+        targetSessionId: first.id,
+        sessionDate: '2099-08-03',
+        startTime: '08:30',
+        endTime: '09:30',
+        topic: '반복 변경 1',
+        requestReason: '반복 수업 시작 시간을 30분 늦춥니다.',
+        scope: 'this_and_following',
+      })
+      .expect(201)).body.row;
+    expect(made).toMatchObject({
+      status: 'pending',
+      requestKind: 'session_update',
+      requestReason: '반복 수업 시작 시간을 30분 늦춥니다.',
+      scope: 'this_and_following',
+    });
+
+    const ok = (await http.post(`/api/schedule-requests/${made.id}/approve?force=true`).set(asAdmin()).expect(201)).body;
+    expect(ok.request).toMatchObject({ status: 'approved', scope: 'this_and_following' });
+
+    const rows = (await http.get('/api/schedule?from=2099-08-03&to=2099-08-10').set(asAdmin()).expect(200)).body;
+    expect(rows.find((s: { id: number }) => s.id === first.id)).toMatchObject({ startTime: '08:30', endTime: '09:30' });
+    expect(rows.find((s: { id: number }) => s.id === second.id)).toMatchObject({ startTime: '08:30', endTime: '09:30' });
+    const approved = (await http.get('/api/schedule-requests?status=approved').set(asAdmin()).expect(200)).body;
+    expect(approved.some((r: { id: number; requestReason?: string }) => r.id === made.id && r.requestReason)).toBe(true);
   });
 
   it('[C4] 수업 삭제 요청: 강사 삭제 액션 → pending → 관리자 승인 시 세션 soft delete + audit', async () => {

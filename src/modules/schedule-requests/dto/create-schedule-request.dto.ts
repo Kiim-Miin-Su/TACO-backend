@@ -1,6 +1,6 @@
 import { IsDefined, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import type { AvailabilityKind, AvailabilityOwner, SessionKind, SessionMode, CreateScheduleRequestInput } from '@kms545487/contracts';
+import type { AvailabilityKind, AvailabilityOwner, RecurrenceScope, SessionKind, SessionMode, CreateScheduleRequestInput } from '@kms545487/contracts';
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
@@ -10,6 +10,7 @@ const REQUEST_KINDS: RequestKind[] = ['session_create', 'session_update', 'sessi
 const AVAILABILITY_KINDS: AvailabilityKindEx[] = ['available', 'unavailable', 'online_only'];
 const SESSION_MODES: SessionMode[] = ['in_person', 'online'];
 const OWNER_TYPES: AvailabilityOwner[] = ['student', 'instructor', 'room'];
+const RECURRENCE_SCOPES: RecurrenceScope[] = ['this', 'this_and_following', 'all'];
 
 const isSessionCreate = (o: CreateScheduleRequestDto): boolean => !o.requestKind || o.requestKind === 'session_create';
 const isSessionRequest = (o: CreateScheduleRequestDto): boolean => isSessionCreate(o) || o.requestKind === 'session_update';
@@ -76,6 +77,15 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @ApiPropertyOptional({ enum: SESSION_MODES, example: 'in_person', description: '[C2D] 수업방식 — 요청 단계 보존, 승인 시 세션 mode로 반영(미지정=in_person)' })
   @IsOptional() @IsIn(SESSION_MODES)
   mode?: SessionMode;
+
+  @ApiPropertyOptional({ example: '학부모 요청으로 30분 늦춰야 합니다.', description: '요청자가 제출한 사유(반려 사유와 분리)' })
+  @IsOptional() @IsString() @MaxLength(500)
+  requestReason?: string;
+
+  @ApiPropertyOptional({ enum: RECURRENCE_SCOPES, example: 'this', description: 'session_update 반복 수업 적용 범위' })
+  @ValidateIf((o) => o.requestKind === 'session_update')
+  @IsIn(RECURRENCE_SCOPES)
+  scope?: RecurrenceScope;
 
   @ApiPropertyOptional({ example: 3, description: 'availability_delete 또는 availability_upsert 수정 대상 블록 id' })
   @ValidateIf((o) => isAvailabilityRequest(o) && (isAvailabilityDelete(o) || o.targetAvailabilityId != null))
