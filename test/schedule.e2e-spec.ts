@@ -66,6 +66,12 @@ describe("Schedule API (e2e)", () => {
       expect(res.body.instructors.some((i: { id: number }) => i.id === c.instructorId)).toBe(true);
       expect(c.durationMinutes).toBeGreaterThan(0);
     }
+    const park = res.body.instructors.find((i: { id: number }) => i.id === 1);
+    const jung = res.body.instructors.find((i: { id: number }) => i.id === 2);
+    expect(park).toMatchObject({ countryCode: "KR", timeZone: "Asia/Seoul" });
+    expect(jung).toMatchObject({ countryCode: "GB", timeZone: "Europe/London" });
+    const overseasStudent = res.body.students.find((s: { id: number }) => s.id === 1);
+    expect(overseasStudent).toMatchObject({ countryCode: "US" });
     // 코스11(AP Calculus)은 시드 세션이 120분 → 진행시간 120 파생
     const c11 = res.body.courses.find((c: { id: number }) => c.id === 11);
     expect(c11.durationMinutes).toBe(120);

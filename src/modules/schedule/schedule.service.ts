@@ -299,6 +299,8 @@ export class ScheduleService implements OnModuleInit {
           type: 'instructor' as const, id: u.id, name: u.name,
           color: PALETTE[u.id % PALETTE.length],
           sub: c ? this.subjectOf(c.subjectId)?.name : undefined,
+          countryCode: u.countryCode,
+          timeZone: u.timeZone,
         };
       }),
       rooms: this.rooms.findAll().map((r) => ({
@@ -312,6 +314,7 @@ export class ScheduleService implements OnModuleInit {
           type: 'student' as const, id: s.id, name: s.name,
           color: PALETTE[(s.id + 2) % PALETTE.length],
           sub: s.grade != null ? `${s.grade}학년` : undefined,
+          countryCode: s.country,
         })),
       courses: courses.map((c) => ({
         id: c.id, name: c.name, instructorId: c.instructorId,

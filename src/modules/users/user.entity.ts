@@ -24,6 +24,8 @@ export type StaffAccount = {
   passwordHash: string;
   emailVerified: boolean;
   emailVerifyToken?: string;
+  countryCode?: string; // 강사/직원 근무 국가. 캘린더 owner timezone resolver 입력.
+  timeZone?: string; // IANA timezone override. 미지정 시 countryCode 대표 timezone 사용.
   // [강사 식별자 통일 2026-07-07] 강사의 도메인 식별자 = users.id 자체(별도 instructorId 브리지 폐기).
   //  courses/class_sessions 등의 instructorId가 이 users.id를 직접 참조한다.
 } & BaseRow;
