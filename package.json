@@ -9,6 +9,7 @@
     "build": "nest build",
     "db:check": "ts-node scripts/db-check.ts",
     "db:smoke:schedule-requests": "ts-node scripts/schedule-requests-db-smoke.ts",
+    "db:smoke:schedule-approval": "ts-node scripts/schedule-approval-db-smoke.ts",
     "openapi": "nest build -p tsconfig.build.json && node dist/scripts/generate-openapi.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:e2e": "jest --config test/jest-e2e.json --runInBand",

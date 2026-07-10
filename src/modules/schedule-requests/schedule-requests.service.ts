@@ -53,6 +53,7 @@ export class ScheduleRequestsService {
     if (dto.requestKind === 'availability_upsert' || dto.requestKind === 'availability_delete') {
       return { row: await this.createAvailabilityRequest(dto, requesterId, requesterRoles), conflicts: [] };
     }
+    await this.schedule.ensureReady();
     if (dto.requestKind === 'session_update') {
       return this.createSessionUpdateRequest(dto, requesterId, requesterRoles);
     }
@@ -91,6 +92,7 @@ export class ScheduleRequestsService {
   }
 
   private async createSessionUpdateRequest(dto: CreateScheduleRequestDto, requesterId: number, requesterRoles?: string[]): Promise<{ row: RequestRow; conflicts: Conflict[] }> {
+    await this.schedule.ensureReady();
     const target = this.schedule.list({}).find((s) => s.id === dto.targetSessionId);
     if (!target) throw new NotFoundException(`Session ${dto.targetSessionId} not found`);
     if (!hasAdminRole(requesterRoles) && Number(target.instructorId) !== Number(requesterId)) {
@@ -144,6 +146,7 @@ export class ScheduleRequestsService {
   }
 
   private async createSessionDeleteRequest(dto: CreateScheduleRequestDto, requesterId: number, requesterRoles?: string[]): Promise<{ row: RequestRow; conflicts: Conflict[] }> {
+    await this.schedule.ensureReady();
     const target = this.schedule.list({}).find((s) => s.id === dto.targetSessionId);
     if (!target) throw new NotFoundException(`Session ${dto.targetSessionId} not found`);
     if (!hasAdminRole(requesterRoles) && Number(target.instructorId) !== Number(requesterId)) {
@@ -260,6 +263,7 @@ export class ScheduleRequestsService {
 
   /** 승인 — [요청 상태 + 세션 생성(충돌 409·force 재검사) + 역참조 + audit] 단일 tx 원자화. */
   async approve(id: number, decidedBy: number, force?: boolean): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
+    await this.schedule.ensureReady();
     const req = await this.mustPending(id);
     if (req.requestKind === 'availability_upsert' || req.requestKind === 'availability_delete') {
       return this.approveAvailability(req, decidedBy);

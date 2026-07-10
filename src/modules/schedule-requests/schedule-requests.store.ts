@@ -33,7 +33,12 @@ function toIso(value: unknown): string | null | undefined {
 
 function toDateString(value: unknown): string | undefined {
   if (value == null) return undefined;
-  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (value instanceof Date) {
+    const y = value.getFullYear();
+    const m = String(value.getMonth() + 1).padStart(2, '0');
+    const d = String(value.getDate()).padStart(2, '0');
+    return `${y}-${m}-${d}`;
+  }
   return String(value).slice(0, 10);
 }
 
@@ -48,6 +53,7 @@ export class ScheduleRequestsStore implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    await this.postgres.ensureInitialized();
     if (!this.postgres.ready) return;
     await this.ensureSchema();
   }
@@ -170,7 +176,11 @@ export class ScheduleRequestsStore implements OnModuleInit {
   }
 
   private async query(sql: string, params: unknown[] = []): Promise<DbRow[]> {
-    return this.postgres.getDataSource().query(sql, params) as Promise<DbRow[]>;
+    const result = await this.postgres.getDataSource().query(sql, params);
+    if (Array.isArray(result) && Array.isArray(result[0]) && typeof result[1] === 'number') {
+      return result[0] as DbRow[];
+    }
+    return result as DbRow[];
   }
 
   private toDbPayload(src: Record<string, unknown>): Record<string, unknown> {

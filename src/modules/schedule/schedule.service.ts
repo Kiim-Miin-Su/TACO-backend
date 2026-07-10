@@ -12,6 +12,7 @@ import { Subject, SUBJECTS as SUBJECTS_COL } from '../subjects/subject.entity';
 import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
 import { USERS, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
+import { ClassSessionsStore } from './class-sessions.store';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
 import { hhmmToMin as toMin, minToHhmm, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff } from '../../common/time.util';
@@ -98,13 +99,15 @@ export class ScheduleService implements OnModuleInit {
 
   constructor(
     private readonly db: InMemoryDatabase,
+    private readonly sessions: ClassSessionsStore,
     private readonly rooms: RoomsService,
     private readonly availability: AvailabilityService,
     private readonly audit: AuditService, // [TBO-16 #7] 세션 CRUD 변경 이력(tx 동반)
   ) {}
 
   // 이번 주 데모 수업 시드 — 주간 반복 시리즈 단위(같은 시리즈=한 seriesId). 충돌 없게 구성.
-  onModuleInit(): void {
+  async onModuleInit(): Promise<void> {
+    await this.sessions.ensureReady();
     if (this.db.findAll<ClassSession>(SESSIONS).length) return;
     const mon = mondayOfThisWeekUTC();
     const series: SeedSeries[] = [
@@ -116,12 +119,12 @@ export class ScheduleService implements OnModuleInit {
       { courseId: 12, instructorId: 1, topic: 'TOEFL 정규', roomId: 2, weekdayOffsets: [0, 2], startTime: '18:00', durationMinutes: 90, mode: 'online' },
     ];
     let seriesId = 0;
-    series.forEach((sr) => {
+    for (const sr of series) {
       const sid = ++seriesId;
-      sr.weekdayOffsets.forEach((off) => {
+      for (const off of sr.weekdayOffsets) {
         const date = new Date(mon);
         date.setUTCDate(date.getUTCDate() + off);
-        this.db.insert<ClassSession>(SESSIONS, {
+        await this.sessions.insert({
           seriesId: sid,
           courseId: sr.courseId,
           instructorId: sr.instructorId,
@@ -133,19 +136,19 @@ export class ScheduleService implements OnModuleInit {
           status: 'scheduled',
           topic: sr.topic,
           mode: sr.mode, // [v0.1.16] 미지정=enrich가 in_person 하위호환
-        });
-      });
-    });
+        } as Omit<ClassSession, keyof BaseRow>);
+      }
+    }
 
     // 보강 픽스처: 강사1(박지훈)의 점심 불가시간(월 12:00-13:00)과 겹치지 않게 둔다.
     // 불가시간과 실제 수업이 겹치는 시드는 운영 논리상 모순이므로 e2e로 금지한다.
     const mon0 = fmt(mon);
     // 표기는 실제 데이터(강사·수업명)로 깔끔하게 — "데모" 문구 금지(피드백 2026-07-02).
-    this.db.insert<ClassSession>(SESSIONS, {
+    await this.sessions.insert({
       courseId: 12, instructorId: 1, roomId: 2,
       sessionDate: mon0, startTime: '13:00', endTime: '14:00', durationMinutes: 60,
       status: 'scheduled', topic: 'TOEFL 정규 — 보강', mode: 'online', // [v0.1.16]
-    });
+    } as Omit<ClassSession, keyof BaseRow>);
 
     // ── 과거 히스토리 시드(프론트 mock 이관) — 오늘 기준 상대 날짜. 지난 held/취소/보강 =
     //   리포트 미작성·강사/학생 출결·보강 필요 대시보드 데모용. 고정 id(20~28)로 attendance/reports FK 정합.
@@ -165,7 +168,11 @@ export class ScheduleService implements OnModuleInit {
       { id: 24, courseId: 12, instructorId: 1, roomId: 2, sessionDate: dOff(-11), startTime: '18:00', endTime: '19:30', durationMinutes: 90, status: 'canceled', topic: 'TOEFL Listening(취소)' },
       { id: 25, courseId: 12, instructorId: 1, roomId: 2, sessionDate: dOff(-9), startTime: '18:00', endTime: '19:30', durationMinutes: 90, status: 'makeup', instructorAttendance: 'makeup', topic: 'TOEFL Listening(보강)', makeupForSessionId: 24 },
     ];
-    this.db.seed<ClassSession>(SESSIONS, hist);
+    await this.sessions.seed(hist);
+  }
+
+  async ensureReady(): Promise<void> {
+    await this.sessions.ensureReady();
   }
 
   // ── 카탈로그/명단 조회(단일 소스 = 실제 컬렉션) — 감사 A ──
@@ -352,6 +359,7 @@ export class ScheduleService implements OnModuleInit {
     kind?: ClassSession['kind']; price?: number; // [v0.1.14] 종류·세션 단건 가격
     mode?: ClassSession['mode']; // [v0.1.16] 수업방식(기본 in_person)
   }, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[] }> {
+    await this.ensureReady();
     const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
     const course = this.courseOf(dto.courseId)!;
 
@@ -375,8 +383,8 @@ export class ScheduleService implements OnModuleInit {
     }
 
     // [원자성] 세션 생성 + 변경 이력(audit)이 함께 반영되거나 함께 롤백
-    const row = await this.db.transaction(() => {
-      const created = this.db.insert<ClassSession>(SESSIONS, {
+    const row = await this.db.transaction(async () => {
+      const created = await this.sessions.insert({
         studentIds: dto.studentIds,
         seriesId: dto.seriesId,
         courseId: dto.courseId,
@@ -393,7 +401,7 @@ export class ScheduleService implements OnModuleInit {
         topic: dto.topic ?? course.name,
         memo: dto.memo,
         color: dto.color ?? course.color,
-      });
+      } as Omit<ClassSession, keyof BaseRow>);
       if (actorId != null)
         this.audit.log({ entity: SESSIONS, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
       return created;
@@ -404,11 +412,12 @@ export class ScheduleService implements OnModuleInit {
 
   // 세션 삭제 — [v9] soft delete(행 보존·deletedBy 기록) + audit before 스냅샷 + 동반 정리(출결·리포트) 단일 tx.
   async remove(id: number, actorId?: number): Promise<{ id: number; deleted: boolean }> {
+    await this.ensureReady();
     const before = this.db.findById<ClassSession>(SESSIONS, id);
     if (!before) throw new NotFoundException(`Session ${id} not found`);
-    return this.db.transaction(() => {
+    return this.db.transaction(async () => {
       const snap = { ...before };
-      const deleted = this.db.remove(SESSIONS, id, actorId);
+      const deleted = await this.sessions.remove(id, actorId);
       // 동반 soft delete(무결성·캐스케이드 — dbml v9 §33): 이 세션의 출결·리포트
       for (const a of this.db.findByField<BaseRow & { sessionId: number }>('attendance', 'sessionId', id))
         this.db.remove('attendance', a.id, actorId);
@@ -436,6 +445,7 @@ export class ScheduleService implements OnModuleInit {
   // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
   // scope(this_and_following|all)면 같은 seriesId 세션에 동일 날짜·시간 델타를 함께 적용.
   async update(id: number, dto: UpdateScheduleDto, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }> {
+    await this.ensureReady();
     // [명시 코호트 v0.1.13] 부분집합 검증 — create와 동일 규칙(함수 통일: activeStudentIds 단일 소스)
     if (dto.studentIds?.length) {
       const cur0 = this.db.findById<ClassSession>(SESSIONS, id);
@@ -444,7 +454,7 @@ export class ScheduleService implements OnModuleInit {
       if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
     }
     // [원자성] 반복 시리즈 scope 편집 — 대상+동반 세션이 전부 반영되거나 전부 롤백(부분 편집 잔존 금지)
-    return this.db.transaction(() => {
+    return this.db.transaction(async () => {
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
 
@@ -507,8 +517,8 @@ export class ScheduleService implements OnModuleInit {
 
     // 4) 일괄 적용(대상 먼저, 그 뒤 시리즈)
     const beforeSnap = { ...cur }; // audit diff용(적용 전 상태 — cur는 라이브 행이라 사본 필수)
-    const updated = this.db.update<ClassSession>(SESSIONS, id, primary)!;
-    for (const p of seriesPatches) this.db.update<ClassSession>(SESSIONS, p.id, p.fields);
+    const updated = (await this.sessions.update(id, primary))!;
+    for (const p of seriesPatches) await this.sessions.update(p.id, p.fields);
     if (actorId != null) {
       const diff = this.audit.diffOf(beforeSnap, updated);
       if (Object.keys(diff).length)

@@ -23,7 +23,7 @@ export class ScheduleController {
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })
   @ApiQuery({ name: 'instructorId', required: false }) @ApiQuery({ name: 'roomId', required: false })
   @ApiQuery({ name: 'studentId', required: false, description: '학생 코호트(enrollment status≠drop) 역추적' })
-  list(
+  async list(
     @Req() req: Request & { user?: JwtClaims },
     @Query('from') from?: string,
     @Query('to') to?: string,
@@ -31,6 +31,7 @@ export class ScheduleController {
     @Query('roomId') roomId?: string,
     @Query('studentId') studentId?: string,
   ) {
+    await this.schedule.ensureReady();
     const instructorScope = isInstructorOnly(req.user?.roles) ? req.user?.sub : instructorId ? Number(instructorId) : undefined;
     return this.schedule.list({
       from,
@@ -45,7 +46,8 @@ export class ScheduleController {
   @Get('resources')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '자원 피커 — 강사·강의실·학생·코스 옵션(FK 정렬). 좌측 레일·배정 폼용.' })
-  resources(@Req() req: Request & { user?: JwtClaims }) {
+  async resources(@Req() req: Request & { user?: JwtClaims }) {
+    await this.schedule.ensureReady();
     return this.schedule.resources(isInstructorOnly(req.user?.roles) ? { instructorId: req.user?.sub } : undefined);
   }
 
@@ -56,11 +58,12 @@ export class ScheduleController {
   @ApiOperation({ summary: '강사 출결 현황 집계(기간·강사 필터) — 출/지/결/보강 카운트·출석률·인정 시수·총계' })
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })
   @ApiQuery({ name: 'instructorId', required: false })
-  instructorAttendanceSummary(
+  async instructorAttendanceSummary(
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('instructorId') instructorId?: string,
   ) {
+    await this.schedule.ensureReady();
     return this.schedule.instructorAttendanceSummary({
       from, to, instructorId: instructorId ? Number(instructorId) : undefined,
     });
@@ -71,7 +74,8 @@ export class ScheduleController {
   @Roles(...STAFF_ROLES) // [코드리뷰 2026-07-03 H1] @Roles 누락 → 무인증 접근 가능했음. 강사·강의실 가용성 탐지 차단
   @ApiOperation({ summary: '충돌 드라이런 — 생성·이동 전 강사·강의실 이중예약/불가시간 겹침 검사 [로그인]' })
   @ApiOkResponse({ description: 'Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }' })
-  conflicts(@Body() body: ConflictCheckDto) {
+  async conflicts(@Body() body: ConflictCheckDto) {
+    await this.schedule.ensureReady();
     return this.schedule.checkConflicts(body);
   }
 

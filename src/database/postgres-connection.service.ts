@@ -33,6 +33,7 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
   private readonly logger = new Logger(PostgresConnectionService.name);
   private dataSource: DataSource | null = null;
   private lastError: string | null = null;
+  private initPromise: Promise<void> | null = null;
 
   get configured(): boolean {
     return !!runtimeDatabaseUrl();
@@ -47,12 +48,25 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
   }
 
   async onModuleInit(): Promise<void> {
+    await this.ensureInitialized();
+  }
+
+  async ensureInitialized(): Promise<void> {
     const url = runtimeDatabaseUrl();
     if (!url) {
       this.logger.log('DATABASE_URL/POSTGRES_URL not set — running with in-memory store');
       return;
     }
+    if (this.dataSource?.isInitialized) return;
+    if (this.initPromise) return this.initPromise;
 
+    this.initPromise = this.initialize(url).finally(() => {
+      this.initPromise = null;
+    });
+    return this.initPromise;
+  }
+
+  private async initialize(url: string): Promise<void> {
     this.dataSource = new DataSource({
       type: 'postgres',
       url,

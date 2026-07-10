@@ -175,6 +175,21 @@ export class InMemoryDatabase {
     return inserted;
   }
 
+  /** DB-backed repository hydrate용: DB row의 id/audit timestamp를 그대로 memory에 적재한다. */
+  seedExact<T extends BaseRow>(name: string, rows: T[]): T[] {
+    const coll = this.collection<T>(name);
+    const inserted: T[] = [];
+    for (const r of rows) {
+      if (this.ids(name).has(r.id) || coll.some((x) => x.id === r.id)) continue;
+      const row = structuredClone(r) as T;
+      coll.push(row);
+      this.indexAdd(name, row);
+      inserted.push(row);
+      if (row.id > (this.sequences.get(name) ?? 0)) this.sequences.set(name, row.id);
+    }
+    return inserted;
+  }
+
   /** id 조회 — 인덱스로 O(1). 삭제 행은 기본 미노출(withDeleted로만). */
   findById<T extends BaseRow>(name: string, id: number, opts?: { withDeleted?: boolean }): T | undefined {
     const hit = this.ids(name).get(id) as T | undefined;
