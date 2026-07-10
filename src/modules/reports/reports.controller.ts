@@ -49,7 +49,7 @@ export class ReportsController {
   @Roles(...ADMIN_ROLES)
   @ApiParam({ name: 'id', description: '보고서 id' })
   @ApiOperation({ summary: '관리자 승인(submitted → approved) — 시수 적격 편입 [관리자]' })
-  @ApiCreatedResponse({ description: 'SessionReport(status=approved, approvedAt·approvedBy)' })
+  @ApiCreatedResponse({ description: 'SessionReport(approvalStatus=approved, approvedAt·approvedBy)' })
   @ApiForbiddenResponse({ description: '권한 없음(관리자 전용)' })
   approve(@Param('id', ParseIntPipe) id: number, @Body() body?: ApproveReportDto) {
     return this.reports.approve(id, body?.approvedBy);
@@ -59,7 +59,7 @@ export class ReportsController {
   @Roles(...ADMIN_ROLES)
   @ApiParam({ name: 'id', description: '보고서 id' })
   @ApiOperation({ summary: '관리자 반려(→ rejected, 사유 보존) [관리자]' })
-  @ApiCreatedResponse({ description: 'SessionReport(status=rejected, rejectedReason)' })
+  @ApiCreatedResponse({ description: 'SessionReport(approvalStatus=rejected, rejectedReason)' })
   reject(@Param('id', ParseIntPipe) id: number, @Body() body?: RejectReportDto) {
     return this.reports.reject(id, body?.reason);
   }

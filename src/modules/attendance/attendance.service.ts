@@ -1,5 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { ATTENDANCE_SPEC } from '../../database/calendar-asset-specs';
+import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { AuditService } from '../audit/audit.service'; // [출결 이력 2026-07-07] 학생 출결 변경도 audit_log에 기록
 import { hasAdminRole } from '../auth/roles.decorator';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
@@ -17,11 +19,14 @@ import { UpsertAttendanceDto } from './dto/upsert-attendance.dto';
 export class AttendanceService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
+    private readonly store: PostgresCollectionStore,
     private readonly audit: AuditService, // 출결 변경 이력(tx 동반)
   ) {}
 
-  onModuleInit(): void {
-    this.db.seed<Attendance>(ATTENDANCE, [
+  async onModuleInit(): Promise<void> {
+    const hydrated = await this.store.hydrate<Attendance>(ATTENDANCE_SPEC);
+    if (hydrated.length) return;
+    await this.store.seed<Attendance>(ATTENDANCE_SPEC, [
       { id: 1, sessionId: 1, studentId: 1, status: 'present' },
       { id: 2, sessionId: 1, studentId: 4, status: 'late' },
       { id: 3, sessionId: 2, studentId: 2, status: 'present' },
@@ -88,7 +93,7 @@ export class AttendanceService implements OnModuleInit {
       );
       if (existing) {
         const before = { ...existing };
-        const updated = this.db.update<Attendance>(ATTENDANCE, existing.id, { status: dto.status }) as Attendance;
+        const updated = await this.store.update<Attendance>(ATTENDANCE_SPEC, existing.id, { status: dto.status }) as Attendance;
         if (actorId != null) {
           const diff = this.audit.diffOf(before, updated);
           if (Object.keys(diff).length)
@@ -96,7 +101,7 @@ export class AttendanceService implements OnModuleInit {
         }
         return updated;
       }
-      const created = this.db.insert<Attendance>(ATTENDANCE, {
+      const created = await this.store.insert<Attendance>(ATTENDANCE_SPEC, {
         sessionId: dto.sessionId,
         studentId: dto.studentId,
         status: dto.status,
@@ -105,5 +110,14 @@ export class AttendanceService implements OnModuleInit {
         await this.audit.log({ entity: ATTENDANCE, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
       return created;
     });
+  }
+
+  async removeBySession(sessionId: number, deletedBy?: number): Promise<number> {
+    const rows = this.db.findByField<Attendance>(ATTENDANCE, 'sessionId', sessionId);
+    let deleted = 0;
+    for (const row of rows) {
+      if (await this.store.remove(ATTENDANCE_SPEC, row.id, deletedBy)) deleted += 1;
+    }
+    return deleted;
   }
 }

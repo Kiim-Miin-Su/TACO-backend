@@ -22,6 +22,7 @@ import { SignupDto } from './dto/signup.dto';
 import { ApproveDto } from './dto/approve.dto';
 import { SuperAdminGuard } from './super-admin.guard';
 import { UsersService } from '../users/users.service';
+import { isStaffRole } from '../users/user.entity';
 import { MailService } from '../mail/mail.service';
 
 @ApiTags('auth')
@@ -72,6 +73,7 @@ export class AuthController {
     if (!acc.emailVerified) throw new ForbiddenException('이메일 인증이 필요합니다.');
     if (acc.status === 'pending') throw new ForbiddenException('대표 승인 대기 중입니다.');
     if (acc.status === 'rejected') throw new ForbiddenException('가입이 반려된 계정입니다.');
+    if (!isStaffRole(acc.role)) throw new ForbiddenException('백오피스 담당자 계정만 로그인할 수 있습니다.');
     // [강사 식별자 통일 2026-07-07] sub(=users.id)가 곧 강사 식별자 — 별도 instructorId 클레임 불필요.
     const claims: JwtClaims = { sub: acc.id, name: acc.name, roles: [acc.role] };
     return { accessToken: this.auth.sign(claims), account: { id: acc.id, name: acc.name, role: acc.role } };

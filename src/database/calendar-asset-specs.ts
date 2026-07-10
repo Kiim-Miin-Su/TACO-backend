@@ -250,3 +250,83 @@ export const AUDIT_LOG_SPEC: PostgresCollectionSpec = {
     activeIndex('audit_log', 'idx_audit_at', 'at'),
   ],
 };
+
+export const ATTENDANCE_SPEC: PostgresCollectionSpec = {
+  table: 'attendance',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS attendance (
+      id serial PRIMARY KEY,
+      session_id integer NOT NULL,
+      student_id integer NOT NULL,
+      status varchar(32) NOT NULL DEFAULT 'present',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
+    )
+  `,
+  indexes: [
+    'CREATE UNIQUE INDEX IF NOT EXISTS uq_attendance_session_student ON attendance (session_id, student_id) WHERE deleted_at IS NULL',
+    activeIndex('attendance', 'idx_attendance_session', 'session_id'),
+    activeIndex('attendance', 'idx_attendance_student', 'student_id'),
+  ],
+};
+
+export const SESSION_REPORTS_SPEC: PostgresCollectionSpec = {
+  table: 'session_reports',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS session_reports (
+      id serial PRIMARY KEY,
+      session_id integer NOT NULL,
+      student_id integer NOT NULL,
+      subject_id integer,
+      instructor_id integer NOT NULL,
+      content text NOT NULL,
+      homework text,
+      status varchar(32) NOT NULL DEFAULT 'draft',
+      approval_status varchar(32) NOT NULL DEFAULT 'draft',
+      submitted_at timestamptz,
+      approved_by integer,
+      approved_at timestamptz,
+      rejected_reason text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
+    )
+  `,
+  timestampFields: ['submittedAt', 'approvedAt'],
+  indexes: [
+    "ALTER TABLE session_reports ADD COLUMN IF NOT EXISTS approval_status varchar(32) NOT NULL DEFAULT 'draft'",
+    "UPDATE session_reports SET approval_status = CASE WHEN status IN ('approved', 'rejected') THEN status WHEN status = 'submitted' THEN 'submitted' ELSE approval_status END, status = CASE WHEN status = 'approved' THEN 'sent' WHEN status = 'rejected' THEN 'draft' ELSE status END WHERE status IN ('approved', 'rejected') OR (status = 'submitted' AND approval_status = 'draft')",
+    'CREATE UNIQUE INDEX IF NOT EXISTS uq_session_reports_session_student ON session_reports (session_id, student_id) WHERE deleted_at IS NULL',
+    activeIndex('session_reports', 'idx_reports_session', 'session_id'),
+    activeIndex('session_reports', 'idx_reports_instructor_status', 'instructor_id, status'),
+    activeIndex('session_reports', 'idx_reports_instructor_approval', 'instructor_id, approval_status'),
+  ],
+};
+
+export const INSTRUCTOR_CONTRACTS_SPEC: PostgresCollectionSpec = {
+  table: 'instructor_contracts',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS instructor_contracts (
+      id serial PRIMARY KEY,
+      instructor_id integer NOT NULL,
+      monthly_hours integer NOT NULL,
+      hourly_rate integer NOT NULL,
+      period_start date NOT NULL,
+      period_end date,
+      active boolean NOT NULL DEFAULT true,
+      memo text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
+    )
+  `,
+  dateFields: ['periodStart', 'periodEnd'],
+  indexes: [
+    activeIndex('instructor_contracts', 'idx_instructor_contracts_instructor_active', 'instructor_id, active'),
+    activeIndex('instructor_contracts', 'idx_instructor_contracts_period', 'period_start, period_end'),
+  ],
+};

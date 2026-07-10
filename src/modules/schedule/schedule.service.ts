@@ -4,6 +4,8 @@ import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.databas
 import { RoomsService } from '../rooms/rooms.service';
 import { AvailabilityService } from '../availability/availability.service';
 import { AuditService } from '../audit/audit.service';
+import { AttendanceService } from '../attendance/attendance.service';
+import { ReportsService } from '../reports/reports.service';
 import { ClassSession, SESSIONS } from './schedule.entity';
 import { detectConflicts } from './conflict.util';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
@@ -103,6 +105,8 @@ export class ScheduleService implements OnModuleInit {
     private readonly rooms: RoomsService,
     private readonly availability: AvailabilityService,
     private readonly audit: AuditService, // [TBO-16 #7] 세션 CRUD 변경 이력(tx 동반)
+    private readonly attendance: AttendanceService,
+    private readonly reports: ReportsService,
   ) {}
 
   // 이번 주 데모 수업 시드 — 주간 반복 시리즈 단위(같은 시리즈=한 seriesId). 충돌 없게 구성.
@@ -419,10 +423,8 @@ export class ScheduleService implements OnModuleInit {
       const snap = { ...before };
       const deleted = await this.sessions.remove(id, actorId);
       // 동반 soft delete(무결성·캐스케이드 — dbml v9 §33): 이 세션의 출결·리포트
-      for (const a of this.db.findByField<BaseRow & { sessionId: number }>('attendance', 'sessionId', id))
-        this.db.remove('attendance', a.id, actorId);
-      for (const r of this.db.findByField<BaseRow & { sessionId: number }>('session_reports', 'sessionId', id))
-        this.db.remove('session_reports', r.id, actorId);
+      await this.attendance.removeBySession(id, actorId);
+      await this.reports.removeBySession(id, actorId);
       if (actorId != null)
         await this.audit.log({ entity: SESSIONS, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf(snap) as never });
       return { id, deleted };

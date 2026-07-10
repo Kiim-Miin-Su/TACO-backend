@@ -126,7 +126,7 @@ describe("Full Flow (e2e)", () => {
       .post(`/api/reports/${reportId}/approve`)
       .set(asAdmin())
       .expect(201)
-      .then((res) => expect(res.body.status).toBe("approved"));
+      .then((res) => expect(res.body.approvalStatus).toBe("approved"));
   });
 
   // 8) 페이 계산(preview) — held ∧ 승인 세션만

@@ -80,7 +80,7 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
       .post(`/api/reports/${r1}/approve`)
       .set(asAdmin())
       .expect(201)
-      .then((res) => expect(res.body.status).toBe("approved"));
+      .then((res) => expect(res.body.approvalStatus).toBe("approved"));
     await http.post(`/api/reports/${r2}/approve`).set(asAdmin()).expect(201);
     // S4 보고서는 제출만(미승인)
     await makeReport(S4);

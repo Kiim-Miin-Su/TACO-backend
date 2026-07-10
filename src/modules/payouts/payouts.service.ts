@@ -31,7 +31,7 @@ export type MeasureResult = {
  * 시수 적격성(참조 무결성 게이트, 모두 충족해야 시수가 채워짐):
  *   1) 세션이 실제 진행됨        → status === 'held'  (취소/노쇼/예정·보강 제외)
  *   1-b) 강사가 결석하지 않음      → instructorAttendance !== 'absent'  [TBO-19 시수 정책]
- *   2) 승인된 보고서 존재         → reports.status === 'approved'
+ *   2) 승인된 보고서 존재         → reports.approvalStatus === 'approved'
  *   3) 코스 FK 유효(시급 조인)    → courses.id 존재
  *   4) 다른 정산서에 미연결        → session.payoutId == null (이중 계상 방지)
  * 페이 = Σ round(durationMinutes / 60 × course.hourlyRate)
@@ -71,24 +71,27 @@ export class PayoutsService implements OnModuleInit {
       return row.id;
     };
     // 세션 + 보고서(작성→승인) 동시 생성. status==='held'·승인이라야 시수 적격.
-    const withApprovedReport = (sessionId: number, studentId: number) => {
-      const r = this.reports.create({ sessionId, studentId, content: '진도·피드백(데모)' });
-      this.reports.approve(r.id, 0);
+    const withApprovedReport = async (sessionId: number, studentId: number) => {
+      const existing = this.reports.findBySession(sessionId).find((r) => r.studentId === studentId);
+      const r = existing ?? await this.reports.create({ sessionId, studentId, content: '진도·피드백(데모)' });
+      if (r.approvalStatus === 'approved') return;
+      const submitted = r.approvalStatus === 'submitted' ? r : await this.reports.submit(r.id);
+      await this.reports.approve(submitted.id, 0);
     };
 
     // 강사1(박지훈) — 적격 3건(미정산)
-    withApprovedReport(make(10, 1, '2026-06-08', '16:00', 90, 'held'), 1);
-    withApprovedReport(make(10, 1, '2026-06-10', '16:00', 90, 'held'), 1);
-    withApprovedReport(make(12, 1, '2026-06-15', '18:00', 120, 'held'), 1);
+    await withApprovedReport(make(10, 1, '2026-06-08', '16:00', 90, 'held'), 1);
+    await withApprovedReport(make(10, 1, '2026-06-10', '16:00', 90, 'held'), 1);
+    await withApprovedReport(make(12, 1, '2026-06-15', '18:00', 120, 'held'), 1);
     // 게이트 데모: held이지만 보고서 없음 → 제외
     make(10, 1, '2026-06-09', '16:00', 60, 'held');
     // 게이트 데모: 보고서 승인됐지만 취소 → 제외
-    withApprovedReport(make(10, 1, '2026-06-11', '16:00', 90, 'canceled'), 1);
+    await withApprovedReport(make(10, 1, '2026-06-11', '16:00', 90, 'canceled'), 1);
 
     // 강사2(정유진) — 적격 3건 → 즉시 정산·지급(완료 상태 시연)
-    withApprovedReport(make(11, 2, '2026-06-09', '16:00', 120, 'held'), 2);
-    withApprovedReport(make(11, 2, '2026-06-11', '16:00', 120, 'held'), 2);
-    withApprovedReport(make(11, 2, '2026-06-16', '16:00', 120, 'held'), 2);
+    await withApprovedReport(make(11, 2, '2026-06-09', '16:00', 120, 'held'), 2);
+    await withApprovedReport(make(11, 2, '2026-06-11', '16:00', 120, 'held'), 2);
+    await withApprovedReport(make(11, 2, '2026-06-16', '16:00', 120, 'held'), 2);
     const paid = await this.generate(2, '2026-06-01', '2026-06-30');
     this.confirm(paid.id);
     await this.pay(paid.id);

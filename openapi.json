@@ -1636,6 +1636,291 @@
         ]
       }
     },
+    "/api/attendance": {
+      "get": {
+        "operationId": "AttendanceController_findAll",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Attendance[] — sessionId·studentId·status"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "출결 목록(Attendance[]) — sessionId 지정 시 해당 세션만",
+        "tags": [
+          "attendance"
+        ]
+      },
+      "put": {
+        "operationId": "AttendanceController_upsert",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertAttendanceDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "upsert된 Attendance"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장",
+        "tags": [
+          "attendance"
+        ]
+      }
+    },
+    "/api/reports": {
+      "get": {
+        "operationId": "ReportsController_findAll",
+        "parameters": [
+          {
+            "name": "sessionId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "보고서 목록(sessionId 필터 가능)",
+        "tags": [
+          "reports"
+        ]
+      },
+      "post": {
+        "operationId": "ReportsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "보고서 작성(세션 FK·중복·강사 일치·소유권 검증). 기본 submitted(승인요청).",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/{id}": {
+      "get": {
+        "operationId": "ReportsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/{id}/submit": {
+      "post": {
+        "operationId": "ReportsController_submit",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "강사 제출(draft → submitted) — 본인 보고서만",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/{id}/approve": {
+      "post": {
+        "operationId": "ReportsController_approve",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "보고서 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApproveReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "SessionReport(approvalStatus=approved, approvedAt·approvedBy)"
+          },
+          "403": {
+            "description": "권한 없음(관리자 전용)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "관리자 승인(submitted → approved) — 시수 적격 편입 [관리자]",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
+    "/api/reports/{id}/reject": {
+      "post": {
+        "operationId": "ReportsController_reject",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "보고서 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RejectReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "SessionReport(approvalStatus=rejected, rejectedReason)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "관리자 반려(→ rejected, 사유 보존) [관리자]",
+        "tags": [
+          "reports"
+        ]
+      }
+    },
     "/api/schedule-requests": {
       "post": {
         "operationId": "ScheduleRequestsController_create",
@@ -1861,234 +2146,6 @@
         "summary": "요청 반려 — 사유 필수(Q2). [관리자]",
         "tags": [
           "schedule-requests"
-        ]
-      }
-    },
-    "/api/reports": {
-      "get": {
-        "operationId": "ReportsController_findAll",
-        "parameters": [
-          {
-            "name": "sessionId",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object"
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "보고서 목록(sessionId 필터 가능)",
-        "tags": [
-          "reports"
-        ]
-      },
-      "post": {
-        "operationId": "ReportsController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateReportDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "보고서 작성(세션 FK·중복·강사 일치·소유권 검증). 기본 submitted(승인요청).",
-        "tags": [
-          "reports"
-        ]
-      }
-    },
-    "/api/reports/{id}": {
-      "get": {
-        "operationId": "ReportsController_findOne",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "tags": [
-          "reports"
-        ]
-      }
-    },
-    "/api/reports/{id}/submit": {
-      "post": {
-        "operationId": "ReportsController_submit",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "강사 제출(draft → submitted) — 본인 보고서만",
-        "tags": [
-          "reports"
-        ]
-      }
-    },
-    "/api/reports/{id}/approve": {
-      "post": {
-        "operationId": "ReportsController_approve",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "보고서 id",
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ApproveReportDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "SessionReport(status=approved, approvedAt·approvedBy)"
-          },
-          "403": {
-            "description": "권한 없음(관리자 전용)"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "관리자 승인(submitted → approved) — 시수 적격 편입 [관리자]",
-        "tags": [
-          "reports"
-        ]
-      }
-    },
-    "/api/reports/{id}/reject": {
-      "post": {
-        "operationId": "ReportsController_reject",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "description": "보고서 id",
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/RejectReportDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "SessionReport(status=rejected, rejectedReason)"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "관리자 반려(→ rejected, 사유 보존) [관리자]",
-        "tags": [
-          "reports"
         ]
       }
     },
@@ -2909,63 +2966,6 @@
         "summary": "강사 계약 목록(InstructorContract[]) — 계약 시수·시급·기간(계약 관리)",
         "tags": [
           "instructor-contracts"
-        ]
-      }
-    },
-    "/api/attendance": {
-      "get": {
-        "operationId": "AttendanceController_findAll",
-        "parameters": [
-          {
-            "name": "sessionId",
-            "required": false,
-            "in": "query",
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Attendance[] — sessionId·studentId·status"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "출결 목록(Attendance[]) — sessionId 지정 시 해당 세션만",
-        "tags": [
-          "attendance"
-        ]
-      },
-      "put": {
-        "operationId": "AttendanceController_upsert",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/UpsertAttendanceDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "upsert된 Attendance"
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장",
-        "tags": [
-          "attendance"
         ]
       }
     },
@@ -3928,6 +3928,100 @@
           }
         }
       },
+      "UpsertAttendanceDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "studentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present",
+              "late",
+              "absent",
+              "excused"
+            ]
+          }
+        },
+        "required": [
+          "sessionId",
+          "studentId",
+          "status"
+        ]
+      },
+      "CreateReportDto": {
+        "type": "object",
+        "properties": {
+          "sessionId": {
+            "type": "number",
+            "example": 1,
+            "description": "수업 세션 FK(class_sessions.id)"
+          },
+          "studentId": {
+            "type": "number",
+            "example": 1,
+            "description": "학생 FK(students.id)"
+          },
+          "instructorId": {
+            "type": "number",
+            "example": 1,
+            "description": "강사 FK(미지정 시 세션 강사로 채움)"
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 4000,
+            "example": "오늘 진도: 추론 문제 3세트. 정답률 향상.",
+            "description": "보고서 본문(진도·피드백)"
+          },
+          "homework": {
+            "type": "string",
+            "maxLength": 2000,
+            "example": "워크북 12–15p",
+            "description": "숙제(선택)"
+          },
+          "status": {
+            "enum": [
+              "draft",
+              "submitted"
+            ],
+            "type": "string",
+            "example": "submitted",
+            "description": "기본 submitted(승인요청). draft 허용"
+          }
+        },
+        "required": [
+          "sessionId",
+          "studentId",
+          "content"
+        ]
+      },
+      "ApproveReportDto": {
+        "type": "object",
+        "properties": {
+          "approvedBy": {
+            "type": "number",
+            "example": 7,
+            "description": "승인 처리자(users.id). 미지정 시 서버가 채움"
+          }
+        }
+      },
+      "RejectReportDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "maxLength": 1000,
+            "example": "진도 내용 보완 필요",
+            "description": "반려 사유(강사에게 표시)"
+          }
+        }
+      },
       "CreateScheduleRequestDto": {
         "type": "object",
         "properties": {
@@ -4222,73 +4316,6 @@
         "required": [
           "reason"
         ]
-      },
-      "CreateReportDto": {
-        "type": "object",
-        "properties": {
-          "sessionId": {
-            "type": "number",
-            "example": 1,
-            "description": "수업 세션 FK(class_sessions.id)"
-          },
-          "studentId": {
-            "type": "number",
-            "example": 1,
-            "description": "학생 FK(students.id)"
-          },
-          "instructorId": {
-            "type": "number",
-            "example": 1,
-            "description": "강사 FK(미지정 시 세션 강사로 채움)"
-          },
-          "content": {
-            "type": "string",
-            "maxLength": 4000,
-            "example": "오늘 진도: 추론 문제 3세트. 정답률 향상.",
-            "description": "보고서 본문(진도·피드백)"
-          },
-          "homework": {
-            "type": "string",
-            "maxLength": 2000,
-            "example": "워크북 12–15p",
-            "description": "숙제(선택)"
-          },
-          "status": {
-            "enum": [
-              "draft",
-              "submitted"
-            ],
-            "type": "string",
-            "example": "submitted",
-            "description": "기본 submitted(승인요청). draft 허용"
-          }
-        },
-        "required": [
-          "sessionId",
-          "studentId",
-          "content"
-        ]
-      },
-      "ApproveReportDto": {
-        "type": "object",
-        "properties": {
-          "approvedBy": {
-            "type": "number",
-            "example": 7,
-            "description": "승인 처리자(users.id). 미지정 시 서버가 채움"
-          }
-        }
-      },
-      "RejectReportDto": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "type": "string",
-            "maxLength": 1000,
-            "example": "진도 내용 보완 필요",
-            "description": "반려 사유(강사에게 표시)"
-          }
-        }
       },
       "GeneratePayoutDto": {
         "type": "object",
@@ -4711,33 +4738,6 @@
           "type",
           "startDate",
           "endDate"
-        ]
-      },
-      "UpsertAttendanceDto": {
-        "type": "object",
-        "properties": {
-          "sessionId": {
-            "type": "number",
-            "minimum": 1
-          },
-          "studentId": {
-            "type": "number",
-            "minimum": 1
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "present",
-              "late",
-              "absent",
-              "excused"
-            ]
-          }
-        },
-        "required": [
-          "sessionId",
-          "studentId",
-          "status"
         ]
       },
       "CreateRoadmapDto": {

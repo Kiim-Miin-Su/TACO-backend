@@ -30,7 +30,10 @@ export class UsersService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     const hydrated = await this.store.hydrate<StaffAccount>(USERS_SPEC);
-    if (hydrated.length) return;
+    if (hydrated.length) {
+      await this.ensureDefaultAdminAccount();
+      return;
+    }
     await this.store.seed<StaffAccount>(USERS_SPEC, [
       // [강사 식별자 통일 2026-07-07] users.id 자체가 강사 식별자다(별도 instructorId 브리지 폐기).
       //  courses/class_sessions/payouts/reports/availability/counsel의 instructorId·assignedStaffId가 이 id를 참조.
@@ -39,7 +42,21 @@ export class UsersService implements OnModuleInit {
       { id: 2, webId: 'jung_inst', name: '정유진', email: 'jung@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true, countryCode: 'GB', timeZone: 'Europe/London' },
       { id: 3, webId: 'admin', name: '김민수', email: 'admin@tnacademy.test', role: 'super_admin', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
       { id: 4, webId: 'manager', name: '이지원', email: 'manager@tnacademy.test', role: 'manager', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
+      { id: 5, webId: 'prof_admin', name: '한서윤', email: 'prof.admin@tnacademy.test', role: 'admin', status: 'active', passwordHash: DEMO_PW_HASH, emailVerified: true },
     ]);
+  }
+
+  private async ensureDefaultAdminAccount(): Promise<void> {
+    if (this.findByWebId('prof_admin')) return;
+    await this.store.insert<StaffAccount>(USERS_SPEC, {
+      webId: 'prof_admin',
+      name: '한서윤',
+      email: 'prof.admin@tnacademy.test',
+      role: 'admin',
+      status: 'active',
+      passwordHash: DEMO_PW_HASH,
+      emailVerified: true,
+    });
   }
 
   findAll(): SafeAccount[] {
