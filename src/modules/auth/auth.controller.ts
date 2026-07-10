@@ -55,9 +55,9 @@ export class AuthController {
   // 2) 이메일 인증(메일 링크의 token).
   @Get('verify-email')
   @ApiOperation({ summary: '이메일 인증(token).' })
-  verifyEmail(@Query('token') token?: string) {
+  async verifyEmail(@Query('token') token?: string) {
     if (!token) throw new UnauthorizedException('인증 토큰이 없습니다.');
-    const acc = this.users.verifyEmail(token);
+    const acc = await this.users.verifyEmail(token);
     return { ok: true, message: '이메일 인증이 완료되었습니다. 대표 승인 후 로그인할 수 있습니다.', account: { id: acc.id, status: acc.status, emailVerified: acc.emailVerified } };
   }
 
@@ -91,7 +91,7 @@ export class AuthController {
   @UseGuards(SuperAdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 승인(active 전환, 역할 지정 가능) — 대표 전용.' })
-  approve(@Param('id', ParseIntPipe) id: number, @Body() dto: ApproveDto) {
+  async approve(@Param('id', ParseIntPipe) id: number, @Body() dto: ApproveDto) {
     const acc = this.users.findById(id);
     if (acc && !acc.emailVerified) throw new ForbiddenException('이메일 인증이 완료되지 않은 계정은 승인할 수 없습니다.');
     return this.users.setStatus(id, 'active', dto.role);
@@ -101,7 +101,7 @@ export class AuthController {
   @UseGuards(SuperAdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 반려 — 대표 전용.' })
-  reject(@Param('id', ParseIntPipe) id: number) {
+  async reject(@Param('id', ParseIntPipe) id: number) {
     return this.users.setStatus(id, 'rejected');
   }
 

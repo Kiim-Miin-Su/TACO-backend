@@ -1,5 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { AVAILABILITY_SPEC } from '../../database/calendar-asset-specs';
+import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { hhmmToMin, weekdayOf } from '../../common/time.util'; // [R-3 함수 통일]
 import { AuditService } from '../audit/audit.service';
 import { hasAdminRole } from '../auth/roles.decorator';
@@ -26,6 +28,7 @@ export type AvailabilityImpact = {
 export class AvailabilityService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
+    private readonly store: PostgresCollectionStore,
     private readonly audit: AuditService, // [TBO-16 Q3] 가용/불가 변경 이력
     private readonly rooms: RoomsService,
   ) {}
@@ -73,8 +76,9 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   // 데모 가용/불가(Block) 시드. unavailable = 차단(주간 표에서 회색).
-  onModuleInit(): void {
-    if (this.db.findAll<AvailabilityBlock>(AVAILABILITY).length) return;
+  async onModuleInit(): Promise<void> {
+    const hydrated = await this.store.hydrate<AvailabilityBlock>(AVAILABILITY_SPEC);
+    if (hydrated.length || this.db.findAll<AvailabilityBlock>(AVAILABILITY).length) return;
     const seed = [
       // 강사1 점심 차단(월~금 12:00–13:00)
       ...[1, 2, 3, 4, 5].map((wd) => ({ ownerType: 'instructor' as AvailabilityOwner, ownerId: 1, kind: 'unavailable' as const, weekday: wd, startTime: '12:00', endTime: '13:00' })),
@@ -90,7 +94,10 @@ export class AvailabilityService implements OnModuleInit {
       { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 3, startTime: '14:00', endTime: '20:00' },
       { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 5, startTime: '14:00', endTime: '20:00' },
     ];
-    seed.forEach((b) => this.db.insert<AvailabilityBlock>(AVAILABILITY, b as Seed));
+    await this.store.seed<AvailabilityBlock>(
+      AVAILABILITY_SPEC,
+      seed.map((b, index) => ({ id: index + 1, ...(b as Seed) })),
+    );
   }
 
   list(ownerType?: AvailabilityOwner, ownerId?: number): AvailabilityBlock[] {
@@ -231,8 +238,8 @@ export class AvailabilityService implements OnModuleInit {
         );
       }
       const beforeSnap = existing ? { ...existing } : undefined;
-      const updated = await this.db.transaction(() => {
-        const u = this.db.update<AvailabilityBlock>(AVAILABILITY, dto.id!, {
+      const updated = await this.db.transaction(async () => {
+        const u = await this.store.update<AvailabilityBlock>(AVAILABILITY_SPEC, dto.id!, {
           kind: (dto.kind ?? 'available') as AvailabilityKind,
           weekday: dto.weekday,
           startTime: dto.startTime,
@@ -249,8 +256,8 @@ export class AvailabilityService implements OnModuleInit {
       });
       if (updated) return updated;
     }
-    return this.db.transaction(() => {
-      const created = this.db.insert<AvailabilityBlock>(AVAILABILITY, {
+    return this.db.transaction(async () => {
+      const created = await this.store.insert<AvailabilityBlock>(AVAILABILITY_SPEC, {
         ownerType: dto.ownerType,
         ownerId: dto.ownerId,
         kind: (dto.kind ?? 'available') as AvailabilityKind,
@@ -271,8 +278,8 @@ export class AvailabilityService implements OnModuleInit {
     const before = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
     if (before) this.assertActorOwner(before.ownerType, before.ownerId, actorId, actorRoles);
     this.assertDeleteApprovalNotRequired(id, actorRoles);
-    return this.db.transaction(() => {
-      const deleted = before ? this.db.remove(AVAILABILITY, id, actorId) : false;
+    return this.db.transaction(async () => {
+      const deleted = before ? await this.store.remove(AVAILABILITY_SPEC, id, actorId) : false;
       if (deleted && actorId != null && before)
         this.audit.log({ entity: AVAILABILITY, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf({ ...before }) as never });
       return { id, deleted };

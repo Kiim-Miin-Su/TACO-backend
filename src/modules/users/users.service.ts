@@ -7,6 +7,8 @@ import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
 import type { WebIdCheckResult } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { USERS_SPEC } from '../../database/calendar-asset-specs';
+import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import {
   USERS, isStaffRole, toSafe,
   type AccountStatus, type SafeAccount, type StaffAccount, type StaffRole,
@@ -21,10 +23,15 @@ const DEMO_PW_HASH = bcrypt.hashSync('demo1234', 12);
 
 @Injectable()
 export class UsersService implements OnModuleInit {
-  constructor(private readonly db: InMemoryDatabase) {}
+  constructor(
+    private readonly db: InMemoryDatabase,
+    private readonly store: PostgresCollectionStore,
+  ) {}
 
-  onModuleInit(): void {
-    this.db.seed<StaffAccount>(USERS, [
+  async onModuleInit(): Promise<void> {
+    const hydrated = await this.store.hydrate<StaffAccount>(USERS_SPEC);
+    if (hydrated.length) return;
+    await this.store.seed<StaffAccount>(USERS_SPEC, [
       // [강사 식별자 통일 2026-07-07] users.id 자체가 강사 식별자다(별도 instructorId 브리지 폐기).
       //  courses/class_sessions/payouts/reports/availability/counsel의 instructorId·assignedStaffId가 이 id를 참조.
       //  강사 = id 1·2, 대표/매니저 = 3·4. (정유진은 우선 데모 계정 — 실제 강사는 추후 계정 발급)
@@ -65,17 +72,17 @@ export class UsersService implements OnModuleInit {
     if (this.db.findBy<StaffAccount>(USERS, (a) => a.email.toLowerCase() === email).length)
       throw new BadRequestException('이미 사용 중인 이메일입니다.');
     const verifyToken = randomBytes(24).toString('hex');
-    const acc = this.db.insert<StaffAccount>(USERS, {
+    const acc = await this.store.insert<StaffAccount>(USERS_SPEC, {
       webId, name: input.name.trim(), email, role,
       status: 'pending', passwordHash, emailVerified: false, emailVerifyToken: verifyToken,
     });
     return { account: toSafe(acc), verifyToken };
   }
 
-  verifyEmail(token: string): SafeAccount {
+  async verifyEmail(token: string): Promise<SafeAccount> {
     const acc = this.db.findBy<StaffAccount>(USERS, (a) => !!a.emailVerifyToken && a.emailVerifyToken === token)[0];
     if (!acc) throw new BadRequestException('유효하지 않거나 만료된 인증 링크입니다.');
-    const updated = this.db.update<StaffAccount>(USERS, acc.id, { emailVerified: true, emailVerifyToken: undefined }) as StaffAccount;
+    const updated = await this.store.update<StaffAccount>(USERS_SPEC, acc.id, { emailVerified: true, emailVerifyToken: undefined }) as StaffAccount;
     return toSafe(updated);
   }
 
@@ -89,12 +96,12 @@ export class UsersService implements OnModuleInit {
   }
 
   // 대표(super_admin) 승인/반려. 승인 시 활성화(역할은 신청 역할 유지 또는 지정).
-  setStatus(id: number, status: AccountStatus, role?: string): SafeAccount {
+  async setStatus(id: number, status: AccountStatus, role?: string): Promise<SafeAccount> {
     const acc = this.findById(id);
     if (!acc) throw new BadRequestException(`계정 ${id} 없음`);
     const patch: Partial<StaffAccount> = { status };
     if (status === 'active' && role && isStaffRole(role)) patch.role = role;
-    return toSafe(this.db.update<StaffAccount>(USERS, id, patch) as StaffAccount);
+    return toSafe(await this.store.update<StaffAccount>(USERS_SPEC, id, patch) as StaffAccount);
   }
 
   checkWebId(webId: string): WebIdCheckResult {

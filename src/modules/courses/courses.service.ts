@@ -1,17 +1,24 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { COURSES_SPEC } from '../../database/calendar-asset-specs';
+import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { Course, COURSES } from './course.entity';
 import { CreateCourseDto } from './dto/create-course.dto';
 
 @Injectable()
 export class CoursesService implements OnModuleInit {
-  constructor(private readonly db: InMemoryDatabase) {}
+  constructor(
+    private readonly db: InMemoryDatabase,
+    private readonly store: PostgresCollectionStore,
+  ) {}
 
   // 데모 코스 시드 — 스케줄 모듈 COURSES(10,11,12)와 id·강사·과목·색 정렬.
   // hourlyRate(시급)는 페이 산정의 기준값으로, class_sessions.courseId → courses.id
   // 조인의 단일 소스. 세션이 참조하는 코스 id를 고정해 FK/조인 무결성을 보장한다.
-  onModuleInit(): void {
-    this.db.seed<Course>(COURSES, [
+  async onModuleInit(): Promise<void> {
+    const hydrated = await this.store.hydrate<Course>(COURSES_SPEC);
+    if (hydrated.length) return;
+    await this.store.seed<Course>(COURSES_SPEC, [
       // 정가(price)는 결제 시드 금액과 정합(코스10=480,000 등) — 단일 소스 일관성.
       { id: 10, name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, price: 480000, hourlyRate: 50000, color: '#0969da' },
       { id: 11, name: 'AP Calculus BC', subjectId: 2, instructorId: 2, price: 520000, hourlyRate: 60000, color: '#8250df' },
@@ -29,8 +36,8 @@ export class CoursesService implements OnModuleInit {
     return row;
   }
 
-  create(dto: CreateCourseDto): Course {
-    return this.db.insert<Course>(COURSES, {
+  create(dto: CreateCourseDto): Promise<Course> {
+    return this.store.insert<Course>(COURSES_SPEC, {
       name: dto.name,
       subjectId: dto.subjectId,
       instructorId: dto.instructorId,

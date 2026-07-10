@@ -86,6 +86,7 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
     try {
       await this.dataSource.initialize();
       await this.dataSource.query('select 1 as ok');
+      this.attachPoolErrorLogger();
       this.lastError = null;
       const info = safeUrlInfo(url);
       this.logger.log(`Postgres connection ready${info.host ? ` (${info.host})` : ''}`);
@@ -142,6 +143,14 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
   getDataSource(): DataSource {
     if (!this.dataSource?.isInitialized) throw new Error('Postgres data source is not initialized');
     return this.dataSource;
+  }
+
+  private attachPoolErrorLogger(): void {
+    const pool = (this.dataSource?.driver as unknown as { master?: { on?: (event: string, cb: (err: Error) => void) => void } })?.master;
+    pool?.on?.('error', (err) => {
+      this.lastError = err.message;
+      this.logger.warn(`Postgres pool idle client error: ${err.message}`);
+    });
   }
 
   private async destroyDataSource(): Promise<void> {
