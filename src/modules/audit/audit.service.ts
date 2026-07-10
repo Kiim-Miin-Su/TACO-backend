@@ -4,9 +4,11 @@
 //  - 호출 규약: **쓰기 서비스의 db.transaction 안에서** log()를 호출(이력 포함 원자성 — 롤백 시 이력도 롤백).
 //  - delete는 changes에 before 전체 스냅샷('__row' 키 — 복원 근거), update는 변경 필드 diff만(diffOf).
 //  - append-only: 본 컬렉션에는 update/remove를 제공하지 않는다(불변 — dbml v9 §32 예외 테이블).
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import type { AuditAction, AuditLog } from '@kms545487/contracts';
+import { AUDIT_LOG_SPEC } from '../../database/calendar-asset-specs';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
+import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 
 export const AUDIT_LOG = 'audit_log';
 
@@ -22,12 +24,19 @@ export type AuditEntry = {
 };
 
 @Injectable()
-export class AuditService {
-  constructor(private readonly db: InMemoryDatabase) {}
+export class AuditService implements OnModuleInit {
+  constructor(
+    private readonly db: InMemoryDatabase,
+    private readonly store: PostgresCollectionStore,
+  ) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.store.hydrate<AuditRow>(AUDIT_LOG_SPEC);
+  }
 
   /** 이력 1건 기록 — 호출자는 반드시 자신의 트랜잭션 안에서 호출(원자성). */
-  log(entry: AuditEntry): AuditRow {
-    return this.db.insert<AuditRow>(AUDIT_LOG, {
+  async log(entry: AuditEntry): Promise<AuditRow> {
+    return this.store.insert<AuditRow>(AUDIT_LOG_SPEC, {
       ...entry,
       at: new Date().toISOString(),
     } as Omit<AuditRow, keyof BaseRow>);

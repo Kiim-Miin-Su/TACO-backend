@@ -9,6 +9,7 @@ export type PostgresCollectionSpec = {
   indexes?: string[];
   jsonFields?: string[];
   dateFields?: string[];
+  timestampFields?: string[];
 };
 
 type DbRow = Record<string, unknown>;
@@ -176,7 +177,7 @@ export class PostgresCollectionStore {
       const camel = snakeToCamel(key);
       if (jsonFields.has(camel)) out[camel] = parseJson(value);
       else if (dateFields.has(camel)) out[camel] = toDateString(value);
-      else if (camel === 'createdAt' || camel === 'updatedAt' || camel === 'deletedAt') out[camel] = toIso(value);
+      else if (camel === 'createdAt' || camel === 'updatedAt' || camel === 'deletedAt' || (spec.timestampFields ?? []).includes(camel)) out[camel] = toIso(value);
       else out[camel] = value;
     }
     return out as T;

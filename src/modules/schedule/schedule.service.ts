@@ -403,7 +403,7 @@ export class ScheduleService implements OnModuleInit {
         color: dto.color ?? course.color,
       } as Omit<ClassSession, keyof BaseRow>);
       if (actorId != null)
-        this.audit.log({ entity: SESSIONS, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
+        await this.audit.log({ entity: SESSIONS, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
       return created;
     });
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
@@ -424,7 +424,7 @@ export class ScheduleService implements OnModuleInit {
       for (const r of this.db.findByField<BaseRow & { sessionId: number }>('session_reports', 'sessionId', id))
         this.db.remove('session_reports', r.id, actorId);
       if (actorId != null)
-        this.audit.log({ entity: SESSIONS, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf(snap) as never });
+        await this.audit.log({ entity: SESSIONS, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf(snap) as never });
       return { id, deleted };
     });
   }
@@ -522,7 +522,7 @@ export class ScheduleService implements OnModuleInit {
     if (actorId != null) {
       const diff = this.audit.diffOf(beforeSnap, updated);
       if (Object.keys(diff).length)
-        this.audit.log({ entity: SESSIONS, entityId: id, action: 'update', actorId, changes: diff }); // 시리즈 동반은 대상 1건으로 대표(scope는 diff에 미포함)
+        await this.audit.log({ entity: SESSIONS, entityId: id, action: 'update', actorId, changes: diff }); // 시리즈 동반은 대상 1건으로 대표(scope는 diff에 미포함)
     }
 
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));

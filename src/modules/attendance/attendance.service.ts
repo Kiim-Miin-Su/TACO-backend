@@ -80,7 +80,7 @@ export class AttendanceService implements OnModuleInit {
     if (actorId != null && !isAdmin && session.instructorId !== actorId)
       throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 기록할 수 있습니다.');
 
-    return this.db.transaction(() => {
+    return this.db.transaction(async () => {
       // 3) (세션, 학생) 유니크 — 있으면 갱신, 없으면 삽입
       const [existing] = this.db.findBy<Attendance>(
         ATTENDANCE,
@@ -92,7 +92,7 @@ export class AttendanceService implements OnModuleInit {
         if (actorId != null) {
           const diff = this.audit.diffOf(before, updated);
           if (Object.keys(diff).length)
-            this.audit.log({ entity: ATTENDANCE, entityId: updated.id, action: 'update', actorId, changes: diff });
+            await this.audit.log({ entity: ATTENDANCE, entityId: updated.id, action: 'update', actorId, changes: diff });
         }
         return updated;
       }
@@ -102,7 +102,7 @@ export class AttendanceService implements OnModuleInit {
         status: dto.status,
       });
       if (actorId != null)
-        this.audit.log({ entity: ATTENDANCE, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
+        await this.audit.log({ entity: ATTENDANCE, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
       return created;
     });
   }

@@ -223,3 +223,30 @@ export const VIEW_PRESETS_SPEC: PostgresCollectionSpec = {
   jsonFields: ['instructorIds', 'studentIds', 'roomIds', 'subjects', 'statuses', 'kinds', 'modeFilters', 'manualPanes'],
   dateFields: ['periodFrom', 'periodTo'],
 };
+
+export const AUDIT_LOG_SPEC: PostgresCollectionSpec = {
+  table: 'audit_log',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS audit_log (
+      id serial PRIMARY KEY,
+      entity varchar(50) NOT NULL,
+      entity_id integer NOT NULL,
+      action varchar(32) NOT NULL,
+      actor_id integer NOT NULL,
+      at timestamptz NOT NULL DEFAULT now(),
+      changes text,
+      reason varchar(200),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
+    )
+  `,
+  jsonFields: ['changes'],
+  timestampFields: ['at'],
+  indexes: [
+    activeIndex('audit_log', 'idx_audit_entity_id', 'entity, entity_id'),
+    activeIndex('audit_log', 'idx_audit_actor_id', 'actor_id'),
+    activeIndex('audit_log', 'idx_audit_at', 'at'),
+  ],
+};

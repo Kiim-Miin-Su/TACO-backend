@@ -85,7 +85,7 @@ export class ScheduleRequestsService {
         requestReason: dto.requestReason,
         status: 'pending',
       } as unknown as Omit<RequestRow, keyof BaseRow>);
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
       return created;
     });
     return { row, conflicts };
@@ -139,7 +139,7 @@ export class ScheduleRequestsService {
         changeSummary: this.sessionUpdateSummary(target, merged),
         status: 'pending',
       } as unknown as Omit<RequestRow, keyof BaseRow>);
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
       return created;
     });
     return { row, conflicts };
@@ -173,7 +173,7 @@ export class ScheduleRequestsService {
         changeSummary: `수업 삭제 요청 · ${target.sessionDate} ${target.startTime ?? ''}${target.endTime ? `-${target.endTime}` : ''}`,
         status: 'pending',
       } as unknown as Omit<RequestRow, keyof BaseRow>);
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
       return created;
     });
     return { row, conflicts: [] };
@@ -227,7 +227,7 @@ export class ScheduleRequestsService {
         requestReason: dto.requestReason,
         status: 'pending',
       } as Omit<RequestRow, keyof BaseRow>);
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
       return created;
     });
     return row;
@@ -287,7 +287,7 @@ export class ScheduleRequestsService {
       const updated = this.mustStored(await this.store.update<RequestRow>(id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(), createdSessionId: session.id,
       }));
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts };
     });
   }
@@ -305,7 +305,7 @@ export class ScheduleRequestsService {
       const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
       }));
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts };
     });
   }
@@ -318,7 +318,7 @@ export class ScheduleRequestsService {
       const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
       }));
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts: [] };
     });
   }
@@ -346,7 +346,7 @@ export class ScheduleRequestsService {
       const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
       }));
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts: [] };
     });
   }
@@ -377,7 +377,7 @@ export class ScheduleRequestsService {
     return this.store.transaction(async () => {
       const before = { ...req };
       const updated = this.mustStored(await this.store.update<RequestRow>(id, patch as Partial<RequestRow>));
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'update', actorId, changes: this.audit.diffOf(before, updated) as never });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'update', actorId, changes: this.audit.diffOf(before, updated) as never });
       return updated;
     });
   }
@@ -389,7 +389,7 @@ export class ScheduleRequestsService {
       const updated = this.mustStored(await this.store.update<RequestRow>(id, {
         status: 'rejected', reason, decidedBy, decidedAt: new Date().toISOString(),
       }));
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'reject', actorId: decidedBy, reason });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'reject', actorId: decidedBy, reason });
       return updated;
     });
   }
@@ -400,7 +400,7 @@ export class ScheduleRequestsService {
     if (req.requesterId !== requesterId) throw new ForbiddenException('본인 요청만 철회할 수 있습니다');
     return this.store.transaction(async () => {
       const deleted = await this.store.remove(id, requesterId);
-      this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'delete', actorId: requesterId, changes: this.audit.snapshotOf({ ...req }) as never });
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'delete', actorId: requesterId, changes: this.audit.snapshotOf({ ...req }) as never });
       return { id, deleted };
     });
   }

@@ -250,7 +250,7 @@ export class AvailabilityService implements OnModuleInit {
         if (u && actorId != null && beforeSnap) {
           const diff = this.audit.diffOf(beforeSnap, u);
           if (Object.keys(diff).length)
-            this.audit.log({ entity: AVAILABILITY, entityId: u.id, action: 'update', actorId, changes: diff });
+            await this.audit.log({ entity: AVAILABILITY, entityId: u.id, action: 'update', actorId, changes: diff });
         }
         return u;
       });
@@ -268,7 +268,7 @@ export class AvailabilityService implements OnModuleInit {
         effectiveTo: dto.effectiveTo,
       });
       if (actorId != null)
-        this.audit.log({ entity: AVAILABILITY, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
+        await this.audit.log({ entity: AVAILABILITY, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
       return created;
     });
   }
@@ -281,7 +281,7 @@ export class AvailabilityService implements OnModuleInit {
     return this.db.transaction(async () => {
       const deleted = before ? await this.store.remove(AVAILABILITY_SPEC, id, actorId) : false;
       if (deleted && actorId != null && before)
-        this.audit.log({ entity: AVAILABILITY, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf({ ...before }) as never });
+        await this.audit.log({ entity: AVAILABILITY, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf({ ...before }) as never });
       return { id, deleted };
     });
   }
