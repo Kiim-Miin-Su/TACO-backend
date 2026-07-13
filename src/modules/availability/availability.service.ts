@@ -13,6 +13,7 @@ import { RoomsService } from '../rooms/rooms.service';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { sessionEndMin } from '../schedule/conflict.util';
+import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 
 type Seed = Omit<AvailabilityBlock, 'id' | 'createdAt' | 'updatedAt'>;
 type AvailabilityKindEx = AvailabilityKind | 'online_only';
@@ -60,6 +61,7 @@ export class AvailabilityService implements OnModuleInit {
     private readonly store: PostgresCollectionStore,
     private readonly audit: AuditService, // [TBO-16 Q3] 가용/불가 변경 이력
     private readonly rooms: RoomsService,
+    private readonly unitOfWork: CalendarUnitOfWork,
   ) {}
 
   // owner_id 참조 무결성(#7): owner 3종 모두 실제 컬렉션 기준으로 검증.
@@ -261,7 +263,7 @@ export class AvailabilityService implements OnModuleInit {
         );
       }
       const beforeSnap = existing ? { ...existing } : undefined;
-      const updated = await this.db.transaction(async () => {
+      const updated = await this.unitOfWork.run(async () => {
         const u = await this.store.update<AvailabilityBlock>(AVAILABILITY_SPEC, dto.id!, {
           kind: (dto.kind ?? 'available') as AvailabilityKind,
           weekday: dto.weekday,
@@ -279,7 +281,7 @@ export class AvailabilityService implements OnModuleInit {
       });
       if (updated) return updated;
     }
-    return this.db.transaction(async () => {
+    return this.unitOfWork.run(async () => {
       const created = await this.store.insert<AvailabilityBlock>(AVAILABILITY_SPEC, {
         ownerType: dto.ownerType,
         ownerId: dto.ownerId,
@@ -302,7 +304,7 @@ export class AvailabilityService implements OnModuleInit {
     const before = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
     if (before) this.assertActorOwner(before.ownerType, before.ownerId, actorId, actorRoles);
     this.assertDeleteApprovalNotRequired(id, actorRoles);
-    return this.db.transaction(async () => {
+    return this.unitOfWork.run(async () => {
       const deleted = before ? await this.store.remove(AVAILABILITY_SPEC, id, actorId) : false;
       if (deleted && actorId != null && before)
         await this.audit.log({ entity: AVAILABILITY, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf({ ...before }) as never });

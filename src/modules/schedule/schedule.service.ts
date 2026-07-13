@@ -15,9 +15,10 @@ import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
 import { USERS, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
 import { ClassSessionsStore } from './class-sessions.store';
+import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
-import { hhmmToMin as toMin, minToHhmm, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff } from '../../common/time.util';
+import { hhmmToMin as toMin, minToHhmm, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff, durationMinutesBetween } from '../../common/time.util';
 
 // [감사 A, 2026-07-02] 하드코딩 상수(STUDENTS_LBL/COURSE_STUDENTS/COURSES/SUBJECTS) 제거 —
 //  코호트·카탈로그는 실제 컬렉션(students/enrollments/courses/subjects)을 조회한다(단일 소스).
@@ -57,11 +58,6 @@ function addMinutes(hhmm: string, mins: number): string {
 //  - 크로스 세션 duration 상한 = 480분(DTO [감사 H4]와 동일 — 시급 계산 오염 방지).
 //  - 충돌 검사는 conflict.util이 절대 분 좌표(±1일)로 이틀에 걸쳐 수행.
 const CROSS_MAX_MIN = 480;
-/** endTime 입력 → 진행 분. 음수(익일 종료)는 +1440 래핑. 0(같은 시각)은 호출부에서 400. */
-const durationFrom = (startTime: string, endTime: string): number => {
-  const d = toMin(endTime) - toMin(startTime);
-  return d < 0 ? d + 1440 : d;
-};
 /** 저장/응답용 endTime — 자정(24:00) 이상 종료면 undefined(durationMinutes 파생 규칙). */
 const endTimeOf = (startTime: string, durationMinutes: number): string | undefined =>
   toMin(startTime) + durationMinutes >= 24 * 60 ? undefined : addMinutes(startTime, durationMinutes);
@@ -102,6 +98,7 @@ export class ScheduleService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly sessions: ClassSessionsStore,
+    private readonly unitOfWork: CalendarUnitOfWork,
     private readonly rooms: RoomsService,
     private readonly availability: AvailabilityService,
     private readonly audit: AuditService, // [TBO-16 #7] 세션 CRUD 변경 이력(tx 동반)
@@ -371,7 +368,7 @@ export class ScheduleService implements OnModuleInit {
     const startTime = dto.startTime;
     // [R-9] endTime<startTime = 익일 종료(자정 크로스 — +1440 래핑). 같으면 400, 크로스 상한 480분.
     const durationMinutes = dto.endTime
-      ? durationFrom(startTime, dto.endTime)
+      ? durationMinutesBetween(startTime, dto.endTime)
       : dto.durationMinutes ?? SESSION_DEFAULTS.durationMinutes;
     assertDuration(startTime, durationMinutes);
     const endTime = endTimeOf(startTime, durationMinutes); // 크로스면 undefined(durationMinutes 파생 저장)
@@ -388,7 +385,7 @@ export class ScheduleService implements OnModuleInit {
     }
 
     // [원자성] 세션 생성 + 변경 이력(audit)이 함께 반영되거나 함께 롤백
-    const row = await this.db.transaction(async () => {
+    const row = await this.unitOfWork.run(async () => {
       const created = await this.sessions.insert({
         studentIds,
         seriesId: dto.seriesId,
@@ -420,7 +417,7 @@ export class ScheduleService implements OnModuleInit {
     await this.ensureReady();
     const before = this.db.findById<ClassSession>(SESSIONS, id);
     if (!before) throw new NotFoundException(`Session ${id} not found`);
-    return this.db.transaction(async () => {
+    return this.unitOfWork.run(async () => {
       const snap = { ...before };
       const deleted = await this.sessions.remove(id, actorId);
       // 동반 soft delete(무결성·캐스케이드 — dbml v9 §33): 이 세션의 출결·리포트
@@ -457,7 +454,7 @@ export class ScheduleService implements OnModuleInit {
       if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
     }
     // [원자성] 반복 시리즈 scope 편집 — 대상+동반 세션이 전부 반영되거나 전부 롤백(부분 편집 잔존 금지)
-    return this.db.transaction(async () => {
+    return this.unitOfWork.run(async () => {
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
 
@@ -543,7 +540,7 @@ export class ScheduleService implements OnModuleInit {
     //  어느 경로든 종료가 24:00 이상이면 endTime을 저장하지 않고(undefined) durationMinutes로 파생 —
     //  '25:00' 같은 무효 HH:mm이 DB에 남지 않는다. 크로스 상한 480분(assertDuration).
     let durationMinutes: number;
-    if (dto.endTime) durationMinutes = durationFrom(startTime, dto.endTime);
+    if (dto.endTime) durationMinutes = durationMinutesBetween(startTime, dto.endTime);
     else if (dto.durationMinutes != null) durationMinutes = dto.durationMinutes;
     // 종료/시수 미지정 → 시수 유지(이동 시 종료는 시작 기준 재파생 — 크로스 여부도 재판정).
     else durationMinutes = cur.durationMinutes;

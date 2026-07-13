@@ -194,7 +194,7 @@ export const VIEW_PRESETS_SPEC: PostgresCollectionSpec = {
   createSql: `
     CREATE TABLE IF NOT EXISTS calendar_view_presets (
       id serial PRIMARY KEY,
-      name varchar(40) NOT NULL UNIQUE,
+      name varchar(40) NOT NULL,
       view varchar(16) NOT NULL DEFAULT 'week',
       period_from date,
       period_to date,
@@ -222,6 +222,10 @@ export const VIEW_PRESETS_SPEC: PostgresCollectionSpec = {
   `,
   jsonFields: ['instructorIds', 'studentIds', 'roomIds', 'subjects', 'statuses', 'kinds', 'modeFilters', 'manualPanes'],
   dateFields: ['periodFrom', 'periodTo'],
+  indexes: [
+    'ALTER TABLE calendar_view_presets DROP CONSTRAINT IF EXISTS calendar_view_presets_name_key',
+    'CREATE UNIQUE INDEX IF NOT EXISTS uq_calendar_view_presets_active_name ON calendar_view_presets (name) WHERE deleted_at IS NULL',
+  ],
 };
 
 export const AUDIT_LOG_SPEC: PostgresCollectionSpec = {

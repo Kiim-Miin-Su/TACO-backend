@@ -242,6 +242,21 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
       const { app, http, manager } = await boot();
       const rows = (await http.get('/api/view-presets').set(auth(manager)).expect(200)).body as ViewPresetRow[];
       expect(rows.some((row) => row.id === presetId)).toBe(false);
+      const recreated = (await http.post('/api/view-presets')
+        .set(auth(manager))
+        .send({
+          name,
+          view: 'week',
+          instructorIds: [1],
+          studentIds: [],
+          roomIds: [],
+          subjects: [],
+          statuses: [],
+          groupOnly: false,
+        })
+        .expect(201)).body as ViewPresetRow;
+      expect(recreated.name).toBe(name);
+      await http.delete(`/api/view-presets/${recreated.id}`).set(auth(manager)).expect(200);
       await app.close();
     }
   });

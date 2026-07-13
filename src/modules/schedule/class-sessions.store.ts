@@ -1,6 +1,15 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { PostgresConnectionService } from '../../database/postgres-connection.service';
+import {
+  camelToSnake,
+  normalizeQueryRows,
+  parseJsonNumberArray,
+  snakeToCamel,
+  toDateString,
+  toIsoString,
+  type PostgresRow,
+} from '../../database/postgres-row.util';
 import { ClassSession, SESSIONS } from './schedule.entity';
 
 const TABLE = SESSIONS;
@@ -10,39 +19,7 @@ const SESSION_KINDS = ['class', 'level_test', 'counsel'];
 const SESSION_MODES = ['in_person', 'online'];
 const INSTRUCTOR_ATTENDANCE = ['present', 'late', 'absent', 'makeup'];
 
-type DbRow = Record<string, unknown>;
-
-const camelToSnake = (key: string): string => key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
-const snakeToCamel = (key: string): string => key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 const sqlList = (items: string[]): string => items.map((x) => `'${x}'`).join(', ');
-
-function parseJsonArray(value: unknown): number[] | undefined {
-  if (value == null) return undefined;
-  if (Array.isArray(value)) return value.map(Number).filter(Number.isFinite);
-  try {
-    const parsed = JSON.parse(String(value));
-    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function toIso(value: unknown): string | null | undefined {
-  if (value == null) return value as null | undefined;
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
-}
-
-function toDateString(value: unknown): string | undefined {
-  if (value == null) return undefined;
-  if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, '0');
-    const d = String(value.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-  return String(value).slice(0, 10);
-}
 
 @Injectable()
 export class ClassSessionsStore implements OnModuleInit {
@@ -175,6 +152,8 @@ export class ClassSessionsStore implements OnModuleInit {
     await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_series ON ${TABLE} (series_id) WHERE deleted_at IS NULL`);
     await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_status ON ${TABLE} (status) WHERE deleted_at IS NULL`);
     await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_payout_id ON ${TABLE} (payout_id) WHERE deleted_at IS NULL`);
+    await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_room_date ON ${TABLE} (room_id, session_date) WHERE deleted_at IS NULL`);
+    await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_date_status ON ${TABLE} (session_date, status) WHERE deleted_at IS NULL`);
     this.ready = true;
     this.logger.log('class_sessions table ready (Postgres-backed)');
   }
@@ -189,12 +168,9 @@ export class ClassSessionsStore implements OnModuleInit {
     await this.query(`SELECT setval(pg_get_serial_sequence('${TABLE}', 'id'), COALESCE((SELECT MAX(id) FROM ${TABLE}), 1), true)`);
   }
 
-  private async query(sql: string, params: unknown[] = []): Promise<DbRow[]> {
+  private async query(sql: string, params: unknown[] = []): Promise<PostgresRow[]> {
     const result = await this.postgres.query(sql, params);
-    if (Array.isArray(result) && Array.isArray(result[0]) && typeof result[1] === 'number') {
-      return result[0] as DbRow[];
-    }
-    return result as DbRow[];
+    return normalizeQueryRows(result);
   }
 
   private toDbPayload(src: Record<string, unknown>): Record<string, unknown> {
@@ -207,14 +183,14 @@ export class ClassSessionsStore implements OnModuleInit {
     return out;
   }
 
-  private fromDbRow(row: DbRow): ClassSession {
+  private fromDbRow(row: PostgresRow): ClassSession {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(row)) out[snakeToCamel(key)] = value;
-    out.studentIds = parseJsonArray(row.student_ids) ?? [];
+    out.studentIds = parseJsonNumberArray(row.student_ids) ?? [];
     out.sessionDate = toDateString(row.session_date);
-    out.createdAt = toIso(row.created_at);
-    out.updatedAt = toIso(row.updated_at);
-    out.deletedAt = toIso(row.deleted_at);
+    out.createdAt = toIsoString(row.created_at);
+    out.updatedAt = toIsoString(row.updated_at);
+    out.deletedAt = toIsoString(row.deleted_at);
     return out as ClassSession;
   }
 

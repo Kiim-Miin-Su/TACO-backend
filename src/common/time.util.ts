@@ -20,6 +20,12 @@ export const minToHhmm = (totalMin: number): string =>
 /** "HH:mm" + 분 → "HH:mm"(허용형). = minToHhmm(hhmmToMin(hhmm)+mins). */
 export const addMinutes = (hhmm: string, mins: number): string => minToHhmm(hhmmToMin(hhmm) + mins);
 
+/** 시작/종료 벽시각의 진행 분. 종료가 더 이르면 익일 종료로 해석한다. */
+export const durationMinutesBetween = (startTime: string, endTime: string): number => {
+  const delta = hhmmToMin(endTime) - hhmmToMin(startTime);
+  return delta < 0 ? delta + 1440 : delta;
+};
+
 /** "YYYY-MM-DD" → 요일(0=일 ~ 6=토, UTC 기준). */
 export const weekdayOf = (dateStr: string): number => new Date(dateStr + 'T00:00:00Z').getUTCDay();
 

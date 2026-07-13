@@ -2,6 +2,15 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AsyncLocalStorage } from 'async_hooks';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { PostgresConnectionService } from '../../database/postgres-connection.service';
+import {
+  camelToSnake,
+  normalizeQueryRows,
+  parseJsonNumberArray,
+  snakeToCamel,
+  toDateString,
+  toIsoString,
+  type PostgresRow,
+} from '../../database/postgres-row.util';
 
 const TABLE = 'schedule_requests';
 
@@ -9,39 +18,7 @@ const REQUEST_KINDS = ['session_create', 'session_update', 'session_delete', 'av
 const REQUEST_STATUSES = ['pending', 'approved', 'rejected'];
 const RECURRENCE_SCOPES = ['this', 'this_and_following', 'all'];
 
-type DbRow = Record<string, unknown>;
-
-const camelToSnake = (key: string): string => key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
-const snakeToCamel = (key: string): string => key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 const sqlList = (items: string[]): string => items.map((x) => `'${x}'`).join(', ');
-
-function parseJsonArray(value: unknown): number[] | undefined {
-  if (value == null) return undefined;
-  if (Array.isArray(value)) return value.map(Number).filter(Number.isFinite);
-  try {
-    const parsed = JSON.parse(String(value));
-    return Array.isArray(parsed) ? parsed.map(Number).filter(Number.isFinite) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function toIso(value: unknown): string | null | undefined {
-  if (value == null) return value as null | undefined;
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
-}
-
-function toDateString(value: unknown): string | undefined {
-  if (value == null) return undefined;
-  if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, '0');
-    const d = String(value.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-  return String(value).slice(0, 10);
-}
 
 @Injectable()
 export class ScheduleRequestsStore implements OnModuleInit {
@@ -74,7 +51,7 @@ export class ScheduleRequestsStore implements OnModuleInit {
       this.memoryTransactionTail = run.then(() => undefined, () => undefined);
       return run;
     }
-    return this.postgres.transaction(async () => fn());
+    return this.memory.transaction(() => this.postgres.transaction(async () => fn()));
   }
 
   async insert<T extends BaseRow>(data: Omit<T, keyof BaseRow>): Promise<T> {
@@ -182,16 +159,17 @@ export class ScheduleRequestsStore implements OnModuleInit {
     await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_request_kind ON ${TABLE} (request_kind) WHERE deleted_at IS NULL`);
     await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_target_session_id ON ${TABLE} (target_session_id) WHERE deleted_at IS NULL`);
     await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_decided_by ON ${TABLE} (decided_by) WHERE deleted_at IS NULL`);
+    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_pending_kind_created ON ${TABLE} (status, request_kind, created_at DESC) WHERE deleted_at IS NULL`);
+    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_status_created ON ${TABLE} (requester_id, status, created_at DESC) WHERE deleted_at IS NULL`);
+    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_target_availability_id ON ${TABLE} (target_availability_id) WHERE deleted_at IS NULL`);
+    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_created_session_id ON ${TABLE} (created_session_id) WHERE deleted_at IS NULL`);
     this.schemaReady = true;
     this.logger.log('schedule_requests table ready (Postgres-backed)');
   }
 
-  private async query(sql: string, params: unknown[] = []): Promise<DbRow[]> {
+  private async query(sql: string, params: unknown[] = []): Promise<PostgresRow[]> {
     const result = await this.postgres.query(sql, params);
-    if (Array.isArray(result) && Array.isArray(result[0]) && typeof result[1] === 'number') {
-      return result[0] as DbRow[];
-    }
-    return result as DbRow[];
+    return normalizeQueryRows(result);
   }
 
   private toDbPayload(src: Record<string, unknown>): Record<string, unknown> {
@@ -207,18 +185,18 @@ export class ScheduleRequestsStore implements OnModuleInit {
     return out;
   }
 
-  private fromDbRow<T extends BaseRow>(row: DbRow): T {
+  private fromDbRow<T extends BaseRow>(row: PostgresRow): T {
     const out: Record<string, unknown> = {};
     for (const [key, value] of Object.entries(row)) out[snakeToCamel(key)] = value;
-    out.studentIds = parseJsonArray(row.student_ids) ?? [];
-    out.impactSessionIds = parseJsonArray(row.impact_session_ids) ?? [];
+    out.studentIds = parseJsonNumberArray(row.student_ids) ?? [];
+    out.impactSessionIds = parseJsonNumberArray(row.impact_session_ids) ?? [];
     out.sessionDate = toDateString(row.session_date);
     out.availabilityEffectiveFrom = toDateString(row.availability_effective_from);
     out.availabilityEffectiveTo = toDateString(row.availability_effective_to);
-    out.createdAt = toIso(row.created_at);
-    out.updatedAt = toIso(row.updated_at);
-    out.deletedAt = toIso(row.deleted_at);
-    out.decidedAt = toIso(row.decided_at);
+    out.createdAt = toIsoString(row.created_at);
+    out.updatedAt = toIsoString(row.updated_at);
+    out.deletedAt = toIsoString(row.deleted_at);
+    out.decidedAt = toIsoString(row.decided_at);
     return out as T;
   }
 }

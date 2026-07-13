@@ -2,6 +2,15 @@ import { Injectable, Logger } from '@nestjs/common';
 import type { BaseRow } from '../common/types/base';
 import { InMemoryDatabase } from './in-memory.database';
 import { PostgresConnectionService } from './postgres-connection.service';
+import {
+  camelToSnake,
+  normalizeQueryRows,
+  parseJson,
+  snakeToCamel,
+  toDateString,
+  toIsoString,
+  type PostgresRow,
+} from './postgres-row.util';
 
 export type PostgresCollectionSpec = {
   table: string;
@@ -11,38 +20,6 @@ export type PostgresCollectionSpec = {
   dateFields?: string[];
   timestampFields?: string[];
 };
-
-type DbRow = Record<string, unknown>;
-
-const camelToSnake = (key: string): string => key.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
-const snakeToCamel = (key: string): string => key.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
-
-function parseJson(value: unknown): unknown {
-  if (value == null) return value;
-  if (typeof value !== 'string') return value;
-  try {
-    return JSON.parse(value);
-  } catch {
-    return value;
-  }
-}
-
-function toIso(value: unknown): string | null | undefined {
-  if (value == null) return value as null | undefined;
-  if (value instanceof Date) return value.toISOString();
-  return String(value);
-}
-
-function toDateString(value: unknown): string | null | undefined {
-  if (value == null) return value as null | undefined;
-  if (value instanceof Date) {
-    const y = value.getFullYear();
-    const m = String(value.getMonth() + 1).padStart(2, '0');
-    const d = String(value.getDate()).padStart(2, '0');
-    return `${y}-${m}-${d}`;
-  }
-  return String(value).slice(0, 10);
-}
 
 @Injectable()
 export class PostgresCollectionStore {
@@ -151,12 +128,9 @@ export class PostgresCollectionStore {
     await this.query(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 1), true)`);
   }
 
-  private async query(sql: string, params: unknown[] = []): Promise<DbRow[]> {
+  private async query(sql: string, params: unknown[] = []): Promise<PostgresRow[]> {
     const result = await this.postgres.query(sql, params);
-    if (Array.isArray(result) && Array.isArray(result[0]) && typeof result[1] === 'number') {
-      return result[0] as DbRow[];
-    }
-    return result as DbRow[];
+    return normalizeQueryRows(result);
   }
 
   private toDbPayload(spec: PostgresCollectionSpec, src: Record<string, unknown>): Record<string, unknown> {
@@ -169,7 +143,7 @@ export class PostgresCollectionStore {
     return out;
   }
 
-  private fromDbRow<T extends BaseRow>(spec: PostgresCollectionSpec, row: DbRow): T {
+  private fromDbRow<T extends BaseRow>(spec: PostgresCollectionSpec, row: PostgresRow): T {
     const out: Record<string, unknown> = {};
     const jsonFields = new Set(spec.jsonFields ?? []);
     const dateFields = new Set(spec.dateFields ?? []);
@@ -177,7 +151,7 @@ export class PostgresCollectionStore {
       const camel = snakeToCamel(key);
       if (jsonFields.has(camel)) out[camel] = parseJson(value);
       else if (dateFields.has(camel)) out[camel] = toDateString(value);
-      else if (camel === 'createdAt' || camel === 'updatedAt' || camel === 'deletedAt' || (spec.timestampFields ?? []).includes(camel)) out[camel] = toIso(value);
+      else if (camel === 'createdAt' || camel === 'updatedAt' || camel === 'deletedAt' || (spec.timestampFields ?? []).includes(camel)) out[camel] = toIsoString(value);
       else out[camel] = value;
     }
     return out as T;

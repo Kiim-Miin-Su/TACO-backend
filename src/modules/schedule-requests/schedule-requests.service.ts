@@ -15,6 +15,7 @@ import { AvailabilityService } from '../availability/availability.service';
 import { hasAdminRole } from '../auth/roles.decorator';
 import { UpsertAvailabilityDto } from '../availability/dto/upsert-availability.dto';
 import { ScheduleRequestsStore } from './schedule-requests.store';
+import { durationMinutesBetween } from '../../common/time.util';
 
 export const SCHEDULE_REQUESTS = 'schedule_requests';
 
@@ -50,10 +51,10 @@ export class ScheduleRequestsService {
 
   /** 요청 생성(pending) — 세션과 동일 검증 + 참고용 충돌 목록 반환. */
   async create(dto: CreateScheduleRequestDto, requesterId: number, requesterRoles?: string[]): Promise<{ row: RequestRow; conflicts: Conflict[] }> {
+    await this.schedule.ensureReady();
     if (dto.requestKind === 'availability_upsert' || dto.requestKind === 'availability_delete') {
       return { row: await this.createAvailabilityRequest(dto, requesterId, requesterRoles), conflicts: [] };
     }
-    await this.schedule.ensureReady();
     if (dto.requestKind === 'session_update') {
       return this.createSessionUpdateRequest(dto, requesterId, requesterRoles);
     }
@@ -61,10 +62,16 @@ export class ScheduleRequestsService {
       return this.createSessionDeleteRequest(dto, requesterId, requesterRoles);
     }
     const instructorId = this.schedule.validateSessionInput({ ...dto, courseId: dto.courseId! }); // FK·코호트(함수 통일)
+    const durationMinutes = dto.endTime
+      ? durationMinutesBetween(dto.startTime!, dto.endTime)
+      : (dto.durationMinutes ?? 60);
+    if (durationMinutes < 10 || durationMinutes > 480) {
+      throw new BadRequestException('수업 진행시간은 10분 이상 480분 이하여야 합니다.');
+    }
     // 참고용 충돌 드라이런(승인 시점에 재검사가 확정본)
     const conflicts = this.schedule.checkConflicts({
       sessionDate: dto.sessionDate!, startTime: dto.startTime!, endTime: dto.endTime,
-      durationMinutes: dto.durationMinutes, instructorId, roomId: dto.roomId,
+      durationMinutes, instructorId, roomId: dto.roomId,
       studentIds: dto.studentIds?.length ? dto.studentIds : undefined,
       mode: dto.mode, // [C2D] online_only 가용 판정이 요청 mode 기준으로(드라이런도 승인과 동일 조건)
     });
@@ -78,7 +85,7 @@ export class ScheduleRequestsService {
         sessionDate: dto.sessionDate!,
         startTime: dto.startTime!,
         endTime: dto.endTime,
-        durationMinutes: dto.durationMinutes ?? 60,
+        durationMinutes,
         kind: dto.kind ?? 'class',
         mode: dto.mode, // [C2D] 보존(미지정=승인 시 SESSION_DEFAULTS.in_person)
         topic: dto.topic,
@@ -356,26 +363,27 @@ export class ScheduleRequestsService {
    *  불변: requestKind·targetAvailabilityId·availability owner(DTO에 없음 → forbidNonWhitelisted 400).
    *  availability_delete는 수정 항목이 없어 400(반려 후 재요청). availability_upsert는 impact/요약 재계산. */
   async update(id: number, dto: UpdateScheduleRequestDto, actorId: number): Promise<RequestRow> {
-    const req = await this.mustPending(id);
-    if (req.requestKind === 'availability_delete' || req.requestKind === 'session_delete') {
-      throw new BadRequestException('삭제 요청은 수정할 항목이 없습니다 — 반려 후 재요청하세요.');
-    }
-    const patch: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(dto)) if (v !== undefined) patch[k] = v;
-    if (!Object.keys(patch).length) throw new BadRequestException('수정할 필드가 없습니다');
-    const merged = { ...req, ...patch } as RequestRow;
-    if (!req.requestKind || req.requestKind === 'session_create' || req.requestKind === 'session_update') {
-      // FK·코호트 재검증 + 코스 변경 시 기본 강사 재해석(생성 경로와 동일 규칙)
-      patch.instructorId = this.schedule.validateSessionInput({ ...merged, courseId: merged.courseId! });
-    } else {
-      // availability_upsert — owner/target 불변(원요청자 소유 유지), 겹침·FK·기간 재검증 후 impact 재계산
-      const upsert = this.toAvailabilityUpsert(merged as unknown as CreateScheduleRequestDto);
-      this.availability.validateRequestableUpsert(upsert, req.requesterId, ['admin']);
-      const impact = this.availability.previewUpsertImpact(upsert);
-      patch.impactSessionIds = impact.map((x) => x.sessionId);
-      patch.changeSummary = this.availabilitySummary('availability_upsert', upsert, impact.length);
-    }
+    await this.schedule.ensureReady();
     return this.store.transaction(async () => {
+      const req = await this.mustPending(id, true);
+      if (req.requestKind === 'availability_delete' || req.requestKind === 'session_delete') {
+        throw new BadRequestException('삭제 요청은 수정할 항목이 없습니다 — 반려 후 재요청하세요.');
+      }
+      const patch: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(dto)) if (v !== undefined) patch[k] = v;
+      if (!Object.keys(patch).length) throw new BadRequestException('수정할 필드가 없습니다');
+      const merged = { ...req, ...patch } as RequestRow;
+      if (!req.requestKind || req.requestKind === 'session_create' || req.requestKind === 'session_update') {
+        // FK·코호트 재검증 + 코스 변경 시 기본 강사 재해석(생성 경로와 동일 규칙)
+        patch.instructorId = this.schedule.validateSessionInput({ ...merged, courseId: merged.courseId! });
+      } else {
+        // availability_upsert — owner/target 불변(원요청자 소유 유지), 겹침·FK·기간 재검증 후 impact 재계산
+        const upsert = this.toAvailabilityUpsert(merged as unknown as CreateScheduleRequestDto);
+        this.availability.validateRequestableUpsert(upsert, req.requesterId, ['admin']);
+        const impact = this.availability.previewUpsertImpact(upsert);
+        patch.impactSessionIds = impact.map((x) => x.sessionId);
+        patch.changeSummary = this.availabilitySummary('availability_upsert', upsert, impact.length);
+      }
       const before = { ...req };
       const updated = this.mustStored(await this.store.update<RequestRow>(id, patch as Partial<RequestRow>));
       await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'update', actorId, changes: this.audit.diffOf(before, updated) as never });

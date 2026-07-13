@@ -28,8 +28,8 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
 
   it('강사 요청 생성(pending) — 세션과 동일 검증 통과 + 참고용 conflicts 배열', async () => {
     const res = await http.post('/api/schedule-requests').set(asInst())
-      .send({ ...SLOT, topic: '보충 요청', kind: 'class' }).expect(201);
-    expect(res.body.row).toMatchObject({ status: 'pending', courseId: 10, instructorId: 1, requesterId: expect.any(Number) });
+      .send({ ...SLOT, endTime: '10:30', topic: '보충 요청', kind: 'class' }).expect(201);
+    expect(res.body.row).toMatchObject({ status: 'pending', courseId: 10, instructorId: 1, requesterId: expect.any(Number), durationMinutes: 90 });
     expect(Array.isArray(res.body.conflicts)).toBe(true);
   });
 
