@@ -27,6 +27,7 @@ export type Candidate = {
   durationMinutes?: number; // endTime 없을 때 종료 파생(자정 초과 허용)
   instructorId?: number;
   roomId?: number;
+  studentIds?: number[];
   ignoreSessionId?: number;
   mode?: ClassSession['mode'];
 };
@@ -79,6 +80,8 @@ export function detectConflicts(
         out.push({ type: 'unavailable', resource: 'instructor', resourceId: b.ownerId, detail: blockDetail });
       if (b.ownerType === 'room' && cand.roomId === b.ownerId)
         out.push({ type: 'unavailable', resource: 'room', resourceId: b.ownerId, detail: blockDetail });
+      if (b.ownerType === 'student' && cand.studentIds?.includes(Number(b.ownerId)))
+        out.push({ type: 'unavailable', resource: 'student', resourceId: b.ownerId, detail: blockDetail });
     }
   }
   return out;

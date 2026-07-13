@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, Matches } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsInt, IsOptional, Matches } from 'class-validator';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -34,6 +34,10 @@ export class ConflictCheckDto {
   @IsOptional()
   @IsInt()
   roomId?: number;
+
+  @ApiPropertyOptional({ type: [Number], description: '학생 가용성 검사 대상. 미지정 시 생성/수정 서비스가 코스 코호트를 사용' })
+  @IsOptional() @IsArray() @IsInt({ each: true }) @ArrayMaxSize(20)
+  studentIds?: number[];
 
   @ApiPropertyOptional({ example: 5, description: '검사에서 제외할 세션 id(자기 자신 이동 시)' })
   @IsOptional()

@@ -1,4 +1,4 @@
-import { IsDefined, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize, ValidateIf } from 'class-validator';
+import { IsDefined, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, MinLength, Max, IsArray, ArrayMaxSize, ValidateIf } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { AvailabilityKind, AvailabilityOwner, RecurrenceScope, SessionKind, SessionMode, CreateScheduleRequestInput } from '@kms545487/contracts';
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
@@ -78,8 +78,9 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @IsOptional() @IsIn(SESSION_MODES)
   mode?: SessionMode;
 
-  @ApiPropertyOptional({ example: '학부모 요청으로 30분 늦춰야 합니다.', description: '요청자가 제출한 사유(반려 사유와 분리)' })
-  @IsOptional() @IsString() @MaxLength(500)
+  @ApiPropertyOptional({ example: '학부모 요청으로 30분 늦춰야 합니다.', description: '변경/삭제/가용성 요청의 필수 사유(신규 수업 요청은 선택)' })
+  @ValidateIf((o: CreateScheduleRequestDto) => !!o.requestKind && o.requestKind !== 'session_create')
+  @IsDefined() @IsString() @MinLength(1) @MaxLength(500)
   requestReason?: string;
 
   @ApiPropertyOptional({ enum: RECURRENCE_SCOPES, example: 'this', description: 'session_update 반복 수업 적용 범위' })

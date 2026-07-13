@@ -11,6 +11,7 @@ import { AvailabilityBlock, AVAILABILITY, AvailabilityKind, AvailabilityOwner } 
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
 import { RoomsService } from '../rooms/rooms.service';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
+import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { sessionEndMin } from '../schedule/conflict.util';
 
 type Seed = Omit<AvailabilityBlock, 'id' | 'createdAt' | 'updatedAt'>;
@@ -39,17 +40,17 @@ const DEMO_AVAILABILITY: Array<Seed & { id: number }> = [
   { id: 102, ownerType: 'instructor', ownerId: 2, kind: 'unavailable', weekday: 5, startTime: '12:00', endTime: '13:00' },
   // 학생 4명 각각 가용/불가/온라인 전용 1건. 제한 블록은 현재 seed 수업과 겹치지 않는다.
   { id: 103, ownerType: 'student', ownerId: 1, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
-  { id: 104, ownerType: 'student', ownerId: 1, kind: 'unavailable', weekday: 2, startTime: '10:00', endTime: '11:00' },
-  { id: 105, ownerType: 'student', ownerId: 1, kind: 'online_only', weekday: 4, startTime: '20:00', endTime: '22:00' },
+  { id: 104, ownerType: 'student', ownerId: 1, kind: 'unavailable', weekday: 2, startTime: '22:00', endTime: '23:00' },
+  { id: 105, ownerType: 'student', ownerId: 1, kind: 'online_only', weekday: 4, startTime: '20:00', endTime: '21:00' },
   { id: 106, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 2, startTime: '14:00', endTime: '20:00' },
-  { id: 107, ownerType: 'student', ownerId: 2, kind: 'unavailable', weekday: 3, startTime: '10:00', endTime: '11:00' },
-  { id: 108, ownerType: 'student', ownerId: 2, kind: 'online_only', weekday: 5, startTime: '20:00', endTime: '22:00' },
+  { id: 107, ownerType: 'student', ownerId: 2, kind: 'unavailable', weekday: 3, startTime: '22:00', endTime: '23:00' },
+  { id: 108, ownerType: 'student', ownerId: 2, kind: 'online_only', weekday: 5, startTime: '20:00', endTime: '21:00' },
   { id: 109, ownerType: 'student', ownerId: 3, kind: 'available', weekday: 3, startTime: '14:00', endTime: '20:00' },
-  { id: 110, ownerType: 'student', ownerId: 3, kind: 'unavailable', weekday: 4, startTime: '10:00', endTime: '11:00' },
-  { id: 111, ownerType: 'student', ownerId: 3, kind: 'online_only', weekday: 6, startTime: '20:00', endTime: '22:00' },
+  { id: 110, ownerType: 'student', ownerId: 3, kind: 'unavailable', weekday: 4, startTime: '22:00', endTime: '23:00' },
+  { id: 111, ownerType: 'student', ownerId: 3, kind: 'online_only', weekday: 6, startTime: '20:00', endTime: '21:00' },
   { id: 112, ownerType: 'student', ownerId: 4, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
-  { id: 113, ownerType: 'student', ownerId: 4, kind: 'unavailable', weekday: 5, startTime: '10:00', endTime: '11:00' },
-  { id: 114, ownerType: 'student', ownerId: 4, kind: 'online_only', weekday: 0, startTime: '20:00', endTime: '22:00' },
+  { id: 113, ownerType: 'student', ownerId: 4, kind: 'unavailable', weekday: 5, startTime: '22:00', endTime: '23:00' },
+  { id: 114, ownerType: 'student', ownerId: 4, kind: 'online_only', weekday: 0, startTime: '20:00', endTime: '21:00' },
 ];
 
 @Injectable()
@@ -126,7 +127,6 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   previewUpsertImpact(dto: UpsertAvailabilityDto): AvailabilityImpact[] {
-    if (dto.ownerType !== 'instructor') return [];
     const existing = dto.id ? this.db.findById<AvailabilityBlock>(AVAILABILITY, dto.id) : undefined;
     const next: AvailabilityBlockEx = {
       id: dto.id ?? -1,
@@ -148,13 +148,20 @@ export class AvailabilityService implements OnModuleInit {
 
   previewDeleteImpact(id: number): AvailabilityImpact[] {
     const existing = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
-    if (!existing || existing.ownerType !== 'instructor') return [];
+    if (!existing) return [];
     return existing.kind === 'available' ? this.impactOfAvailableRemoval(existing, null) : [];
   }
 
-  private impactSessionsForInstructor(ownerId: number, weekday: number, from?: string, to?: string): ClassSession[] {
+  private impactSessionsForOwner(ownerType: AvailabilityOwner, ownerId: number, weekday: number, from?: string, to?: string): ClassSession[] {
+    const studentCourseIds = ownerType === 'student'
+      ? new Set(this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === ownerId && e.status === 'active').map((e) => e.courseId))
+      : null;
     return this.db.findBy<ClassSession>(SESSIONS, (s) =>
-      s.instructorId === ownerId &&
+      (ownerType === 'instructor'
+        ? s.instructorId === ownerId
+        : ownerType === 'room'
+          ? s.roomId === ownerId
+          : !!studentCourseIds?.has(s.courseId) || !!s.studentIds?.includes(ownerId)) &&
       weekdayOf(s.sessionDate) === weekday &&
       (!from || s.sessionDate >= from) &&
       (!to || s.sessionDate <= to) &&
@@ -166,7 +173,7 @@ export class AvailabilityService implements OnModuleInit {
   private impactOfRestrictiveBlock(b: AvailabilityBlockEx): AvailabilityImpact[] {
     if (b.kind === 'available') return [];
     const bS = hhmmToMin(b.startTime), bE = hhmmToMin(b.endTime);
-    return this.impactSessionsForInstructor(Number(b.ownerId), b.weekday, b.effectiveFrom, b.effectiveTo)
+    return this.impactSessionsForOwner(b.ownerType, Number(b.ownerId), b.weekday, b.effectiveFrom, b.effectiveTo)
       .filter((s) => this.sessionOverlapsBlock(s, bS, bE))
       .filter((s) => b.kind === 'unavailable' || (s.mode ?? 'in_person') !== 'online')
       .map((s) => ({
@@ -184,7 +191,7 @@ export class AvailabilityService implements OnModuleInit {
     const afterE = after ? hhmmToMin(after.endTime) : 0;
     const afterCoversDate = (s: ClassSession) =>
       !!after && (!after.effectiveFrom || s.sessionDate >= after.effectiveFrom) && (!after.effectiveTo || s.sessionDate <= after.effectiveTo);
-    return this.impactSessionsForInstructor(Number(before.ownerId), before.weekday, before.effectiveFrom, before.effectiveTo)
+    return this.impactSessionsForOwner(before.ownerType, Number(before.ownerId), before.weekday, before.effectiveFrom, before.effectiveTo)
       .filter((s) => this.sessionOverlapsBlock(s, beforeS, beforeE))
       .filter((s) =>
         !after ||

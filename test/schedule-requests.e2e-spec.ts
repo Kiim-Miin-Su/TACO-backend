@@ -212,11 +212,11 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       .expect(201)).body.row;
 
     await http.post('/api/schedule-requests').set(asInst2())
-      .send({ requestKind: 'session_delete', targetSessionId: target.id })
+      .send({ requestKind: 'session_delete', targetSessionId: target.id, requestReason: '삭제 권한 검증' })
       .expect(403);
 
     const made = (await http.post('/api/schedule-requests').set(asInst())
-      .send({ requestKind: 'session_delete', targetSessionId: target.id })
+      .send({ requestKind: 'session_delete', targetSessionId: target.id, requestReason: '수업 삭제가 필요합니다.' })
       .expect(201)).body.row;
     expect(made).toMatchObject({
       status: 'pending',
@@ -306,6 +306,7 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
         availabilityWeekday: 1,
         availabilityStartTime: '14:00',
         availabilityEndTime: '16:00',
+        requestReason: '수업이 잡힌 가용시간을 줄여야 합니다.',
       })
       .expect(201)).body.row;
     expect(req).toMatchObject({ status: 'pending', requestKind: 'availability_upsert', targetAvailabilityId: monAvailable.id });
@@ -335,6 +336,7 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
         availabilityEndTime: '17:30',
         availabilityEffectiveFrom: '2099-03-03',
         availabilityEffectiveTo: '2099-03-03',
+        requestReason: '겹침 검증 요청',
       })
       .expect(409);
   });
@@ -410,7 +412,7 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       .expect(200)).body;
     // upsert 요청(시간 축소) 생성 → 관리자 수정(다른 시간) → 요약 재계산 반영
     const up = (await http.post('/api/schedule-requests').set(asInst())
-      .send({ requestKind: 'availability_upsert', targetAvailabilityId: blk.id, availabilityOwnerType: 'instructor', availabilityOwnerId: 1, availabilityKind: 'available', availabilityWeekday: 6, availabilityStartTime: '09:00', availabilityEndTime: '09:30' })
+      .send({ requestKind: 'availability_upsert', targetAvailabilityId: blk.id, availabilityOwnerType: 'instructor', availabilityOwnerId: 1, availabilityKind: 'available', availabilityWeekday: 6, availabilityStartTime: '09:00', availabilityEndTime: '09:30', requestReason: '토요일 가용시간 조정' })
       .expect(201)).body.row;
     const upd = (await http.patch(`/api/schedule-requests/${up.id}`).set(asAdmin())
       .send({ availabilityEndTime: '09:45' }).expect(200)).body;
@@ -421,7 +423,7 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     await http.delete(`/api/schedule-requests/${up.id}`).set(asInst()).expect(200); // 정리
     // delete 요청은 수정 불가
     const del = (await http.post('/api/schedule-requests').set(asInst())
-      .send({ requestKind: 'availability_delete', targetAvailabilityId: blk.id }).expect(201)).body.row;
+      .send({ requestKind: 'availability_delete', targetAvailabilityId: blk.id, requestReason: '토요일 블록 삭제' }).expect(201)).body.row;
     expect(del).toMatchObject({
       requestKind: 'availability_delete',
       targetAvailabilityId: blk.id,

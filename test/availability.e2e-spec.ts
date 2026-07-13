@@ -53,6 +53,40 @@ describe('Availability API (e2e)', () => {
     }
   });
 
+  it('학생 불가/온라인 전용도 일반 수업 생성 충돌에 참여한다', async () => {
+    const tue = weekdayDateThisWeek(2);
+    const unavailable = await http.post('/api/schedule').set(TH())
+      .send({ courseId: 10, roomId: 1, sessionDate: tue, startTime: '22:00', durationMinutes: 30, mode: 'online' })
+      .expect(409);
+    expect(unavailable.body.conflicts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'unavailable', resource: 'student', resourceId: 1 }),
+    ]));
+
+    const thu = weekdayDateThisWeek(4);
+    const inPerson = await http.post('/api/schedule').set(TH())
+      .send({ courseId: 10, roomId: 1, sessionDate: thu, startTime: '20:00', durationMinutes: 30, mode: 'in_person' })
+      .expect(409);
+    expect(inPerson.body.conflicts).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'unavailable', resource: 'student', resourceId: 1 }),
+    ]));
+    await http.post('/api/schedule').set(TH())
+      .send({ courseId: 10, roomId: 1, sessionDate: thu, startTime: '20:00', durationMinutes: 30, mode: 'online' })
+      .expect(201);
+  });
+
+  it('학생 가용 블록 훼손도 기존 수업 영향을 계산해 승인 요청에 보존한다', async () => {
+    const update = await http.post('/api/availability/impact').set(TH())
+      .send({ id: 103, ownerType: 'student', ownerId: 1, kind: 'unavailable', weekday: 1, startTime: '14:00', endTime: '20:00' })
+      .expect(201);
+    expect(update.body.impactedSessions.length).toBeGreaterThan(0);
+
+    const requestRow = (await http.post('/api/schedule-requests').set(TH())
+      .send({ requestKind: 'availability_delete', targetAvailabilityId: 103, requestReason: '학생 가용시간 삭제 영향 확인' })
+      .expect(201)).body.row;
+    expect(requestRow.impactSessionIds.length).toBeGreaterThan(0);
+    await http.delete(`/api/schedule-requests/${requestRow.id}`).set(TH()).expect(200);
+  });
+
   it('[버그수정 2026-07-06] 자정 크로스(end<=start) → 400 (시차 입력은 FE가 분할 저장)', async () => {
     await http.put('/api/availability')
       .set(TH())

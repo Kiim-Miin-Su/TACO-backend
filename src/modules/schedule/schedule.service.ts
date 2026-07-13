@@ -366,6 +366,7 @@ export class ScheduleService implements OnModuleInit {
     await this.ensureReady();
     const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
     const course = this.courseOf(dto.courseId)!;
+    const studentIds = dto.studentIds?.length ? dto.studentIds : this.activeStudentIds(dto.courseId);
 
     const startTime = dto.startTime;
     // [R-9] endTime<startTime = 익일 종료(자정 크로스 — +1440 래핑). 같으면 400, 크로스 상한 480분.
@@ -376,7 +377,7 @@ export class ScheduleService implements OnModuleInit {
     const endTime = endTimeOf(startTime, durationMinutes); // 크로스면 undefined(durationMinutes 파생 저장)
 
     const conflicts = detectConflicts(
-      { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, mode: dto.mode ?? SESSION_DEFAULTS.mode },
+      { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
       this.db.findAll<ClassSession>(SESSIONS),
       this.availability.list(),
     );
@@ -389,7 +390,7 @@ export class ScheduleService implements OnModuleInit {
     // [원자성] 세션 생성 + 변경 이력(audit)이 함께 반영되거나 함께 롤백
     const row = await this.db.transaction(async () => {
       const created = await this.sessions.insert({
-        studentIds: dto.studentIds,
+        studentIds,
         seriesId: dto.seriesId,
         courseId: dto.courseId,
         instructorId,
@@ -434,11 +435,11 @@ export class ScheduleService implements OnModuleInit {
   // 충돌 드라이런(생성·이동 전 검사)
   checkConflicts(input: {
     sessionDate: string; startTime: string; endTime?: string; durationMinutes?: number;
-    instructorId?: number; roomId?: number; ignoreSessionId?: number; mode?: ClassSession['mode'];
+    instructorId?: number; roomId?: number; studentIds?: number[]; ignoreSessionId?: number; mode?: ClassSession['mode'];
   }): Conflict[] {
     // [R-9] endTime/durationMinutes를 그대로 전달 — conflict.util이 자정 크로스(익일 종료)까지 해석.
     return detectConflicts(
-      { sessionDate: input.sessionDate, startTime: input.startTime, endTime: input.endTime, durationMinutes: input.durationMinutes, instructorId: input.instructorId, roomId: input.roomId, ignoreSessionId: input.ignoreSessionId, mode: input.mode },
+      { sessionDate: input.sessionDate, startTime: input.startTime, endTime: input.endTime, durationMinutes: input.durationMinutes, instructorId: input.instructorId, roomId: input.roomId, studentIds: input.studentIds, ignoreSessionId: input.ignoreSessionId, mode: input.mode },
       this.db.findAll<ClassSession>(SESSIONS),
       this.availability.list(),
     );
@@ -506,7 +507,7 @@ export class ScheduleService implements OnModuleInit {
     for (const f of [primary, ...seriesPatches.map((p) => p.fields)]) {
       conflicts.push(...detectConflicts(
         // [R-9] 크로스 세션은 endTime이 undefined — durationMinutes로 이틀(±1일) 겹침 검사
-        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, mode: f.mode },
+        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, studentIds: f.studentIds ?? this.activeStudentIds(f.courseId), mode: f.mode },
         others, blocks,
       ));
     }

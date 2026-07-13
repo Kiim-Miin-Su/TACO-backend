@@ -65,6 +65,7 @@ export class ScheduleRequestsService {
     const conflicts = this.schedule.checkConflicts({
       sessionDate: dto.sessionDate!, startTime: dto.startTime!, endTime: dto.endTime,
       durationMinutes: dto.durationMinutes, instructorId, roomId: dto.roomId,
+      studentIds: dto.studentIds?.length ? dto.studentIds : undefined,
       mode: dto.mode, // [C2D] online_only 가용 판정이 요청 mode 기준으로(드라이런도 승인과 동일 조건)
     });
     const row = await this.store.transaction(async () => {
@@ -115,7 +116,7 @@ export class ScheduleRequestsService {
     const conflicts = this.schedule.checkConflicts({
       sessionDate: merged.sessionDate!, startTime: merged.startTime!, endTime: merged.endTime,
       durationMinutes: merged.durationMinutes, instructorId: merged.instructorId, roomId: merged.roomId,
-      ignoreSessionId: target.id, mode: merged.mode,
+      studentIds: merged.studentIds, ignoreSessionId: target.id, mode: merged.mode,
     });
     const row = await this.store.transaction(async () => {
       const created = await this.store.insert<RequestRow>({
