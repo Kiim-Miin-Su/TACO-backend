@@ -44,7 +44,7 @@ const keepRules: KeepRule[] = [
   { table: 'rooms', keepIds: [1, 2, 3], note: 'demo rooms referenced by seed sessions' },
   { table: 'enrollments', keepIds: [1, 2, 3, 4], note: 'demo course enrollments' },
   { table: 'availability_blocks', keepIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114], note: 'default instructor/student availability/unavailability/online-only blocks' },
-  { table: 'class_sessions', keepIds: [1, 2, 3, 4, 5, 6, 7, 8, 20, 21, 22, 23, 24, 25, 26, 27, 28], note: 'current-week and history demo sessions' },
+  { table: 'class_sessions', keepIds: [1, 2, 3, 4, 5, 6, 7, 8, 20, 21, 22, 23, 24, 25, 26, 27, 28, 10001, 10002, 10003, 10004], note: 'baseline, history, one-off, and custom-repeat demo sessions' },
   { table: 'attendance', keepIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], note: 'demo attendance rows' },
   { table: 'session_reports', keepIds: [1, 2, 3], note: 'demo submitted report rows' },
   { table: 'instructor_contracts', keepIds: [1, 2], note: 'demo instructor contracts' },

@@ -16,6 +16,7 @@
     "db:smoke:finance": "ts-node scripts/finance-db-smoke.ts",
     "db:cleanup:qa": "ts-node scripts/cleanup-qa-data.ts",
     "db:reset:demo": "ts-node scripts/reset-demo-data.ts",
+    "db:seed:calendar-demo": "ts-node scripts/seed-calendar-demo.ts",
     "openapi": "nest build -p tsconfig.build.json && node dist/scripts/generate-openapi.js",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test:e2e": "jest --config test/jest-e2e.json --runInBand",
