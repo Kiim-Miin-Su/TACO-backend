@@ -24,6 +24,34 @@ export type AvailabilityImpact = {
   reason: 'available_removed' | 'unavailable_overlap' | 'online_only_overlap';
 };
 
+const DEMO_AVAILABILITY: Array<Seed & { id: number }> = [
+  // 강사1 점심 차단(월~금 12:00-13:00)
+  ...[1, 2, 3, 4, 5].map((weekday, index) => ({ id: index + 1, ownerType: 'instructor' as AvailabilityOwner, ownerId: 1, kind: 'unavailable' as const, weekday, startTime: '12:00', endTime: '13:00' })),
+  { id: 6, ownerType: 'room', ownerId: 3, kind: 'unavailable', weekday: 5, startTime: '14:00', endTime: '18:00' },
+  { id: 7, ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 2, startTime: '16:00', endTime: '20:00' },
+  { id: 8, ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 4, startTime: '16:00', endTime: '20:00' },
+  { id: 9, ownerType: 'instructor', ownerId: 2, kind: 'online_only', weekday: 1, startTime: '20:00', endTime: '22:00' },
+  { id: 10, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
+  { id: 11, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 3, startTime: '14:00', endTime: '20:00' },
+  { id: 12, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 5, startTime: '14:00', endTime: '20:00' },
+  // 두 강사 모두 불가/가용/온라인 전용 유형을 갖도록 빠진 유형 보완.
+  { id: 101, ownerType: 'instructor', ownerId: 1, kind: 'online_only', weekday: 2, startTime: '20:00', endTime: '22:00' },
+  { id: 102, ownerType: 'instructor', ownerId: 2, kind: 'unavailable', weekday: 5, startTime: '12:00', endTime: '13:00' },
+  // 학생 4명 각각 가용/불가/온라인 전용 1건. 제한 블록은 현재 seed 수업과 겹치지 않는다.
+  { id: 103, ownerType: 'student', ownerId: 1, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
+  { id: 104, ownerType: 'student', ownerId: 1, kind: 'unavailable', weekday: 2, startTime: '10:00', endTime: '11:00' },
+  { id: 105, ownerType: 'student', ownerId: 1, kind: 'online_only', weekday: 4, startTime: '20:00', endTime: '22:00' },
+  { id: 106, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 2, startTime: '14:00', endTime: '20:00' },
+  { id: 107, ownerType: 'student', ownerId: 2, kind: 'unavailable', weekday: 3, startTime: '10:00', endTime: '11:00' },
+  { id: 108, ownerType: 'student', ownerId: 2, kind: 'online_only', weekday: 5, startTime: '20:00', endTime: '22:00' },
+  { id: 109, ownerType: 'student', ownerId: 3, kind: 'available', weekday: 3, startTime: '14:00', endTime: '20:00' },
+  { id: 110, ownerType: 'student', ownerId: 3, kind: 'unavailable', weekday: 4, startTime: '10:00', endTime: '11:00' },
+  { id: 111, ownerType: 'student', ownerId: 3, kind: 'online_only', weekday: 6, startTime: '20:00', endTime: '22:00' },
+  { id: 112, ownerType: 'student', ownerId: 4, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
+  { id: 113, ownerType: 'student', ownerId: 4, kind: 'unavailable', weekday: 5, startTime: '10:00', endTime: '11:00' },
+  { id: 114, ownerType: 'student', ownerId: 4, kind: 'online_only', weekday: 0, startTime: '20:00', endTime: '22:00' },
+];
+
 @Injectable()
 export class AvailabilityService implements OnModuleInit {
   constructor(
@@ -78,26 +106,9 @@ export class AvailabilityService implements OnModuleInit {
   // 데모 가용/불가(Block) 시드. unavailable = 차단(주간 표에서 회색).
   async onModuleInit(): Promise<void> {
     const hydrated = await this.store.hydrate<AvailabilityBlock>(AVAILABILITY_SPEC);
-    if (hydrated.length || this.db.findAll<AvailabilityBlock>(AVAILABILITY).length) return;
-    const seed = [
-      // 강사1 점심 차단(월~금 12:00–13:00)
-      ...[1, 2, 3, 4, 5].map((wd) => ({ ownerType: 'instructor' as AvailabilityOwner, ownerId: 1, kind: 'unavailable' as const, weekday: wd, startTime: '12:00', endTime: '13:00' })),
-      // 강의실 B201 금요일 오후 차단(행사)
-      { ownerType: 'room', ownerId: 3, kind: 'unavailable', weekday: 5, startTime: '14:00', endTime: '18:00' },
-      // 강사2 가용(화·목 16:00–20:00)
-      { ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 2, startTime: '16:00', endTime: '20:00' },
-      { ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 4, startTime: '16:00', endTime: '20:00' },
-      // 강사2 온라인만 가능(월 20:00–22:00) — 비대면 가능 슬롯 데모/충돌 기준.
-      { ownerType: 'instructor', ownerId: 2, kind: 'online_only', weekday: 1, startTime: '20:00', endTime: '22:00' },
-      // 강사1 가용(월·수·금 14:00–20:00) — 추천은 강사가 명시한 가용 안에서만 잡힘(무결성)
-      { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
-      { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 3, startTime: '14:00', endTime: '20:00' },
-      { ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 5, startTime: '14:00', endTime: '20:00' },
-    ];
-    await this.store.seed<AvailabilityBlock>(
-      AVAILABILITY_SPEC,
-      seed.map((b, index) => ({ id: index + 1, ...(b as Seed) })),
-    );
+    const knownIds = new Set(hydrated.map((row) => row.id));
+    const missing = DEMO_AVAILABILITY.filter((row) => !knownIds.has(row.id));
+    if (missing.length) await this.store.seed<AvailabilityBlock>(AVAILABILITY_SPEC, missing);
   }
 
   async refresh(): Promise<void> {

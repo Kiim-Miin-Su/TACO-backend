@@ -25,7 +25,7 @@ describe('Availability API (e2e)', () => {
   it('PUT /availability — 학생 가용시간 생성', async () => {
     const res = await http.put('/api/availability')
       .set(TH())
-      .send({ ownerType: 'student', ownerId: 1, kind: 'available', weekday: 1, startTime: '16:00', endTime: '18:00' })
+      .send({ ownerType: 'student', ownerId: 1, kind: 'available', weekday: 3, startTime: '06:00', endTime: '07:00' })
       .expect(200);
     expect(res.body.id).toBeGreaterThan(0);
     expect(res.body).toMatchObject({ ownerType: 'student', ownerId: 1, kind: 'available' });
@@ -34,6 +34,23 @@ describe('Availability API (e2e)', () => {
   it('GET /availability?ownerType=student&ownerId=1 — 필터 조회', async () => {
     const res = await http.get('/api/availability?ownerType=student&ownerId=1').set(asAdmin()).expect(200);
     expect(res.body.every((b: { ownerType: string; ownerId: number }) => b.ownerType === 'student' && b.ownerId === 1)).toBe(true);
+  });
+
+  it('데모 기준 데이터 — 모든 강사·학생이 불/가/온라인 전용 유형을 가진다', async () => {
+    const rows = (await http.get('/api/availability').set(asAdmin()).expect(200)).body as Array<{
+      ownerType: string;
+      ownerId: number;
+      kind: string;
+    }>;
+    const expected = ['available', 'online_only', 'unavailable'];
+    for (const ownerId of [1, 2]) {
+      const kinds = [...new Set(rows.filter((row) => row.ownerType === 'instructor' && row.ownerId === ownerId).map((row) => row.kind))].sort();
+      expect(kinds).toEqual(expected);
+    }
+    for (const ownerId of [1, 2, 3, 4]) {
+      const kinds = [...new Set(rows.filter((row) => row.ownerType === 'student' && row.ownerId === ownerId).map((row) => row.kind))].sort();
+      expect(kinds).toEqual(expected);
+    }
   });
 
   it('[버그수정 2026-07-06] 자정 크로스(end<=start) → 400 (시차 입력은 FE가 분할 저장)', async () => {

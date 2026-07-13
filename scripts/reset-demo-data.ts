@@ -43,7 +43,7 @@ const keepRules: KeepRule[] = [
   { table: 'courses', keepIds: [10, 11, 12], note: 'demo courses referenced by seed sessions' },
   { table: 'rooms', keepIds: [1, 2, 3], note: 'demo rooms referenced by seed sessions' },
   { table: 'enrollments', keepIds: [1, 2, 3, 4], note: 'demo course enrollments' },
-  { table: 'availability_blocks', keepIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], note: 'default availability/unavailability/online-only blocks' },
+  { table: 'availability_blocks', keepIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114], note: 'default instructor/student availability/unavailability/online-only blocks' },
   { table: 'class_sessions', keepIds: [1, 2, 3, 4, 5, 6, 7, 8, 20, 21, 22, 23, 24, 25, 26, 27, 28], note: 'current-week and history demo sessions' },
   { table: 'attendance', keepIds: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11], note: 'demo attendance rows' },
   { table: 'session_reports', keepIds: [1, 2, 3], note: 'demo submitted report rows' },
@@ -195,6 +195,51 @@ async function validate(): Promise<ValidationIssue[]> {
     LEFT JOIN rooms r ON r.id = s.room_id AND r.deleted_at IS NULL
     WHERE s.deleted_at IS NULL AND (c.id IS NULL OR u.id IS NULL OR (s.room_id IS NOT NULL AND r.id IS NULL))
   `);
+  await count('availability_blocks', 'availability owner points to missing active resource', `
+    SELECT count(*)::int AS count
+    FROM availability_blocks b
+    LEFT JOIN users u ON b.owner_type = 'instructor' AND u.id = b.owner_id AND u.deleted_at IS NULL AND u.role = 'instructor'
+    LEFT JOIN students st ON b.owner_type = 'student' AND st.id = b.owner_id AND st.deleted_at IS NULL AND st.status <> 'canceled'
+    LEFT JOIN rooms r ON b.owner_type = 'room' AND r.id = b.owner_id AND r.deleted_at IS NULL
+    WHERE b.deleted_at IS NULL AND (
+      (b.owner_type = 'instructor' AND u.id IS NULL) OR
+      (b.owner_type = 'student' AND st.id IS NULL) OR
+      (b.owner_type = 'room' AND r.id IS NULL)
+    )
+  `);
+  await count('availability_blocks', 'availability blocks overlap for the same owner/day', `
+    SELECT count(*)::int AS count
+    FROM availability_blocks a
+    JOIN availability_blocks b
+      ON a.id < b.id
+     AND a.deleted_at IS NULL AND b.deleted_at IS NULL
+     AND a.owner_type = b.owner_type AND a.owner_id = b.owner_id AND a.weekday = b.weekday
+     AND a.start_time < b.end_time AND b.start_time < a.end_time
+     AND (a.effective_to IS NULL OR b.effective_from IS NULL OR b.effective_from <= a.effective_to)
+     AND (b.effective_to IS NULL OR a.effective_from IS NULL OR a.effective_from <= b.effective_to)
+  `);
+  await count('availability_blocks', 'restrictive availability conflicts with an active session', `
+    SELECT count(*)::int AS count
+    FROM availability_blocks b
+    JOIN class_sessions s
+      ON s.deleted_at IS NULL
+     AND extract(dow FROM s.session_date)::int = b.weekday
+     AND (b.effective_from IS NULL OR s.session_date >= b.effective_from)
+     AND (b.effective_to IS NULL OR s.session_date <= b.effective_to)
+     AND b.start_time < COALESCE(s.end_time, to_char(s.start_time::time + (s.duration_minutes || ' minutes')::interval, 'HH24:MI'))
+     AND s.start_time < b.end_time
+    WHERE b.deleted_at IS NULL
+      AND (b.kind = 'unavailable' OR (b.kind = 'online_only' AND COALESCE(s.mode, 'in_person') <> 'online'))
+      AND (
+        (b.owner_type = 'instructor' AND b.owner_id = s.instructor_id) OR
+        (b.owner_type = 'room' AND b.owner_id = s.room_id) OR
+        (b.owner_type = 'student' AND EXISTS (
+          SELECT 1 FROM enrollments e
+          WHERE e.deleted_at IS NULL AND e.status = 'active'
+            AND e.student_id = b.owner_id AND e.course_id = s.course_id
+        ))
+      )
+  `);
   return issues;
 }
 
@@ -228,6 +273,7 @@ async function main() {
   const before = await snapshot();
   const targets = await previewTargets();
   if (!apply) {
+    const validationIssues = await validate();
     console.log(JSON.stringify({
       ok: true,
       mode: 'dry-run',
@@ -236,6 +282,7 @@ async function main() {
       hardDeleteHint: 'RESET_MODE=hard APPLY=1 npm run db:reset:demo',
       before,
       targets,
+      validationIssues,
     }, null, 2));
     return;
   }
