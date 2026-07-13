@@ -100,6 +100,10 @@ export class AvailabilityService implements OnModuleInit {
     );
   }
 
+  async refresh(): Promise<void> {
+    await this.store.hydrate<AvailabilityBlock>(AVAILABILITY_SPEC);
+  }
+
   list(ownerType?: AvailabilityOwner, ownerId?: number): AvailabilityBlock[] {
     return this.db.findBy<AvailabilityBlock>(AVAILABILITY, (b) =>
       (ownerType ? b.ownerType === ownerType : true) && (ownerId ? b.ownerId === ownerId : true),
@@ -222,6 +226,7 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   async upsert(dto: UpsertAvailabilityDto, actorId?: number, actorRoles?: string[]): Promise<AvailabilityBlock> {
+    await this.refresh();
     // [버그수정 2026-07-06] 자정 크로스(end<=start) 거부 — 세션과 동일 규칙. 시차 입력은 FE가 분할 저장(splitKstBand).
     const asMin = hhmmToMin; // [R-3] 공통 유틸(로컬 중복 제거)
     if (asMin(dto.endTime) <= asMin(dto.startTime))
@@ -275,6 +280,7 @@ export class AvailabilityService implements OnModuleInit {
 
   // [v9] soft delete + before 스냅샷 audit(Q3) — 단일 tx
   async remove(id: number, actorId?: number, actorRoles?: string[]): Promise<{ id: number; deleted: boolean }> {
+    await this.refresh();
     const before = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
     if (before) this.assertActorOwner(before.ownerType, before.ownerId, actorId, actorRoles);
     this.assertDeleteApprovalNotRequired(id, actorRoles);

@@ -190,6 +190,15 @@ export class InMemoryDatabase {
     return inserted;
   }
 
+  /** DB 권위 read-model 갱신용: 컬렉션 전체를 DB 스냅샷으로 교체한다. */
+  replaceExact<T extends BaseRow>(name: string, rows: T[]): T[] {
+    const replaced = rows.map((row) => structuredClone(row) as T);
+    this.store.set(name, replaced);
+    this.sequences.set(name, replaced.reduce((max, row) => Math.max(max, row.id), 0));
+    this.rebuildIndexes();
+    return replaced;
+  }
+
   /** id 조회 — 인덱스로 O(1). 삭제 행은 기본 미노출(withDeleted로만). */
   findById<T extends BaseRow>(name: string, id: number, opts?: { withDeleted?: boolean }): T | undefined {
     const hit = this.ids(name).get(id) as T | undefined;

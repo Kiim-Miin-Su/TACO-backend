@@ -69,7 +69,7 @@ export class PostgresCollectionStore {
     if (!(await this.ensureReady(spec))) return [];
     const rows = await this.query(`SELECT * FROM ${spec.table} ORDER BY id ASC`);
     const parsed = rows.map((row) => this.fromDbRow<T>(spec, row));
-    if (parsed.length) this.memory.seedExact<T>(spec.table, parsed);
+    this.memory.replaceExact<T>(spec.table, parsed);
     return parsed;
   }
 

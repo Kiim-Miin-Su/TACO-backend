@@ -176,7 +176,7 @@ export class ScheduleService implements OnModuleInit {
   }
 
   async ensureReady(): Promise<void> {
-    await this.sessions.ensureReady();
+    await Promise.all([this.sessions.ensureReady(), this.availability.refresh()]);
   }
 
   // ── 카탈로그/명단 조회(단일 소스 = 실제 컬렉션) — 감사 A ──

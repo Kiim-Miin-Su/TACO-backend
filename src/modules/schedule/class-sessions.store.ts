@@ -48,7 +48,6 @@ function toDateString(value: unknown): string | undefined {
 export class ClassSessionsStore implements OnModuleInit {
   private readonly logger = new Logger(ClassSessionsStore.name);
   private ready = false;
-  private hydrated = false;
 
   constructor(
     private readonly memory: InMemoryDatabase,
@@ -67,7 +66,7 @@ export class ClassSessionsStore implements OnModuleInit {
     await this.postgres.ensureInitialized();
     if (!this.postgres.ready) return;
     if (!this.ready) await this.ensureSchema();
-    if (!this.hydrated) await this.hydrateMemory();
+    await this.refreshMemory();
   }
 
   async seed(rows: Array<Omit<ClassSession, keyof BaseRow> & { id: number }>): Promise<ClassSession[]> {
@@ -180,14 +179,10 @@ export class ClassSessionsStore implements OnModuleInit {
     this.logger.log('class_sessions table ready (Postgres-backed)');
   }
 
-  private async hydrateMemory(): Promise<void> {
+  private async refreshMemory(): Promise<void> {
     const rows = await this.query(`SELECT * FROM ${TABLE} ORDER BY id ASC`);
     const sessions = rows.map((r) => this.fromDbRow(r));
-    if (sessions.length) {
-      this.memory.seedExact<ClassSession>(TABLE, sessions);
-      this.logger.log(`hydrated ${sessions.length} class_sessions row(s) from Postgres`);
-    }
-    this.hydrated = true;
+    this.memory.replaceExact<ClassSession>(TABLE, sessions);
   }
 
   private async syncSequence(): Promise<void> {

@@ -62,7 +62,8 @@ export class AuditService implements OnModuleInit {
   }
 
   /** 이력 조회(최신순) — ADMIN 전용(컨트롤러에서 게이트). entity/entityId/actorId 필터. */
-  list(q: { entity?: string; entityId?: number; actorId?: number; limit?: number }): AuditRow[] {
+  async list(q: { entity?: string; entityId?: number; actorId?: number; limit?: number }): Promise<AuditRow[]> {
+    await this.store.hydrate<AuditRow>(AUDIT_LOG_SPEC);
     let rows = q.entity && q.entityId != null
       ? this.db.findBy<AuditRow>(AUDIT_LOG, (r) => r.entity === q.entity && r.entityId === q.entityId)
       : q.entity

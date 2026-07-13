@@ -40,6 +40,12 @@ type AuditRow = {
   changes?: Record<string, unknown>;
 };
 
+type ScheduleRow = {
+  id: number;
+  sessionDate: string;
+  topic?: string;
+};
+
 async function login(http: ReturnType<typeof request>, webId: string): Promise<string> {
   const res = await http.post('/api/auth/login').send({ webId, password: 'demo1234' }).expect(201);
   return res.body.accessToken;
@@ -236,6 +242,46 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
       const { app, http, manager } = await boot();
       const rows = (await http.get('/api/view-presets').set(auth(manager)).expect(200)).body as ViewPresetRow[];
       expect(rows.some((row) => row.id === presetId)).toBe(false);
+      await app.close();
+    }
+  });
+
+  it('refreshes the warm calendar read model from Postgres on every read', async () => {
+    const { app, http, manager } = await boot();
+    const pg = app.get(PostgresConnectionService).getDataSource();
+    const stamp = Date.now();
+    const originalTopic = `DB-REFRESH-${stamp}`;
+    const updatedTopic = `${originalTopic}-UPDATED`;
+    let sessionId = 0;
+
+    try {
+      const [created] = await pg.query(
+        `INSERT INTO class_sessions
+          (course_id, instructor_id, room_id, session_date, start_time, end_time, duration_minutes, status, kind, mode, topic, student_ids)
+         VALUES (10, 1, 1, '2099-12-29', '08:00', '09:00', 60, 'scheduled', 'class', 'online', $1, '[]')
+         RETURNING id`,
+        [originalTopic],
+      );
+      sessionId = Number(created.id);
+
+      const first = (await http.get('/api/schedule?from=2099-12-29&to=2099-12-29')
+        .set(auth(manager))
+        .expect(200)).body as ScheduleRow[];
+      expect(first.find((row) => row.id === sessionId)?.topic).toBe(originalTopic);
+
+      await pg.query('UPDATE class_sessions SET topic = $1, updated_at = now() WHERE id = $2', [updatedTopic, sessionId]);
+      const updated = (await http.get('/api/schedule?from=2099-12-29&to=2099-12-29')
+        .set(auth(manager))
+        .expect(200)).body as ScheduleRow[];
+      expect(updated.find((row) => row.id === sessionId)?.topic).toBe(updatedTopic);
+
+      await pg.query('UPDATE class_sessions SET deleted_at = now(), updated_at = now() WHERE id = $1', [sessionId]);
+      const removed = (await http.get('/api/schedule?from=2099-12-29&to=2099-12-29')
+        .set(auth(manager))
+        .expect(200)).body as ScheduleRow[];
+      expect(removed.some((row) => row.id === sessionId)).toBe(false);
+    } finally {
+      if (sessionId) await pg.query('DELETE FROM class_sessions WHERE id = $1', [sessionId]);
       await app.close();
     }
   });

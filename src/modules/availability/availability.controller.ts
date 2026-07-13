@@ -20,10 +20,11 @@ export class AvailabilityController {
   @ApiQuery({ name: 'ownerType', required: false, enum: ['student', 'instructor', 'room'] })
   @ApiQuery({ name: 'ownerId', required: false })
   @ApiOkResponse({ description: 'AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday, startTime, endTime }' })
-  list(
+  async list(
     @Query('ownerType') ownerType?: AvailabilityOwner,
     @Query('ownerId') ownerId?: string,
   ) {
+    await this.availability.refresh();
     return this.availability.list(ownerType, ownerId ? Number(ownerId) : undefined);
   }
 
@@ -41,7 +42,8 @@ export class AvailabilityController {
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '가용/불가 변경 영향 미리보기 — 기존 수업 침범 시 승인 요청 모달용' })
   @ApiOkResponse({ description: '{ impactedSessions: AvailabilityImpact[] }' })
-  impact(@Body() dto: UpsertAvailabilityDto) {
+  async impact(@Body() dto: UpsertAvailabilityDto) {
+    await this.availability.refresh();
     return { impactedSessions: this.availability.previewUpsertImpact(dto) };
   }
 
