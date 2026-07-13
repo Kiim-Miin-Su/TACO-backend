@@ -74,6 +74,30 @@ export class ScheduleRequestsStore implements OnModuleInit {
     return rows.map((r) => this.fromDbRow<T>(r));
   }
 
+  async findByFilters<T extends BaseRow>(filters: { status?: string; requesterId?: number }): Promise<T[]> {
+    if (!this.durable) {
+      return this.memory.findAll<T>(TABLE)
+        .filter((row) => filters.status == null || (row as Record<string, unknown>).status === filters.status)
+        .filter((row) => filters.requesterId == null || (row as Record<string, unknown>).requesterId === filters.requesterId)
+        .sort((a, b) => b.id - a.id);
+    }
+    const values: unknown[] = [];
+    const conditions: string[] = [];
+    if (filters.status != null) {
+      values.push(filters.status);
+      conditions.push(`status = $${values.length}`);
+    }
+    if (filters.requesterId != null) {
+      values.push(filters.requesterId);
+      conditions.push(`requester_id = $${values.length}`);
+    }
+    const rows = await this.query(
+      `SELECT * FROM ${TABLE} WHERE deleted_at IS NULL${conditions.length ? ` AND ${conditions.join(' AND ')}` : ''} ORDER BY id DESC`,
+      values,
+    );
+    return rows.map((row) => this.fromDbRow<T>(row));
+  }
+
   async findByField<T extends BaseRow>(field: keyof T & string, value: unknown): Promise<T[]> {
     if (!this.durable) return this.memory.findByField<T>(TABLE, field, value);
     const column = camelToSnake(field);
@@ -163,6 +187,9 @@ export class ScheduleRequestsStore implements OnModuleInit {
     await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_status_created ON ${TABLE} (requester_id, status, created_at DESC) WHERE deleted_at IS NULL`);
     await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_target_availability_id ON ${TABLE} (target_availability_id) WHERE deleted_at IS NULL`);
     await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_created_session_id ON ${TABLE} (created_session_id) WHERE deleted_at IS NULL`);
+    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_status_id ON ${TABLE} (status, id DESC) WHERE deleted_at IS NULL`);
+    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_id_desc ON ${TABLE} (requester_id, id DESC) WHERE deleted_at IS NULL`);
+    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_status_id ON ${TABLE} (requester_id, status, id DESC) WHERE deleted_at IS NULL`);
     this.schemaReady = true;
     this.logger.log('schedule_requests table ready (Postgres-backed)');
   }

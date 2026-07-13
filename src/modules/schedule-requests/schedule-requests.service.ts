@@ -262,11 +262,7 @@ export class ScheduleRequestsService {
 
   /** 목록 — 관리자=전체(status 필터), 강사=본인 요청만(컨트롤러에서 requesterId 강제). */
   async list(q: { status?: ScheduleRequest['status']; requesterId?: number }): Promise<RequestRow[]> {
-    let rows = q.status
-      ? await this.store.findByField<RequestRow>('status', q.status)
-      : await this.store.findAll<RequestRow>();
-    if (q.requesterId != null) rows = rows.filter((r) => r.requesterId === q.requesterId);
-    return rows.sort((a, b) => b.id - a.id);
+    return this.store.findByFilters<RequestRow>(q);
   }
 
   /** 승인 — [요청 상태 + 세션 생성(충돌 409·force 재검사) + 역참조 + audit] 단일 tx 원자화. */

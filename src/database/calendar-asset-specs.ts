@@ -252,6 +252,8 @@ export const AUDIT_LOG_SPEC: PostgresCollectionSpec = {
     activeIndex('audit_log', 'idx_audit_entity_id', 'entity, entity_id'),
     activeIndex('audit_log', 'idx_audit_actor_id', 'actor_id'),
     activeIndex('audit_log', 'idx_audit_at', 'at'),
+    activeIndex('audit_log', 'idx_audit_entity_id_desc', 'entity, entity_id, id DESC'),
+    activeIndex('audit_log', 'idx_audit_actor_id_desc', 'actor_id, id DESC'),
   ],
 };
 

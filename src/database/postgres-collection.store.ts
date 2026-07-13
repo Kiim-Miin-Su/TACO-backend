@@ -21,6 +21,17 @@ export type PostgresCollectionSpec = {
   timestampFields?: string[];
 };
 
+export type ActiveFindOptions<T extends BaseRow> = {
+  where?: Partial<Record<keyof T & string, unknown>>;
+  orderBy?: { field: keyof T & string; direction?: 'ASC' | 'DESC' };
+  limit?: number;
+};
+
+const safeColumn = (field: string): string => {
+  if (!/^[A-Za-z][A-Za-z0-9]*$/.test(field)) throw new Error(`Unsafe query field: ${field}`);
+  return camelToSnake(field);
+};
+
 @Injectable()
 export class PostgresCollectionStore {
   private readonly logger = new Logger(PostgresCollectionStore.name);
@@ -48,6 +59,37 @@ export class PostgresCollectionStore {
     const parsed = rows.map((row) => this.fromDbRow<T>(spec, row));
     this.memory.replaceExact<T>(spec.table, parsed);
     return parsed;
+  }
+
+  async findActive<T extends BaseRow>(spec: PostgresCollectionSpec, options: ActiveFindOptions<T> = {}): Promise<T[]> {
+    const where = Object.entries(options.where ?? {}).filter(([, value]) => value !== undefined);
+    const direction = options.orderBy?.direction ?? 'ASC';
+    const limit = options.limit == null ? undefined : Math.max(0, Math.floor(options.limit));
+    if (!(await this.ensureReady(spec))) {
+      let rows = this.memory.findAll<T>(spec.table).filter((row) =>
+        where.every(([field, value]) => (row as Record<string, unknown>)[field] === value),
+      );
+      if (options.orderBy) {
+        const field = options.orderBy.field;
+        rows = rows.sort((a, b) => {
+          const left = (a as Record<string, unknown>)[field];
+          const right = (b as Record<string, unknown>)[field];
+          const compared = left === right ? 0 : left == null ? -1 : right == null ? 1 : left < right ? -1 : 1;
+          return direction === 'DESC' ? -compared : compared;
+        });
+      }
+      return limit == null ? rows : rows.slice(0, limit);
+    }
+
+    const values = where.map(([, value]) => value);
+    const conditions = where.map(([field], index) => `${safeColumn(field)} = $${index + 1}`);
+    const order = options.orderBy ? ` ORDER BY ${safeColumn(options.orderBy.field)} ${direction}` : '';
+    const limitSql = limit == null ? '' : ` LIMIT ${limit}`;
+    const rows = await this.query(
+      `SELECT * FROM ${spec.table} WHERE deleted_at IS NULL${conditions.length ? ` AND ${conditions.join(' AND ')}` : ''}${order}${limitSql}`,
+      values,
+    );
+    return rows.map((row) => this.fromDbRow<T>(spec, row));
   }
 
   async seed<T extends BaseRow>(spec: PostgresCollectionSpec, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): Promise<T[]> {

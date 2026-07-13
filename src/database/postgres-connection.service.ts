@@ -82,6 +82,7 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
         max: numberEnv('DB_POOL_MAX', 5),
         connectionTimeoutMillis: numberEnv('DB_CONNECT_TIMEOUT_MS', 5000),
         idleTimeoutMillis: numberEnv('DB_IDLE_TIMEOUT_MS', 10000),
+        statement_timeout: numberEnv('DB_STATEMENT_TIMEOUT_MS', 15000),
       },
     });
 

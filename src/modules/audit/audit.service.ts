@@ -7,7 +7,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import type { AuditAction, AuditLog } from '@kms545487/contracts';
 import { AUDIT_LOG_SPEC } from '../../database/calendar-asset-specs';
-import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
+import type { BaseRow } from '../../database/in-memory.database';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 
 export const AUDIT_LOG = 'audit_log';
@@ -26,12 +26,11 @@ export type AuditEntry = {
 @Injectable()
 export class AuditService implements OnModuleInit {
   constructor(
-    private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.store.hydrate<AuditRow>(AUDIT_LOG_SPEC);
+    await this.store.ensureReady(AUDIT_LOG_SPEC);
   }
 
   /** 이력 1건 기록 — 호출자는 반드시 자신의 트랜잭션 안에서 호출(원자성). */
@@ -63,13 +62,10 @@ export class AuditService implements OnModuleInit {
 
   /** 이력 조회(최신순) — ADMIN 전용(컨트롤러에서 게이트). entity/entityId/actorId 필터. */
   async list(q: { entity?: string; entityId?: number; actorId?: number; limit?: number }): Promise<AuditRow[]> {
-    await this.store.hydrate<AuditRow>(AUDIT_LOG_SPEC);
-    let rows = q.entity && q.entityId != null
-      ? this.db.findBy<AuditRow>(AUDIT_LOG, (r) => r.entity === q.entity && r.entityId === q.entityId)
-      : q.entity
-        ? this.db.findByField<AuditRow>(AUDIT_LOG, 'entity', q.entity)
-        : this.db.findAll<AuditRow>(AUDIT_LOG);
-    if (q.actorId != null) rows = rows.filter((r) => r.actorId === q.actorId);
-    return rows.sort((a, b) => b.id - a.id).slice(0, Math.min(q.limit ?? 200, 500));
+    return this.store.findActive<AuditRow>(AUDIT_LOG_SPEC, {
+      where: { entity: q.entity, entityId: q.entityId, actorId: q.actorId },
+      orderBy: { field: 'id', direction: 'DESC' },
+      limit: Math.min(q.limit ?? 200, 500),
+    });
   }
 }
