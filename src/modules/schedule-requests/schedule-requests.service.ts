@@ -265,17 +265,17 @@ export class ScheduleRequestsService {
   /** 승인 — [요청 상태 + 세션 생성(충돌 409·force 재검사) + 역참조 + audit] 단일 tx 원자화. */
   async approve(id: number, decidedBy: number, force?: boolean): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
     await this.schedule.ensureReady();
-    const req = await this.mustPending(id);
-    if (req.requestKind === 'availability_upsert' || req.requestKind === 'availability_delete') {
-      return this.approveAvailability(req, decidedBy);
-    }
-    if (req.requestKind === 'session_update') {
-      return this.approveSessionUpdate(req, decidedBy, force);
-    }
-    if (req.requestKind === 'session_delete') {
-      return this.approveSessionDelete(req, decidedBy);
-    }
     return this.store.transaction(async () => {
+      const req = await this.mustPending(id, true);
+      if (req.requestKind === 'availability_upsert' || req.requestKind === 'availability_delete') {
+        return this.approveAvailability(req, decidedBy);
+      }
+      if (req.requestKind === 'session_update') {
+        return this.approveSessionUpdate(req, decidedBy, force);
+      }
+      if (req.requestKind === 'session_delete') {
+        return this.approveSessionDelete(req, decidedBy);
+      }
       const before = { ...req };
       // 기존 createSession 경로 그대로 — FK·코호트 재검증 + 충돌 409(force면 강제) + create audit(actor=승인자)
       const { row: session, conflicts } = await this.schedule.create({
@@ -385,8 +385,8 @@ export class ScheduleRequestsService {
 
   /** 반려 — 사유 필수(DTO 강제). */
   async reject(id: number, decidedBy: number, reason: string): Promise<RequestRow> {
-    await this.mustPending(id);
     return this.store.transaction(async () => {
+      await this.mustPending(id, true);
       const updated = this.mustStored(await this.store.update<RequestRow>(id, {
         status: 'rejected', reason, decidedBy, decidedAt: new Date().toISOString(),
       }));
@@ -397,17 +397,17 @@ export class ScheduleRequestsService {
 
   /** 본인 pending 요청 철회(soft delete) — 강사용. 타인 요청은 403. */
   async withdraw(id: number, requesterId: number): Promise<{ id: number; deleted: boolean }> {
-    const req = await this.mustPending(id);
-    if (req.requesterId !== requesterId) throw new ForbiddenException('본인 요청만 철회할 수 있습니다');
     return this.store.transaction(async () => {
+      const req = await this.mustPending(id, true);
+      if (req.requesterId !== requesterId) throw new ForbiddenException('본인 요청만 철회할 수 있습니다');
       const deleted = await this.store.remove(id, requesterId);
       await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'delete', actorId: requesterId, changes: this.audit.snapshotOf({ ...req }) as never });
       return { id, deleted };
     });
   }
 
-  private async mustPending(id: number): Promise<RequestRow> {
-    const req = await this.store.findById<RequestRow>(id);
+  private async mustPending(id: number, forUpdate = false): Promise<RequestRow> {
+    const req = await this.store.findById<RequestRow>(id, { forUpdate });
     if (!req) throw new NotFoundException(`Request ${id} not found`);
     if (req.status !== 'pending') throw new BadRequestException(`이미 처리된 요청입니다(${req.status})`);
     return req;

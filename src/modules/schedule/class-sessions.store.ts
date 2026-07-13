@@ -190,7 +190,7 @@ export class ClassSessionsStore implements OnModuleInit {
   }
 
   private async query(sql: string, params: unknown[] = []): Promise<DbRow[]> {
-    const result = await this.postgres.getDataSource().query(sql, params);
+    const result = await this.postgres.query(sql, params);
     if (Array.isArray(result) && Array.isArray(result[0]) && typeof result[1] === 'number') {
       return result[0] as DbRow[];
     }

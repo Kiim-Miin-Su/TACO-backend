@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { AsyncLocalStorage } from 'async_hooks';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { PostgresConnectionService } from '../../database/postgres-connection.service';
 
@@ -46,6 +47,8 @@ function toDateString(value: unknown): string | undefined {
 export class ScheduleRequestsStore implements OnModuleInit {
   private readonly logger = new Logger(ScheduleRequestsStore.name);
   private schemaReady = false;
+  private memoryTransactionTail: Promise<void> = Promise.resolve();
+  private readonly memoryTransactionContext = new AsyncLocalStorage<boolean>();
 
   constructor(
     private readonly memory: InMemoryDatabase,
@@ -63,8 +66,15 @@ export class ScheduleRequestsStore implements OnModuleInit {
   }
 
   async transaction<R>(fn: () => R | Promise<R>): Promise<R> {
-    if (!this.durable) return this.memory.transaction(fn);
-    return fn();
+    if (!this.durable) {
+      if (this.memoryTransactionContext.getStore()) return this.memory.transaction(fn);
+      const run = this.memoryTransactionTail.then(() =>
+        this.memoryTransactionContext.run(true, () => this.memory.transaction(fn)),
+      );
+      this.memoryTransactionTail = run.then(() => undefined, () => undefined);
+      return run;
+    }
+    return this.postgres.transaction(async () => fn());
   }
 
   async insert<T extends BaseRow>(data: Omit<T, keyof BaseRow>): Promise<T> {
@@ -94,9 +104,10 @@ export class ScheduleRequestsStore implements OnModuleInit {
     return rows.map((r) => this.fromDbRow<T>(r));
   }
 
-  async findById<T extends BaseRow>(id: number): Promise<T | undefined> {
+  async findById<T extends BaseRow>(id: number, options?: { forUpdate?: boolean }): Promise<T | undefined> {
     if (!this.durable) return this.memory.findById<T>(TABLE, id);
-    const [row] = await this.query(`SELECT * FROM ${TABLE} WHERE id = $1 AND deleted_at IS NULL`, [id]);
+    const lock = options?.forUpdate ? ' FOR UPDATE' : '';
+    const [row] = await this.query(`SELECT * FROM ${TABLE} WHERE id = $1 AND deleted_at IS NULL${lock}`, [id]);
     return row ? this.fromDbRow<T>(row) : undefined;
   }
 
@@ -176,7 +187,7 @@ export class ScheduleRequestsStore implements OnModuleInit {
   }
 
   private async query(sql: string, params: unknown[] = []): Promise<DbRow[]> {
-    const result = await this.postgres.getDataSource().query(sql, params);
+    const result = await this.postgres.query(sql, params);
     if (Array.isArray(result) && Array.isArray(result[0]) && typeof result[1] === 'number') {
       return result[0] as DbRow[];
     }

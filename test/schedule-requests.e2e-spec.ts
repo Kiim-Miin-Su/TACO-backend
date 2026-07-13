@@ -72,6 +72,22 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     await http.post(`/api/schedule-requests/${pending.id}/approve?force=true`).set(asAdmin()).expect(400);
   });
 
+  it('동시 승인: pending 요청은 한 번만 승인되고 세션도 한 건만 생성된다', async () => {
+    const topic = `동시 승인 ${Date.now()}`;
+    const made = (await http.post('/api/schedule-requests').set(asInst())
+      .send({ courseId: 10, sessionDate: '2099-10-01', startTime: '07:00', endTime: '08:00', topic })
+      .expect(201)).body.row;
+
+    const responses = await Promise.all([
+      http.post(`/api/schedule-requests/${made.id}/approve?force=true`).set(asAdmin()),
+      http.post(`/api/schedule-requests/${made.id}/approve?force=true`).set(asAdmin()),
+    ]);
+    expect(responses.map((response) => response.status).sort()).toEqual([201, 400]);
+
+    const rows = (await http.get('/api/schedule?from=2099-10-01&to=2099-10-01').set(asAdmin()).expect(200)).body;
+    expect(rows.filter((row: { topic?: string }) => row.topic === topic)).toHaveLength(1);
+  });
+
   it('반려: 사유 필수(빈 body 400 — Q2) → 사유 포함 시 rejected+reason 저장', async () => {
     const req1 = (await http.post('/api/schedule-requests').set(asInst())
       .send({ ...SLOT, sessionDate: '2099-01-05' }).expect(201)).body.row;

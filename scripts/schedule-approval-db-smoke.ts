@@ -180,9 +180,16 @@ async function main(): Promise<void> {
       .send({ reason: rejectReason })
       .expect(201);
 
-    const approved = await http.post(`/api/schedule-requests/${safeId}/approve`)
-      .set(auth(manager))
-      .expect(201);
+    const approvalAttempts = await Promise.all([
+      http.post(`/api/schedule-requests/${safeId}/approve`).set(auth(manager)),
+      http.post(`/api/schedule-requests/${safeId}/approve`).set(auth(manager)),
+    ]);
+    const approvalStatuses = approvalAttempts.map((response) => response.status).sort();
+    if (approvalStatuses[0] !== 201 || approvalStatuses[1] !== 400) {
+      throw new Error(`concurrent approval statuses were not 201/400: ${approvalStatuses.join(',')}`);
+    }
+    const approved = approvalAttempts.find((response) => response.status === 201);
+    if (!approved) throw new Error(`safe request ${safeId} had no successful approval`);
     if (approved.body.request.status !== 'approved') {
       throw new Error(`safe request ${safeId} was not approved: ${JSON.stringify(approved.body)}`);
     }

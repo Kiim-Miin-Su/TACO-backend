@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
-import { DataSource } from 'typeorm';
+import { AsyncLocalStorage } from 'async_hooks';
+import { DataSource, type EntityManager } from 'typeorm';
 import { runtimeDatabaseUrl } from './database-url';
 
 export type DatabaseConnectionStatus = {
@@ -34,6 +35,7 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
   private dataSource: DataSource | null = null;
   private lastError: string | null = null;
   private initPromise: Promise<void> | null = null;
+  private readonly transactionContext = new AsyncLocalStorage<EntityManager>();
 
   get configured(): boolean {
     return !!runtimeDatabaseUrl();
@@ -143,6 +145,17 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
   getDataSource(): DataSource {
     if (!this.dataSource?.isInitialized) throw new Error('Postgres data source is not initialized');
     return this.dataSource;
+  }
+
+  async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
+    const executor = this.transactionContext.getStore() ?? this.getDataSource();
+    return executor.query(sql, params) as Promise<T[]>;
+  }
+
+  async transaction<R>(fn: () => Promise<R>): Promise<R> {
+    if (!this.ready) return fn();
+    if (this.transactionContext.getStore()) return fn();
+    return this.getDataSource().transaction((manager) => this.transactionContext.run(manager, fn));
   }
 
   private attachPoolErrorLogger(): void {
