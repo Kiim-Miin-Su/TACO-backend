@@ -88,6 +88,23 @@ describe("Permission matrix (e2e)", () => {
       expect(res.students.map((s: { id: number }) => Number(s.id)).sort()).toEqual([1, 4]);
     });
 
+    it("instructor(park) → GET /availability 는 쿼리 우회에도 본인 강사 블록만 반환", async () => {
+      const rows = (await http
+        .get("/api/availability?ownerType=instructor&ownerId=2")
+        .set(auth("instructor"))
+        .expect(200)).body as { ownerType: string; ownerId: number }[];
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((row) => row.ownerType === "instructor" && Number(row.ownerId) === 1)).toBe(true);
+    });
+
+    it("instructor(park) → POST /availability/impact 타 owner 조회 403", async () => {
+      await http
+        .post("/api/availability/impact")
+        .set(auth("instructor"))
+        .send({ ownerType: "instructor", ownerId: 2, kind: "unavailable", weekday: 1, startTime: "10:00", endTime: "11:00" })
+        .expect(403);
+    });
+
     it("instructor(park) → GET /attendance 는 본인 세션 출결만, 타 강사 sessionId 직접 조회는 403", async () => {
       const rows = (await http.get("/api/attendance").set(auth("instructor")).expect(200)).body;
       expect(rows.length).toBeGreaterThan(0);
@@ -184,6 +201,11 @@ describe("Permission matrix (e2e)", () => {
         .set(auth("instructor"))
         .send({ sessionDate: "2026-07-06", startTime: "10:00", endTime: "11:00", instructorId: 1, roomId: 1 });
       expect([401, 403]).not.toContain(res.status);
+    });
+    it("instructor → POST /schedule/conflicts 타 학생·타 수업 제외는 403", async () => {
+      const input = { sessionDate: "2026-07-06", startTime: "10:00", endTime: "11:00", instructorId: 2, roomId: 1 };
+      await http.post("/api/schedule/conflicts").set(auth("instructor")).send({ ...input, studentIds: [2] }).expect(403);
+      await http.post("/api/schedule/conflicts").set(auth("instructor")).send({ ...input, ignoreSessionId: 21 }).expect(403);
     });
     it("토큰 없음 → GET /users/exists 401", async () => {
       await http.get("/api/users/exists").query({ webId: "admin" }).expect(401);

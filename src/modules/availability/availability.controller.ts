@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiOkResponse, ApiConflictResponse, ApiBadRequestResponse } from '@nestjs/swagger';
@@ -6,7 +6,7 @@ import { AvailabilityService } from './availability.service';
 import { AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
+import { isInstructorOnly, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('availability')
 @UseGuards(RolesGuard)
@@ -16,15 +16,19 @@ export class AvailabilityController {
 
   @Get()
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '가용/불가 블록 목록(ownerType·ownerId 필터)' })
+  @ApiOperation({ summary: '가용/불가 블록 목록(ownerType·ownerId 필터). 강사는 쿼리와 무관하게 본인 블록만 조회.' })
   @ApiQuery({ name: 'ownerType', required: false, enum: ['student', 'instructor', 'room'] })
   @ApiQuery({ name: 'ownerId', required: false })
   @ApiOkResponse({ description: 'AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday, startTime, endTime }' })
   async list(
+    @Req() req: Request & { user?: JwtClaims },
     @Query('ownerType') ownerType?: AvailabilityOwner,
     @Query('ownerId') ownerId?: string,
   ) {
     await this.availability.refresh();
+    if (isInstructorOnly(req.user?.roles)) {
+      return this.availability.list('instructor', req.user!.sub);
+    }
     return this.availability.list(ownerType, ownerId ? Number(ownerId) : undefined);
   }
 
@@ -40,9 +44,12 @@ export class AvailabilityController {
 
   @Post('impact')
   @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '가용/불가 변경 영향 미리보기 — 기존 수업 침범 시 승인 요청 모달용' })
+  @ApiOperation({ summary: '가용/불가 변경 영향 미리보기 — 강사는 본인 블록만, 기존 수업 침범 시 승인 요청 모달용' })
   @ApiOkResponse({ description: '{ impactedSessions: AvailabilityImpact[] }' })
-  async impact(@Body() dto: UpsertAvailabilityDto) {
+  async impact(@Body() dto: UpsertAvailabilityDto, @Req() req: Request & { user?: JwtClaims }) {
+    if (isInstructorOnly(req.user?.roles) && (dto.ownerType !== 'instructor' || dto.ownerId !== req.user!.sub)) {
+      throw new ForbiddenException('강사는 본인 가용시간의 영향만 조회할 수 있습니다.');
+    }
     await this.availability.refresh();
     return { impactedSessions: this.availability.previewUpsertImpact(dto) };
   }

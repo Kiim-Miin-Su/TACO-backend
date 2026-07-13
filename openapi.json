@@ -1214,7 +1214,7 @@
             "description": "AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday, startTime, endTime }"
           }
         },
-        "summary": "가용/불가 블록 목록(ownerType·ownerId 필터)",
+        "summary": "가용/불가 블록 목록(ownerType·ownerId 필터). 강사는 쿼리와 무관하게 본인 블록만 조회.",
         "tags": [
           "availability"
         ]
@@ -1268,7 +1268,7 @@
             "description": "{ impactedSessions: AvailabilityImpact[] }"
           }
         },
-        "summary": "가용/불가 변경 영향 미리보기 — 기존 수업 침범 시 승인 요청 모달용",
+        "summary": "가용/불가 변경 영향 미리보기 — 강사는 본인 블록만, 기존 수업 침범 시 승인 요청 모달용",
         "tags": [
           "availability"
         ]
@@ -1559,7 +1559,7 @@
             "bearer": []
           }
         ],
-        "summary": "충돌 드라이런 — 생성·이동 전 강사·강의실 이중예약/불가시간 겹침 검사 [로그인]",
+        "summary": "충돌 드라이런 — 강사는 JWT 본인 수업 범위, 생성·이동 전 이중예약/불가시간 겹침 검사",
         "tags": [
           "scheduling"
         ]

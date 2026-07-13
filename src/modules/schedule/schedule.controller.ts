@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiOkResponse, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
@@ -72,11 +72,22 @@ export class ScheduleController {
   // 충돌 드라이런(생성·이동 전 검사)
   @Post('conflicts')
   @Roles(...STAFF_ROLES) // [코드리뷰 2026-07-03 H1] @Roles 누락 → 무인증 접근 가능했음. 강사·강의실 가용성 탐지 차단
-  @ApiOperation({ summary: '충돌 드라이런 — 생성·이동 전 강사·강의실 이중예약/불가시간 겹침 검사 [로그인]' })
+  @ApiOperation({ summary: '충돌 드라이런 — 강사는 JWT 본인 수업 범위, 생성·이동 전 이중예약/불가시간 겹침 검사' })
   @ApiOkResponse({ description: 'Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }' })
-  async conflicts(@Body() body: ConflictCheckDto) {
+  async conflicts(@Body() body: ConflictCheckDto, @Req() req: Request & { user?: JwtClaims }) {
     await this.schedule.ensureReady();
-    return this.schedule.checkConflicts(body);
+    if (!isInstructorOnly(req.user?.roles)) return this.schedule.checkConflicts(body);
+
+    const instructorId = req.user!.sub;
+    const allowedStudents = new Set(this.schedule.resources({ instructorId }).students.map((student) => Number(student.id)));
+    if (body.studentIds?.some((studentId) => !allowedStudents.has(Number(studentId)))) {
+      throw new ForbiddenException('강사는 본인 수업 학생의 충돌만 조회할 수 있습니다.');
+    }
+    if (body.ignoreSessionId != null) {
+      const ownsIgnoredSession = this.schedule.list({ instructorId }).some((row) => Number(row.id) === Number(body.ignoreSessionId));
+      if (!ownsIgnoredSession) throw new ForbiddenException('타 강사 수업은 충돌 검사에서 제외할 수 없습니다.');
+    }
+    return this.schedule.checkConflicts({ ...body, instructorId });
   }
 
   // POST /api/schedule — 세션 생성(추천→배정·수동 추가). 충돌 시 409(force=true면 적용).
