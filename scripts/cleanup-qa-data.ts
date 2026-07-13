@@ -53,6 +53,21 @@ const sessionNoiseWhere = `
   )
 `;
 
+const financePaymentWhere = `
+  deleted_at IS NULL
+  AND due_at >= DATE '2099-01-01'
+`;
+
+const financeExpenseWhere = `
+  deleted_at IS NULL
+  AND spent_at >= DATE '2099-01-01'
+`;
+
+const financePayoutWhere = `
+  deleted_at IS NULL
+  AND period_start >= DATE '2099-01-01'
+`;
+
 const seedRestores = [
   {
     id: 1,
@@ -105,7 +120,16 @@ async function query<T = Record<string, unknown>>(sql: string, params: unknown[]
   return dataSource.query(sql, params);
 }
 
+async function tableExists(table: string): Promise<boolean> {
+  const rows = await query<{ exists: boolean }>(`SELECT to_regclass($1) IS NOT NULL AS exists`, [`public.${table}`]);
+  return rows[0]?.exists === true;
+}
+
 async function countRows(): Promise<Record<string, unknown>> {
+  const hasPayments = await tableExists('payments');
+  const hasExpenses = await tableExists('expenses');
+  const hasPayouts = await tableExists('instructor_payouts');
+  const hasTransactions = await tableExists('transactions');
   const [requestByStatus, sessions, reports, attendance, audit] = await Promise.all([
     query(`SELECT status, count(*)::int AS count FROM schedule_requests WHERE ${requestNoiseWhere} GROUP BY status ORDER BY status`),
     query(`SELECT count(*)::int AS count FROM class_sessions WHERE ${sessionNoiseWhere}`),
@@ -137,6 +161,19 @@ async function countRows(): Promise<Record<string, unknown>> {
     sessionReports: reports[0]?.count ?? 0,
     attendance: attendance[0]?.count ?? 0,
     auditLog: audit[0]?.count ?? 0,
+    financePayments: hasPayments ? (await query<{ count: number }>(`SELECT count(*)::int AS count FROM payments WHERE ${financePaymentWhere}`))[0]?.count ?? 0 : 0,
+    financeExpenses: hasExpenses ? (await query<{ count: number }>(`SELECT count(*)::int AS count FROM expenses WHERE ${financeExpenseWhere}`))[0]?.count ?? 0 : 0,
+    financePayouts: hasPayouts ? (await query<{ count: number }>(`SELECT count(*)::int AS count FROM instructor_payouts WHERE ${financePayoutWhere}`))[0]?.count ?? 0 : 0,
+    financeTransactions: hasTransactions && hasPayments && hasExpenses && hasPayouts ? (await query<{ count: number }>(`
+      SELECT count(*)::int AS count
+      FROM transactions
+      WHERE deleted_at IS NULL
+        AND (
+          payment_id IN (SELECT id FROM payments WHERE ${financePaymentWhere})
+          OR expense_id IN (SELECT id FROM expenses WHERE ${financeExpenseWhere})
+          OR payout_id IN (SELECT id FROM instructor_payouts WHERE ${financePayoutWhere})
+        )
+    `))[0]?.count ?? 0 : 0,
   };
 }
 
@@ -186,9 +223,22 @@ async function restoreSeedRows(): Promise<void> {
 }
 
 async function applyCleanup(): Promise<Record<string, unknown>> {
+  const hasPayments = await tableExists('payments');
+  const hasExpenses = await tableExists('expenses');
+  const hasPayouts = await tableExists('instructor_payouts');
+  const hasTransactions = await tableExists('transactions');
   await dataSource.transaction(async (manager) => {
     await manager.query(`CREATE TEMP TABLE qa_cleanup_request_ids AS SELECT id FROM schedule_requests WHERE ${requestNoiseWhere}`);
     await manager.query(`CREATE TEMP TABLE qa_cleanup_session_ids AS SELECT id FROM class_sessions WHERE ${sessionNoiseWhere}`);
+    if (hasPayments) {
+      await manager.query(`CREATE TEMP TABLE qa_cleanup_payment_ids AS SELECT id FROM payments WHERE ${financePaymentWhere}`);
+    }
+    if (hasExpenses) {
+      await manager.query(`CREATE TEMP TABLE qa_cleanup_expense_ids AS SELECT id FROM expenses WHERE ${financeExpenseWhere}`);
+    }
+    if (hasPayouts) {
+      await manager.query(`CREATE TEMP TABLE qa_cleanup_payout_ids AS SELECT id FROM instructor_payouts WHERE ${financePayoutWhere}`);
+    }
 
     await manager.query(`
       UPDATE audit_log
@@ -223,6 +273,42 @@ async function applyCleanup(): Promise<Record<string, unknown>> {
       WHERE id IN (SELECT id FROM qa_cleanup_session_ids)
         AND deleted_at IS NULL
     `);
+    if (hasTransactions) {
+      await manager.query(`
+        UPDATE transactions
+        SET deleted_at = now(), updated_at = now()
+        WHERE deleted_at IS NULL
+          AND (
+            (${hasPayments ? 'payment_id IN (SELECT id FROM qa_cleanup_payment_ids)' : 'false'})
+            OR (${hasExpenses ? 'expense_id IN (SELECT id FROM qa_cleanup_expense_ids)' : 'false'})
+            OR (${hasPayouts ? 'payout_id IN (SELECT id FROM qa_cleanup_payout_ids)' : 'false'})
+          )
+      `);
+    }
+    if (hasPayments) {
+      await manager.query(`
+        UPDATE payments
+        SET deleted_at = now(), updated_at = now()
+        WHERE id IN (SELECT id FROM qa_cleanup_payment_ids)
+          AND deleted_at IS NULL
+      `);
+    }
+    if (hasExpenses) {
+      await manager.query(`
+        UPDATE expenses
+        SET deleted_at = now(), updated_at = now()
+        WHERE id IN (SELECT id FROM qa_cleanup_expense_ids)
+          AND deleted_at IS NULL
+      `);
+    }
+    if (hasPayouts) {
+      await manager.query(`
+        UPDATE instructor_payouts
+        SET deleted_at = now(), updated_at = now()
+        WHERE id IN (SELECT id FROM qa_cleanup_payout_ids)
+          AND deleted_at IS NULL
+      `);
+    }
   });
   await restoreSeedRows();
   return countRows();

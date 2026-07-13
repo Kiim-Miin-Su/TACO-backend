@@ -335,6 +335,65 @@ export const INSTRUCTOR_CONTRACTS_SPEC: PostgresCollectionSpec = {
   ],
 };
 
+export const PAYMENTS_SPEC: PostgresCollectionSpec = {
+  table: 'payments',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS payments (
+      id serial PRIMARY KEY,
+      enrollment_id integer,
+      student_id integer NOT NULL,
+      payer_parent_id integer,
+      amount integer NOT NULL,
+      paid_amount integer NOT NULL DEFAULT 0,
+      due_at date,
+      paid_at timestamptz,
+      status varchar(32) NOT NULL DEFAULT 'pending',
+      payment_method varchar(32),
+      memo text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
+    )
+  `,
+  dateFields: ['dueAt'],
+  timestampFields: ['paidAt'],
+  indexes: [
+    activeIndex('payments', 'idx_payments_status', 'status'),
+    activeIndex('payments', 'idx_payments_student', 'student_id'),
+    activeIndex('payments', 'idx_payments_enrollment', 'enrollment_id'),
+  ],
+};
+
+export const EXPENSES_SPEC: PostgresCollectionSpec = {
+  table: 'expenses',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS expenses (
+      id serial PRIMARY KEY,
+      category varchar(32) NOT NULL DEFAULT 'supplies',
+      title varchar(200) NOT NULL,
+      amount integer NOT NULL,
+      spent_at date NOT NULL,
+      status varchar(32) NOT NULL DEFAULT 'requested',
+      paid_by integer,
+      payment_method varchar(32),
+      vendor varchar(200),
+      receipt_url varchar(255),
+      memo text,
+      rejected_reason varchar(200),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
+    )
+  `,
+  dateFields: ['spentAt'],
+  indexes: [
+    activeIndex('expenses', 'idx_expenses_status', 'status'),
+    activeIndex('expenses', 'idx_expenses_spent_at', 'spent_at'),
+  ],
+};
+
 export const TRANSACTIONS_SPEC: PostgresCollectionSpec = {
   table: 'transactions',
   createSql: `

@@ -1,17 +1,25 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { EXPENSES_SPEC, TRANSACTIONS_SPEC } from '../../database/calendar-asset-specs';
+import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { Expense, EXPENSES } from './expense.entity';
-import { Transaction, TRANSACTIONS } from '../transactions/transaction.entity';
+import { Transaction } from '../transactions/transaction.entity';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 
 @Injectable()
 export class ExpensesService implements OnModuleInit {
-  constructor(private readonly db: InMemoryDatabase) {}
+  constructor(
+    private readonly db: InMemoryDatabase,
+    private readonly store: PostgresCollectionStore,
+    private readonly unitOfWork: CalendarUnitOfWork,
+  ) {}
 
   // 데모 지출 시드 — 프론트 목데이터 이관(FK 없음). 승인 대기 1건 → 지출 탭 배지 동작.
-  onModuleInit(): void {
-    if (this.db.findAll<Expense>(EXPENSES).length) return;
-    this.db.seed<Expense>(EXPENSES, [
+  async onModuleInit(): Promise<void> {
+    const hydrated = await this.store.hydrate<Expense>(EXPENSES_SPEC);
+    if (hydrated.length) return;
+    await this.store.seed<Expense>(EXPENSES_SPEC, [
       { id: 1, category: 'supplies', title: '화이트보드 마커 외', amount: 86000, spentAt: '2026-06-22', vendor: '오피스디포', status: 'approved' },
       { id: 2, category: 'books', title: 'SAT 교재 30부', amount: 450000, spentAt: '2026-06-18', vendor: '교보문고', status: 'approved' },
       { id: 3, category: 'equipment', title: '빔프로젝터 1대', amount: 680000, spentAt: '2026-06-15', vendor: '전자랜드', status: 'approved' },
@@ -31,8 +39,8 @@ export class ExpensesService implements OnModuleInit {
   }
 
   // 지출은 요청(requested)으로 생성 → super_admin 승인 필요
-  create(dto: CreateExpenseDto): Expense {
-    return this.db.insert<Expense>(EXPENSES, {
+  async create(dto: CreateExpenseDto): Promise<Expense> {
+    return this.store.insert<Expense>(EXPENSES_SPEC, {
       category: dto.category,
       title: dto.title,
       amount: dto.amount,
@@ -46,31 +54,39 @@ export class ExpensesService implements OnModuleInit {
 
   async approve(id: number): Promise<Expense> {
     // [원자성] 지출 승인 + 통합 원장 출금 1줄이 함께(원장 누락 방지)
-    return this.db.transaction(() => {
-    const row = this.findOne(id);
-    // [H2] 상태 가드 — 재승인 시 원장 출금 중복, approved→반려 시 원장 불일치 방지(코드리뷰 2026-07-02)
-    if (row.status !== 'requested') throw new BadRequestException(`승인 불가 상태(${row.status}) — requested만 승인 가능`);
-    const updated = this.db.update<Expense>(EXPENSES, id, { status: 'approved' }) as Expense;
-    // [자산화 점검 2026-07-02] 지출 승인 = 통합 원장(transactions)에 출금 1줄(TBO-03 "승인 후 출금 반영").
-    //  이전엔 상태만 approved로 바뀌고 원장 미기록 → 지출 집계(자산)에서 누락되던 갭.
-    this.db.insert<Transaction>(TRANSACTIONS, {
-      direction: 'out',
-      category: `expense_${row.category}`,
-      label: `지출 승인 — ${row.title}`,
-      amount: row.amount,
-      occurredAt: new Date().toISOString(),
-      expenseId: id,
-    });
-    return updated;
+    return this.unitOfWork.run(async () => {
+      const row = this.findOne(id);
+      // [H2] 상태 가드 — 재승인 시 원장 출금 중복, approved→반려 시 원장 불일치 방지(코드리뷰 2026-07-02)
+      if (row.status !== 'requested') throw new BadRequestException(`승인 불가 상태(${row.status}) — requested만 승인 가능`);
+      const updated = await this.store.updateIf<Expense>(EXPENSES_SPEC, id, { status: 'requested' }, { status: 'approved' });
+      if (!updated) throw new ConflictException('지출 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      // [자산화 점검 2026-07-02] 지출 승인 = 통합 원장(transactions)에 출금 1줄(TBO-03 "승인 후 출금 반영").
+      //  이전엔 상태만 approved로 바뀌고 원장 미기록 → 지출 집계(자산)에서 누락되던 갭.
+      await this.store.insert<Transaction>(TRANSACTIONS_SPEC, {
+        direction: 'out',
+        category: 'expense',
+        label: `지출 승인 — ${row.title} (${row.category})`,
+        amount: row.amount,
+        occurredAt: new Date().toISOString(),
+        expenseId: id,
       });
+      return updated;
+    });
   }
 
-  reject(id: number, reason: string): Expense { // [Q2] 사유 필수
+  async reject(id: number, reason: string): Promise<Expense> { // [Q2] 사유 필수
     const row = this.findOne(id);
     // [H2] approved 지출을 반려하면 이미 기록된 원장 출금과 어긋남 — requested만 반려 가능
     if (row.status !== 'requested') throw new BadRequestException(`반려 불가 상태(${row.status}) — requested만 반려 가능`);
     // [자산화 2026-07-03] 반려 사유를 서버에 저장(v0.1.12 Expense.rejectedReason) —
     //  이전엔 zustand expenseRejectReasons(브라우저 휘발)에만 있어 실DB 이관 시 유실되던 갭.
-    return this.db.update<Expense>(EXPENSES, id, { status: 'rejected', rejectedReason: reason }) as Expense;
+    const rejected = await this.store.updateIf<Expense>(
+      EXPENSES_SPEC,
+      id,
+      { status: 'requested' },
+      { status: 'rejected', rejectedReason: reason },
+    );
+    if (!rejected) throw new ConflictException('지출 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+    return rejected;
   }
 }

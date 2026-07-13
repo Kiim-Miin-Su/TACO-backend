@@ -13,6 +13,7 @@
     "db:smoke:audit-log": "ts-node scripts/audit-log-db-smoke.ts",
     "db:smoke:attendance-reports": "ts-node scripts/attendance-reports-db-smoke.ts",
     "db:smoke:schedule-approval": "ts-node scripts/schedule-approval-db-smoke.ts",
+    "db:smoke:finance": "ts-node scripts/finance-db-smoke.ts",
     "db:cleanup:qa": "ts-node scripts/cleanup-qa-data.ts",
     "db:reset:demo": "ts-node scripts/reset-demo-data.ts",
     "openapi": "nest build -p tsconfig.build.json && node dist/scripts/generate-openapi.js",
