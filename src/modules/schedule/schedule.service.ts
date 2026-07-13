@@ -16,6 +16,8 @@ import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrol
 import { USERS, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
 import { ClassSessionsStore } from './class-sessions.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, isPayoutLocked, payoutIdOf, teachingMinutesOf, type SessionAccountingImpact } from './session-accounting.policy';
+import { studentBelongsToSession } from './session-participant.policy';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
 import { hhmmToMin as toMin, minToHhmm, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff, durationMinutesBetween } from '../../common/time.util';
@@ -86,7 +88,7 @@ type MergedFields = {
   // [R-9] endTime은 자정 크로스(익일 종료)면 undefined — durationMinutes 파생(단일 세션 모델)
   sessionDate: string; startTime: string; endTime?: string; durationMinutes: number;
   courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string; color?: string;
-  instructorAttendance?: ClassSession['instructorAttendance'];
+  instructorAttendance?: ClassSession['instructorAttendance'] | null;
   kind?: ClassSession['kind']; price?: number; // [v0.1.14]
   mode?: ClassSession['mode']; // [v0.1.16] 수업방식
 };
@@ -259,7 +261,7 @@ export class ScheduleService implements OnModuleInit {
           const a = s.instructorAttendance;
           if (a === 'present' || a === 'late' || a === 'absent' || a === 'makeup') c[a]++;
           else c.unmarked++;
-          if (s.status === 'held' && a !== 'absent') teachingMinutes += s.durationMinutes || 0; // 시수 정책
+          if (countsForTeachingHours(s)) teachingMinutes += teachingMinutesOf(s);
         }
         const denom = c.present + c.late + c.absent;
         const attendanceRate = denom ? Math.round(((c.present + c.late) / denom) * 100) : null;
@@ -417,6 +419,8 @@ export class ScheduleService implements OnModuleInit {
     await this.ensureReady();
     const before = this.db.findById<ClassSession>(SESSIONS, id);
     if (!before) throw new NotFoundException(`Session ${id} not found`);
+    if (isPayoutLocked(before))
+      throw new ConflictException(`정산서 ${payoutIdOf(before)}에 연결된 수업은 정산 회수 전 삭제할 수 없습니다`);
     return this.unitOfWork.run(async () => {
       const snap = { ...before };
       const deleted = await this.sessions.remove(id, actorId);
@@ -457,7 +461,6 @@ export class ScheduleService implements OnModuleInit {
     return this.unitOfWork.run(async () => {
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
-
     // 참조 무결성(FK) 검증
     if (dto.courseId != null && !this.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
     if (dto.instructorId != null && !this.isInstructor(dto.instructorId)) throw new BadRequestException(`instructorId ${dto.instructorId} 없음`);
@@ -465,6 +468,16 @@ export class ScheduleService implements OnModuleInit {
 
     // 1) 대상(primary) 세션의 새 필드 계산
     const primary = this.mergeFields(cur, dto);
+    this.assertDependentsCompatible(cur.id, cur, primary);
+    const approved = this.reports.approvedSessionIds().has(cur.id);
+    const primaryImpact = accountingImpactOf(cur, primary, {
+      beforeApprovedReport: approved,
+      afterApprovedReport: approved,
+      beforeHourlyRate: this.courseOf(cur.courseId)?.hourlyRate ?? 0,
+      afterHourlyRate: this.courseOf(primary.courseId)?.hourlyRate ?? 0,
+    });
+    const accountingImpacts: SessionAccountingImpact[] = [primaryImpact];
+    const accountingLocked: ClassSession[] = isPayoutLocked(cur) ? [cur] : [];
 
     // 2) 시리즈 동반 편집 대상 산출(this=대상만, this_and_following=대상 이후, all=시리즈 전체)
     //    공통 델타: 날짜(일수)·시작시각(분). 강의실/강사/상태/시수는 절대값으로 동일 적용.
@@ -495,6 +508,36 @@ export class ScheduleService implements OnModuleInit {
         });
       }
     }
+    for (const patch of seriesPatches) {
+      const member = this.db.findById<ClassSession>(SESSIONS, patch.id);
+      if (!member) continue;
+      if (isPayoutLocked(member)) accountingLocked.push(member);
+      this.assertDependentsCompatible(member.id, member, patch.fields);
+      const memberApproved = this.reports.approvedSessionIds().has(member.id);
+      accountingImpacts.push(accountingImpactOf(member, patch.fields, {
+        beforeApprovedReport: memberApproved,
+        afterApprovedReport: memberApproved,
+        beforeHourlyRate: this.courseOf(member.courseId)?.hourlyRate ?? 0,
+        afterHourlyRate: this.courseOf(patch.fields.courseId)?.hourlyRate ?? 0,
+      }));
+    }
+    const impact = combineAccountingImpacts(accountingImpacts);
+    const requiresAccountingAck = impact.changed && ([cur, ...seriesPatches.map((patch) => this.db.findById<ClassSession>(SESSIONS, patch.id))]
+      .some((session) => session?.status === 'held' || (session ? isPayoutLocked(session) : false)));
+    if (accountingLocked.length) {
+      throw new ConflictException({
+        code: 'PAYOUT_REVERSAL_REQUIRED',
+        message: `정산서에 연결된 수업(${accountingLocked.map((session) => session.id).join(', ')})은 정산 회수 또는 보정 거래 후 변경할 수 있습니다.`,
+        impact,
+      });
+    }
+    if (requiresAccountingAck && !dto.acknowledgeAccountingImpact) {
+      throw new ConflictException({
+        code: 'ACCOUNTING_IMPACT_ACK_REQUIRED',
+        message: '완료 수업 변경으로 시수 또는 정산 예상액이 달라집니다. 변경 결과를 확인해 주세요.',
+        impact,
+      });
+    }
 
     // 3) 충돌 검사(대상 + 시리즈 동반). 자기 자신과 함께 이동하는 형제는 검사에서 제외.
     const movingIds = new Set<number>([id, ...seriesPatches.map((p) => p.id)]);
@@ -517,8 +560,8 @@ export class ScheduleService implements OnModuleInit {
 
     // 4) 일괄 적용(대상 먼저, 그 뒤 시리즈)
     const beforeSnap = { ...cur }; // audit diff용(적용 전 상태 — cur는 라이브 행이라 사본 필수)
-    const updated = (await this.sessions.update(id, primary))!;
-    for (const p of seriesPatches) await this.sessions.update(p.id, p.fields);
+    const updated = (await this.sessions.update(id, primary as never))!;
+    for (const p of seriesPatches) await this.sessions.update(p.id, p.fields as never);
     if (actorId != null) {
       const diff = this.audit.diffOf(beforeSnap, updated);
       if (Object.keys(diff).length)
@@ -558,7 +601,8 @@ export class ScheduleService implements OnModuleInit {
       memo: dto.memo ?? cur.memo,
       color: dto.color ?? cur.color,
       // [TBO-19 Sprint2] clear=미표시로 초기화(우회 sentinel) · 아니면 기존 병합(?? cur)
-      instructorAttendance: dto.clearInstructorAttendance ? undefined : (dto.instructorAttendance ?? cur.instructorAttendance),
+      // DB에서도 실제로 비워지도록 clear는 undefined(UPDATE 생략)가 아니라 NULL을 기록한다.
+      instructorAttendance: dto.clearInstructorAttendance ? null : (dto.instructorAttendance ?? cur.instructorAttendance),
       studentIds: dto.studentIds ?? cur.studentIds, // 명시 코호트(v0.1.13) — 검증은 update() 본문
       // [R-6 audit 노이즈 정리 2026-07-07] merge는 **보존만**(기본값 채우기 제거) — 기본값은 create()·enrich()가 담당.
       //  종전 `?? SESSION_DEFAULTS`는 구/시드 세션(kind·mode 미저장)을 부분 PATCH할 때 undefined→기본값을
@@ -567,6 +611,22 @@ export class ScheduleService implements OnModuleInit {
       mode: dto.mode ?? cur.mode, // [v0.1.16] 미저장이면 undefined 유지(enrich가 read-time에 in_person 채움)
       price: dto.price ?? cur.price,
     };
+  }
+
+  private assertDependentsCompatible(sessionId: number, before: ClassSession, after: MergedFields): void {
+    const attendanceStudents = this.attendance.findBySession(sessionId).map((row) => row.studentId);
+    const reports = this.reports.findBySession(sessionId);
+    const dependentStudents = new Set([...attendanceStudents, ...reports.map((row) => row.studentId)]);
+    const enrollments = this.db.findAll<Enrollment>(ENROLLMENTS_COL);
+    const invalid = [...dependentStudents].filter(
+      (studentId) => !studentBelongsToSession(after as ClassSession, studentId, enrollments),
+    );
+    if (invalid.length)
+      throw new ConflictException(`세션 ${sessionId}의 출결/보고서 학생이 변경 코호트에서 제외됩니다: ${invalid.join(', ')}`);
+    if (reports.length && after.instructorId !== before.instructorId)
+      throw new ConflictException(`세션 ${sessionId}에 작성된 보고서가 있어 강사를 변경할 수 없습니다`);
+    if (reports.length && after.courseId !== before.courseId)
+      throw new ConflictException(`세션 ${sessionId}에 작성된 보고서가 있어 코스를 변경할 수 없습니다`);
   }
 
   private enrich(s: ClassSession, rooms: Map<number, { name: string }>): ScheduleRow {

@@ -84,6 +84,26 @@ export class ClassSessionsStore implements OnModuleInit {
     return this.memory.findById<ClassSession>(TABLE, id) ?? saved;
   }
 
+  /** 동시 정산 생성 시 한 세션을 한 정산서만 선점하도록 DB 조건부 UPDATE로 직렬화한다. */
+  async claimPayout(id: number, payoutId: number, instructorPayAmount: number): Promise<ClassSession | undefined> {
+    if (!this.durable) {
+      const current = this.memory.findById<ClassSession>(TABLE, id) as (ClassSession & { payoutId?: number | null }) | undefined;
+      if (!current || current.payoutId != null) return undefined;
+      return this.memory.update<ClassSession>(TABLE, id, { payoutId, instructorPayAmount } as never);
+    }
+    const [row] = await this.query(
+      `UPDATE ${TABLE}
+          SET payout_id = $1, instructor_pay_amount = $2, updated_at = now()
+        WHERE id = $3 AND deleted_at IS NULL AND payout_id IS NULL
+        RETURNING *`,
+      [payoutId, instructorPayAmount, id],
+    );
+    if (!row) return undefined;
+    const saved = this.fromDbRow(row);
+    this.memory.update<ClassSession>(TABLE, id, this.withoutBase(saved));
+    return this.memory.findById<ClassSession>(TABLE, id) ?? saved;
+  }
+
   async remove(id: number, deletedBy?: number): Promise<boolean> {
     if (!this.durable) return this.memory.remove(TABLE, id, deletedBy);
     const rows = await this.query(

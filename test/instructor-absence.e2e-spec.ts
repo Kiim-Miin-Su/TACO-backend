@@ -22,11 +22,11 @@ describe('강사 결석 ↔ status 독립 (e2e) [TBO-19]', () => {
   it('instructorAttendance=absent는 status를 바꾸지 않는다(held 유지·가역)', async () => {
     const row = (await http.post('/api/schedule').set(TH())
       .send({ courseId: 10, sessionDate: '2099-08-01', startTime: '10:00', durationMinutes: 60, status: 'held', force: true }).expect(201)).body.row;
-    const absent = (await http.patch(`/api/schedule/${row.id}`).set(TH()).send({ instructorAttendance: 'absent', force: true }).expect(200)).body.row;
+    const absent = (await http.patch(`/api/schedule/${row.id}`).set(TH()).send({ instructorAttendance: 'absent', force: true, acknowledgeAccountingImpact: true }).expect(200)).body.row;
     expect(absent.instructorAttendance).toBe('absent');
     expect(absent.status).toBe('held'); // 결강 표시는 FE 렌더 — status는 불변(payout은 measure가 별도 제외)
     // 정정: present로 되돌려도 status 그대로
-    const restored = (await http.patch(`/api/schedule/${row.id}`).set(TH()).send({ instructorAttendance: 'present', force: true }).expect(200)).body.row;
+    const restored = (await http.patch(`/api/schedule/${row.id}`).set(TH()).send({ instructorAttendance: 'present', force: true, acknowledgeAccountingImpact: true }).expect(200)).body.row;
     expect(restored.instructorAttendance).toBe('present');
     expect(restored.status).toBe('held');
   });

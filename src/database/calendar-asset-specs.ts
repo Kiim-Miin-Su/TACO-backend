@@ -334,3 +334,72 @@ export const INSTRUCTOR_CONTRACTS_SPEC: PostgresCollectionSpec = {
     activeIndex('instructor_contracts', 'idx_instructor_contracts_period', 'period_start, period_end'),
   ],
 };
+
+export const TRANSACTIONS_SPEC: PostgresCollectionSpec = {
+  table: 'transactions',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS transactions (
+      id serial PRIMARY KEY,
+      direction varchar(16) NOT NULL,
+      category varchar(64) NOT NULL,
+      label varchar(200) NOT NULL,
+      amount integer NOT NULL,
+      method varchar(32),
+      occurred_at timestamptz NOT NULL DEFAULT now(),
+      payment_id integer,
+      payout_id integer,
+      expense_id integer,
+      memo text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
+    )
+  `,
+  timestampFields: ['occurredAt'],
+  indexes: [
+    activeIndex('transactions', 'idx_tx_dir_occurred', 'direction, occurred_at'),
+    activeIndex('transactions', 'idx_tx_category', 'category'),
+    activeIndex('transactions', 'idx_tx_occurred', 'occurred_at'),
+    activeIndex('transactions', 'idx_tx_payment', 'payment_id'),
+    activeIndex('transactions', 'idx_tx_payout', 'payout_id'),
+    activeIndex('transactions', 'idx_tx_expense', 'expense_id'),
+  ],
+};
+
+export const INSTRUCTOR_PAYOUTS_SPEC: PostgresCollectionSpec = {
+  table: 'instructor_payouts',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS instructor_payouts (
+      id serial PRIMARY KEY,
+      instructor_id integer NOT NULL,
+      period_start date NOT NULL,
+      period_end date NOT NULL,
+      session_count integer NOT NULL DEFAULT 0,
+      total_minutes integer NOT NULL DEFAULT 0,
+      computed_amount integer NOT NULL DEFAULT 0,
+      adjusted_amount integer,
+      adjust_reason varchar(200),
+      amount integer NOT NULL,
+      status varchar(32) NOT NULL DEFAULT 'pending',
+      lines text NOT NULL DEFAULT '[]',
+      rejected_reason varchar(200),
+      confirmed_at timestamptz,
+      paid_at timestamptz,
+      payment_method varchar(32),
+      bank_account varchar(80),
+      memo text,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
+    )
+  `,
+  jsonFields: ['lines'],
+  dateFields: ['periodStart', 'periodEnd'],
+  timestampFields: ['confirmedAt', 'paidAt'],
+  indexes: [
+    activeIndex('instructor_payouts', 'idx_payouts_instructor_period', 'instructor_id, period_start, period_end'),
+    activeIndex('instructor_payouts', 'idx_payouts_status', 'status'),
+  ],
+};

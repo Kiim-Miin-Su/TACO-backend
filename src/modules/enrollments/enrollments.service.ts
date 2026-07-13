@@ -6,6 +6,8 @@ import { Enrollment, ENROLLMENTS } from './enrollment.entity';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { STUDENTS } from '../students/student.entity';
 import { COURSES } from '../courses/course.entity';
+import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
+import { studentBelongsToSession } from '../schedule/session-participant.policy';
 
 @Injectable()
 export class EnrollmentsService implements OnModuleInit {
@@ -28,17 +30,17 @@ export class EnrollmentsService implements OnModuleInit {
   }
 
   findAll(): Enrollment[] {
-    return this.db.findAll<Enrollment>(ENROLLMENTS);
+    return this.db.findAll<Enrollment>(ENROLLMENTS).map((row) => this.withDerivedCompletedSessions(row));
   }
 
   findByStudent(studentId: number): Enrollment[] {
-    return this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === studentId);
+    return this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === studentId).map((row) => this.withDerivedCompletedSessions(row));
   }
 
   findOne(id: number): Enrollment {
     const row = this.db.findById<Enrollment>(ENROLLMENTS, id);
     if (!row) throw new NotFoundException(`Enrollment ${id} not found`);
-    return row;
+    return this.withDerivedCompletedSessions(row);
   }
 
   // 결제 없이도 등록 가능 (status=active)
@@ -58,5 +60,15 @@ export class EnrollmentsService implements OnModuleInit {
       memo: dto.memo,
       enrolledAt: new Date().toISOString().slice(0, 10),
     });
+  }
+
+  private withDerivedCompletedSessions(row: Enrollment): Enrollment {
+    const enrollments = this.db.findAll<Enrollment>(ENROLLMENTS);
+    const completedSessions = this.db.findBy<ClassSession>(SESSIONS, (session) =>
+      session.courseId === row.courseId &&
+      session.status === 'held' &&
+      studentBelongsToSession(session, row.studentId, enrollments),
+    ).length;
+    return { ...row, completedSessions };
   }
 }

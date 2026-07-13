@@ -43,7 +43,7 @@ describe('강사 출결 현황 집계 (e2e)', () => {
     const held = (await http.get(`/api/schedule?from=${JUN1}&to=${JUN30}&instructorId=1`).set(auth(admin)).expect(200)).body
       .filter((x: { status: string }) => x.status === 'held');
     const sid = held[0].id;
-    await http.patch(`/api/schedule/${sid}`).set(auth(admin)).send({ instructorAttendance: 'absent' }).expect(200);
+    await http.patch(`/api/schedule/${sid}`).set(auth(admin)).send({ instructorAttendance: 'absent', acknowledgeAccountingImpact: true }).expect(200);
     const after = (await summary(admin, `from=${JUN1}&to=${JUN30}&instructorId=1`)).rows[0];
     expect(after.absent).toBe(before.absent + 1);
     expect(after.teachingHours).toBeLessThan(before.teachingHours);

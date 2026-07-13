@@ -1,7 +1,12 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { INSTRUCTOR_PAYOUTS_SPEC, TRANSACTIONS_SPEC } from '../../database/calendar-asset-specs';
+import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { hhmmToMin, minToHhmm } from '../../common/time.util'; // [R-3 함수 통일]
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
+import { ClassSessionsStore } from '../schedule/class-sessions.store';
+import { countsForTeachingHours } from '../schedule/session-accounting.policy';
+import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { Course, COURSES } from '../courses/course.entity';
 import { ReportsService } from '../reports/reports.service';
 import {
@@ -9,7 +14,6 @@ import {
   PayoutLine,
   PAYOUTS,
   TransactionRow,
-  TRANSACTIONS,
 } from './payout.entity';
 
 // 세션 행은 정산 연결 후 payoutId/페이 스냅샷을 갖는다(ERD class_sessions).
@@ -44,7 +48,10 @@ export type MeasureResult = {
 export class PayoutsService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
+    private readonly store: PostgresCollectionStore,
+    private readonly sessionsStore: ClassSessionsStore,
     private readonly reports: ReportsService,
+    private readonly unitOfWork: CalendarUnitOfWork,
   ) {}
 
   // 데모 mock 주입 — 현재 주(週) 범위 밖(6월 중순)에 held 세션 + 승인 보고서를 심어
@@ -53,7 +60,8 @@ export class PayoutsService implements OnModuleInit {
   //  · 강사2: 적격 3건 → generate→confirm→pay로 '지급완료' 정산서 + 원장 출금 1줄
   // 현재 주(MON~SUN)·강사1 쿼리와 겹치지 않게 6/8~6/19로 한정(e2e 불간섭).
   async onModuleInit(): Promise<void> {
-    if (this.db.findAll<InstructorPayoutRow>(PAYOUTS).length) return; // 이미 시드됨
+    const hydrated = await this.store.hydrate<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC);
+    if (hydrated.length) return; // 이미 DB에 저장됨
 
     const make = (
       courseId: number,
@@ -62,14 +70,11 @@ export class PayoutsService implements OnModuleInit {
       start: string,
       minutes: number,
       status: ClassSession['status'],
-    ): number => {
-      const row = this.db.insert<SessionWithPayout>(SESSIONS, {
+    ): Promise<number> => this.sessionsStore.insert({
         courseId, instructorId, sessionDate: date, startTime: start,
         endTime: minToHhmm(hhmmToMin(start) + minutes), durationMinutes: minutes, status,
         topic: '정규 수업', // 캘린더 표기는 실데이터 문구만(피드백 2026-07-02)
-      } as Omit<SessionWithPayout, 'id' | 'createdAt' | 'updatedAt'>);
-      return row.id;
-    };
+      } as Omit<SessionWithPayout, 'id' | 'createdAt' | 'updatedAt'>).then((row) => row.id);
     // 세션 + 보고서(작성→승인) 동시 생성. status==='held'·승인이라야 시수 적격.
     const withApprovedReport = async (sessionId: number, studentId: number) => {
       const existing = this.reports.findBySession(sessionId).find((r) => r.studentId === studentId);
@@ -80,20 +85,20 @@ export class PayoutsService implements OnModuleInit {
     };
 
     // 강사1(박지훈) — 적격 3건(미정산)
-    await withApprovedReport(make(10, 1, '2026-06-08', '16:00', 90, 'held'), 1);
-    await withApprovedReport(make(10, 1, '2026-06-10', '16:00', 90, 'held'), 1);
-    await withApprovedReport(make(12, 1, '2026-06-15', '18:00', 120, 'held'), 1);
+    await withApprovedReport(await make(10, 1, '2026-06-08', '16:00', 90, 'held'), 1);
+    await withApprovedReport(await make(10, 1, '2026-06-10', '16:00', 90, 'held'), 1);
+    await withApprovedReport(await make(12, 1, '2026-06-15', '18:00', 120, 'held'), 1);
     // 게이트 데모: held이지만 보고서 없음 → 제외
-    make(10, 1, '2026-06-09', '16:00', 60, 'held');
+    await make(10, 1, '2026-06-09', '16:00', 60, 'held');
     // 게이트 데모: 보고서 승인됐지만 취소 → 제외
-    await withApprovedReport(make(10, 1, '2026-06-11', '16:00', 90, 'canceled'), 1);
+    await withApprovedReport(await make(10, 1, '2026-06-11', '16:00', 90, 'canceled'), 1);
 
     // 강사2(정유진) — 적격 3건 → 즉시 정산·지급(완료 상태 시연)
-    await withApprovedReport(make(11, 2, '2026-06-09', '16:00', 120, 'held'), 2);
-    await withApprovedReport(make(11, 2, '2026-06-11', '16:00', 120, 'held'), 2);
-    await withApprovedReport(make(11, 2, '2026-06-16', '16:00', 120, 'held'), 2);
+    await withApprovedReport(await make(11, 2, '2026-06-09', '16:00', 120, 'held'), 2);
+    await withApprovedReport(await make(11, 2, '2026-06-11', '16:00', 120, 'held'), 2);
+    await withApprovedReport(await make(11, 2, '2026-06-16', '16:00', 120, 'held'), 2);
     const paid = await this.generate(2, '2026-06-01', '2026-06-30');
-    this.confirm(paid.id);
+    await this.confirm(paid.id);
     await this.pay(paid.id);
   }
 
@@ -113,8 +118,7 @@ export class PayoutsService implements OnModuleInit {
         s.instructorId === instructorId &&
         s.sessionDate >= from &&
         s.sessionDate <= to &&
-        s.status === 'held' && // (1) 진행 완료만(보강·취소·노쇼·예정 제외)
-        s.instructorAttendance !== 'absent' && // (1-b) [TBO-19 시수 정책] 강사 결석 제외(잠정)
+        countsForTeachingHours(s) && // (1, 1-b) 진행 완료 + 강사 결석 제외(공통 정책)
         approved.has(s.id) && // (2) 승인 보고서 존재
         s.payoutId == null, // (4) 미연결(이중 계상 방지)
     );
@@ -158,32 +162,30 @@ export class PayoutsService implements OnModuleInit {
   // 정산서 생성(pending) + 세션 연결(payoutId·페이 스냅샷 기록 → 이중 계상 방지).
   async generate(instructorId: number, from: string, to: string): Promise<InstructorPayoutRow> {
     // [원자성] 정산서 생성 + 세션 payoutId 연결이 함께 성공/실패(이중계상 방지 불변식 보호)
-    return this.db.transaction(() => {
-    const m = this.measure(instructorId, from, to);
-    if (m.sessionCount === 0)
-      throw new BadRequestException('정산 대상 세션이 없습니다(진행 완료 + 승인 보고서 필요)');
+    return this.unitOfWork.run(async () => {
+      const m = this.measure(instructorId, from, to);
+      if (m.sessionCount === 0)
+        throw new BadRequestException('정산 대상 세션이 없습니다(진행 완료 + 승인 보고서 필요)');
 
-    const payout = this.db.insert<InstructorPayoutRow>(PAYOUTS, {
-      instructorId,
-      periodStart: from,
-      periodEnd: to,
-      sessionCount: m.sessionCount,
-      totalMinutes: m.totalMinutes,
-      computedAmount: m.computedAmount,
-      amount: m.computedAmount,
-      status: 'pending',
-      lines: m.lines,
-    });
-
-    // 세션 ← 정산서 연결(FK). 이후 measure에서 payoutId!=null 로 제외됨.
-    for (const l of m.lines) {
-      this.db.update<SessionWithPayout>(SESSIONS, l.sessionId, {
-        payoutId: payout.id,
-        instructorPayAmount: l.amount,
+      const payout = await this.store.insert<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, {
+        instructorId,
+        periodStart: from,
+        periodEnd: to,
+        sessionCount: m.sessionCount,
+        totalMinutes: m.totalMinutes,
+        computedAmount: m.computedAmount,
+        amount: m.computedAmount,
+        status: 'pending',
+        lines: m.lines,
       });
-    }
-    return payout;
-  
+
+      // 세션 ← 정산서 연결(FK). 이후 measure에서 payoutId!=null 로 제외됨.
+      for (const l of m.lines) {
+        const claimed = await this.sessionsStore.claimPayout(l.sessionId, payout.id, l.amount);
+        if (!claimed)
+          throw new ConflictException(`세션 ${l.sessionId}이 다른 정산서에 먼저 연결되었습니다. 다시 산정해 주세요.`);
+      }
+      return payout;
     });
   }
 
@@ -204,71 +206,78 @@ export class PayoutsService implements OnModuleInit {
   }
 
   // 대표 확정(pending → confirmed)
-  confirm(id: number): InstructorPayoutRow {
+  async confirm(id: number): Promise<InstructorPayoutRow> {
     const p = this.findOne(id);
     if (p.status !== 'pending') throw new BadRequestException(`확정 불가 상태(${p.status})`);
-    return this.db.update<InstructorPayoutRow>(PAYOUTS, id, {
+    const updated = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, { status: 'pending' }, {
       status: 'confirmed',
       confirmedAt: new Date().toISOString(),
-    }) as InstructorPayoutRow;
+    });
+    if (!updated) throw new ConflictException('정산 상태가 다른 요청에서 먼저 변경되었습니다');
+    return updated;
   }
 
   // 대표 급여 수정(pending/confirmed) — 자동 산정액은 보존, 실효 지급액만 덮어씀.
-  adjust(id: number, amount: number, reason?: string): InstructorPayoutRow {
+  async adjust(id: number, amount: number, reason?: string): Promise<InstructorPayoutRow> {
     const p = this.findOne(id);
     if (p.status === 'paid' || p.status === 'rejected')
       throw new BadRequestException(`수정 불가 상태(${p.status})`);
     if (amount == null || amount < 0) throw new BadRequestException('수정 금액은 0 이상이어야 합니다');
-    return this.db.update<InstructorPayoutRow>(PAYOUTS, id, {
+    const updated = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, { status: p.status }, {
       adjustedAmount: amount,
       adjustReason: reason,
       amount,
-    }) as InstructorPayoutRow;
+    });
+    if (!updated) throw new ConflictException('정산 상태가 다른 요청에서 먼저 변경되었습니다');
+    return updated;
   }
 
   // 대표 반려(→ rejected) + 연결 세션 회수(payoutId 해제 → 재산정 가능).
   async reject(id: number, reason?: string): Promise<InstructorPayoutRow> {
     // [원자성] 반려 상태 + 연결 세션 전량 회수(부분 회수 잔존 금지)
-    return this.db.transaction(() => {
-    const p = this.findOne(id);
-    if (p.status === 'paid') throw new BadRequestException('이미 지급됨 — 반려 불가');
-    for (const l of p.lines) {
-      const s = this.db.findById<SessionWithPayout>(SESSIONS, l.sessionId);
-      if (s && s.payoutId === id) {
-        this.db.update<SessionWithPayout>(SESSIONS, l.sessionId, {
-          payoutId: undefined,
-          instructorPayAmount: undefined,
-        });
+    return this.unitOfWork.run(async () => {
+      const p = this.findOne(id);
+      if (p.status === 'paid') throw new BadRequestException('이미 지급됨 — 반려 불가');
+      const rejected = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, { status: p.status }, {
+        status: 'rejected',
+        rejectedReason: reason ?? '사유 미기재',
+      });
+      if (!rejected) throw new ConflictException('정산 상태가 다른 요청에서 먼저 변경되었습니다');
+      for (const l of p.lines) {
+        const s = this.db.findById<SessionWithPayout>(SESSIONS, l.sessionId);
+        if (s && s.payoutId === id) {
+          await this.sessionsStore.update(l.sessionId, {
+            payoutId: null,
+            instructorPayAmount: null,
+          } as never);
+        }
       }
-    }
-    return this.db.update<InstructorPayoutRow>(PAYOUTS, id, {
-      status: 'rejected',
-      rejectedReason: reason ?? '사유 미기재',
-    }) as InstructorPayoutRow;
-  
+      return rejected;
     });
   }
 
   // 지급 완료(confirmed → paid) + 통합 원장 출금 1줄 기록.
   async pay(id: number): Promise<{ payout: InstructorPayoutRow; transaction: TransactionRow }> {
     // [원자성] 지급 상태 + 통합 원장 출금 1줄이 함께 기록(원장 누락/유령 지급 방지)
-    return this.db.transaction(() => {
-    const p = this.findOne(id);
-    if (p.status !== 'confirmed') throw new BadRequestException(`지급 불가 상태(${p.status}) — confirmed만 지급 가능`);
-    const now = new Date().toISOString();
-    const payout = this.db.update<InstructorPayoutRow>(PAYOUTS, id, {
-      status: 'paid',
-      paidAt: now,
-    }) as InstructorPayoutRow;
-    const transaction = this.db.insert<TransactionRow>(TRANSACTIONS, {
-      direction: 'out',
-      category: 'instructor_payout',
-      label: `강사 ${p.instructorId} 페이(${p.periodStart}~${p.periodEnd})`,
-      amount: payout.amount,
-      occurredAt: now,
-      payoutId: id,
-    });
-    return { payout, transaction };
+    return this.unitOfWork.run(async () => {
+      const p = this.findOne(id);
+      if (p.status === 'paid') throw new ConflictException('이미 지급된 정산입니다');
+      if (p.status !== 'confirmed') throw new BadRequestException(`지급 불가 상태(${p.status}) — confirmed만 지급 가능`);
+      const now = new Date().toISOString();
+      const payout = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, { status: 'confirmed' }, {
+        status: 'paid',
+        paidAt: now,
       });
+      if (!payout) throw new ConflictException('정산 상태가 다른 요청에서 먼저 변경되었습니다');
+      const transaction = await this.store.insert<TransactionRow>(TRANSACTIONS_SPEC, {
+        direction: 'out',
+        category: 'instructor_payout',
+        label: `강사 ${p.instructorId} 페이(${p.periodStart}~${p.periodEnd})`,
+        amount: payout.amount,
+        occurredAt: now,
+        payoutId: id,
+      });
+      return { payout, transaction };
+    });
   }
 }

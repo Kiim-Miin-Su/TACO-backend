@@ -42,13 +42,12 @@ describe('Attendance API (e2e)', () => {
     expect(after).toBe(before); // 이중 기록 없음
   });
 
-  it('PUT /attendance — 신규 (세션2,학생1) 삽입', async () => {
+  it('PUT /attendance — 세션 코호트 밖 학생은 거부', async () => {
     const before = (await http.get('/api/attendance').set(auth()).expect(200)).body.length;
-    const row = (await http.put('/api/attendance').set(auth())
-      .send({ sessionId: 2, studentId: 1, status: 'present' }).expect(200)).body;
-    expect(row.id).toBeGreaterThan(3);
+    await http.put('/api/attendance').set(auth())
+      .send({ sessionId: 2, studentId: 2, status: 'present' }).expect(400);
     const after = (await http.get('/api/attendance').set(auth()).expect(200)).body.length;
-    expect(after).toBe(before + 1);
+    expect(after).toBe(before);
   });
 
   it('PUT /attendance — 없는 세션 → 400 (FK 무결성)', async () => {

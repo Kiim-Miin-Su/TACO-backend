@@ -31,13 +31,13 @@ describe('Payouts 시수 정책 — 강사 결석 제외 (e2e)', () => {
     expect(target.sessionId).toBeTruthy();
 
     // 강사 결석 마킹 → 그 세션이 시수에서 빠짐
-    await http.patch(`/api/schedule/${target.sessionId}`).set(asAdmin()).send({ instructorAttendance: 'absent' }).expect(200);
+    await http.patch(`/api/schedule/${target.sessionId}`).set(asAdmin()).send({ instructorAttendance: 'absent', acknowledgeAccountingImpact: true }).expect(200);
     const afterAbsent = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     expect(afterAbsent.sessionCount).toBe(2);
     expect(afterAbsent.totalMinutes).toBe(base.totalMinutes - target.durationMinutes);
 
     // 출석(present)으로 복구 → 다시 3건
-    await http.patch(`/api/schedule/${target.sessionId}`).set(asAdmin()).send({ instructorAttendance: 'present' }).expect(200);
+    await http.patch(`/api/schedule/${target.sessionId}`).set(asAdmin()).send({ instructorAttendance: 'present', acknowledgeAccountingImpact: true }).expect(200);
     const restored = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     expect(restored.sessionCount).toBe(3);
     expect(restored.totalMinutes).toBe(base.totalMinutes);
@@ -47,10 +47,10 @@ describe('Payouts 시수 정책 — 강사 결석 제외 (e2e)', () => {
     const base = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     const sid = base.lines[0].sessionId;
     // 결석 마킹 → 제외
-    await http.patch(`/api/schedule/${sid}`).set(asAdmin()).send({ instructorAttendance: 'absent' }).expect(200);
+    await http.patch(`/api/schedule/${sid}`).set(asAdmin()).send({ instructorAttendance: 'absent', acknowledgeAccountingImpact: true }).expect(200);
     expect((await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body.sessionCount).toBe(2);
     // 초기화(clear) → 미표시(undefined) → 시수 재포함
-    await http.patch(`/api/schedule/${sid}`).set(asAdmin()).send({ clearInstructorAttendance: true }).expect(200);
+    await http.patch(`/api/schedule/${sid}`).set(asAdmin()).send({ clearInstructorAttendance: true, acknowledgeAccountingImpact: true }).expect(200);
     const sessions = (await http.get(`/api/schedule?from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     const s = sessions.find((x: { id: number }) => x.id === sid);
     expect(s.instructorAttendance == null).toBe(true); // 미표시로 비워짐

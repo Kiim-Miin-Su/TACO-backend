@@ -309,6 +309,7 @@ export class ScheduleRequestsService {
         sessionDate: req.sessionDate, startTime: req.startTime, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic, studentIds: req.studentIds,
         kind: req.kind, mode: req.mode, scope: req.scope, force,
+        acknowledgeAccountingImpact: force,
       }, decidedBy);
       const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),

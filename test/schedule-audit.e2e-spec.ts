@@ -34,10 +34,13 @@ describe('세션 audit diff 노이즈 정리 (e2e)', () => {
   });
 
   it('kind/mode를 실제로 바꾸면 그때는 diff에 기록', async () => {
-    const held = (await http.get('/api/schedule?from=2026-06-01&to=2026-06-30&instructorId=2').set(auth()).expect(200)).body
-      .filter((x: { status: string }) => x.status === 'held');
+    const held = (await http.get('/api/schedule?from=2026-06-01&to=2026-06-30&instructorId=1').set(auth()).expect(200)).body
+      .filter((x: { status: string; payoutId?: number; mode?: string }) => x.status === 'held' && x.payoutId == null && x.mode !== 'online');
     const sid = held[0].id;
-    await http.patch(`/api/schedule/${sid}`).set(auth()).send({ mode: 'online' }).expect(200);
+    await http.patch(`/api/schedule/${sid}`).set(auth()).send({
+      mode: 'online',
+      acknowledgeAccountingImpact: true,
+    }).expect(200);
     const log = (await http.get(`/api/audit?entity=class_sessions&entityId=${sid}`).set(auth()).expect(200)).body;
     expect(Object.keys(log[0].changes ?? {})).toContain('mode');
   });

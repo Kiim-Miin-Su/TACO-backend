@@ -208,7 +208,7 @@ describe("Full Flow (e2e)", () => {
     const r = (await http.post("/api/reports").set(asAdmin()).send({ sessionId: s.id, studentId: 1, content: "ok" }).expect(201)).body;
     await http.post(`/api/reports/${r.id}/approve`).set(asAdmin()).expect(201);
     // 진행 상태였다가 취소로 변경 → 시수 제외
-    await http.patch(`/api/schedule/${s.id}`).set(asAdmin()).send({ status: "canceled", force: true }).expect(200);
+    await http.patch(`/api/schedule/${s.id}`).set(asAdmin()).send({ status: "canceled", force: true, acknowledgeAccountingImpact: true }).expect(200);
     const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${w5mon}&to=${w5sun}`).set(asAdmin()).expect(200)).body;
     expect(m.sessionCount).toBe(0);
   });

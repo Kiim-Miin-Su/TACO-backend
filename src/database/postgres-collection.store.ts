@@ -98,6 +98,56 @@ export class PostgresCollectionStore {
     return this.memory.remove(spec.table, id, deletedBy);
   }
 
+  async removeByField(spec: PostgresCollectionSpec, field: string, value: unknown, deletedBy?: number): Promise<number> {
+    if (!(await this.ensureReady(spec))) {
+      const rows = this.memory.findByField<BaseRow>(spec.table, field as keyof BaseRow & string, value);
+      return rows.reduce((count, row) => count + (this.memory.remove(spec.table, row.id, deletedBy) ? 1 : 0), 0);
+    }
+    const rows = await this.query(
+      `UPDATE ${spec.table} SET deleted_at = now(), deleted_by = $1, updated_at = now()
+        WHERE ${camelToSnake(field)} = $2 AND deleted_at IS NULL RETURNING id`,
+      [deletedBy ?? null, value],
+    );
+    for (const row of rows) this.memory.remove(spec.table, Number(row.id), deletedBy);
+    return rows.length;
+  }
+
+  async updateIf<T extends BaseRow>(
+    spec: PostgresCollectionSpec,
+    id: number,
+    expected: Partial<Omit<T, keyof BaseRow>>,
+    patch: Partial<Omit<T, keyof BaseRow>>,
+  ): Promise<T | undefined> {
+    if (!(await this.ensureReady(spec))) {
+      const current = this.memory.findById<T>(spec.table, id);
+      if (!current || Object.entries(expected).some(([key, value]) => (current as Record<string, unknown>)[key] !== value)) return undefined;
+      return this.memory.update<T>(spec.table, id, patch);
+    }
+    const payload = this.toDbPayload(spec, patch as Record<string, unknown>);
+    const expectedPayload = this.toDbPayload(spec, expected as Record<string, unknown>);
+    const patchKeys = Object.keys(payload);
+    const expectedKeys = Object.keys(expectedPayload);
+    if (!patchKeys.length) return this.memory.findById<T>(spec.table, id);
+    const values = patchKeys.map((key) => payload[key]);
+    const assignments = patchKeys.map((key, index) => `${camelToSnake(key)} = $${index + 1}`);
+    values.push(id);
+    const idParam = values.length;
+    const conditions = expectedKeys.map((key) => {
+      values.push(expectedPayload[key]);
+      return `${camelToSnake(key)} = $${values.length}`;
+    });
+    const [row] = await this.query(
+      `UPDATE ${spec.table} SET ${assignments.join(', ')}, updated_at = now()
+        WHERE id = $${idParam} AND deleted_at IS NULL${conditions.length ? ` AND ${conditions.join(' AND ')}` : ''}
+        RETURNING *`,
+      values,
+    );
+    if (!row) return undefined;
+    const saved = this.fromDbRow<T>(spec, row);
+    this.memory.update<T>(spec.table, id, this.withoutBase(saved));
+    return this.memory.findById<T>(spec.table, id) ?? saved;
+  }
+
   private async insertDb<T extends BaseRow>(
     spec: PostgresCollectionSpec,
     data: Record<string, unknown>,

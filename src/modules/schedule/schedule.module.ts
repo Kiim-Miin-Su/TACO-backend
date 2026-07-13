@@ -13,6 +13,6 @@ import { ClassSessionsStore } from './class-sessions.store';
   imports: [RoomsModule, AvailabilityModule, AuthModule, AuditModule, AttendanceModule, ReportsModule], // join·충돌 + RolesGuard + 변경 이력
   controllers: [ScheduleController],
   providers: [ScheduleService, ClassSessionsStore],
-  exports: [ScheduleService],
+  exports: [ScheduleService, ClassSessionsStore],
 })
 export class ScheduleModule {}

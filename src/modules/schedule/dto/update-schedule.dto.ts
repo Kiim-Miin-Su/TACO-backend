@@ -77,6 +77,10 @@ export class UpdateScheduleDto implements UpdateClassSessionInput {
   @IsOptional() @IsBoolean()
   force?: boolean;
 
+  @ApiPropertyOptional({ example: false, description: '완료 수업의 시수·정산 예상 변화 확인 후 적용 동의' })
+  @IsOptional() @IsBoolean()
+  acknowledgeAccountingImpact?: boolean;
+
   @ApiPropertyOptional({ enum: SESSION_KINDS, example: 'counsel', description: '[v0.1.14] 세션 종류 변경' })
   @IsOptional() @IsIn(SESSION_KINDS)
   kind?: SessionKind;

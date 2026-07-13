@@ -3,6 +3,7 @@ import { config } from 'dotenv';
 import request from 'supertest';
 import { createTestApp } from '../test/setup-app';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
+import { assertExpectedAfter } from '../src/common/expected-after.util';
 
 config({ path: process.env.DOTENV_CONFIG_PATH ?? '.env.local', override: false });
 
@@ -60,6 +61,7 @@ async function main(): Promise<void> {
     if (!pg.ready) throw new Error('Postgres data source is not ready');
     const http = request(app.getHttpServer());
     const manager = await login(http, 'manager');
+    const ceo = await login(http, 'admin');
 
     const created = await http.post('/api/schedule')
       .set(auth(manager))
@@ -110,6 +112,32 @@ async function main(): Promise<void> {
       throw new Error(`report approve did not set approvalStatus=approved: ${JSON.stringify(approved.body)}`);
     }
 
+    const held = await http.patch(`/api/schedule/${sessionId}`).set(auth(manager)).send({ status: 'held', force: true });
+    if (held.status !== 200) throw new Error(`session held transition failed: ${held.status} ${JSON.stringify(held.body)}`);
+    const beforePreview = (await http.get(`/api/payouts/preview?instructorId=1&from=${sessionDate}&to=${sessionDate}`)
+      .set(auth(ceo)).expect(200)).body;
+    const beforeLine = beforePreview.lines.find((line: { sessionId: number }) => line.sessionId === sessionId);
+    if (!beforeLine) throw new Error(`held+approved session ${sessionId} missing from payout preview`);
+    const blocked = await http.patch(`/api/schedule/${sessionId}`).set(auth(manager))
+      .send({ instructorAttendance: 'absent' }).expect(409);
+    assertExpectedAfter('DB smoke accounting preview', {
+      code: 'ACCOUNTING_IMPACT_ACK_REQUIRED',
+      teachingMinutes: -60,
+      computedAmount: -beforeLine.amount,
+    }, {
+      code: blocked.body.code,
+      teachingMinutes: blocked.body.impact?.delta?.teachingMinutes,
+      computedAmount: blocked.body.impact?.delta?.computedAmount,
+    });
+    await http.patch(`/api/schedule/${sessionId}`).set(auth(manager))
+      .send({ instructorAttendance: 'absent', acknowledgeAccountingImpact: true }).expect(200);
+    const absentPreview = (await http.get(`/api/payouts/preview?instructorId=1&from=${sessionDate}&to=${sessionDate}`)
+      .set(auth(ceo)).expect(200)).body;
+    if (absentPreview.lines.some((line: { sessionId: number }) => line.sessionId === sessionId))
+      throw new Error(`absent session ${sessionId} remained payout eligible`);
+    await http.patch(`/api/schedule/${sessionId}`).set(auth(manager))
+      .send({ clearInstructorAttendance: true, acknowledgeAccountingImpact: true }).expect(200);
+
     const contracts = (await http.get('/api/instructor-contracts').set(auth(manager)).expect(200)).body as ContractRow[];
     if (!contracts.some((row) => row.instructorId === 1 && row.active && row.monthlyHours > 0 && row.hourlyRate > 0)) {
       throw new Error(`instructor contract seed/hydration missing before restart: ${JSON.stringify(contracts)}`);
@@ -121,6 +149,7 @@ async function main(): Promise<void> {
     const app = await createTestApp();
     const http = request(app.getHttpServer());
     const manager = await login(http, 'manager');
+    const ceo = await login(http, 'admin');
 
     const attendance = (await http.get(`/api/attendance?sessionId=${sessionId}`)
       .set(auth(manager))
@@ -137,6 +166,14 @@ async function main(): Promise<void> {
     if (!persistedReport || persistedReport.status !== 'submitted' || persistedReport.approvalStatus !== 'approved' || persistedReport.approvedBy !== 4) {
       throw new Error(`report ${reportId} did not survive restart: ${JSON.stringify(reports)}`);
     }
+    const persistedSession = (await http.get(`/api/schedule?from=${sessionDate}&to=${sessionDate}`)
+      .set(auth(manager)).expect(200)).body.find((row: { id: number }) => row.id === sessionId);
+    if (!persistedSession || persistedSession.instructorAttendance != null)
+      throw new Error(`instructor attendance clear did not persist as NULL: ${JSON.stringify(persistedSession)}`);
+    const restoredPreview = (await http.get(`/api/payouts/preview?instructorId=1&from=${sessionDate}&to=${sessionDate}`)
+      .set(auth(ceo)).expect(200)).body;
+    if (!restoredPreview.lines.some((line: { sessionId: number }) => line.sessionId === sessionId))
+      throw new Error(`cleared session ${sessionId} was not payout eligible after restart`);
 
     await http.delete(`/api/schedule/${sessionId}`).set(auth(manager)).expect(200);
     await app.close();

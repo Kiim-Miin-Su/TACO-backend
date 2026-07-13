@@ -7,6 +7,9 @@ import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Course, COURSES } from '../courses/course.entity';
 import { SessionReportRow, SESSION_REPORTS } from './report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
+import { Student, STUDENTS } from '../students/student.entity';
+import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
+import { studentBelongsToSession } from '../schedule/session-participant.policy';
 
 // [보안 2026-07-07 H2] 액터 컨텍스트 — 비관리자(강사)는 본인 세션·본인 보고서만 쓰기 가능(IDOR 차단).
 export type ReportActor = { id: number; roles: string[] };
@@ -64,6 +67,10 @@ export class ReportsService implements OnModuleInit {
     // 1) 세션 FK 검증
     const session = this.db.findById<ClassSession>(SESSIONS, dto.sessionId);
     if (!session) throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
+    if (!this.db.findById<Student>(STUDENTS, dto.studentId))
+      throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
+    if (!studentBelongsToSession(session, dto.studentId, this.db.findAll<Enrollment>(ENROLLMENTS)))
+      throw new BadRequestException(`studentId ${dto.studentId}는 세션 ${dto.sessionId}의 수강생이 아닙니다`);
 
     // 2) 소유권(H2 IDOR 차단) — 비관리자(강사)는 본인 담당 세션에만 작성 가능.
     if (actor && !actorIsAdmin(actor) && session.instructorId !== actor.id)
@@ -138,11 +145,6 @@ export class ReportsService implements OnModuleInit {
   }
 
   async removeBySession(sessionId: number, deletedBy?: number): Promise<number> {
-    const rows = this.db.findByField<SessionReportRow>(SESSION_REPORTS, 'sessionId', sessionId);
-    let deleted = 0;
-    for (const row of rows) {
-      if (await this.store.remove(SESSION_REPORTS_SPEC, row.id, deletedBy)) deleted += 1;
-    }
-    return deleted;
+    return this.store.removeByField(SESSION_REPORTS_SPEC, 'sessionId', sessionId, deletedBy);
   }
 }

@@ -2494,6 +2494,10 @@ components:
           type: boolean
           example: false
           description: 충돌이 있어도 강제 적용(기본 false → 충돌 시 409)
+        acknowledgeAccountingImpact:
+          type: boolean
+          example: false
+          description: 완료 수업의 시수·정산 예상 변화 확인 후 적용 동의
         kind:
           enum:
           - class
