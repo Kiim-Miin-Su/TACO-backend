@@ -291,8 +291,7 @@ paths:
       responses:
         '200':
           description: ''
-      summary: Database connection check. In-memory remains runtime store until Postgres
-        cutover.
+      summary: Database connection check. In-memory remains runtime store until Postgres cutover.
       tags:
       - health
   /api/profile-change-requests/mine:
@@ -1047,8 +1046,7 @@ paths:
           type: string
       responses:
         '200':
-          description: AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday,
-            startTime, endTime }
+          description: AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday, startTime, endTime }
       summary: 가용/불가 블록 목록(ownerType·ownerId 필터). 강사는 쿼리와 무관하게 본인 블록만 조회.
       tags:
       - availability
@@ -1158,8 +1156,7 @@ paths:
               $ref: '#/components/schemas/CreateScheduleDto'
       responses:
         '201':
-          description: '{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[]
-            }'
+          description: '{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[] }'
         '401':
           description: 토큰 없음(로그인 필요)
         '409':
@@ -1224,8 +1221,7 @@ paths:
               $ref: '#/components/schemas/ConflictCheckDto'
       responses:
         '200':
-          description: Conflict[] — 각 항목 { type, resource, resourceId, sessionId?,
-            detail? }
+          description: Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }
       security:
       - bearer: []
       summary: 충돌 드라이런 — 강사는 JWT 본인 수업 범위, 생성·이동 전 이중예약/불가시간 겹침 검사
@@ -1249,8 +1245,7 @@ paths:
               $ref: '#/components/schemas/UpdateScheduleDto'
       responses:
         '200':
-          description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈
-            동반 수) }'
+          description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }'
         '409':
           description: '{ message, conflicts } — force=false에서 충돌 시'
       security:
@@ -1534,8 +1529,7 @@ paths:
                 type: object
       security:
       - bearer: []
-      summary: '[C2C-b] pending 요청 수정(관리자) — 종류·대상 전환 금지, 생성과 동일 검증 재사용, audit update
-        diff. [관리자]'
+      summary: '[C2C-b] pending 요청 수정(관리자) — 종류·대상 전환 금지, 생성과 동일 검증 재사용, audit update diff. [관리자]'
       tags:
       - schedule-requests
     delete:
@@ -1706,8 +1700,7 @@ paths:
               $ref: '#/components/schemas/GeneratePayoutDto'
       responses:
         '201':
-          description: '생성된 정산서(InstructorPayout): status=pending, amount, sessionCount,
-            totalMinutes, lines[]'
+          description: '생성된 정산서(InstructorPayout): status=pending, amount, sessionCount, totalMinutes, lines[]'
         '400':
           description: 적격 세션 0(이미 연결/기간 오류)
         '401':
@@ -3000,8 +2993,7 @@ components:
           description: endTime 없을 때 사용(기본 60)
         studentIds:
           maxItems: 20
-          description: 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만
-            허용
+          description: 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용
           type: array
           items:
             type: number
@@ -3085,8 +3077,7 @@ components:
           example: 60
         studentIds:
           maxItems: 20
-          description: 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만
-            허용
+          description: 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용
           type: array
           items:
             type: number
@@ -3145,8 +3136,7 @@ components:
           - all
           type: string
           example: this
-          description: '반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본
-            this)'
+          description: '반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)'
         force:
           type: boolean
           example: false
