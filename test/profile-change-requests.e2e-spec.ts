@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
+import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { createTestApp } from './setup-app';
 
 type UserRow = { id: number; name: string; phone?: string | null; profileVersion: number };
@@ -48,23 +49,32 @@ describe('Profile change requests (e2e)', () => {
   it('returns the staff profile and blocks no-op and mass assignment', async () => {
     const profile = await http.get('/api/users/me/profile').set(bearer(tokens.instructor)).expect(200);
     expect(profile.body).toMatchObject({ id: 1, webId: 'park_inst', name: '박지훈', profileVersion: 1 });
+    // [TBO-29B-4] 모든 변경은 현재 비밀번호 재확인 — 누락 400, 오입력 403
     await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
-      .send({ name: '박지훈', reason: '현재 이름과 같은 요청입니다.' }).expect(400);
+      .send({ name: '박지훈 변경', reason: '비밀번호 재확인 누락 요청입니다.' }).expect(400);
     await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
-      .send({ name: '박지훈 변경', email: 'owned@example.test', reason: '이메일까지 바꾸려는 요청입니다.' }).expect(400);
+      .send({ currentPassword: 'wrong-password', name: '박지훈 변경', reason: '잘못된 비밀번호로 요청합니다.' }).expect(403);
+    await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
+      .send({ currentPassword: 'demo1234', name: '박지훈', reason: '현재 이름과 같은 요청입니다.' }).expect(400);
+    // 연락처(email/phone) 변경은 인증 challenge 없이는 400 — 상세 흐름은 profile-verification.e2e-spec
+    await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
+      .send({ currentPassword: 'demo1234', email: 'owned@example.test', reason: '이메일까지 바꾸려는 요청입니다.' }).expect(400);
+    // role 등 비허용 key는 whitelist가 차단(mass assignment)
+    await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
+      .send({ currentPassword: 'demo1234', name: '박지훈 변경', role: 'super_admin', reason: '권한 상승을 시도합니다.' }).expect(400);
   });
 
   it('creates one pending request and enforces list/detail ownership', async () => {
     const created = await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
-      .send({ name: '박지훈 변경', phone: '+82-10-9999-0000', countryCode: 'us', timeZone: 'America/New_York', reason: '해외 근무지와 연락처가 변경되었습니다.' })
+      .send({ currentPassword: 'demo1234', name: '박지훈 변경', countryCode: 'us', timeZone: 'America/New_York', reason: '해외 근무지 정보가 변경되었습니다.' })
       .expect(201);
     mainRequestId = created.body.id;
     expect(created.body).toMatchObject({ requesterId: 1, baseProfileVersion: 1, status: 'pending' });
     expect(created.body.requestedChanges).toEqual({
-      name: '박지훈 변경', phone: '+82-10-9999-0000', countryCode: 'US', timeZone: 'America/New_York',
+      name: '박지훈 변경', countryCode: 'US', timeZone: 'America/New_York',
     });
     await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
-      .send({ phone: '+82-10-1111-2222', reason: '추가 변경 요청을 제출합니다.' }).expect(409);
+      .send({ currentPassword: 'demo1234', name: '박지훈 3차', reason: '추가 변경 요청을 제출합니다.' }).expect(409);
 
     const mine = await http.get('/api/profile-change-requests/mine').set(bearer(tokens.instructor)).expect(200);
     expect(mine.body.some((row: RequestRow) => row.id === mainRequestId)).toBe(true);
@@ -76,7 +86,7 @@ describe('Profile change requests (e2e)', () => {
 
   it('requires rejection reason and disallows self decision', async () => {
     const own = await http.post('/api/profile-change-requests').set(bearer(tokens.manager))
-      .send({ phone: '+82-10-4000-4000', reason: '관리자 본인 연락처 변경 요청입니다.' }).expect(201);
+      .send({ currentPassword: 'demo1234', countryCode: 'JP', reason: '관리자 본인 근무지 변경 요청입니다.' }).expect(201);
     await http.post(`/api/profile-change-requests/${own.body.id}/approve`).set(bearer(tokens.manager)).expect(403);
     await http.post(`/api/profile-change-requests/${own.body.id}/reject`).set(bearer(tokens.admin))
       .send({ reason: '짧음' }).expect(400);
@@ -87,7 +97,9 @@ describe('Profile change requests (e2e)', () => {
 
   it('returns 409 for a stale base profile version', async () => {
     const stale = await http.post('/api/profile-change-requests').set(bearer(tokens.foreign))
-      .send({ phone: '+44-20-0000-0000', reason: '영국 현지 연락처 변경 요청입니다.' }).expect(201);
+      .send({ currentPassword: 'demo1234', timeZone: 'Europe/Paris', reason: '현지 시간대 변경 요청입니다.' }).expect(201);
+    const pg = app.get(PostgresConnectionService);
+    if (pg.ready) await pg.query('UPDATE users SET profile_version = 2 WHERE id = 2');
     db.update<UserRow>('users', 2, { profileVersion: 2 });
     await http.post(`/api/profile-change-requests/${stale.body.id}/approve`).set(bearer(tokens.manager)).expect(409);
     expect(db.findById<RequestRow>('profile_change_requests', stale.body.id)?.status).toBe('pending');
@@ -100,7 +112,7 @@ describe('Profile change requests (e2e)', () => {
     ]);
     expect([left.status, right.status].sort()).toEqual([201, 409]);
     expect(db.findById<UserRow>('users', 1)).toMatchObject({
-      name: '박지훈 변경', phone: '+82-10-9999-0000', profileVersion: 2,
+      name: '박지훈 변경', profileVersion: 2,
     });
     expect([left.body, right.body].find((body) => body.status === 'approved')).toMatchObject({ appliedProfileVersion: 2 });
     const audits = db.findAll<Record<string, unknown> & { id: number }>('audit_log')
@@ -112,14 +124,14 @@ describe('Profile change requests (e2e)', () => {
 
   it('rolls back request and user when audit persistence fails', async () => {
     const created = await http.post('/api/profile-change-requests').set(bearer(tokens.admin))
-      .send({ phone: '+82-10-5555-5555', reason: '관리자 연락처 변경을 요청합니다.' }).expect(201);
+      .send({ currentPassword: 'demo1234', name: '한서윤 변경', reason: '관리자 표시명 변경을 요청합니다.' }).expect(201);
     const before = { ...db.findById<UserRow>('users', 5)! };
     const audit = app.get(AuditService);
     const spy = jest.spyOn(audit, 'log').mockRejectedValueOnce(new Error('injected audit failure'));
     await http.post(`/api/profile-change-requests/${created.body.id}/approve`).set(bearer(tokens.manager)).expect(500);
     spy.mockRestore();
     const after = db.findById<UserRow>('users', 5)!;
-    expect(after.phone ?? null).toBe(before.phone ?? null);
+    expect(after.name).toBe(before.name);
     expect(after.profileVersion).toBe(before.profileVersion);
     expect(db.findById<RequestRow>('profile_change_requests', created.body.id)?.status).toBe('pending');
   });

@@ -49,12 +49,13 @@ async function main(): Promise<void> {
     const requesterLogin = await http.post('/api/auth/login').send({ webId: requesterWebId, password }).expect(201);
     const requesterToken = String(requesterLogin.body.accessToken);
     const created = await http.post('/api/profile-change-requests').set(auth(requesterToken)).send({
+      currentPassword: password, // [TBO-29B-4] 모든 변경은 현재 비밀번호 재확인
       name: 'Profile smoke applied',
-      phone: '+82-10-2099-2900',
       countryCode: 'US-W',
       timeZone: 'America/Los_Angeles',
       reason: '실 DB 승인 트랜잭션 검증 요청입니다.',
     }).expect(201);
+    // 연락처(phone/email) 변경은 인증 challenge 필수 — 해당 흐름은 profile-verification-db-smoke가 검증
     requestId = Number(created.body.id);
     await app.close();
     app = undefined;
@@ -83,7 +84,7 @@ async function main(): Promise<void> {
       [requesterId, requestId],
     );
     const expected = {
-      name: 'Profile smoke applied', phone: '+82-10-2099-2900', countryCode: 'US-W',
+      name: 'Profile smoke applied', phone: null, countryCode: 'US-W',
       timeZone: 'America/Los_Angeles', profileVersion: 2, status: 'approved',
       baseProfileVersion: 1, appliedProfileVersion: 2,
       requestCreateAudits: 1, requestApproveAudits: 1, userUpdateAudits: 1, restartReadback: 200,

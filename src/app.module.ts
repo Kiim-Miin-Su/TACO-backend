@@ -30,6 +30,7 @@ import { AttendanceModule } from './modules/attendance/attendance.module';
 import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
 import { ParentsModule } from './modules/parents/parents.module';
 import { ProfileChangeRequestsModule } from './modules/profile-change-requests/profile-change-requests.module';
+import { ProfileVerificationsModule } from './modules/profile-verifications/profile-verifications.module';
 
 @Module({
   imports: [
@@ -40,6 +41,7 @@ import { ProfileChangeRequestsModule } from './modules/profile-change-requests/p
     HealthModule,
     UsersModule,
     ProfileChangeRequestsModule,
+    ProfileVerificationsModule, // [TBO-29B-4] 연락처 재인증
     StudentsModule,
     EnrollmentsModule,
     PaymentsModule,

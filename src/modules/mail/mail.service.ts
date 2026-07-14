@@ -41,6 +41,20 @@ export class MailService implements OnModuleDestroy {
     return { sent: true };
   }
 
+  // [TBO-29B-4] 연락처 재인증 OTP 발송 — 평문 코드는 발송 직후 폐기(저장은 서비스가 salted hash만).
+  //  fail-closed: SMTP 미설정이면 false 반환(호출부가 채널 차단) — devLink류 폴백을 만들지 않는다(§4).
+  async sendOtpEmail(to: string, code: string): Promise<boolean> {
+    if (!this.transporter) return false;
+    await this.transporter.sendMail({
+      from: process.env.MAIL_FROM ?? 'no-reply@tnacademy.test',
+      to,
+      subject: '[TACO ERP] 연락처 변경 인증 코드',
+      text: `연락처 변경 인증 코드: ${code}\n10분 안에 입력해 주세요. 본인이 요청하지 않았다면 이 메일을 무시하세요.`,
+      html: `<p>연락처 변경 인증 코드</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${code}</p><p>10분 안에 입력해 주세요. 본인이 요청하지 않았다면 이 메일을 무시하세요.</p>`,
+    });
+    return true;
+  }
+
   // [테스트 안정화 2026-07-03] SMTP 설정 시 nodemailer 트랜스포터가 열린 소켓/풀을 남겨
   //  app.close() 후에도 jest worker가 정상 종료 못 하던 문제 → 종료 시 명시적으로 닫는다.
   onModuleDestroy(): void {

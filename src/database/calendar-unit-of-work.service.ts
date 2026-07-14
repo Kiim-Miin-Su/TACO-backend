@@ -18,6 +18,7 @@ export const LOCK_KIND = {
   user: 5,
   loginIdentity: 6,
   profileRequest: 7,
+  verificationChallenge: 8, // [TBO-29B-4] 연락처 인증 challenge 확인/재전송/소비 직렬화
 } as const;
 
 export type CalendarLockKey = { kind: keyof typeof LOCK_KIND; id: number };

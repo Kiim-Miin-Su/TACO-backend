@@ -1,11 +1,26 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
 
 export class CreateProfileChangeRequestDto {
+  // [TBO-29B-4] 모든 마이 페이지 변경은 현재 비밀번호 재확인 필수(§2). 저장·로그 금지.
+  @ApiProperty({ description: '현재 비밀번호(재확인)', maxLength: 72 })
+  @IsString() @MinLength(1) @MaxLength(72)
+  currentPassword!: string;
+
   @ApiPropertyOptional({ example: '박지훈', minLength: 1, maxLength: 50 })
   @ValidateIf((_object, value) => value !== undefined)
   @IsString() @MinLength(1) @MaxLength(50)
   name?: string;
+
+  // [TBO-29B-4] 이메일 변경 — 인증된 challenge(verificationChallengeId) 소비 필수.
+  @ApiPropertyOptional({ example: 'new@tnacademy.test', maxLength: 320, description: '변경할 이메일(사전 인증 필수)' })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsEmail() @MaxLength(320)
+  email?: string;
+
+  @ApiPropertyOptional({ description: '연락처(email/phone) 변경 시 소비할 verified challenge id' })
+  @IsOptional() @IsInt()
+  verificationChallengeId?: number;
 
   @ApiPropertyOptional({ example: '+82-10-1234-5678', nullable: true, maxLength: 20 })
   @IsOptional() @IsString() @MaxLength(20)

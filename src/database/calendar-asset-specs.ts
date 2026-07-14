@@ -70,10 +70,11 @@ export const PROFILE_CHANGE_REQUESTS_SPEC: PostgresCollectionSpec = {
       updated_at timestamptz NOT NULL DEFAULT now(),
       deleted_at timestamptz,
       deleted_by integer REFERENCES users(id),
+      verification_challenge_id integer,
       CONSTRAINT profile_change_requested_keys_check CHECK (
         jsonb_typeof(requested_changes) = 'object'
         AND requested_changes <> '{}'::jsonb
-        AND requested_changes - ARRAY['name','phone','countryCode','timeZone'] = '{}'::jsonb
+        AND requested_changes - ARRAY['name','phone','countryCode','timeZone','email'] = '{}'::jsonb
       ),
       CONSTRAINT profile_change_decision_check CHECK (
         (status = 'pending' AND decided_by IS NULL AND decided_at IS NULL
@@ -86,6 +87,11 @@ export const PROFILE_CHANGE_REQUESTS_SPEC: PostgresCollectionSpec = {
       CONSTRAINT profile_change_no_self_decision_check CHECK (decided_by IS NULL OR decided_by <> requester_id)
     )
   `,
+  // [TBO-29B-4] 기존 테이블용 멱등 마이그레이션 — 신규 설치는 createSql이 이미 포함.
+  //  keys CHECK의 email 확장은 versioned migration(20260714_03)이 담당(DROP+ADD는 IF NOT EXISTS 불가).
+  migrations: [
+    `ALTER TABLE profile_change_requests ADD COLUMN IF NOT EXISTS verification_challenge_id integer`,
+  ],
   indexes: [
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_profile_change_requests_pending_requester
        ON profile_change_requests (requester_id) WHERE status = 'pending' AND deleted_at IS NULL`,
@@ -95,6 +101,54 @@ export const PROFILE_CHANGE_REQUESTS_SPEC: PostgresCollectionSpec = {
   ],
   jsonFields: ['beforeValues', 'requestedChanges'],
   timestampFields: ['decidedAt'],
+};
+
+// [TBO-29B-4] 연락처 재인증 challenge — requester/channel/canonical target 결합·일회 소비.
+//  만료(10분)·실패 5회 잠금·재전송 cooldown(60초)을 **DB 컬럼으로 영속**(process-local limit 금지).
+//  평문 코드·비밀번호·provider secret은 저장·로그 금지(email OTP는 salted sha256 hash만).
+export const PROFILE_VERIFICATION_CHALLENGES_SPEC: PostgresCollectionSpec = {
+  table: 'profile_verification_challenges',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS profile_verification_challenges (
+      id serial PRIMARY KEY,
+      requester_id integer NOT NULL,
+      channel varchar(16) NOT NULL CHECK (channel IN ('email','sms')),
+      target_normalized varchar(320) NOT NULL,
+      target_hash varchar(64) NOT NULL,
+      provider varchar(32) NOT NULL CHECK (provider IN ('email_smtp','twilio_verify','fake_test')),
+      provider_reference varchar(128),
+      code_hash varchar(128),
+      status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','consumed','expired','locked')),
+      attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 5),
+      resend_count integer NOT NULL DEFAULT 0 CHECK (resend_count BETWEEN 0 AND 5),
+      resend_available_at timestamptz NOT NULL,
+      expires_at timestamptz NOT NULL,
+      verified_at timestamptz,
+      consumed_at timestamptz,
+      consumed_by_request_id integer,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer,
+      CONSTRAINT profile_verification_expiry_check CHECK (expires_at > created_at),
+      CONSTRAINT profile_verification_state_check CHECK (
+        (status = 'pending' AND verified_at IS NULL AND consumed_at IS NULL AND consumed_by_request_id IS NULL)
+        OR (status = 'verified' AND verified_at IS NOT NULL AND consumed_at IS NULL AND consumed_by_request_id IS NULL)
+        OR (status = 'consumed' AND verified_at IS NOT NULL AND consumed_at IS NOT NULL AND consumed_by_request_id IS NOT NULL)
+        OR (status IN ('expired','locked'))
+      )
+    )
+  `,
+  indexes: [
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_profile_verification_active_requester_channel
+       ON profile_verification_challenges (requester_id, channel)
+       WHERE status IN ('pending','verified') AND deleted_at IS NULL`,
+    activeIndex('profile_verification_challenges', 'idx_profile_verification_requester_status', 'requester_id, status'),
+    activeIndex('profile_verification_challenges', 'idx_profile_verification_channel_target', 'channel, target_hash, status'),
+    activeIndex('profile_verification_challenges', 'idx_profile_verification_expires_at', 'expires_at'),
+    activeIndex('profile_verification_challenges', 'idx_profile_verification_consumed_by', 'consumed_by_request_id'),
+  ],
+  timestampFields: ['resendAvailableAt', 'expiresAt', 'verifiedAt', 'consumedAt'],
 };
 
 // [TBO-28B] 인증 보안 이벤트(append-only) — 업무 audit_log와 분리(erd.dbml auth_events).

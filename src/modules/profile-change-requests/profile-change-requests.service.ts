@@ -14,8 +14,11 @@ import { AuditService } from '../audit/audit.service';
 import { hasAdminRole } from '../auth/roles.decorator';
 import { USERS, profileVersionOf, type StaffAccount } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
+import { ProfileVerificationsService } from '../profile-verifications/profile-verifications.service';
+import { maskTarget } from '../profile-verifications/profile-verification.entity';
 import { CreateProfileChangeRequestDto } from './dto/create-profile-change-request.dto';
 import {
+  CONTACT_CHANGE_FIELDS,
   PROFILE_CHANGE_REQUESTS,
   type ProfileChangeRequest,
   type ProfileChanges,
@@ -29,6 +32,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     private readonly uow: CalendarUnitOfWork,
     private readonly users: UsersService,
     private readonly audit: AuditService,
+    private readonly verifications: ProfileVerificationsService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -38,22 +42,37 @@ export class ProfileChangeRequestsService implements OnModuleInit {
   async create(requesterId: number, dto: CreateProfileChangeRequestDto): Promise<ProfileChangeRequest> {
     const reason = this.requiredReason(dto.reason, '변경 사유');
     await this.refresh();
-    return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'user', id: requesterId }]);
+    const created = await this.uow.run(async () => {
+      await this.uow.lockTargets([
+        { kind: 'user', id: requesterId },
+        ...(dto.verificationChallengeId != null
+          ? [{ kind: 'verificationChallenge' as const, id: dto.verificationChallengeId }]
+          : []),
+      ]);
       await this.refresh();
       const requester = this.users.findById(requesterId);
       if (!requester) throw new NotFoundException(`계정 ${requesterId} 없음`);
+      // [TBO-29B-4 §2] 모든 마이 페이지 변경은 현재 비밀번호 재확인.
+      if (!(await this.users.validatePassword(requester, dto.currentPassword))) {
+        throw new ForbiddenException('현재 비밀번호가 올바르지 않습니다.');
+      }
       if (this.pendingFor(requesterId)) throw new ConflictException('이미 처리 중인 프로필 변경 요청이 있습니다.');
 
       const requestedChanges = this.normalizeChanges(dto);
       const actualChanges = this.changedOnly(requester, requestedChanges);
       if (!Object.keys(actualChanges).length) throw new BadRequestException('현재 프로필과 다른 변경 항목이 필요합니다.');
+
+      // [TBO-29B-4 §5] 연락처 변경 규칙: 채널당 challenge 1건 — email·phone 동시 변경 금지,
+      //  값 설정은 verified challenge 필수 + canonical 값 일치 + 발송 전/승인 시 중복 재검사.
+      const contact = this.contactChangeOf(actualChanges);
+      if (contact) this.verifications.assertTargetAvailable(contact.channel, contact.target, requesterId);
+
       const beforeValues = Object.fromEntries(
         Object.keys(actualChanges).map((field) => [field, this.profileValue(requester, field)]),
       ) as ProfileChanges;
 
       try {
-        const created = await this.store.insert<ProfileChangeRequest>(PROFILE_CHANGE_REQUESTS_SPEC, {
+        const row = await this.store.insert<ProfileChangeRequest>(PROFILE_CHANGE_REQUESTS_SPEC, {
           requesterId,
           baseProfileVersion: profileVersionOf(requester),
           beforeValues,
@@ -64,20 +83,28 @@ export class ProfileChangeRequestsService implements OnModuleInit {
           decidedAt: null,
           rejectionReason: null,
           appliedProfileVersion: null,
+          verificationChallengeId: contact ? dto.verificationChallengeId ?? null : null,
         });
+        // challenge 소비는 요청 생성과 **같은 tx** — 소비 실패(만료/불일치/이중 소비) 시 요청까지 롤백(§5).
+        if (contact) {
+          if (dto.verificationChallengeId == null) {
+            throw new BadRequestException('연락처 변경에는 완료된 인증(verificationChallengeId)이 필요합니다.');
+          }
+          await this.verifications.consumeForRequest(dto.verificationChallengeId, requesterId, row.id, contact);
+        }
         await this.audit.log({
           entity: PROFILE_CHANGE_REQUESTS,
-          entityId: created.id,
+          entityId: row.id,
           action: 'create',
           actorId: requesterId,
           changes: {
             status: { after: 'pending' },
-            requestedChanges: { after: actualChanges },
-            baseProfileVersion: { after: created.baseProfileVersion },
+            requestedChanges: { after: this.maskChanges(actualChanges) }, // [§5] audit에는 masked만
+            baseProfileVersion: { after: row.baseProfileVersion },
           },
           reason: reason.slice(0, 200),
         });
-        return created;
+        return row;
       } catch (error) {
         if (this.errorCode(error) === '23505') {
           throw new ConflictException('이미 처리 중인 프로필 변경 요청이 있습니다.');
@@ -85,19 +112,22 @@ export class ProfileChangeRequestsService implements OnModuleInit {
         throw error;
       }
     });
+    return this.maskRequest(created);
   }
 
   async mine(requesterId: number): Promise<ProfileChangeRequest[]> {
-    return this.store.findActive<ProfileChangeRequest>(PROFILE_CHANGE_REQUESTS_SPEC, {
+    const rows = await this.store.findActive<ProfileChangeRequest>(PROFILE_CHANGE_REQUESTS_SPEC, {
       where: { requesterId },
       orderBy: { field: 'id', direction: 'DESC' },
     });
+    return rows.map((row) => this.maskRequest(row));
   }
 
   async list(): Promise<ProfileChangeRequest[]> {
-    return this.store.findActive<ProfileChangeRequest>(PROFILE_CHANGE_REQUESTS_SPEC, {
+    const rows = await this.store.findActive<ProfileChangeRequest>(PROFILE_CHANGE_REQUESTS_SPEC, {
       orderBy: { field: 'id', direction: 'DESC' },
     });
+    return rows.map((row) => this.maskRequest(row));
   }
 
   async detail(id: number, actorId: number, roles?: string[]): Promise<ProfileChangeRequest> {
@@ -105,7 +135,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     if (row.requesterId !== actorId && !hasAdminRole(roles)) {
       throw new ForbiddenException('본인의 프로필 변경 요청만 조회할 수 있습니다.');
     }
-    return row;
+    return this.maskRequest(row);
   }
 
   approve(id: number, actorId: number): Promise<ProfileChangeRequest> {
@@ -135,8 +165,11 @@ export class ProfileChangeRequestsService implements OnModuleInit {
       if (request.requesterId === actorId) throw new ForbiddenException('본인의 프로필 변경 요청은 본인이 처리할 수 없습니다.');
       if (request.status !== 'pending') throw new ConflictException('이미 처리된 프로필 변경 요청입니다.');
 
-      const before = this.users.findById(request.requesterId);
-      if (!before) throw new NotFoundException(`계정 ${request.requesterId} 없음`);
+      const beforeLive = this.users.findById(request.requesterId);
+      if (!beforeLive) throw new NotFoundException(`계정 ${request.requesterId} 없음`);
+      // [29B-4 수정] 메모리 모드에서 updateIf가 행을 in-place 변경 → 라이브 참조로 diff하면 항상 빈 diff.
+      //  스냅샷으로 before를 고정한다(users update audit에 실제 변경 내용이 남도록).
+      const before = { ...beforeLive };
       if (before.status !== 'active') throw new ConflictException('활성 계정의 프로필만 변경할 수 있습니다.');
       const currentVersion = profileVersionOf(before);
       if (request.baseProfileVersion !== currentVersion) {
@@ -148,8 +181,15 @@ export class ProfileChangeRequestsService implements OnModuleInit {
         status: { before: 'pending', after: status },
       };
       if (status === 'approved') {
-        for (const [field, after] of Object.entries(request.requestedChanges)) {
-          changes[field] = { before: (before as unknown as Record<string, unknown>)[field], after };
+        // [TBO-29B-4 §5] 승인 시 연락처 uniqueness 재검사 — 가입/다른 변경이 먼저 점유했으면 409(요청은 pending 유지).
+        const contact = this.contactChangeOf(request.requestedChanges);
+        if (contact) this.verifications.assertTargetAvailable(contact.channel, contact.target, request.requesterId);
+        const masked = this.maskChanges(request.requestedChanges);
+        for (const field of Object.keys(request.requestedChanges)) {
+          changes[field] = {
+            before: this.maskFieldValue(field, (before as unknown as Record<string, unknown>)[field]),
+            after: (masked as Record<string, unknown>)[field],
+          };
         }
         changes.profileVersion = { before: currentVersion, after: currentVersion + 1 };
         const updated = await this.store.updateIf<StaffAccount>(
@@ -164,7 +204,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
           entityId: before.id,
           action: 'update',
           actorId,
-          changes: this.audit.diffOf(before, updated),
+          changes: this.maskDiff(this.audit.diffOf(before, updated)), // [§5] audit masked
           reason: `프로필 변경 요청 #${id} 승인`,
         });
       } else {
@@ -193,7 +233,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
         changes,
         reason: status === 'approved' ? `프로필 변경 요청 #${id} 승인` : decisionReason?.slice(0, 200),
       });
-      return decided;
+      return this.maskRequest(decided);
     });
   }
 
@@ -215,10 +255,59 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     )[0];
   }
 
+  /** [TBO-29B-4] 인증 필요 연락처 변경(값 설정) 추출 — email·phone 동시 변경은 400(채널당 challenge 1건). */
+  private contactChangeOf(changes: ProfileChanges): { channel: 'email' | 'sms'; target: string } | null {
+    const email = changes.email;
+    const phone = changes.phone;
+    if (email != null && phone != null) {
+      throw new BadRequestException('이메일과 휴대전화는 한 번에 하나씩 변경할 수 있습니다(각각 인증 필요).');
+    }
+    if (email != null) return { channel: 'email', target: email };
+    if (phone != null) return { channel: 'sms', target: phone };
+    return null; // phone null(삭제)·비연락처 필드는 인증 불요(비밀번호 재확인만)
+  }
+
+  /** [§5] API 목록·audit 노출용 마스킹 — DB 원본(업무 자산)은 그대로 둔다. */
+  private maskFieldValue(field: string, value: unknown): unknown {
+    if (value == null || typeof value !== 'string') return value;
+    if (field === 'email') return maskTarget('email', value);
+    if (field === 'phone') return maskTarget('sms', value);
+    return value;
+  }
+
+  private maskChanges(changes: ProfileChanges): ProfileChanges {
+    return Object.fromEntries(
+      Object.entries(changes).map(([field, value]) => [field, this.maskFieldValue(field, value)]),
+    ) as ProfileChanges;
+  }
+
+  private maskDiff(diff: Record<string, { before?: unknown; after?: unknown }>): Record<string, { before?: unknown; after?: unknown }> {
+    return Object.fromEntries(
+      Object.entries(diff).map(([field, entry]) => [field, {
+        ...(entry.before !== undefined ? { before: this.maskFieldValue(field, entry.before) } : {}),
+        ...(entry.after !== undefined ? { after: this.maskFieldValue(field, entry.after) } : {}),
+      }]),
+    );
+  }
+
+  private maskRequest(row: ProfileChangeRequest): ProfileChangeRequest {
+    return {
+      ...row,
+      beforeValues: this.maskChanges(row.beforeValues ?? {}),
+      requestedChanges: this.maskChanges(row.requestedChanges ?? {}),
+    };
+  }
+
   private normalizeChanges(dto: CreateProfileChangeRequestDto): ProfileChanges {
     const changes: ProfileChanges = {};
     if (dto.name !== undefined) changes.name = dto.name.trim();
-    if (dto.phone !== undefined) changes.phone = dto.phone == null ? null : dto.phone.trim();
+    // [TBO-29B-4 §3] 연락처는 canonical로 정규화 — email lowercase·phone E.164(설정 시).
+    if (dto.email !== undefined) changes.email = this.verifications.normalizeTarget('email', dto.email);
+    if (dto.phone !== undefined) {
+      changes.phone = dto.phone == null || dto.phone.trim() === ''
+        ? null
+        : this.verifications.normalizeTarget('sms', dto.phone);
+    }
     if (dto.countryCode !== undefined) changes.countryCode = dto.countryCode == null ? null : dto.countryCode.trim().toUpperCase() || null;
     if (dto.timeZone !== undefined) {
       const timeZone = dto.timeZone?.trim() || null;
