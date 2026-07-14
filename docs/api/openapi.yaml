@@ -142,13 +142,25 @@ paths:
       responses:
         '200':
           description: ''
-          content:
-            application/json:
-              schema:
-                type: object
       summary: 토큰 검증 → claims. [로그인]
       tags:
       - auth
+  /api/users/me/profile:
+    get:
+      operationId: UsersController_profile
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileResponseDto'
+      security:
+      - bearer: []
+      summary: 내 프로필 조회. [전 직원]
+      tags:
+      - Users
   /api/users/instructors:
     post:
       operationId: UsersController_createInstructor
@@ -282,6 +294,132 @@ paths:
       summary: Database connection check. In-memory remains runtime store until Postgres cutover.
       tags:
       - health
+  /api/profile-change-requests/mine:
+    get:
+      operationId: ProfileChangeRequestsController_mine
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProfileChangeRequestResponseDto'
+      security:
+      - bearer: []
+      summary: 내 프로필 변경 요청 목록. [전 직원]
+      tags:
+      - profile-change-requests
+  /api/profile-change-requests:
+    post:
+      operationId: ProfileChangeRequestsController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProfileChangeRequestDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileChangeRequestResponseDto'
+      security:
+      - bearer: []
+      summary: 프로필 변경 요청 생성. 이름·전화·국가·타임존만 허용. [전 직원]
+      tags:
+      - profile-change-requests
+    get:
+      operationId: ProfileChangeRequestsController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProfileChangeRequestResponseDto'
+      security:
+      - bearer: []
+      summary: 전체 프로필 변경 요청 목록. [관리자]
+      tags:
+      - profile-change-requests
+  /api/profile-change-requests/{id}:
+    get:
+      operationId: ProfileChangeRequestsController_detail
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileChangeRequestResponseDto'
+      security:
+      - bearer: []
+      summary: 프로필 변경 요청 상세. 요청자 본인 또는 관리자.
+      tags:
+      - profile-change-requests
+  /api/profile-change-requests/{id}/approve:
+    post:
+      operationId: ProfileChangeRequestsController_approve
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileChangeRequestResponseDto'
+      security:
+      - bearer: []
+      summary: 프로필 변경 요청 승인. 본인 승인 불가. [관리자]
+      tags:
+      - profile-change-requests
+  /api/profile-change-requests/{id}/reject:
+    post:
+      operationId: ProfileChangeRequestsController_reject
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectProfileChangeRequestDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileChangeRequestResponseDto'
+      security:
+      - bearer: []
+      summary: 프로필 변경 요청 반려. 사유 필수, 본인 반려 불가. [관리자]
+      tags:
+      - profile-change-requests
   /api/students:
     get:
       operationId: StudentsController_findAll
@@ -2079,6 +2217,58 @@ components:
           description: 반려 사유(필수) — audit_log에 기록
       required:
       - reason
+    ProfileResponseDto:
+      type: object
+      properties:
+        id:
+          type: number
+          example: 1
+        webId:
+          type: string
+          example: park_inst
+        name:
+          type: string
+          example: 박지훈
+        email:
+          type: string
+          nullable: true
+          example: park@tnacademy.test
+        phone:
+          type: string
+          nullable: true
+          example: +82-10-1234-5678
+        countryCode:
+          type: string
+          nullable: true
+          example: KR
+        timeZone:
+          type: string
+          nullable: true
+          example: Asia/Seoul
+        role:
+          type: string
+          enum:
+          - instructor
+          - manager
+          - admin
+          - super_admin
+        status:
+          type: string
+          enum:
+          - pending
+          - active
+          - rejected
+        profileVersion:
+          type: number
+          example: 1
+          minimum: 1
+      required:
+      - id
+      - webId
+      - name
+      - role
+      - status
+      - profileVersion
     CreateInstructorDto:
       type: object
       properties:
@@ -2175,6 +2365,100 @@ components:
       - name
       - role
       - mustChangePassword
+    ProfileChangeRequestResponseDto:
+      type: object
+      properties:
+        id:
+          type: number
+        requesterId:
+          type: number
+        baseProfileVersion:
+          type: number
+          minimum: 1
+        beforeValues:
+          type: object
+          additionalProperties: true
+        requestedChanges:
+          type: object
+          additionalProperties: true
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 500
+        status:
+          type: string
+          enum:
+          - pending
+          - approved
+          - rejected
+        decidedBy:
+          type: number
+          nullable: true
+        decidedAt:
+          type: string
+          nullable: true
+        rejectionReason:
+          type: string
+          nullable: true
+        appliedProfileVersion:
+          type: number
+          nullable: true
+          minimum: 2
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required:
+      - id
+      - requesterId
+      - baseProfileVersion
+      - beforeValues
+      - requestedChanges
+      - reason
+      - status
+      - createdAt
+      - updatedAt
+    CreateProfileChangeRequestDto:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: 박지훈
+        phone:
+          type: string
+          nullable: true
+          maxLength: 20
+          example: +82-10-1234-5678
+        countryCode:
+          type: string
+          nullable: true
+          pattern: ^[A-Za-z][A-Za-z0-9-]{1,7}$
+          example: KR
+          description: '국가/권역 코드(예: KR, US-W)'
+        timeZone:
+          type: string
+          nullable: true
+          maxLength: 64
+          example: Asia/Seoul
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 500
+          example: 업무 연락처가 변경되었습니다.
+      required:
+      - reason
+    RejectProfileChangeRequestDto:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 500
+          example: 전화번호 확인 후 다시 요청해 주세요.
+      required:
+      - reason
     CreateStudentDto:
       type: object
       properties:

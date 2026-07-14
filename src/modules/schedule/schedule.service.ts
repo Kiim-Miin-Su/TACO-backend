@@ -343,8 +343,8 @@ export class ScheduleService implements OnModuleInit {
           type: 'instructor' as const, id: u.id, name: u.name,
           color: PALETTE[u.id % PALETTE.length],
           sub: c ? this.subjectOf(c.subjectId)?.name : undefined,
-          countryCode: u.countryCode,
-          timeZone: u.timeZone,
+          countryCode: u.countryCode ?? undefined,
+          timeZone: u.timeZone ?? undefined,
         };
       }),
       rooms: this.rooms.findAll().map((r) => ({

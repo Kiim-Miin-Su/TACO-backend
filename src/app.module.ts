@@ -29,6 +29,7 @@ import { InstructorContractsModule } from './modules/instructor-contracts/instru
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
 import { ParentsModule } from './modules/parents/parents.module';
+import { ProfileChangeRequestsModule } from './modules/profile-change-requests/profile-change-requests.module';
 
 @Module({
   imports: [
@@ -38,6 +39,7 @@ import { ParentsModule } from './modules/parents/parents.module';
     AuthModule,
     HealthModule,
     UsersModule,
+    ProfileChangeRequestsModule,
     StudentsModule,
     EnrollmentsModule,
     PaymentsModule,

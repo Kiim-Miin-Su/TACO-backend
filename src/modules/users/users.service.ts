@@ -64,11 +64,11 @@ export class UsersService implements OnModuleInit {
       // [강사 식별자 통일 2026-07-07] users.id 자체가 강사 식별자다(별도 instructorId 브리지 폐기).
       //  courses/class_sessions/payouts/reports/availability/counsel의 instructorId·assignedStaffId가 이 id를 참조.
       //  강사 = id 1·2, 대표/매니저 = 3·4. (정유진은 우선 데모 계정 — 실제 강사는 추후 계정 발급)
-      { id: 1, webId: 'park_inst', name: '박지훈', email: 'park@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, mustChangePassword: false, countryCode: 'KR', timeZone: 'Asia/Seoul' },
-      { id: 2, webId: 'jung_inst', name: '정유진', email: 'jung@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, mustChangePassword: false, countryCode: 'GB', timeZone: 'Europe/London' },
-      { id: 3, webId: 'admin', name: '김민수', email: 'admin@tnacademy.test', role: 'super_admin', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, mustChangePassword: false },
-      { id: 4, webId: 'manager', name: '이지원', email: 'manager@tnacademy.test', role: 'manager', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, mustChangePassword: false },
-      { id: 5, webId: 'prof_admin', name: '한서윤', email: 'prof.admin@tnacademy.test', role: 'admin', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, mustChangePassword: false },
+      { id: 1, webId: 'park_inst', name: '박지훈', email: 'park@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, profileVersion: 1, mustChangePassword: false, countryCode: 'KR', timeZone: 'Asia/Seoul' },
+      { id: 2, webId: 'jung_inst', name: '정유진', email: 'jung@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, profileVersion: 1, mustChangePassword: false, countryCode: 'GB', timeZone: 'Europe/London' },
+      { id: 3, webId: 'admin', name: '김민수', email: 'admin@tnacademy.test', role: 'super_admin', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, profileVersion: 1, mustChangePassword: false },
+      { id: 4, webId: 'manager', name: '이지원', email: 'manager@tnacademy.test', role: 'manager', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, profileVersion: 1, mustChangePassword: false },
+      { id: 5, webId: 'prof_admin', name: '한서윤', email: 'prof.admin@tnacademy.test', role: 'admin', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, profileVersion: 1, mustChangePassword: false },
     ]);
     // 데모 시드된 활성 강사는 프로필도 동반(승인 경로와 동일 불변식: active instructor ↔ active profile 1행).
     for (const inst of this.db.findBy<StaffAccount>(USERS, (u) => u.role === 'instructor' && u.status === 'active')) {
@@ -95,6 +95,7 @@ export class UsersService implements OnModuleInit {
       passwordHash: await bcrypt.hash(password, 12),
       emailVerified: true,
       authVersion: 1,
+      profileVersion: 1,
       mustChangePassword: true,
     });
     this.logger.log(`production 최초 관리자 부트스트랩 완료(webId=${webId}) — 자격증명은 로그에 남기지 않음`);
@@ -111,6 +112,7 @@ export class UsersService implements OnModuleInit {
       passwordHash: DEMO_PW(),
       emailVerified: true,
       authVersion: 1,
+      profileVersion: 1,
       mustChangePassword: false,
     });
   }
@@ -162,6 +164,7 @@ export class UsersService implements OnModuleInit {
       emailVerifyTokenHash: sha256(verifyToken),
       emailVerifyExpiresAt: new Date(Date.now() + VERIFY_TOKEN_TTL_MS).toISOString(),
       authVersion: 1,
+      profileVersion: 1,
       mustChangePassword: false,
     });
     return { account: toSafe(acc), verifyToken };
@@ -348,6 +351,7 @@ export class UsersService implements OnModuleInit {
         role: 'instructor', status: 'active', passwordHash,
         emailVerified: true, // 직접 등록 — 인증 게이트 생략(로그인 게이트 통과용)
         approvedBy: actorId, approvedAt, authVersion: 1,
+        profileVersion: 1,
         countryCode: input.countryCode, timeZone: input.timeZone,
       });
       await this.profiles.upsertActive(acc.id, actorId, approvedAt, {

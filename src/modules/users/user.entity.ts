@@ -31,6 +31,8 @@ export type StaffAccount = {
   emailVerifyExpiresAt?: string | null;
   /** role/status/credential 변경 시 +1 — JWT claim과 대조해 구 토큰 즉시 무효화(AccountStateService). 미설정=1. */
   authVersion?: number;
+  /** 프로필 변경 승인 CAS 버전. 승인된 변경마다 정확히 1 증가한다. */
+  profileVersion: number;
   /** 임시 비밀번호 계정은 true. 변경 완료 전 업무 API는 RolesGuard가 차단한다. */
   mustChangePassword?: boolean;
   // [TBO-28A drift 해소 2026-07-14] 아래 4필드는 DDL(users)·dbml에 있었으나 entity에 없어
@@ -39,8 +41,8 @@ export type StaffAccount = {
   approvedBy?: number | null; // 승인한 대표(users.id). 승인 tx에서만 기록.
   approvedAt?: string | null; // ISO(timestamptz) — USERS_SPEC.timestampFields로 변환.
   lastLoginAt?: string | null; // 최신 로그인 성공 시각 summary(이력 진실원=auth_events).
-  countryCode?: string; // 강사/직원 근무 국가. 캘린더 owner timezone resolver 입력.
-  timeZone?: string; // IANA timezone override. 미지정 시 countryCode 대표 timezone 사용.
+  countryCode?: string | null; // 강사/직원 근무 국가. 캘린더 owner timezone resolver 입력.
+  timeZone?: string | null; // IANA timezone override. 미지정 시 countryCode 대표 timezone 사용.
   // [강사 식별자 통일 2026-07-07] 강사의 도메인 식별자 = users.id 자체(별도 instructorId 브리지 폐기).
   //  courses/class_sessions 등의 instructorId가 이 users.id를 직접 참조한다.
 } & BaseRow;
@@ -60,6 +62,7 @@ export const isActiveInstructor = (u: StaffAccount | undefined): u is StaffAccou
 
 /** authVersion 규약 — 미설정(구 행)=1. */
 export const authVersionOf = (u: Pick<StaffAccount, 'authVersion'>): number => u.authVersion ?? 1;
+export const profileVersionOf = (u: Pick<StaffAccount, 'profileVersion'>): number => u.profileVersion ?? 1;
 
 // (참고) contracts Account 형태로 변환이 필요할 때
 export const toAccount = (a: SafeAccount): Account => ({ id: a.id, webId: a.webId, name: a.name, role: a.role });

@@ -28,6 +28,7 @@ import { UsersService } from '../users/users.service';
 import { authVersionOf, isStaffRole, type StaffAccount } from '../users/user.entity';
 import { MailService } from '../mail/mail.service';
 import { LoginResponseDto } from './dto/login-response.dto';
+import { Public } from './public.decorator';
 
 const isProduction = (): boolean => process.env.NODE_ENV === 'production';
 
@@ -45,6 +46,7 @@ export class AuthController {
 
   // 1) 가입 신청. 계정은 status=pending·이메일 미인증으로 생성되고 인증 메일을 발송.
   @Post('signup')
+  @Public()
   @ApiOperation({ summary: '가입 신청(대표 승인 대기). 인증 메일 발송.' })
   async signup(@Body() dto: SignupDto) {
     const { account, verifyToken } = await this.users.signup(dto);
@@ -63,6 +65,7 @@ export class AuthController {
 
   // 2) 이메일 인증(메일 링크의 token). [TBO-28B] 토큰=sha256 hash 대조 + 48h 만료, 성공 시 명시 NULL 클리어.
   @Get('verify-email')
+  @Public()
   @ApiOperation({ summary: '이메일 인증(token) — hash 대조·48h 만료.' })
   async verifyEmail(@Query('token') token?: string) {
     if (!token) throw new UnauthorizedException('인증 토큰이 없습니다.');
@@ -74,6 +77,7 @@ export class AuthController {
   //  [TBO-28B] 성공/실패를 auth_events에 append-only 기록(원문 credential 저장 금지) + last_login_at 갱신.
   //  브루트포스 완화: LoginThrottlerGuard(10회/60초/IP — x-forwarded-for 인지). 429 응답.
   @Post('login')
+  @Public()
   @UseGuards(LoginThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: '로그인(비밀번호 해시 검증 + 상태 게이트 + rate limit). 성공/실패는 auth_events 기록.' })
@@ -161,7 +165,17 @@ export class AuthController {
   @UseGuards(RolesGuard)
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '토큰 검증 → claims. [로그인]' })
-  me(@Req() req: Request & { user?: JwtClaims }) {
-    return req.user; // RolesGuard가 검증 후 부착한 claims(iat/exp 포함)
+  async me(@Req() req: Request & { user?: JwtClaims }) {
+    const claims = req.user;
+    if (!claims) throw new UnauthorizedException('인증 정보가 없습니다.');
+    await this.users.refreshFromDb();
+    const account = this.users.findById(claims.sub);
+    if (!account) throw new UnauthorizedException('계정 정보를 확인할 수 없습니다.');
+    return {
+      ...claims,
+      name: account.name,
+      roles: [account.role],
+      mustChangePassword: account.mustChangePassword === true,
+    };
   }
 }

@@ -8,6 +8,7 @@ import { LoginThrottlerGuard } from './login-throttler.guard';
 import { AuthEventsService } from './auth-events.service';
 import { UsersModule } from '../users/users.module';
 import { MailModule } from '../mail/mail.module';
+import { APP_GUARD } from '@nestjs/core';
 
 @Module({
   imports: [
@@ -21,7 +22,14 @@ import { MailModule } from '../mail/mail.module';
     }),
   ],
   controllers: [AuthController],
-  providers: [AuthService, SuperAdminGuard, RolesGuard, LoginThrottlerGuard, AuthEventsService],
+  providers: [
+    AuthService,
+    SuperAdminGuard,
+    RolesGuard,
+    { provide: APP_GUARD, useExisting: RolesGuard },
+    LoginThrottlerGuard,
+    AuthEventsService,
+  ],
   exports: [AuthService, RolesGuard, AuthEventsService],
 })
 export class AuthModule {}

@@ -3,17 +3,44 @@ import { ApiBearerAuth, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { UsersService } from './users.service';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
+import { ADMIN_ROLES, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
 import { CreateInstructorDto } from './dto/create-instructor.dto';
 import type { JwtClaims } from '../auth/auth.service';
 import { ChangeCredentialsDto } from './dto/change-credentials.dto';
 import { CredentialAccountResponseDto } from './dto/credential-account-response.dto';
+import { ProfileResponseDto } from './dto/profile-response.dto';
+import { profileVersionOf } from './user.entity';
 
 @UseGuards(RolesGuard)
 @Controller('users')
 export class UsersController {
   constructor(private readonly users: UsersService) {}
+
+  @Get('me/profile')
+  @Roles(...STAFF_ROLES)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '내 프로필 조회. [전 직원]' })
+  @ApiOkResponse({ type: ProfileResponseDto })
+  async profile(@Req() req: Request & { user?: JwtClaims }): Promise<ProfileResponseDto> {
+    const sub = req.user?.sub;
+    if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
+    await this.users.refreshFromDb();
+    const account = this.users.findById(sub);
+    if (!account) throw new UnauthorizedException('계정 정보를 확인할 수 없습니다.');
+    return {
+      id: account.id,
+      webId: account.webId,
+      name: account.name,
+      email: account.email,
+      phone: account.phone,
+      countryCode: account.countryCode,
+      timeZone: account.timeZone,
+      role: account.role,
+      status: account.status,
+      profileVersion: profileVersionOf(account),
+    };
+  }
 
   // [운영 흐름 2026-07-14] 대표 직접 강사 등록 — 즉시 active(계정+프로필+audit 단일 tx).
   @Post('instructors')
@@ -54,7 +81,7 @@ export class UsersController {
   }
 
   @Get()
-  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
+  @Roles(...ADMIN_ROLES) // 직원 이메일·승인 metadata·마지막 로그인 포함 — 관리자만
   async list() {
     await this.users.refreshFromDb(); // [28F]
     return this.users.findAll();

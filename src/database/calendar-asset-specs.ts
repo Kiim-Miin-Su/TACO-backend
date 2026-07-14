@@ -19,6 +19,7 @@ export const USERS_SPEC: PostgresCollectionSpec = {
       email_verify_token_hash varchar(64),
       email_verify_expires_at timestamptz,
       auth_version integer NOT NULL DEFAULT 1,
+      profile_version integer NOT NULL DEFAULT 1,
       must_change_password boolean NOT NULL DEFAULT false,
       approved_by integer,
       approved_at timestamptz,
@@ -37,6 +38,7 @@ export const USERS_SPEC: PostgresCollectionSpec = {
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_token_hash varchar(64)`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_expires_at timestamptz`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_version integer NOT NULL DEFAULT 1`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_version integer NOT NULL DEFAULT 1`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false`,
     `ALTER TABLE users DROP COLUMN IF EXISTS email_verify_token`,
   ],
@@ -47,6 +49,52 @@ export const USERS_SPEC: PostgresCollectionSpec = {
   // [TBO-28A drift 해소] timestamptz 컬럼은 pg 드라이버가 Date로 돌려주므로 ISO string으로 통일.
   //  (createdAt/updatedAt/deletedAt은 store 기본 변환 — 그 외 timestamptz는 여기 선언 필수)
   timestampFields: ['approvedAt', 'lastLoginAt', 'emailVerifyExpiresAt'],
+};
+
+export const PROFILE_CHANGE_REQUESTS_SPEC: PostgresCollectionSpec = {
+  table: 'profile_change_requests',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS profile_change_requests (
+      id serial PRIMARY KEY,
+      requester_id integer NOT NULL REFERENCES users(id),
+      base_profile_version integer NOT NULL CHECK (base_profile_version >= 1),
+      before_values jsonb NOT NULL,
+      requested_changes jsonb NOT NULL,
+      reason text NOT NULL CHECK (char_length(btrim(reason)) BETWEEN 5 AND 500),
+      status varchar(32) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','approved','rejected')),
+      decided_by integer REFERENCES users(id),
+      decided_at timestamptz,
+      rejection_reason text,
+      applied_profile_version integer,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer REFERENCES users(id),
+      CONSTRAINT profile_change_requested_keys_check CHECK (
+        jsonb_typeof(requested_changes) = 'object'
+        AND requested_changes <> '{}'::jsonb
+        AND requested_changes - ARRAY['name','phone','countryCode','timeZone'] = '{}'::jsonb
+      ),
+      CONSTRAINT profile_change_decision_check CHECK (
+        (status = 'pending' AND decided_by IS NULL AND decided_at IS NULL
+          AND rejection_reason IS NULL AND applied_profile_version IS NULL)
+        OR (status = 'approved' AND decided_by IS NOT NULL AND decided_at IS NOT NULL
+          AND rejection_reason IS NULL AND applied_profile_version = base_profile_version + 1)
+        OR (status = 'rejected' AND decided_by IS NOT NULL AND decided_at IS NOT NULL
+          AND char_length(btrim(rejection_reason)) BETWEEN 5 AND 500 AND applied_profile_version IS NULL)
+      ),
+      CONSTRAINT profile_change_no_self_decision_check CHECK (decided_by IS NULL OR decided_by <> requester_id)
+    )
+  `,
+  indexes: [
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_profile_change_requests_pending_requester
+       ON profile_change_requests (requester_id) WHERE status = 'pending' AND deleted_at IS NULL`,
+    activeIndex('profile_change_requests', 'idx_profile_change_requests_status', 'status'),
+    activeIndex('profile_change_requests', 'idx_profile_change_requests_requester_id_desc', 'requester_id, id DESC'),
+    activeIndex('profile_change_requests', 'idx_profile_change_requests_decided_by', 'decided_by'),
+  ],
+  jsonFields: ['beforeValues', 'requestedChanges'],
+  timestampFields: ['decidedAt'],
 };
 
 // [TBO-28B] 인증 보안 이벤트(append-only) — 업무 audit_log와 분리(erd.dbml auth_events).
