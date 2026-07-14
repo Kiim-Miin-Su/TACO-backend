@@ -25,14 +25,14 @@ export type StaffAccount = {
   status: AccountStatus;
   passwordHash: string;
   emailVerified: boolean;
-  /** @deprecated [TBO-28B] 평문 인증 토큰 — 쓰기 중단(hash로 대체). 레거시 행 검증 폴백·명시 NULL 정리용으로만 읽는다. */
-  emailVerifyToken?: string | null;
   // [TBO-28B] 인증 토큰은 sha256 hash + 만료로만 저장. 인증 성공 시 두 컬럼 모두 **명시 null**
   //  (undefined는 toDbPayload가 skip → Postgres에 토큰 잔존했던 버그의 원인).
   emailVerifyTokenHash?: string | null;
   emailVerifyExpiresAt?: string | null;
   /** role/status/credential 변경 시 +1 — JWT claim과 대조해 구 토큰 즉시 무효화(AccountStateService). 미설정=1. */
   authVersion?: number;
+  /** 임시 비밀번호 계정은 true. 변경 완료 전 업무 API는 RolesGuard가 차단한다. */
+  mustChangePassword?: boolean;
   // [TBO-28A drift 해소 2026-07-14] 아래 4필드는 DDL(users)·dbml에 있었으나 entity에 없어
   //  런타임에서 읽기/쓰기가 불가능했다(승인 metadata 미기록의 원인). 28B가 값을 채운다.
   phone?: string | null;
@@ -46,10 +46,10 @@ export type StaffAccount = {
 } & BaseRow;
 
 // 외부 노출용(안전) 계정 뷰 — 해시·토큰(평문/해시/만료) 제외.
-export type SafeAccount = Omit<StaffAccount, 'passwordHash' | 'emailVerifyToken' | 'emailVerifyTokenHash' | 'emailVerifyExpiresAt'>;
+export type SafeAccount = Omit<StaffAccount, 'passwordHash' | 'emailVerifyTokenHash' | 'emailVerifyExpiresAt'>;
 export const toSafe = (a: StaffAccount): SafeAccount => {
-  const { passwordHash: _ph, emailVerifyToken: _t, emailVerifyTokenHash: _th, emailVerifyExpiresAt: _te, ...safe } = a;
-  void _ph; void _t; void _th; void _te;
+  const { passwordHash: _ph, emailVerifyTokenHash: _th, emailVerifyExpiresAt: _te, ...safe } = a;
+  void _ph; void _th; void _te;
   return safe;
 };
 

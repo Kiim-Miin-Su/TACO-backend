@@ -8,6 +8,7 @@ export type JwtClaims = {
   // [TBO-28B] 발급 시점 users.auth_version. 가드가 권위 DB와 대조해 role/status/credential 변경 시
   //  만료 전 토큰도 즉시 거부한다(AccountStateService). 구 토큰(클레임 부재)=1로 간주.
   authVersion?: number;
+  mustChangePassword?: boolean;
 }
 
 /**

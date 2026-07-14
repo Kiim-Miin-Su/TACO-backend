@@ -29,6 +29,7 @@ let demoPwHash: string | undefined;
 const DEMO_PW = (): string => (demoPwHash ??= bcrypt.hashSync('demo1234', 12));
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
+const identityLockId = (webId: string): number => Number.parseInt(sha256(webId.trim().toLowerCase()).slice(0, 7), 16);
 const VERIFY_TOKEN_TTL_MS = 48 * 60 * 60 * 1000; // 48h
 
 const isProduction = (): boolean => process.env.NODE_ENV === 'production';
@@ -63,11 +64,11 @@ export class UsersService implements OnModuleInit {
       // [강사 식별자 통일 2026-07-07] users.id 자체가 강사 식별자다(별도 instructorId 브리지 폐기).
       //  courses/class_sessions/payouts/reports/availability/counsel의 instructorId·assignedStaffId가 이 id를 참조.
       //  강사 = id 1·2, 대표/매니저 = 3·4. (정유진은 우선 데모 계정 — 실제 강사는 추후 계정 발급)
-      { id: 1, webId: 'park_inst', name: '박지훈', email: 'park@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, countryCode: 'KR', timeZone: 'Asia/Seoul' },
-      { id: 2, webId: 'jung_inst', name: '정유진', email: 'jung@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, countryCode: 'GB', timeZone: 'Europe/London' },
-      { id: 3, webId: 'admin', name: '김민수', email: 'admin@tnacademy.test', role: 'super_admin', status: 'active', passwordHash: DEMO_PW(), emailVerified: true },
-      { id: 4, webId: 'manager', name: '이지원', email: 'manager@tnacademy.test', role: 'manager', status: 'active', passwordHash: DEMO_PW(), emailVerified: true },
-      { id: 5, webId: 'prof_admin', name: '한서윤', email: 'prof.admin@tnacademy.test', role: 'admin', status: 'active', passwordHash: DEMO_PW(), emailVerified: true },
+      { id: 1, webId: 'park_inst', name: '박지훈', email: 'park@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, mustChangePassword: false, countryCode: 'KR', timeZone: 'Asia/Seoul' },
+      { id: 2, webId: 'jung_inst', name: '정유진', email: 'jung@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, mustChangePassword: false, countryCode: 'GB', timeZone: 'Europe/London' },
+      { id: 3, webId: 'admin', name: '김민수', email: 'admin@tnacademy.test', role: 'super_admin', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, mustChangePassword: false },
+      { id: 4, webId: 'manager', name: '이지원', email: 'manager@tnacademy.test', role: 'manager', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, mustChangePassword: false },
+      { id: 5, webId: 'prof_admin', name: '한서윤', email: 'prof.admin@tnacademy.test', role: 'admin', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, mustChangePassword: false },
     ]);
     // 데모 시드된 활성 강사는 프로필도 동반(승인 경로와 동일 불변식: active instructor ↔ active profile 1행).
     for (const inst of this.db.findBy<StaffAccount>(USERS, (u) => u.role === 'instructor' && u.status === 'active')) {
@@ -75,7 +76,7 @@ export class UsersService implements OnModuleInit {
     }
   }
 
-  /** production 최초 관리자 부트스트랩(대표 컨펌 2026-07-14: INITIAL_ADMIN env 방식). */
+  /** production 최초 관리자 부트스트랩. 첫 로그인에서 아이디와 비밀번호를 모두 교체한다. */
   private async bootstrapInitialAdmin(): Promise<void> {
     const webId = process.env.INITIAL_ADMIN_WEB_ID?.trim();
     const password = process.env.INITIAL_ADMIN_PASSWORD;
@@ -94,6 +95,7 @@ export class UsersService implements OnModuleInit {
       passwordHash: await bcrypt.hash(password, 12),
       emailVerified: true,
       authVersion: 1,
+      mustChangePassword: true,
     });
     this.logger.log(`production 최초 관리자 부트스트랩 완료(webId=${webId}) — 자격증명은 로그에 남기지 않음`);
   }
@@ -108,6 +110,8 @@ export class UsersService implements OnModuleInit {
       status: 'active',
       passwordHash: DEMO_PW(),
       emailVerified: true,
+      authVersion: 1,
+      mustChangePassword: false,
     });
   }
 
@@ -158,6 +162,7 @@ export class UsersService implements OnModuleInit {
       emailVerifyTokenHash: sha256(verifyToken),
       emailVerifyExpiresAt: new Date(Date.now() + VERIFY_TOKEN_TTL_MS).toISOString(),
       authVersion: 1,
+      mustChangePassword: false,
     });
     return { account: toSafe(acc), verifyToken };
   }
@@ -165,16 +170,16 @@ export class UsersService implements OnModuleInit {
   async verifyEmail(token: string): Promise<SafeAccount> {
     await this.refreshFromDb(); // [28F] 다른 인스턴스에서 가입한 계정의 토큰 조회 정합
     const hash = sha256(token);
-    const acc =
-      this.db.findBy<StaffAccount>(USERS, (a) => !!a.emailVerifyTokenHash && a.emailVerifyTokenHash === hash)[0]
-      // 레거시 폴백: hash 도입 전 평문 토큰 행(기존 Neon pending 계정)의 인증 연속성 보장.
-      ?? this.db.findBy<StaffAccount>(USERS, (a) => !!a.emailVerifyToken && a.emailVerifyToken === token)[0];
+    const acc = this.db.findBy<StaffAccount>(
+      USERS,
+      (a) => !!a.emailVerifyTokenHash && a.emailVerifyTokenHash === hash,
+    )[0];
     if (!acc) throw new BadRequestException('유효하지 않거나 만료된 인증 링크입니다.');
     if (acc.emailVerifyExpiresAt && Date.parse(acc.emailVerifyExpiresAt) < Date.now())
       throw new BadRequestException('유효하지 않거나 만료된 인증 링크입니다.');
     // [TBO-28B §4-e] 명시 null — undefined는 toDbPayload가 skip해 Postgres에 토큰이 잔존했다(T12).
     const updated = await this.store.update<StaffAccount>(USERS_SPEC, acc.id, {
-      emailVerified: true, emailVerifyToken: null, emailVerifyTokenHash: null, emailVerifyExpiresAt: null,
+      emailVerified: true, emailVerifyTokenHash: null, emailVerifyExpiresAt: null,
     }) as StaffAccount;
     return toSafe(updated);
   }
@@ -187,6 +192,86 @@ export class UsersService implements OnModuleInit {
   /** 로그인 성공 시각 summary(users.last_login_at) — 이력 진실원은 auth_events. */
   async recordLoginSuccess(id: number): Promise<void> {
     await this.store.update<StaffAccount>(USERS_SPEC, id, { lastLoginAt: new Date().toISOString() });
+  }
+
+  /**
+   * 본인 자격증명 변경. 사용자 advisory lock + 현재 비밀번호 재검증 + CAS update + audit를 한 UoW로 묶는다.
+   * password hash는 audit/응답에 절대 포함하지 않으며 authVersion 증가로 기존 JWT를 즉시 폐기한다.
+   */
+  async changeCredentials(
+    id: number,
+    input: { currentPassword: string; newWebId?: string; newPassword?: string },
+  ): Promise<SafeAccount> {
+    const newWebId = input.newWebId?.trim();
+    const newPassword = input.newPassword;
+    if (!newWebId && !newPassword) throw new BadRequestException('새 아이디 또는 새 비밀번호 중 하나는 필수입니다.');
+    if (newWebId && newWebId.length < 3) throw new BadRequestException('아이디는 3자 이상이어야 합니다.');
+    const passwordBytes = newPassword ? Buffer.byteLength(newPassword, 'utf8') : 0;
+    if (newPassword && passwordBytes < 8) throw new BadRequestException('새 비밀번호는 8바이트 이상이어야 합니다.');
+    if (newPassword && passwordBytes > 72) throw new BadRequestException('새 비밀번호는 72바이트 이하여야 합니다.');
+    const nextPasswordHash = newPassword ? await bcrypt.hash(newPassword, 12) : undefined;
+
+    await this.refreshFromDb();
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([
+        { kind: 'user', id },
+        ...(newWebId ? [{ kind: 'loginIdentity' as const, id: identityLockId(newWebId) }] : []),
+      ]);
+      await this.refreshFromDb();
+      const before = this.findById(id);
+      if (!before) throw new NotFoundException(`계정 ${id} 없음`);
+      if (!(await this.validatePassword(before, input.currentPassword))) {
+        throw new ForbiddenException('현재 비밀번호가 올바르지 않습니다.');
+      }
+      if (before.mustChangePassword && (!newWebId || !newPassword)) {
+        throw new BadRequestException('첫 로그인에서는 새 아이디와 새 비밀번호를 모두 변경해야 합니다.');
+      }
+      if (before.mustChangePassword && newWebId?.toLowerCase() === before.webId.toLowerCase()) {
+        throw new BadRequestException('첫 로그인에서는 기존 아이디와 다른 새 아이디가 필요합니다.');
+      }
+      if (newPassword && newPassword === input.currentPassword) {
+        throw new BadRequestException('새 비밀번호는 현재 비밀번호와 달라야 합니다.');
+      }
+      if (newWebId) {
+        const duplicate = this.findByWebId(newWebId);
+        if (duplicate && duplicate.id !== id) throw new ConflictException('이미 사용 중인 아이디입니다.');
+      }
+
+      let updated: StaffAccount | undefined;
+      try {
+        updated = await this.store.updateIf<StaffAccount>(
+          USERS_SPEC,
+          id,
+          { passwordHash: before.passwordHash, authVersion: authVersionOf(before) },
+          {
+            ...(newWebId ? { webId: newWebId } : {}),
+            ...(nextPasswordHash ? { passwordHash: nextPasswordHash } : {}),
+            authVersion: authVersionOf(before) + 1,
+            mustChangePassword: false,
+          },
+        );
+      } catch (error) {
+        const code = (error as { code?: string; driverError?: { code?: string } }).code
+          ?? (error as { driverError?: { code?: string } }).driverError?.code;
+        if (code === '23505') throw new ConflictException('이미 사용 중인 아이디입니다.');
+        throw error;
+      }
+      if (!updated) throw new ConflictException('계정 정보가 변경되었습니다. 다시 로그인해 주세요.');
+      await this.audit.log({
+        entity: 'users',
+        entityId: id,
+        action: 'update',
+        actorId: id,
+        changes: {
+          ...(newWebId && newWebId !== before.webId ? { webId: { before: before.webId, after: newWebId } } : {}),
+          ...(newPassword ? { password: { before: '[redacted]', after: '[changed]' } } : {}),
+          ...(before.mustChangePassword ? { mustChangePassword: { before: true, after: false } } : {}),
+          authVersion: { before: authVersionOf(before), after: authVersionOf(before) + 1 },
+        },
+        reason: '본인 계정 자격증명 변경',
+      });
+      return toSafe(updated);
+    });
   }
 
   async listPending(): Promise<SafeAccount[]> {

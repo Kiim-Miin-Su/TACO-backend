@@ -27,6 +27,7 @@ export class SuperAdminGuard implements CanActivate {
     if (!claims.roles?.includes('super_admin')) throw new ForbiddenException('대표(super_admin) 권한이 필요합니다.');
     const verdict = await this.accounts.verifyClaims(claims);
     if (!verdict.ok) throw new UnauthorizedException('세션이 더 이상 유효하지 않습니다. 다시 로그인해 주세요.');
+    if (verdict.mustChangePassword) throw new ForbiddenException('임시 비밀번호를 먼저 변경해 주세요.');
     req.user = claims;
     return true;
   }

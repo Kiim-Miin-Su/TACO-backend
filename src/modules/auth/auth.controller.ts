@@ -11,7 +11,7 @@ import {
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { RolesGuard } from './roles.guard';
 import { Roles, STAFF_ROLES } from './roles.decorator';
@@ -27,6 +27,7 @@ import { AuthEventsService } from './auth-events.service';
 import { UsersService } from '../users/users.service';
 import { authVersionOf, isStaffRole, type StaffAccount } from '../users/user.entity';
 import { MailService } from '../mail/mail.service';
+import { LoginResponseDto } from './dto/login-response.dto';
 
 const isProduction = (): boolean => process.env.NODE_ENV === 'production';
 
@@ -76,7 +77,8 @@ export class AuthController {
   @UseGuards(LoginThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: '로그인(비밀번호 해시 검증 + 상태 게이트 + rate limit). 성공/실패는 auth_events 기록.' })
-  async login(@Body() dto: LoginDto, @Req() req: Request): Promise<{ accessToken: string; account: { id: number; name: string; role: string } }> {
+  @ApiCreatedResponse({ type: LoginResponseDto })
+  async login(@Body() dto: LoginDto, @Req() req: Request): Promise<{ accessToken: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } }> {
     await this.users.refreshFromDb(); // [28F] 다른 인스턴스에서 승인/등록된 계정도 즉시 로그인 가능
     const acc = this.users.findByWebId(dto.webId);
     const deny = async (failureCode: string, err: Error): Promise<never> => {
@@ -92,10 +94,19 @@ export class AuthController {
     if (account.status === 'rejected') await deny('rejected', new ForbiddenException('가입이 반려된 계정입니다.'));
     if (!isStaffRole(account.role)) await deny('not_staff', new ForbiddenException('백오피스 담당자 계정만 로그인할 수 있습니다.'));
     // [강사 식별자 통일 2026-07-07] sub(=users.id)가 곧 강사 식별자 — 별도 instructorId 클레임 불필요.
-    const claims: JwtClaims = { sub: account.id, name: account.name, roles: [account.role], authVersion: authVersionOf(account) };
+    const claims: JwtClaims = {
+      sub: account.id,
+      name: account.name,
+      roles: [account.role],
+      authVersion: authVersionOf(account),
+      mustChangePassword: account.mustChangePassword === true,
+    };
     await this.users.recordLoginSuccess(account.id);
     await this.events.record({ type: 'login_success', userId: account.id, req });
-    return { accessToken: this.auth.sign(claims), account: { id: account.id, name: account.name, role: account.role } };
+    return {
+      accessToken: this.auth.sign(claims),
+      account: { id: account.id, name: account.name, role: account.role, mustChangePassword: account.mustChangePassword === true },
+    };
   }
 
   // 4) 로그아웃 — stateless JWT라 서버 무효화는 없지만 보안 이벤트로 기록한다(FE가 best-effort 호출).

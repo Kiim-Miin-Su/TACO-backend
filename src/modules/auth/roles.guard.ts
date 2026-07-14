@@ -18,6 +18,13 @@ import { AuthService, type JwtClaims } from './auth.service';
 import { ROLES_KEY, type AppRole } from './roles.decorator';
 import { AccountStateService } from '../../database/account-state.service';
 
+/** 임시 비밀번호 상태에서 허용하는 최소 복구 경로. 프론트 숨김과 무관하게 서버가 강제한다. */
+export function isCredentialRecoveryRoute(method: string, path: string): boolean {
+  const normalized = path.replace(/^\/api/, '');
+  const key = `${method.toUpperCase()} ${normalized}`;
+  return key === 'PATCH /users/me/credentials' || key === 'GET /auth/me' || key === 'POST /auth/logout';
+}
+
 // 역할 기반 인가 가드. @Roles(...)로 선언된 라우트만 검사한다.
 //  1) Authorization: Bearer <token> 백엔드 서명 검증
 //  2) claims.roles 와 허용 역할 교집합 확인
@@ -71,6 +78,10 @@ export class RolesGuard implements CanActivate {
     if (!verdict.ok) {
       this.log.warn(`거부(계정상태): ${route} — ${verdict.code}`);
       throw new UnauthorizedException('세션이 더 이상 유효하지 않습니다. 다시 로그인해 주세요.');
+    }
+    if (verdict.mustChangePassword && !isCredentialRecoveryRoute(req.method, req.path)) {
+      this.log.warn(`거부(임시비밀번호): ${route}`);
+      throw new ForbiddenException('임시 비밀번호를 먼저 변경해 주세요.');
     }
 
     req.user = claims;

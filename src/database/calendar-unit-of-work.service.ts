@@ -15,6 +15,8 @@ export const LOCK_KIND = {
   room: 2,
   student: 3,
   session: 4,
+  user: 5,
+  loginIdentity: 6,
 } as const;
 
 export type CalendarLockKey = { kind: keyof typeof LOCK_KIND; id: number };

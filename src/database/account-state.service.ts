@@ -13,11 +13,12 @@ type AccountState = {
   status: string;
   authVersion: number;
   deleted: boolean;
+  mustChangePassword: boolean;
 };
 
 export type ClaimsToVerify = { sub: number; roles?: string[]; authVersion?: number };
 
-export type ClaimsVerdict = { ok: true } | { ok: false; code: 'missing' | 'inactive' | 'stale_token' | 'role_changed' };
+export type ClaimsVerdict = { ok: true; mustChangePassword: boolean } | { ok: false; code: 'missing' | 'inactive' | 'stale_token' | 'role_changed' };
 
 @Injectable()
 export class AccountStateService {
@@ -35,14 +36,14 @@ export class AccountStateService {
     // role 변경은 auth_version 증가로 이미 무효화되지만 이중 방어로 대조한다.
     const tokenRole = claims.roles?.[0];
     if (tokenRole && tokenRole !== state.role) return { ok: false, code: 'role_changed' };
-    return { ok: true };
+    return { ok: true, mustChangePassword: state.mustChangePassword };
   }
 
   private async load(id: number): Promise<AccountState | undefined> {
     await this.postgres.ensureInitialized();
     if (this.postgres.ready) {
       const rows = normalizeQueryRows(await this.postgres.query(
-        `SELECT role, status, auth_version, deleted_at FROM users WHERE id = $1`,
+        `SELECT role, status, auth_version, must_change_password, deleted_at FROM users WHERE id = $1`,
         [id],
       ));
       const row = rows[0];
@@ -52,9 +53,10 @@ export class AccountStateService {
         status: String(row.status),
         authVersion: row.auth_version == null ? 1 : Number(row.auth_version),
         deleted: row.deleted_at != null,
+        mustChangePassword: row.must_change_password === true,
       };
     }
-    type MemoryUserRow = { role: string; status: string; authVersion?: number } & import('../common/types/base').BaseRow;
+    type MemoryUserRow = { role: string; status: string; authVersion?: number; mustChangePassword?: boolean } & import('../common/types/base').BaseRow;
     const acc = this.memory.findById<MemoryUserRow>('users', id);
     if (!acc) return undefined;
     return {
@@ -62,6 +64,7 @@ export class AccountStateService {
       status: acc.status,
       authVersion: acc.authVersion ?? 1,
       deleted: acc.deletedAt != null,
+      mustChangePassword: acc.mustChangePassword === true,
     };
   }
 }
