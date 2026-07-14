@@ -21,8 +21,13 @@ export class MailService implements OnModuleDestroy {
     : null;
 
   // 인증 메일 발송. 반환된 devLink는 SMTP 미설정 시에만 존재(데모 편의).
+  //  [TBO-28B §4-c] production에서는 devLink 폴백 금지(응답·로그 어디에도 인증 URL 미노출) —
+  //  SMTP 미설정 production은 부팅 자체가 차단되지만(assertProductionBootSafety) 이중 방어로 여기서도 막는다.
   async sendVerifyEmail(to: string, link: string): Promise<{ sent: boolean; devLink?: string }> {
     if (!this.transporter) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('[mail] production에서 SMTP 미설정 — 인증 메일을 보낼 수 없습니다(devLink 폴백 금지).');
+      }
       this.logger.warn(`[MAIL:dev] 이메일 인증 링크 (${to}): ${link}`);
       return { sent: false, devLink: link };
     }

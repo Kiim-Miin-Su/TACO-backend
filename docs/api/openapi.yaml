@@ -28,7 +28,7 @@ paths:
       responses:
         '200':
           description: ''
-      summary: 이메일 인증(token).
+      summary: 이메일 인증(token) — hash 대조·48h 만료.
       tags:
       - auth
   /api/auth/login:
@@ -44,7 +44,19 @@ paths:
       responses:
         '201':
           description: ''
-      summary: 로그인(비밀번호 해시 검증 + 상태 게이트).
+      summary: 로그인(비밀번호 해시 검증 + 상태 게이트 + rate limit). 성공/실패는 auth_events 기록.
+      tags:
+      - auth
+  /api/auth/logout:
+    post:
+      operationId: AuthController_logout
+      parameters: []
+      responses:
+        '201':
+          description: ''
+      security:
+      - bearer: []
+      summary: 로그아웃 — auth_events 기록(토큰은 클라이언트가 폐기).
       tags:
       - auth
   /api/auth/pending:
@@ -89,7 +101,7 @@ paths:
                 type: object
       security:
       - bearer: []
-      summary: 가입 승인(active 전환, 역할 지정 가능) — 대표 전용.
+      summary: '가입 승인(원자 tx: 상태+승인메타+강사프로필+audit, 역할 지정 가능) — 대표 전용. 동시 결정은 409.'
       tags:
       - auth
   /api/auth/reject/{id}:
@@ -101,6 +113,12 @@ paths:
         in: path
         schema:
           type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectDto'
       responses:
         '201':
           description: ''
@@ -110,7 +128,7 @@ paths:
                 type: object
       security:
       - bearer: []
-      summary: 가입 반려 — 대표 전용.
+      summary: 가입 반려(사유 필수, audit 기록) — 대표 전용. 동시 결정은 409.
       tags:
       - auth
   /api/auth/me:
@@ -127,6 +145,28 @@ paths:
       summary: 토큰 검증 → claims. [로그인]
       tags:
       - auth
+  /api/users/instructors:
+    post:
+      operationId: UsersController_createInstructor
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInstructorDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: 강사 직접 등록(대표 전용) — 즉시 active, users+instructor_profiles+audit 원자 tx.
+      tags:
+      - Users
   /api/users/exists:
     get:
       operationId: UsersController_exists
@@ -160,6 +200,42 @@ paths:
                   type: object
       tags:
       - Users
+  /api/audit:
+    get:
+      operationId: AuditController_list
+      parameters:
+      - name: entity
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: entityId
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: actorId
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: limit
+        required: false
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+      summary: 변경 이력 조회(최신순, 기본 200건) — entity/entityId/actorId 필터.
+      tags:
+      - audit
   /api/health:
     get:
       operationId: HealthController_check
@@ -177,7 +253,8 @@ paths:
       responses:
         '200':
           description: ''
-      summary: Database connection check. In-memory remains runtime store until Postgres cutover.
+      summary: Database connection check. In-memory remains runtime store until Postgres
+        cutover.
       tags:
       - health
   /api/students:
@@ -736,7 +813,8 @@ paths:
           type: string
       responses:
         '200':
-          description: AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday, startTime, endTime }
+          description: AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday,
+            startTime, endTime }
       summary: 가용/불가 블록 목록(ownerType·ownerId 필터). 강사는 쿼리와 무관하게 본인 블록만 조회.
       tags:
       - availability
@@ -791,42 +869,6 @@ paths:
       summary: 가용/불가 블록 삭제
       tags:
       - availability
-  /api/audit:
-    get:
-      operationId: AuditController_list
-      parameters:
-      - name: entity
-        required: false
-        in: query
-        schema:
-          type: string
-      - name: entityId
-        required: false
-        in: query
-        schema:
-          type: string
-      - name: actorId
-        required: false
-        in: query
-        schema:
-          type: string
-      - name: limit
-        required: false
-        in: query
-        schema:
-          type: string
-      responses:
-        '200':
-          description: ''
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-      summary: 변경 이력 조회(최신순, 기본 200건) — entity/entityId/actorId 필터.
-      tags:
-      - audit
   /api/schedule:
     get:
       operationId: ScheduleController_list
@@ -882,7 +924,8 @@ paths:
               $ref: '#/components/schemas/CreateScheduleDto'
       responses:
         '201':
-          description: '{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[] }'
+          description: '{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[]
+            }'
         '401':
           description: 토큰 없음(로그인 필요)
         '409':
@@ -947,7 +990,8 @@ paths:
               $ref: '#/components/schemas/ConflictCheckDto'
       responses:
         '200':
-          description: Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }
+          description: Conflict[] — 각 항목 { type, resource, resourceId, sessionId?,
+            detail? }
       security:
       - bearer: []
       summary: 충돌 드라이런 — 강사는 JWT 본인 수업 범위, 생성·이동 전 이중예약/불가시간 겹침 검사
@@ -971,7 +1015,8 @@ paths:
               $ref: '#/components/schemas/UpdateScheduleDto'
       responses:
         '200':
-          description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }'
+          description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈
+            동반 수) }'
         '409':
           description: '{ message, conflicts } — force=false에서 충돌 시'
       security:
@@ -1255,7 +1300,8 @@ paths:
                 type: object
       security:
       - bearer: []
-      summary: '[C2C-b] pending 요청 수정(관리자) — 종류·대상 전환 금지, 생성과 동일 검증 재사용, audit update diff. [관리자]'
+      summary: '[C2C-b] pending 요청 수정(관리자) — 종류·대상 전환 금지, 생성과 동일 검증 재사용, audit update
+        diff. [관리자]'
       tags:
       - schedule-requests
     delete:
@@ -1426,7 +1472,8 @@ paths:
               $ref: '#/components/schemas/GeneratePayoutDto'
       responses:
         '201':
-          description: '생성된 정산서(InstructorPayout): status=pending, amount, sessionCount, totalMinutes, lines[]'
+          description: '생성된 정산서(InstructorPayout): status=pending, amount, sessionCount,
+            totalMinutes, lines[]'
         '400':
           description: 적격 세션 0(이미 연결/기간 오류)
         '401':
@@ -1968,6 +2015,67 @@ components:
         reason:
           type: string
           maxLength: 500
+    RejectDto:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 2
+          maxLength: 500
+          description: 반려 사유(필수) — audit_log에 기록
+      required:
+      - reason
+    CreateInstructorDto:
+      type: object
+      properties:
+        webId:
+          type: string
+          minLength: 3
+          maxLength: 50
+          description: 로그인 아이디
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: 이름
+        password:
+          type: string
+          minLength: 8
+          maxLength: 100
+          description: 초기 비밀번호(8자+)
+        email:
+          type: string
+          format: email
+          description: 이메일(선택)
+        phone:
+          type: string
+          maxLength: 20
+          description: 전화번호
+        university:
+          type: string
+          maxLength: 100
+          description: 대학교
+        major:
+          type: string
+          maxLength: 100
+          description: 전공
+        birthYear:
+          type: number
+          minimum: 1940
+          maximum: 2020
+          description: 출생연도(나이 대신 연도로 보관)
+        countryCode:
+          type: string
+          maxLength: 8
+          description: 근무 국가 코드(예 KR, GB)
+        timeZone:
+          type: string
+          maxLength: 64
+          description: IANA timezone override(예 Asia/Seoul)
+      required:
+      - webId
+      - name
+      - password
     CreateStudentDto:
       type: object
       properties:
@@ -2346,7 +2454,8 @@ components:
           description: endTime 없을 때 사용(기본 60)
         studentIds:
           maxItems: 20
-          description: 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용
+          description: 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만
+            허용
           type: array
           items:
             type: number
@@ -2430,7 +2539,8 @@ components:
           example: 60
         studentIds:
           maxItems: 20
-          description: 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용
+          description: 명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만
+            허용
           type: array
           items:
             type: number
@@ -2489,7 +2599,8 @@ components:
           - all
           type: string
           example: this
-          description: '반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)'
+          description: '반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본
+            this)'
         force:
           type: boolean
           example: false

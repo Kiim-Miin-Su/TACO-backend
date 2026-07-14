@@ -18,12 +18,21 @@ export type AccountStatus = 'pending' | 'active' | 'rejected';
 export type StaffAccount = {
   webId: string;
   name: string;
-  email: string;
+  // [TBO-28B] nullable — 대표 직접 등록 강사는 이메일 없이 생성될 수 있다(운영 흐름 2026-07-14).
+  //  self-signup 경로는 여전히 필수(SignupDto @IsEmail)·인증 게이트 유지.
+  email?: string | null;
   role: StaffRole;
   status: AccountStatus;
   passwordHash: string;
   emailVerified: boolean;
-  emailVerifyToken?: string;
+  /** @deprecated [TBO-28B] 평문 인증 토큰 — 쓰기 중단(hash로 대체). 레거시 행 검증 폴백·명시 NULL 정리용으로만 읽는다. */
+  emailVerifyToken?: string | null;
+  // [TBO-28B] 인증 토큰은 sha256 hash + 만료로만 저장. 인증 성공 시 두 컬럼 모두 **명시 null**
+  //  (undefined는 toDbPayload가 skip → Postgres에 토큰 잔존했던 버그의 원인).
+  emailVerifyTokenHash?: string | null;
+  emailVerifyExpiresAt?: string | null;
+  /** role/status/credential 변경 시 +1 — JWT claim과 대조해 구 토큰 즉시 무효화(AccountStateService). 미설정=1. */
+  authVersion?: number;
   // [TBO-28A drift 해소 2026-07-14] 아래 4필드는 DDL(users)·dbml에 있었으나 entity에 없어
   //  런타임에서 읽기/쓰기가 불가능했다(승인 metadata 미기록의 원인). 28B가 값을 채운다.
   phone?: string | null;
@@ -36,13 +45,21 @@ export type StaffAccount = {
   //  courses/class_sessions 등의 instructorId가 이 users.id를 직접 참조한다.
 } & BaseRow;
 
-// 외부 노출용(안전) 계정 뷰 — 해시·토큰 제외.
-export type SafeAccount = Omit<StaffAccount, 'passwordHash' | 'emailVerifyToken'>;
+// 외부 노출용(안전) 계정 뷰 — 해시·토큰(평문/해시/만료) 제외.
+export type SafeAccount = Omit<StaffAccount, 'passwordHash' | 'emailVerifyToken' | 'emailVerifyTokenHash' | 'emailVerifyExpiresAt'>;
 export const toSafe = (a: StaffAccount): SafeAccount => {
-  const { passwordHash: _ph, emailVerifyToken: _t, ...safe } = a;
-  void _ph; void _t;
+  const { passwordHash: _ph, emailVerifyToken: _t, emailVerifyTokenHash: _th, emailVerifyExpiresAt: _te, ...safe } = a;
+  void _ph; void _t; void _th; void _te;
   return safe;
 };
+
+/** [TBO-28B] 강사 노출/배정 중앙 술어 — role=instructor AND status=active AND 미삭제.
+ *  /schedule/resources·세션 입력 검증 등 모든 강사 후보 산출이 이 함수 하나를 쓴다(pending/rejected 노출 차단). */
+export const isActiveInstructor = (u: StaffAccount | undefined): u is StaffAccount =>
+  !!u && u.role === 'instructor' && u.status === 'active' && u.deletedAt == null;
+
+/** authVersion 규약 — 미설정(구 행)=1. */
+export const authVersionOf = (u: Pick<StaffAccount, 'authVersion'>): number => u.authVersion ?? 1;
 
 // (참고) contracts Account 형태로 변환이 필요할 때
 export const toAccount = (a: SafeAccount): Account => ({ id: a.id, webId: a.webId, name: a.name, role: a.role });

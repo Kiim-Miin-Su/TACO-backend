@@ -13,7 +13,7 @@ import { Course, COURSES as COURSES_COL } from '../courses/course.entity';
 import { Subject, SUBJECTS as SUBJECTS_COL } from '../subjects/subject.entity';
 import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
-import { USERS, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
+import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
 import { ClassSessionsStore } from './class-sessions.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, isPayoutLocked, payoutIdOf, teachingMinutesOf, type SessionAccountingImpact } from './session-accounting.policy';
@@ -189,14 +189,16 @@ export class ScheduleService implements OnModuleInit {
     return this.db.findById<Student>(STUDENTS_COL, id);
   }
   // [강사 식별자 통일] 강사 = users(role='instructor'), 강사 id = users.id.
+  // [TBO-28B] 중앙 술어 isActiveInstructor(role=instructor AND status=active AND 미삭제) —
+  //  pending/rejected 강사가 리소스 피커·세션 배정에 노출되던 갭 차단(28A 조사 §2).
   private instructorUsers(): StaffAccount[] {
-    return this.db.findBy<StaffAccount>(USERS, (u) => u.role === 'instructor');
+    return this.db.findBy<StaffAccount>(USERS, (u) => isActiveInstructor(u));
   }
   private instructorName(id?: number): string | undefined {
     return id == null ? undefined : this.db.findById<StaffAccount>(USERS, id)?.name;
   }
   private isInstructor(id: number): boolean {
-    return this.db.findById<StaffAccount>(USERS, id)?.role === 'instructor';
+    return isActiveInstructor(this.db.findById<StaffAccount>(USERS, id));
   }
   // 코호트 = 활성 수강(enrollment.status==='active') ∧ 학생 미삭제(status!=='canceled').
   //  students.remove(소프트삭제)가 학생·수강 모두 'canceled'로 정리하므로 삭제 즉시 코호트에서 빠진다.

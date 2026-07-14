@@ -15,6 +15,10 @@ import {
 export type PostgresCollectionSpec = {
   table: string;
   createSql: string;
+  /** [TBO-28B] 멱등 스키마 마이그레이션(ALTER TABLE … ADD COLUMN IF NOT EXISTS 등).
+   *  기존 테이블엔 createSql(CREATE TABLE IF NOT EXISTS)이 no-op이므로 신규 컬럼은 여기로만 도달한다.
+   *  실행 순서: createSql → migrations → indexes. */
+  migrations?: string[];
   indexes?: string[];
   jsonFields?: string[];
   dateFields?: string[];
@@ -46,8 +50,10 @@ export class PostgresCollectionStore {
     await this.postgres.ensureInitialized();
     if (!this.postgres.ready) return false;
     if (this.readyTables.has(spec.table)) return true;
-    await this.query(spec.createSql);
-    for (const indexSql of spec.indexes ?? []) await this.query(indexSql);
+    // [TBO-28B] DDL은 postgres.ddl(직렬화+중복 무해)로 — 부팅 병렬 onModuleInit 레이스 차단.
+    await this.postgres.ddl(spec.createSql);
+    for (const migrationSql of spec.migrations ?? []) await this.postgres.ddl(migrationSql);
+    for (const indexSql of spec.indexes ?? []) await this.postgres.ddl(indexSql);
     this.readyTables.add(spec.table);
     this.logger.log(`${spec.table} table ready (Postgres-backed)`);
     return true;

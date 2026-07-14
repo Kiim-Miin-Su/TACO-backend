@@ -17,6 +17,9 @@ export const USERS_SPEC: PostgresCollectionSpec = {
       password_hash varchar(255) NOT NULL,
       email_verified boolean NOT NULL DEFAULT false,
       email_verify_token varchar(64),
+      email_verify_token_hash varchar(64),
+      email_verify_expires_at timestamptz,
+      auth_version integer NOT NULL DEFAULT 1,
       approved_by integer,
       approved_at timestamptz,
       last_login_at timestamptz,
@@ -28,13 +31,49 @@ export const USERS_SPEC: PostgresCollectionSpec = {
       deleted_by integer
     )
   `,
+  // [TBO-28B] 기존(Neon) 테이블용 멱등 마이그레이션 — 신규 설치는 createSql이 이미 포함.
+  //  email_verify_token(평문)은 v10에서 폐기: 쓰기 중단(hash 컬럼으로 대체), DROP은 후속 마이그레이션.
+  migrations: [
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_token_hash varchar(64)`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verify_expires_at timestamptz`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS auth_version integer NOT NULL DEFAULT 1`,
+  ],
   indexes: [
     activeIndex('users', 'idx_users_role', 'role'),
     activeIndex('users', 'idx_users_status', 'status'),
   ],
   // [TBO-28A drift 해소] timestamptz 컬럼은 pg 드라이버가 Date로 돌려주므로 ISO string으로 통일.
   //  (createdAt/updatedAt/deletedAt은 store 기본 변환 — 그 외 timestamptz는 여기 선언 필수)
-  timestampFields: ['approvedAt', 'lastLoginAt'],
+  timestampFields: ['approvedAt', 'lastLoginAt', 'emailVerifyExpiresAt'],
+};
+
+// [TBO-28B] 인증 보안 이벤트(append-only) — 업무 audit_log와 분리(erd.dbml auth_events).
+//  password/password_hash/JWT/refresh token/raw IP/DB URL 저장 금지(불변식 §5-3).
+//  실패 로그인은 user_id 없이 attempted_web_id_hash만. update/remove 경로를 제공하지 않는다.
+//  id는 런타임 id 규약(number) 통일을 위해 serial(int) 사용 — dbml bigint 표기는 v10에서 int로 정정.
+export const AUTH_EVENTS_SPEC: PostgresCollectionSpec = {
+  table: 'auth_events',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS auth_events (
+      id serial PRIMARY KEY,
+      event_type varchar(32) NOT NULL,
+      user_id integer,
+      attempted_web_id_hash varchar(64),
+      request_id varchar(64),
+      ip_hash varchar(64),
+      user_agent varchar(300),
+      success boolean NOT NULL,
+      failure_code varchar(40),
+      at timestamptz NOT NULL DEFAULT now(),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `,
+  indexes: [
+    `CREATE INDEX IF NOT EXISTS idx_auth_events_user_at ON auth_events (user_id, at)`,
+    `CREATE INDEX IF NOT EXISTS idx_auth_events_type_at ON auth_events (event_type, at)`,
+  ],
+  timestampFields: ['at'],
 };
 
 export const STUDENTS_SPEC: PostgresCollectionSpec = {

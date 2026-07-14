@@ -5,6 +5,9 @@ export type JwtClaims = {
   sub: number; // user id (= 강사면 도메인 강사 식별자 — 통일 2026-07-07, 별도 instructorId 폐기)
   name: string;
   roles: string[]; // user_roles
+  // [TBO-28B] 발급 시점 users.auth_version. 가드가 권위 DB와 대조해 role/status/credential 변경 시
+  //  만료 전 토큰도 즉시 거부한다(AccountStateService). 구 토큰(클레임 부재)=1로 간주.
+  authVersion?: number;
 }
 
 /**
