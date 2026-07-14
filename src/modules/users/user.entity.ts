@@ -24,6 +24,12 @@ export type StaffAccount = {
   passwordHash: string;
   emailVerified: boolean;
   emailVerifyToken?: string;
+  // [TBO-28A drift 해소 2026-07-14] 아래 4필드는 DDL(users)·dbml에 있었으나 entity에 없어
+  //  런타임에서 읽기/쓰기가 불가능했다(승인 metadata 미기록의 원인). 28B가 값을 채운다.
+  phone?: string | null;
+  approvedBy?: number | null; // 승인한 대표(users.id). 승인 tx에서만 기록.
+  approvedAt?: string | null; // ISO(timestamptz) — USERS_SPEC.timestampFields로 변환.
+  lastLoginAt?: string | null; // 최신 로그인 성공 시각 summary(이력 진실원=auth_events).
   countryCode?: string; // 강사/직원 근무 국가. 캘린더 owner timezone resolver 입력.
   timeZone?: string; // IANA timezone override. 미지정 시 countryCode 대표 timezone 사용.
   // [강사 식별자 통일 2026-07-07] 강사의 도메인 식별자 = users.id 자체(별도 instructorId 브리지 폐기).

@@ -32,6 +32,9 @@ export const USERS_SPEC: PostgresCollectionSpec = {
     activeIndex('users', 'idx_users_role', 'role'),
     activeIndex('users', 'idx_users_status', 'status'),
   ],
+  // [TBO-28A drift 해소] timestamptz 컬럼은 pg 드라이버가 Date로 돌려주므로 ISO string으로 통일.
+  //  (createdAt/updatedAt/deletedAt은 store 기본 변환 — 그 외 timestamptz는 여기 선언 필수)
+  timestampFields: ['approvedAt', 'lastLoginAt'],
 };
 
 export const STUDENTS_SPEC: PostgresCollectionSpec = {
