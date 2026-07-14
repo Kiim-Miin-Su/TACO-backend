@@ -137,7 +137,7 @@ export class ScheduleRequestsStore implements OnModuleInit {
   }
 
   private async ensureSchema(): Promise<void> {
-    await this.query(`
+    await this.postgres.ddl(`
       CREATE TABLE IF NOT EXISTS ${TABLE} (
         id serial PRIMARY KEY,
         requester_id integer NOT NULL,
@@ -178,18 +178,18 @@ export class ScheduleRequestsStore implements OnModuleInit {
         deleted_by integer
       )
     `);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_status ON ${TABLE} (status) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_id ON ${TABLE} (requester_id) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_request_kind ON ${TABLE} (request_kind) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_target_session_id ON ${TABLE} (target_session_id) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_decided_by ON ${TABLE} (decided_by) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_pending_kind_created ON ${TABLE} (status, request_kind, created_at DESC) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_status_created ON ${TABLE} (requester_id, status, created_at DESC) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_target_availability_id ON ${TABLE} (target_availability_id) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_created_session_id ON ${TABLE} (created_session_id) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_status_id ON ${TABLE} (status, id DESC) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_id_desc ON ${TABLE} (requester_id, id DESC) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_status_id ON ${TABLE} (requester_id, status, id DESC) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_status ON ${TABLE} (status) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_id ON ${TABLE} (requester_id) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_request_kind ON ${TABLE} (request_kind) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_target_session_id ON ${TABLE} (target_session_id) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_decided_by ON ${TABLE} (decided_by) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_pending_kind_created ON ${TABLE} (status, request_kind, created_at DESC) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_status_created ON ${TABLE} (requester_id, status, created_at DESC) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_target_availability_id ON ${TABLE} (target_availability_id) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_created_session_id ON ${TABLE} (created_session_id) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_status_id ON ${TABLE} (status, id DESC) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_id_desc ON ${TABLE} (requester_id, id DESC) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_status_id ON ${TABLE} (requester_id, status, id DESC) WHERE deleted_at IS NULL`);
     this.schemaReady = true;
     this.logger.log('schedule_requests table ready (Postgres-backed)');
   }

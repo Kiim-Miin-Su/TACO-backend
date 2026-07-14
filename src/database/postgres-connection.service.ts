@@ -153,6 +153,28 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
     return executor.query(sql, params) as Promise<T[]>;
   }
 
+  // [TBO-28B] 스키마 DDL 전용 실행기 — 부팅 시 여러 모듈 onModuleInit이 병렬로 CREATE TABLE/INDEX
+  //  IF NOT EXISTS를 실행하면 pg가 pg_class unique 충돌(23505)·duplicate(42P07/42710)을 낼 수 있다
+  //  (IF NOT EXISTS는 동시 실행에 원자적이지 않음 — fresh DB 부팅 레이스, 28B에서 실측).
+  //  → 프로세스 내 직렬화(chain) + 중복 오류 무해 처리로 결정론화한다.
+  private ddlChain: Promise<void> = Promise.resolve();
+
+  async ddl(sql: string): Promise<void> {
+    const run = this.ddlChain.then(async () => {
+      try {
+        await this.query(sql);
+      } catch (e) {
+        const code = (e as { code?: string })?.code
+          ?? (e as { driverError?: { code?: string } })?.driverError?.code;
+        if (code === '42P07' || code === '42710' || code === '23505') return; // 이미 존재 — 무해
+        throw e;
+      }
+    });
+    // 체인은 실패해도 계속 흐르게(다음 DDL이 이전 실패에 묶이지 않게) 하되, 호출자에게는 원 결과 전달.
+    this.ddlChain = run.catch(() => undefined);
+    return run;
+  }
+
   async transaction<R>(fn: () => Promise<R>): Promise<R> {
     if (!this.ready) return fn();
     if (this.transactionContext.getStore()) return fn();

@@ -135,7 +135,7 @@ export class ClassSessionsStore implements OnModuleInit {
   }
 
   private async ensureSchema(): Promise<void> {
-    await this.query(`
+    await this.postgres.ddl(`
       CREATE TABLE IF NOT EXISTS ${TABLE} (
         id serial PRIMARY KEY,
         series_id integer,
@@ -166,14 +166,14 @@ export class ClassSessionsStore implements OnModuleInit {
         deleted_by integer
       )
     `);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_date ON ${TABLE} (session_date) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_instructor_date ON ${TABLE} (instructor_id, session_date) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_course ON ${TABLE} (course_id) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_series ON ${TABLE} (series_id) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_status ON ${TABLE} (status) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_payout_id ON ${TABLE} (payout_id) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_room_date ON ${TABLE} (room_id, session_date) WHERE deleted_at IS NULL`);
-    await this.query(`CREATE INDEX IF NOT EXISTS idx_sessions_date_status ON ${TABLE} (session_date, status) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_date ON ${TABLE} (session_date) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_instructor_date ON ${TABLE} (instructor_id, session_date) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_course ON ${TABLE} (course_id) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_series ON ${TABLE} (series_id) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_status ON ${TABLE} (status) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_payout_id ON ${TABLE} (payout_id) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_room_date ON ${TABLE} (room_id, session_date) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_date_status ON ${TABLE} (session_date, status) WHERE deleted_at IS NULL`);
     this.ready = true;
     this.logger.log('class_sessions table ready (Postgres-backed)');
   }
