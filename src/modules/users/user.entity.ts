@@ -3,14 +3,14 @@
 //  가입 신청·승인 이력이 단일 DB(자산) 밖에 있었다 → 컬렉션으로 이관(전 도메인과 동일 패턴).
 //  비밀번호 해시·인증 토큰은 이 레코드에만 있고 외부 응답은 SafeAccount(안전 필드)로 변환.
 import type { BaseRow } from '../../common/types/base';
-import type { Account, AccountRole } from '@kms545487/contracts';
+import type { Account } from '@kms545487/contracts';
+import { isStaffRole, type AppRole } from '../auth/role-policy';
 
 export const USERS = 'users';
 
 // 사내 담당자 전용 앱 — 로그인 가능한 역할은 직원만(학생/학부모 제외).
-export type StaffRole = Extract<AccountRole, 'instructor' | 'manager' | 'admin' | 'super_admin'>;
-const STAFF_ROLES: StaffRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
-export const isStaffRole = (r: string): r is StaffRole => STAFF_ROLES.includes(r as StaffRole);
+export type StaffRole = AppRole;
+export { isStaffRole };
 
 export type AccountStatus = 'pending' | 'active' | 'rejected';
 
