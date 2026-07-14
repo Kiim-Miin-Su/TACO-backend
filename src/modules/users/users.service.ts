@@ -111,6 +111,15 @@ export class UsersService implements OnModuleInit {
     });
   }
 
+  // [TBO-28F 2026-07-14] 교차 인스턴스 정합 — users 메모리 투영을 권위 DB에서 재조회.
+  //  두 인스턴스 실증에서 발견: A에서 signup/approve된 계정이 B의 로그인·대기목록·리소스에 안 보였다
+  //  (schedule 계열만 per-request 재조회했음). 인증/승인 오퍼레이션 진입 시 이 함수를 먼저 부른다.
+  //  in-memory 모드에서는 no-op(hydrate가 빈 배열 반환·메모리가 곧 권위).
+  async refreshFromDb(): Promise<void> {
+    await this.store.hydrate<StaffAccount>(USERS_SPEC);
+    await this.profiles.hydrate();
+  }
+
   findAll(): SafeAccount[] {
     return this.db.findAll<StaffAccount>(USERS).map(toSafe);
   }
@@ -127,6 +136,7 @@ export class UsersService implements OnModuleInit {
   // 가입 신청 — 직원 역할만 요청 가능(super_admin 자가신청 불가). 상태=pending, 이메일 미인증.
   //  [TBO-28B] 토큰은 sha256 hash + 48h 만료로만 저장(평문 emailVerifyToken 쓰기 중단).
   async signup(input: { webId: string; name: string; email: string; password: string; role?: string }): Promise<{ account: SafeAccount; verifyToken: string }> {
+    await this.refreshFromDb(); // [28F] 교차 인스턴스 중복 검사 정합
     const webId = input.webId.trim();
     const email = input.email.trim().toLowerCase();
     const role: StaffRole = input.role && isStaffRole(input.role) && input.role !== 'super_admin' ? input.role : 'instructor';
@@ -153,6 +163,7 @@ export class UsersService implements OnModuleInit {
   }
 
   async verifyEmail(token: string): Promise<SafeAccount> {
+    await this.refreshFromDb(); // [28F] 다른 인스턴스에서 가입한 계정의 토큰 조회 정합
     const hash = sha256(token);
     const acc =
       this.db.findBy<StaffAccount>(USERS, (a) => !!a.emailVerifyTokenHash && a.emailVerifyTokenHash === hash)[0]
@@ -178,7 +189,8 @@ export class UsersService implements OnModuleInit {
     await this.store.update<StaffAccount>(USERS_SPEC, id, { lastLoginAt: new Date().toISOString() });
   }
 
-  listPending(): SafeAccount[] {
+  async listPending(): Promise<SafeAccount[]> {
+    await this.refreshFromDb(); // [28F] 다른 인스턴스의 신규 가입이 대표 대기목록에 즉시 반영
     return this.db.findBy<StaffAccount>(USERS, (a) => a.status === 'pending').map(toSafe);
   }
 
@@ -189,6 +201,7 @@ export class UsersService implements OnModuleInit {
   //  · auth_version +1 → 상태/역할 변경 즉시 기존 JWT 무효(AccountStateService 대조).
 
   async approve(id: number, actorId: number, role?: string, reason?: string): Promise<SafeAccount> {
+    await this.refreshFromDb(); // [28F] 사전 조회(authVersion 등) 정합 — 최종 판정은 CAS가 권위
     return this.uow.run(async () => {
       const before = this.findById(id);
       if (!before) throw new NotFoundException(`계정 ${id} 없음`);
@@ -233,6 +246,7 @@ export class UsersService implements OnModuleInit {
     },
     actorId: number,
   ): Promise<SafeAccount> {
+    await this.refreshFromDb(); // [28F] 교차 인스턴스 중복 검사 정합
     const webId = input.webId.trim();
     const email = input.email?.trim().toLowerCase() || null;
     if (webId.length < 3) throw new BadRequestException('아이디는 3자 이상이어야 합니다.');
@@ -266,6 +280,7 @@ export class UsersService implements OnModuleInit {
   }
 
   async reject(id: number, actorId: number, reason: string): Promise<SafeAccount> {
+    await this.refreshFromDb(); // [28F]
     return this.uow.run(async () => {
       const before = this.findById(id);
       if (!before) throw new NotFoundException(`계정 ${id} 없음`);

@@ -77,6 +77,7 @@ export class AuthController {
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: '로그인(비밀번호 해시 검증 + 상태 게이트 + rate limit). 성공/실패는 auth_events 기록.' })
   async login(@Body() dto: LoginDto, @Req() req: Request): Promise<{ accessToken: string; account: { id: number; name: string; role: string } }> {
+    await this.users.refreshFromDb(); // [28F] 다른 인스턴스에서 승인/등록된 계정도 즉시 로그인 가능
     const acc = this.users.findByWebId(dto.webId);
     const deny = async (failureCode: string, err: Error): Promise<never> => {
       await this.events.record({ type: 'login_failure', userId: acc?.id, attemptedWebId: dto.webId, failureCode, req });

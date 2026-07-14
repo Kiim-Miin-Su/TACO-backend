@@ -16,6 +16,8 @@ import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrol
 import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
 import { ClassSessionsStore } from './class-sessions.store';
 import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
+import { PostgresCollectionStore } from '../../database/postgres-collection.store';
+import { USERS_SPEC } from '../../database/calendar-asset-specs';
 import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, isPayoutLocked, payoutIdOf, teachingMinutesOf, type SessionAccountingImpact } from './session-accounting.policy';
 import { studentBelongsToSession } from './session-participant.policy';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
@@ -106,6 +108,7 @@ export class ScheduleService implements OnModuleInit {
     private readonly audit: AuditService, // [TBO-16 #7] 세션 CRUD 변경 이력(tx 동반)
     private readonly attendance: AttendanceService,
     private readonly reports: ReportsService,
+    private readonly collections: PostgresCollectionStore, // [TBO-28F] users 투영 재조회(교차 인스턴스 정합)
   ) {}
 
   // 이번 주 데모 수업 시드 — 주간 반복 시리즈 단위(같은 시리즈=한 seriesId). 충돌 없게 구성.
@@ -175,7 +178,12 @@ export class ScheduleService implements OnModuleInit {
   }
 
   async ensureReady(): Promise<void> {
-    await Promise.all([this.sessions.ensureReady(), this.availability.refresh()]);
+    // [TBO-28F] users도 재조회 — 다른 인스턴스에서 승인/등록된 강사가 리소스·검증에 즉시 반영.
+    await Promise.all([
+      this.sessions.ensureReady(),
+      this.availability.refresh(),
+      this.collections.hydrate<StaffAccount>(USERS_SPEC),
+    ]);
   }
 
   // [TBO-28C] 캘린더 명령의 advisory lock 키 — 대상 강사·강의실·학생·세션. UoW.lockTargets가 정렬·중복 제거.
