@@ -14,6 +14,7 @@
 //     attendance.sessionId, session_reports.sessionId 등)의 전체 스캔 제거.
 //     인덱스 계획은 docs/erd.dbml의 각 테이블 indexes 블록과 1:1(TBO-08 Postgres 이관 시 그대로 생성).
 import { Injectable } from '@nestjs/common';
+import { AsyncLocalStorage } from 'async_hooks';
 import { BaseRow } from '../common/types/base';
 
 export type { BaseRow };
@@ -32,7 +33,6 @@ export class InMemoryDatabase {
   // 세컨더리 인덱스: collection → field → (value → rows). findByField 최초 호출 시 lazy 백필.
   private fieldIndex = new Map<string, Map<string, Map<unknown, Set<BaseRow>>>>();
   // 트랜잭션 중첩 깊이(최외곽만 스냅샷/롤백)
-  private txDepth = 0;
 
   private collection<T extends BaseRow>(name: string): T[] {
     if (!this.store.has(name)) this.store.set(name, []);
@@ -118,28 +118,35 @@ export class InMemoryDatabase {
 
   // ── 트랜잭션: 다중 쓰기의 원자성(전부 반영 or 전부 롤백) ──
   // [async 전환 2026-07-07] fn은 동기/비동기 모두 허용(await) — TypeORM `dataSource.transaction(async em=>…)` 이관 대비.
-  //  현재 콜백 내 쓰기는 동기 db 호출이지만, 서비스/컨트롤러 시그니처를 async로 통일해 이관 시 배관을 미리 완료한다.
-  //  ⚠ in-memory 스냅샷 롤백은 콜백 실행 중 다른 요청의 쓰기가 끼어들지 않는 단일 실행 전제(테스트·서버리스 단일 인스턴스).
+  // [TBO-28C 2026-07-14] **전역 FIFO 직렬화 + AsyncLocalStorage 중첩 판정**으로 재설계.
+  //  구(txDepth) 방식의 결함: ① Postgres 모드에서 fn이 await(DB 왕복)마다 이벤트 루프를 양보하는데,
+  //  그 사이 다른 요청이 커밋하면 이 tx의 rollback(전체 store 스냅샷 복원)이 남의 커밋을 삼킨다.
+  //  ② 동시 요청 B가 txDepth>0을 보고 "중첩"으로 오판해 스냅샷 없이 A의 tx 경계 안에 쓴다.
+  //  → 최외곽 tx는 프로세스 전역 큐로 한 번에 하나만 실행(경계 인터리빙 금지),
+  //    중첩(같은 실행 흐름 안의 tx)은 AsyncLocalStorage로 정확히 판정해 passthrough.
   //  ⚠ 중첩: savepoint 아님 — 내부 tx 예외를 외곽에서 삼키면 부분 쓰기가 섞인다. 내부 tx 예외는 반드시 재던질 것.
+  private readonly txContext = new AsyncLocalStorage<true>();
+  private txTail: Promise<unknown> = Promise.resolve();
+
   async transaction<R>(fn: () => R | Promise<R>): Promise<R> {
-    if (this.txDepth > 0) {
-      this.txDepth++;
-      try { return await fn(); } finally { this.txDepth--; }
-    }
-    // 스냅샷(깊은 복사) — 행 mutate(update)까지 원복 가능해야 하므로 structuredClone.
-    const storeSnap = structuredClone(this.store);
-    const seqSnap = new Map(this.sequences);
-    this.txDepth = 1;
-    try {
-      return await fn();
-    } catch (e) {
-      this.store = storeSnap;
-      this.sequences = seqSnap;
-      this.rebuildIndexes(); // 스냅샷 행 객체 기준으로 인덱스 재구성
-      throw e;
-    } finally {
-      this.txDepth = 0;
-    }
+    if (this.txContext.getStore()) return fn(); // 같은 흐름 안의 중첩 — passthrough(스냅샷 1개 유지)
+    const task = this.txTail.then(() =>
+      this.txContext.run(true, async () => {
+        // 스냅샷(깊은 복사) — 행 mutate(update)까지 원복 가능해야 하므로 structuredClone.
+        const storeSnap = structuredClone(this.store);
+        const seqSnap = new Map(this.sequences);
+        try {
+          return await fn();
+        } catch (e) {
+          this.store = storeSnap;
+          this.sequences = seqSnap;
+          this.rebuildIndexes(); // 스냅샷 행 객체 기준으로 인덱스 재구성
+          throw e;
+        }
+      }),
+    );
+    this.txTail = task.catch(() => undefined); // 실패해도 큐는 계속(다음 tx가 이전 실패에 안 묶임)
+    return task;
   }
 
   // ── soft delete 규약(v9 — TBO-16) ──

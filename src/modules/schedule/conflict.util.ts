@@ -36,11 +36,15 @@ export function detectConflicts(
   cand: Candidate,
   sessions: ClassSession[],
   blocks: AvailabilityBlock[],
+  // [TBO-28C] 학생 세션 간 중복 검사용 — 기존 세션의 유효 코호트(명시 studentIds ?? 코스 활성 수강생).
+  //  미전달 시 세션의 명시 studentIds만 본다(순수 함수 유지 — 호출자가 리졸버 주입).
+  studentIdsOf?: (s: ClassSession) => number[],
 ): Conflict[] {
   const out: Conflict[] = [];
   const cS = toMin(cand.startTime);
   const cE = sessionEndMin(cand.startTime, cand.endTime, cand.durationMinutes ?? 0);
-  // 1) 이중예약(강사·강의실) — 후보 시작일 기준 절대 분 좌표 비교(±1일 세션 포함 — 자정 크로스 스필)
+  const candStudents = (cand.studentIds ?? []).map(Number);
+  // 1) 이중예약(강사·강의실·[28C]학생) — 후보 시작일 기준 절대 분 좌표 비교(±1일 세션 포함 — 자정 크로스 스필)
   for (const s of sessions) {
     if (s.id === cand.ignoreSessionId) continue;
     if (s.status === 'canceled' || s.status === 'no_show') continue; // 결강/취소는 시간 점유 아님
@@ -55,6 +59,14 @@ export function detectConflicts(
       out.push({ type: 'double_book', resource: 'instructor', resourceId: cand.instructorId, sessionId: s.id });
     if (cand.roomId != null && s.roomId === cand.roomId)
       out.push({ type: 'double_book', resource: 'room', resourceId: cand.roomId, sessionId: s.id });
+    // [TBO-28C] 같은 학생이 같은 시간대 두 수업에 — 이중예약(어느 사용자/수업인지 식별 가능하게 sessionId 포함)
+    if (candStudents.length) {
+      const sStudents = new Set((studentIdsOf ? studentIdsOf(s) : (s.studentIds ?? [])).map(Number));
+      for (const sid of candStudents) {
+        if (sStudents.has(sid))
+          out.push({ type: 'double_book', resource: 'student', resourceId: sid, sessionId: s.id });
+      }
+    }
   }
   // 2) 불가시간(Block) — 자정 크로스 후보는 [시작일 s~24:00] + [익일 00:00~잔여] 두 세그먼트로
   //    각 날짜의 요일·effective 범위에 대해 검사(블록 자체는 end<=start 400이라 항상 같은 날).

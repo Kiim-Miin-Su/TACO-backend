@@ -2,7 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { AVAILABILITY_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { hhmmToMin, weekdayOf } from '../../common/time.util'; // [R-3 함수 통일]
+import { addDaysISO, hhmmToMin, weekdayOf } from '../../common/time.util'; // [R-3 함수 통일]
 import { AuditService } from '../audit/audit.service';
 import { hasAdminRole } from '../auth/roles.decorator';
 import { Student, STUDENTS } from '../students/student.entity';
@@ -154,7 +154,22 @@ export class AvailabilityService implements OnModuleInit {
     return existing.kind === 'available' ? this.impactOfAvailableRemoval(existing, null) : [];
   }
 
-  private impactSessionsForOwner(ownerType: AvailabilityOwner, ownerId: number, weekday: number, from?: string, to?: string): ClassSession[] {
+  // [TBO-28C] 세션의 (날짜, 요일, 시작분, 종료분) 세그먼트 — 자정 크로스는 **익일 세그먼트 포함**.
+  //  구 구현은 시작일 요일만 보고 종료를 24:00에 캡해, 익일로 넘어간 구간이 제한 블록(불가/온라인만)
+  //  impact 검사에서 누락됐다(conflict.util은 이미 이틀 검사 — 여기와 규칙 통일).
+  private sessionSegments(s: ClassSession): Array<{ date: string; weekday: number; s: number; e: number }> {
+    if (!s.startTime) return [];
+    const sS = hhmmToMin(s.startTime);
+    const sE = sessionEndMin(s.startTime, s.endTime, s.durationMinutes);
+    const segs = [{ date: s.sessionDate, weekday: weekdayOf(s.sessionDate), s: sS, e: Math.min(sE, 1440) }];
+    if (sE > 1440) {
+      const next = addDaysISO(s.sessionDate, 1);
+      segs.push({ date: next, weekday: weekdayOf(next), s: 0, e: sE - 1440 });
+    }
+    return segs;
+  }
+
+  private ownerSessions(ownerType: AvailabilityOwner, ownerId: number): ClassSession[] {
     const studentCourseIds = ownerType === 'student'
       ? new Set(this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === ownerId && e.status === 'active').map((e) => e.courseId))
       : null;
@@ -164,19 +179,26 @@ export class AvailabilityService implements OnModuleInit {
         : ownerType === 'room'
           ? s.roomId === ownerId
           : !!studentCourseIds?.has(s.courseId) || !!s.studentIds?.includes(ownerId)) &&
-      weekdayOf(s.sessionDate) === weekday &&
-      (!from || s.sessionDate >= from) &&
-      (!to || s.sessionDate <= to) &&
       s.status !== 'canceled' && s.status !== 'no_show' &&
       !s.deletedAt,
     );
   }
 
+  /** 세션의 어떤 세그먼트가 블록(요일·시간·effective 기간)과 겹치는가 — 자정 크로스 익일 스필 포함. */
+  private segmentsHitBlock(s: ClassSession, b: { weekday: number; startTime: string; endTime: string; effectiveFrom?: string; effectiveTo?: string }): boolean {
+    const bS = hhmmToMin(b.startTime), bE = hhmmToMin(b.endTime);
+    return this.sessionSegments(s).some((seg) =>
+      seg.weekday === b.weekday &&
+      (!b.effectiveFrom || seg.date >= b.effectiveFrom) &&
+      (!b.effectiveTo || seg.date <= b.effectiveTo) &&
+      seg.s < bE && bS < seg.e,
+    );
+  }
+
   private impactOfRestrictiveBlock(b: AvailabilityBlockEx): AvailabilityImpact[] {
     if (b.kind === 'available') return [];
-    const bS = hhmmToMin(b.startTime), bE = hhmmToMin(b.endTime);
-    return this.impactSessionsForOwner(b.ownerType, Number(b.ownerId), b.weekday, b.effectiveFrom, b.effectiveTo)
-      .filter((s) => this.sessionOverlapsBlock(s, bS, bE))
+    return this.ownerSessions(b.ownerType, Number(b.ownerId))
+      .filter((s) => this.segmentsHitBlock(s, b))
       .filter((s) => b.kind === 'unavailable' || (s.mode ?? 'in_person') !== 'online')
       .map((s) => ({
         sessionId: s.id,
@@ -188,29 +210,15 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   private impactOfAvailableRemoval(before: AvailabilityBlock, after: AvailabilityBlockEx | null): AvailabilityImpact[] {
-    const beforeS = hhmmToMin(before.startTime), beforeE = hhmmToMin(before.endTime);
-    const afterS = after ? hhmmToMin(after.startTime) : 0;
-    const afterE = after ? hhmmToMin(after.endTime) : 0;
-    const afterCoversDate = (s: ClassSession) =>
-      !!after && (!after.effectiveFrom || s.sessionDate >= after.effectiveFrom) && (!after.effectiveTo || s.sessionDate <= after.effectiveTo);
-    return this.impactSessionsForOwner(before.ownerType, Number(before.ownerId), before.weekday, before.effectiveFrom, before.effectiveTo)
-      .filter((s) => this.sessionOverlapsBlock(s, beforeS, beforeE))
+    return this.ownerSessions(before.ownerType, Number(before.ownerId))
+      .filter((s) => this.segmentsHitBlock(s, before))
       .filter((s) =>
         !after ||
         after.kind !== 'available' ||
         after.ownerType !== before.ownerType ||
         Number(after.ownerId) !== Number(before.ownerId) ||
-        after.weekday !== before.weekday ||
-        !afterCoversDate(s) ||
-        !this.sessionOverlapsBlock(s, afterS, afterE))
+        !this.segmentsHitBlock(s, after))
       .map((s) => ({ sessionId: s.id, sessionDate: s.sessionDate, startTime: s.startTime, endTime: s.endTime, reason: 'available_removed' }));
-  }
-
-  private sessionOverlapsBlock(s: ClassSession, bS: number, bE: number): boolean {
-    if (!s.startTime) return false;
-    const sS = hhmmToMin(s.startTime);
-    const sE = sessionEndMin(s.startTime, s.endTime, s.durationMinutes);
-    return sS < bE && bS < Math.min(sE, 1440);
   }
 
   private dedupeImpact(items: AvailabilityImpact[]): AvailabilityImpact[] {
@@ -264,6 +272,10 @@ export class AvailabilityService implements OnModuleInit {
       }
       const beforeSnap = existing ? { ...existing } : undefined;
       const updated = await this.unitOfWork.run(async () => {
+        // [TBO-28C] owner 잠금(세션 create/update의 같은 자원 키 공간) + 권위 재조회 + 승인 필요 재검증
+        await this.unitOfWork.lockTargets([{ kind: dto.ownerType, id: Number(dto.ownerId) }]);
+        await this.refresh();
+        this.assertApprovalNotRequired(dto, actorRoles);
         const u = await this.store.update<AvailabilityBlock>(AVAILABILITY_SPEC, dto.id!, {
           kind: (dto.kind ?? 'available') as AvailabilityKind,
           weekday: dto.weekday,
@@ -282,6 +294,10 @@ export class AvailabilityService implements OnModuleInit {
       if (updated) return updated;
     }
     return this.unitOfWork.run(async () => {
+      // [TBO-28C] owner 잠금 + 권위 재조회 + 승인 필요 재검증(잠금 후 impact가 달라졌을 수 있음)
+      await this.unitOfWork.lockTargets([{ kind: dto.ownerType, id: Number(dto.ownerId) }]);
+      await this.refresh();
+      this.assertApprovalNotRequired(dto, actorRoles);
       const created = await this.store.insert<AvailabilityBlock>(AVAILABILITY_SPEC, {
         ownerType: dto.ownerType,
         ownerId: dto.ownerId,
@@ -305,6 +321,12 @@ export class AvailabilityService implements OnModuleInit {
     if (before) this.assertActorOwner(before.ownerType, before.ownerId, actorId, actorRoles);
     this.assertDeleteApprovalNotRequired(id, actorRoles);
     return this.unitOfWork.run(async () => {
+      if (before) {
+        // [TBO-28C] owner 잠금 + 권위 재조회 + 승인 필요 재검증
+        await this.unitOfWork.lockTargets([{ kind: before.ownerType, id: Number(before.ownerId) }]);
+        await this.refresh();
+        this.assertDeleteApprovalNotRequired(id, actorRoles);
+      }
       const deleted = before ? await this.store.remove(AVAILABILITY_SPEC, id, actorId) : false;
       if (deleted && actorId != null && before)
         await this.audit.log({ entity: AVAILABILITY, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf({ ...before }) as never });

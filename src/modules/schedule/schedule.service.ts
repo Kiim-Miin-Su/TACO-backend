@@ -15,7 +15,7 @@ import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
 import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
 import { ClassSessionsStore } from './class-sessions.store';
-import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
 import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, isPayoutLocked, payoutIdOf, teachingMinutesOf, type SessionAccountingImpact } from './session-accounting.policy';
 import { studentBelongsToSession } from './session-participant.policy';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
@@ -177,6 +177,30 @@ export class ScheduleService implements OnModuleInit {
   async ensureReady(): Promise<void> {
     await Promise.all([this.sessions.ensureReady(), this.availability.refresh()]);
   }
+
+  // [TBO-28C] 캘린더 명령의 advisory lock 키 — 대상 강사·강의실·학생·세션. UoW.lockTargets가 정렬·중복 제거.
+  private calendarLockKeys(t: {
+    instructorIds?: Array<number | undefined>;
+    roomIds?: Array<number | undefined>;
+    studentIds?: number[];
+    sessionIds?: number[];
+  }): CalendarLockKey[] {
+    const keys: CalendarLockKey[] = [];
+    for (const id of t.instructorIds ?? []) if (id != null) keys.push({ kind: 'instructor', id });
+    for (const id of t.roomIds ?? []) if (id != null) keys.push({ kind: 'room', id });
+    for (const id of t.studentIds ?? []) keys.push({ kind: 'student', id });
+    for (const id of t.sessionIds ?? []) keys.push({ kind: 'session', id });
+    return keys;
+  }
+
+  /** [TBO-28C] 잠금 획득 직후 권위 DB에서 세션·가용 투영을 재조회(다른 요청/인스턴스의 커밋 반영). */
+  private async refreshAfterLock(): Promise<void> {
+    await this.ensureReady();
+  }
+
+  /** [TBO-28C] 학생 세션 간 중복 검사용 유효 코호트 리졸버(명시 studentIds ?? 코스 활성 수강생). */
+  private effectiveStudentIds = (s: ClassSession): number[] =>
+    s.studentIds?.length ? s.studentIds : this.activeStudentIds(s.courseId);
 
   // ── 카탈로그/명단 조회(단일 소스 = 실제 컬렉션) — 감사 A ──
   private courseOf(id: number): Course | undefined {
@@ -377,19 +401,26 @@ export class ScheduleService implements OnModuleInit {
     assertDuration(startTime, durationMinutes);
     const endTime = endTimeOf(startTime, durationMinutes); // 크로스면 undefined(durationMinutes 파생 저장)
 
-    const conflicts = detectConflicts(
-      { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
-      this.db.findAll<ClassSession>(SESSIONS),
-      this.availability.list(),
-    );
-    // 디버깅: 생성 요청 + 충돌 현황 로깅
-    if (conflicts.length && !dto.force) {
-      this.logger.warn(`create 충돌 ${conflicts.length}건 — course=${dto.courseId} ${dto.sessionDate} ${dto.startTime} (force로 강제 가능)`);
-      throw new ConflictException({ message: '스케줄 충돌', conflicts });
-    }
+    // [TBO-28C] 충돌 검사를 **tx 안으로**(잠금→권위 재조회→재검증) — read-check-then-write 레이스 차단.
+    //  서로 다른 두 클라이언트/인스턴스의 겹치는 create는 advisory lock에서 직렬화되어 정확히 하나만 성공(409).
+    const { row, conflicts } = await this.unitOfWork.run(async () => {
+      await this.unitOfWork.lockTargets(this.calendarLockKeys({
+        instructorIds: [instructorId], roomIds: [dto.roomId], studentIds,
+      }));
+      await this.refreshAfterLock();
+      const conflicts = detectConflicts(
+        { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
+        this.db.findAll<ClassSession>(SESSIONS),
+        this.availability.list(),
+        this.effectiveStudentIds,
+      );
+      // 디버깅: 생성 요청 + 충돌 현황 로깅
+      if (conflicts.length && !dto.force) {
+        this.logger.warn(`create 충돌 ${conflicts.length}건 — course=${dto.courseId} ${dto.sessionDate} ${dto.startTime} (force로 강제 가능)`);
+        throw new ConflictException({ message: '스케줄 충돌', conflicts });
+      }
 
-    // [원자성] 세션 생성 + 변경 이력(audit)이 함께 반영되거나 함께 롤백
-    const row = await this.unitOfWork.run(async () => {
+      // [원자성] 세션 생성 + 변경 이력(audit)이 함께 반영되거나 함께 롤백
       const created = await this.sessions.insert({
         studentIds,
         seriesId: dto.seriesId,
@@ -410,20 +441,23 @@ export class ScheduleService implements OnModuleInit {
       } as Omit<ClassSession, keyof BaseRow>);
       if (actorId != null)
         await this.audit.log({ entity: SESSIONS, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
-      return created;
+      return { row: created, conflicts };
     });
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
     return { row: this.enrich(row, roomsMap), conflicts };
   }
 
   // 세션 삭제 — [v9] soft delete(행 보존·deletedBy 기록) + audit before 스냅샷 + 동반 정리(출결·리포트) 단일 tx.
+  //  [TBO-28C] 대상 세션 잠금 + 잠금 후 권위 재조회(동시 update/delete 경쟁 직렬화 — payout-lock 판정도 tx 안).
   async remove(id: number, actorId?: number): Promise<{ id: number; deleted: boolean }> {
     await this.ensureReady();
-    const before = this.db.findById<ClassSession>(SESSIONS, id);
-    if (!before) throw new NotFoundException(`Session ${id} not found`);
-    if (isPayoutLocked(before))
-      throw new ConflictException(`정산서 ${payoutIdOf(before)}에 연결된 수업은 정산 회수 전 삭제할 수 없습니다`);
     return this.unitOfWork.run(async () => {
+      await this.unitOfWork.lockTargets([{ kind: 'session', id }]);
+      await this.refreshAfterLock();
+      const before = this.db.findById<ClassSession>(SESSIONS, id);
+      if (!before) throw new NotFoundException(`Session ${id} not found`);
+      if (isPayoutLocked(before))
+        throw new ConflictException(`정산서 ${payoutIdOf(before)}에 연결된 수업은 정산 회수 전 삭제할 수 없습니다`);
       const snap = { ...before };
       const deleted = await this.sessions.remove(id, actorId);
       // 동반 soft delete(무결성·캐스케이드 — dbml v9 §33): 이 세션의 출결·리포트
@@ -445,6 +479,7 @@ export class ScheduleService implements OnModuleInit {
       { sessionDate: input.sessionDate, startTime: input.startTime, endTime: input.endTime, durationMinutes: input.durationMinutes, instructorId: input.instructorId, roomId: input.roomId, studentIds: input.studentIds, ignoreSessionId: input.ignoreSessionId, mode: input.mode },
       this.db.findAll<ClassSession>(SESSIONS),
       this.availability.list(),
+      this.effectiveStudentIds, // [TBO-28C] 학생 세션 간 중복 포함
     );
   }
 
@@ -460,7 +495,17 @@ export class ScheduleService implements OnModuleInit {
       if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
     }
     // [원자성] 반복 시리즈 scope 편집 — 대상+동반 세션이 전부 반영되거나 전부 롤백(부분 편집 잔존 금지)
+    // [TBO-28C] 사전 조회는 잠금 키 산정용 — 잠금 후 권위 재조회로 다시 읽는다.
+    const pre = this.db.findById<ClassSession>(SESSIONS, id);
+    if (!pre) throw new NotFoundException(`Session ${id} not found`);
     return this.unitOfWork.run(async () => {
+    await this.unitOfWork.lockTargets(this.calendarLockKeys({
+      instructorIds: [pre.instructorId, dto.instructorId],
+      roomIds: [pre.roomId, dto.roomId],
+      studentIds: [...new Set([...(pre.studentIds ?? []), ...(dto.studentIds ?? [])])],
+      sessionIds: [id],
+    }));
+    await this.refreshAfterLock();
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
     // 참조 무결성(FK) 검증
@@ -551,6 +596,7 @@ export class ScheduleService implements OnModuleInit {
         // [R-9] 크로스 세션은 endTime이 undefined — durationMinutes로 이틀(±1일) 겹침 검사
         { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, studentIds: f.studentIds ?? this.activeStudentIds(f.courseId), mode: f.mode },
         others, blocks,
+        this.effectiveStudentIds, // [TBO-28C] 학생 세션 간 중복 포함
       ));
     }
     // 결강·취소(canceled/no_show)로 바꾸는 변경은 시간 점유가 사라지므로 충돌 검사와 무관 — 항상 허용.
