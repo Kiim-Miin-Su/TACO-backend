@@ -17,6 +17,7 @@ import {
   CLASS_SESSION_SERIES_SETVAL_SQL,
   CLASS_SESSION_SERIES_TABLE_SQL,
 } from '../../database/migrations/class-session-series.migration';
+import { demoSeedEnabled } from '../../config/demo-seed';
 
 const TABLE = SESSIONS;
 
@@ -53,6 +54,7 @@ export class ClassSessionsStore implements OnModuleInit {
   }
 
   async seed(rows: Array<Omit<ClassSession, keyof BaseRow> & { id: number }>): Promise<ClassSession[]> {
+    if (!demoSeedEnabled()) return []; // [시범운영] 데모 시드 단일 관문 — production 기본 차단
     if (!this.durable) return this.memory.seed<ClassSession>(TABLE, rows);
     const inserted: ClassSession[] = [];
     for (const row of rows) {

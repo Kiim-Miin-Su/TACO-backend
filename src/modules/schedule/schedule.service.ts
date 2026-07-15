@@ -28,6 +28,7 @@ import { studentBelongsToSession } from './session-participant.policy';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
 import { hhmmToMin as toMin, minToHhmm, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff, durationMinutesBetween } from '../../common/time.util';
+import { demoSeedEnabled } from '../../config/demo-seed';
 
 // [감사 A, 2026-07-02] 하드코딩 상수(STUDENTS_LBL/COURSE_STUDENTS/COURSES/SUBJECTS) 제거 —
 //  코호트·카탈로그는 실제 컬렉션(students/enrollments/courses/subjects)을 조회한다(단일 소스).
@@ -98,6 +99,8 @@ export class ScheduleService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     await this.sessions.ensureReady();
     if (this.db.findAll<ClassSession>(SESSIONS).length) return;
+    // [시범운영 2026-07-15] 회차는 insert로 시드해 store.seed 관문을 우회 — 명시 게이트 추가.
+    if (!demoSeedEnabled()) return;
     const mon = mondayOfThisWeekUTC();
     const series: SeedSeries[] = [
       // SAT Reading 정규(강사1·강의실1) — 월·수·금 16:00

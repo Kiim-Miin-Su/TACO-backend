@@ -110,11 +110,13 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   // 데모 가용/불가(Block) 시드. unavailable = 차단(주간 표에서 회색).
+  //  [버그수정 2026-07-15] 기존엔 "누락 id만" 매 부팅 재시드 → 지운 데모 행이 계속 부활 +
+  //  운영 DB에도 유입(전수 인벤토리 최다 위반). 이제 **표가 비어 있을 때만** 시드한다
+  //  (production은 store.seed 단일 관문이 추가 차단).
   async onModuleInit(): Promise<void> {
     const hydrated = await this.store.hydrate<AvailabilityBlock>(AVAILABILITY_SPEC);
-    const knownIds = new Set(hydrated.map((row) => row.id));
-    const missing = DEMO_AVAILABILITY.filter((row) => !knownIds.has(row.id));
-    if (missing.length) await this.store.seed<AvailabilityBlock>(AVAILABILITY_SPEC, missing);
+    if (hydrated.length || this.db.findAll<AvailabilityBlock>(AVAILABILITY).length) return;
+    await this.store.seed<AvailabilityBlock>(AVAILABILITY_SPEC, DEMO_AVAILABILITY);
   }
 
   async refresh(): Promise<void> {

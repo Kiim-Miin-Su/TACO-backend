@@ -9,6 +9,7 @@ import { countsForTeachingHours, payoutAmountOf } from '../schedule/session-acco
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { Course, COURSES } from '../courses/course.entity';
 import { ReportsService } from '../reports/reports.service';
+import { demoSeedEnabled } from '../../config/demo-seed';
 import {
   InstructorPayoutRow,
   PayoutLine,
@@ -62,6 +63,9 @@ export class PayoutsService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     const hydrated = await this.store.hydrate<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC);
     if (hydrated.length) return; // 이미 DB에 저장됨
+    // [시범운영 2026-07-15] 이 시드는 seed()가 아니라 insert/승인 흐름으로 데모를 만들어
+    //  store.seed 단일 관문을 우회했다(production 부팅 테스트에서 FK 위반으로 검출) — 명시 게이트.
+    if (!demoSeedEnabled()) return;
 
     const make = (
       courseId: number,

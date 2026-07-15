@@ -11,6 +11,7 @@ import {
   toIsoString,
   type PostgresRow,
 } from './postgres-row.util';
+import { demoSeedEnabled } from '../config/demo-seed';
 
 export type PostgresCollectionSpec = {
   table: string;
@@ -99,6 +100,7 @@ export class PostgresCollectionStore {
   }
 
   async seed<T extends BaseRow>(spec: PostgresCollectionSpec, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): Promise<T[]> {
+    if (!demoSeedEnabled()) return []; // [시범운영] 데모 시드 단일 관문 — production 기본 차단
     if (!(await this.ensureReady(spec))) return this.memory.seed<T>(spec.table, rows);
     const saved: T[] = [];
     for (const row of rows) {

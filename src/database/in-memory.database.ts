@@ -16,6 +16,7 @@
 import { Injectable } from '@nestjs/common';
 import { AsyncLocalStorage } from 'async_hooks';
 import { BaseRow } from '../common/types/base';
+import { demoSeedEnabled } from '../config/demo-seed';
 
 export type { BaseRow };
 
@@ -168,6 +169,7 @@ export class InMemoryDatabase {
    *       FK로 참조하는 카탈로그를 고정 id로 심어 조인 무결성을 보장.
    */
   seed<T extends BaseRow>(name: string, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): T[] {
+    if (!demoSeedEnabled()) return []; // [시범운영] 데모 시드 단일 관문 — production 기본 차단
     const coll = this.collection<T>(name);
     const now = new Date().toISOString();
     const inserted: T[] = [];
