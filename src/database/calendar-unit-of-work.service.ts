@@ -20,6 +20,7 @@ export const LOCK_KIND = {
   profileRequest: 7,
   verificationChallenge: 8, // [TBO-29B-4] 연락처 인증 challenge 확인/재전송/소비 직렬화
   series: 9, // [TBO-29C C3] 반복 시리즈 명령(scope 편집/삭제/멤버 터치)의 단일 choke point
+  parentIntake: 10, // [TBO-29D D2] 보호자 전화 기준 등록 직렬화(같은 번호 동시 등록 → 보호자 1행 보장)
 } as const;
 
 export type CalendarLockKey = { kind: keyof typeof LOCK_KIND; id: number };

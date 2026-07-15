@@ -29,6 +29,7 @@ import { InstructorContractsModule } from './modules/instructor-contracts/instru
 import { AttendanceModule } from './modules/attendance/attendance.module';
 import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
 import { ParentsModule } from './modules/parents/parents.module';
+import { RegistrationsModule } from './modules/registrations/registrations.module';
 import { ProfileChangeRequestsModule } from './modules/profile-change-requests/profile-change-requests.module';
 import { ProfileVerificationsModule } from './modules/profile-verifications/profile-verifications.module';
 
@@ -67,6 +68,7 @@ import { ProfileVerificationsModule } from './modules/profile-verifications/prof
     AttendanceModule,
     RoadmapsModule,
     ParentsModule,
+    RegistrationsModule,
   ],
 })
 export class AppModule {}

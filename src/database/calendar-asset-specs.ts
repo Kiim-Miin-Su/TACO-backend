@@ -1,6 +1,13 @@
 import type { PostgresCollectionSpec } from './postgres-collection.store';
 import { CLASS_SESSION_SERIES_TABLE_SQL } from './migrations/class-session-series.migration';
 import { SENS_PROVIDER_MIGRATION_SQL } from './migrations/sens-provider.migration';
+import {
+  PARENTS_TABLE_SQL,
+  PARENT_STUDENT_RELATIONS_TABLE_SQL,
+  PARENT_RELATION_INDEX_SQL,
+  PARENT_FK_SQL,
+} from './migrations/parents.migration';
+import { ACADEMY_EVENTS_TABLE_SQL, ACADEMY_EVENTS_INDEX_SQL } from './migrations/academy-events.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -223,6 +230,29 @@ export const STUDENTS_SPEC: PostgresCollectionSpec = {
     activeIndex('students', 'idx_students_status', 'status'),
     activeIndex('students', 'idx_students_country', 'country'),
   ],
+};
+
+// [TBO-29D D1] 보호자 + 학생↔보호자 관계 — 메모리 전용에서 Postgres 자산으로 승격(20260715_04와 SQL 공유).
+//  활성 (parent,student) unique·학생당 대표 1명 partial unique를 DB가 강제. FK는 존재 확인 후 멱등 추가.
+export const PARENTS_SPEC: PostgresCollectionSpec = {
+  table: 'parents',
+  createSql: PARENTS_TABLE_SQL,
+};
+
+export const PARENT_STUDENT_RELATIONS_SPEC: PostgresCollectionSpec = {
+  table: 'parent_student_relations',
+  createSql: PARENT_STUDENT_RELATIONS_TABLE_SQL,
+  migrations: [PARENT_FK_SQL],
+  indexes: [...PARENT_RELATION_INDEX_SQL],
+};
+
+// [TBO-29D 요구 ⑤⑥] 학원 공통 이벤트 — 전 직원 조회·매니저 이상 CUD. 캘린더 전체 뷰 표시의 권위 저장소.
+//  date 컬럼은 dateFields로 'YYYY-MM-DD' 문자열 복원(PG Date 객체 hydrate 함정 — §13.83 학습 재적용).
+export const ACADEMY_EVENTS_SPEC: PostgresCollectionSpec = {
+  table: 'academy_events',
+  createSql: ACADEMY_EVENTS_TABLE_SQL,
+  indexes: [...ACADEMY_EVENTS_INDEX_SQL],
+  dateFields: ['startDate', 'endDate'],
 };
 
 export const SUBJECTS_SPEC: PostgresCollectionSpec = {
