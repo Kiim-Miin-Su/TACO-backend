@@ -24,8 +24,16 @@ type ScheduleRow = {
   topic?: string;
 };
 
+// [TBO-29C C5] 실 DB 스모크 자격증명 — CEO 실계정 전환(admin 비밀번호 교체·운영 demo 차단) 이후
+//  하드코딩 demo1234는 로컬/시드 DB 전용이다. 실 Neon 게이트는 SMOKE_ADMIN_PASSWORD(admin)·
+//  SMOKE_STAFF_PASSWORD(그 외 QA 계정)로 주입한다. 비밀번호는 로그/출력에 기록하지 않는다.
+const smokePassword = (webId: string): string =>
+  webId === 'admin'
+    ? process.env.SMOKE_ADMIN_PASSWORD ?? process.env.SMOKE_STAFF_PASSWORD ?? 'demo1234'
+    : process.env.SMOKE_STAFF_PASSWORD ?? 'demo1234';
+
 async function login(http: ReturnType<typeof request>, webId: string): Promise<string> {
-  const res = await http.post('/api/auth/login').send({ webId, password: 'demo1234' }).expect(201);
+  const res = await http.post('/api/auth/login').send({ webId, password: smokePassword(webId) }).expect(201);
   return res.body.accessToken;
 }
 
