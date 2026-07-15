@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { STUDENTS_SPEC } from '../../database/calendar-asset-specs';
+import { ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
+import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { Student, STUDENTS } from './student.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -12,6 +13,7 @@ export class StudentsService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
+    private readonly uow: CalendarUnitOfWork,
   ) {}
 
   // 데모 학생 시드 — 프론트 목데이터를 백엔드로 이관(고정 id로 관계 정합 유지).
@@ -60,16 +62,20 @@ export class StudentsService implements OnModuleInit {
   }
 
   async remove(id: number): Promise<Student> {
-    // [원자성] 학생 소프트삭제 + 활성 수강 일괄 canceled(부분 정리 잔존 금지)
-    return this.db.transaction(async () => {
-    const student = this.db.findById<Student>(STUDENTS, id);
-    if (!student) throw new NotFoundException(`Student ${id} not found`);
-    const enrollments = this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === id);
-    for (const e of enrollments) {
-      this.db.update<Enrollment>(ENROLLMENTS, e.id, { status: 'canceled' });
-    }
-    return await this.store.update<Student>(STUDENTS_SPEC, id, { status: 'canceled' }) as Student;
-  
+    // [원자성] 학생 소프트삭제 + 활성 수강 일괄 canceled(부분 정리 잔존 금지).
+    //  [TBO-29D D0 버그수정 2026-07-15] 수강 취소가 db.update(메모리 전용)로만 쓰여 PG에 미영속 —
+    //  재기동/재수화 시 취소가 되살아나는 실버그(메모리 read model만 읽는 e2e는 통과해 왔다).
+    //  uow.run(메모리 tx ⊃ PG tx) + student advisory lock + ENROLLMENTS_SPEC write-through로 교체:
+    //  중간 실패 시 두 표 모두 롤백(부분 정리 잔존 금지 규약을 PG까지 확장).
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'student', id }]);
+      const student = this.db.findById<Student>(STUDENTS, id);
+      if (!student) throw new NotFoundException(`Student ${id} not found`);
+      const enrollments = this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === id && e.status !== 'canceled');
+      for (const e of enrollments) {
+        await this.store.update<Enrollment>(ENROLLMENTS_SPEC, e.id, { status: 'canceled' });
+      }
+      return (await this.store.update<Student>(STUDENTS_SPEC, id, { status: 'canceled' })) as Student;
     });
   }
 }
