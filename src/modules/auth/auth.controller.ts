@@ -16,6 +16,7 @@ import { Throttle } from '@nestjs/throttler';
 import { RolesGuard } from './roles.guard';
 import { Roles, STAFF_ROLES } from './roles.decorator';
 import type { Request } from 'express';
+import { isForbiddenDemoCredential } from '../../config/production-guards';
 import { AuthService, JwtClaims } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
@@ -89,6 +90,9 @@ export class AuthController {
       await this.events.record({ type: 'login_failure', userId: acc?.id, attemptedWebId: dto.webId, failureCode, req });
       throw err;
     };
+    // [TBO-29C] demo 자격증명 방어 — 운영에서 demo 비밀번호 로그인은 계정 존재와 무관하게 즉시 거부(심층 방어).
+    if (isForbiddenDemoCredential(dto.password))
+      await deny('demo_credential_blocked', new UnauthorizedException('아이디 또는 비밀번호가 올바르지 않습니다.'));
     // 계정 없음/비번 불일치는 동일 메시지(계정 열거 방지)
     const ok = acc ? await this.users.validatePassword(acc, dto.password ?? '') : false;
     if (!acc || !ok) await deny('bad_credentials', new UnauthorizedException('아이디 또는 비밀번호가 올바르지 않습니다.'));

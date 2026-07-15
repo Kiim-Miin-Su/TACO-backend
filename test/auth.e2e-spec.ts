@@ -74,4 +74,22 @@ describe('Auth API (e2e)', () => {
     const inst = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
     await http.get('/api/auth/pending').set('Authorization', `Bearer ${inst}`).expect(403);
   });
+
+  // [TBO-29C 계정 청크] demo 자격증명 방어 — 운영(NODE_ENV=production)에서는 demo 비밀번호 로그인을
+  //  계정 존재 여부와 무관하게 즉시 거부(심층 방어 — 토글형 계정 전환 폐지의 백엔드 짝).
+  it('production에서 demo 비밀번호 로그인은 즉시 거부(demo_credential_blocked)', async () => {
+    const prevEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(401);
+      const db = app.get((await import('../src/database/in-memory.database')).InMemoryDatabase);
+      const blocked = db.findAll<{ eventType: string; failureCode?: string }>('auth_events')
+        .filter((e) => e.eventType === 'login_failure' && e.failureCode === 'demo_credential_blocked');
+      expect(blocked.length).toBeGreaterThan(0);
+    } finally {
+      process.env.NODE_ENV = prevEnv;
+    }
+    // 테스트 모드로 복귀하면 기존 demo 로그인은 그대로 동작(개발/CI 편의 유지)
+    await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201);
+  });
 });
