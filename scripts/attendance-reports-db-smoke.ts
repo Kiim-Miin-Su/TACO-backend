@@ -34,8 +34,11 @@ type ContractRow = {
 // [TBO-29C C5] 실 DB 스모크 자격증명 — CEO 실계정 전환(admin 비밀번호 교체·운영 demo 차단) 이후
 //  하드코딩 demo1234는 로컬/시드 DB 전용이다. 실 Neon 게이트는 SMOKE_ADMIN_PASSWORD(admin)·
 //  SMOKE_STAFF_PASSWORD(그 외 QA 계정)로 주입한다. 비밀번호는 로그/출력에 기록하지 않는다.
+//  [실계정 2026-07-15] admin 첫 로그인 rotation 후에는 webId 자체가 바뀐다 —
+//  SMOKE_ADMIN_WEBID로 새 아이디를 주입한다(미설정 시 'admin' — 로컬 시드 전용).
+const SMOKE_ADMIN_WEBID = process.env.SMOKE_ADMIN_WEBID ?? 'admin';
 const smokePassword = (webId: string): string =>
-  webId === 'admin'
+  webId === SMOKE_ADMIN_WEBID
     ? process.env.SMOKE_ADMIN_PASSWORD ?? process.env.SMOKE_STAFF_PASSWORD ?? 'demo1234'
     : process.env.SMOKE_STAFF_PASSWORD ?? 'demo1234';
 
@@ -69,7 +72,7 @@ async function main(): Promise<void> {
     if (!pg.ready) throw new Error('Postgres data source is not ready');
     const http = request(app.getHttpServer());
     const manager = await login(http, 'manager');
-    const ceo = await login(http, 'admin');
+    const ceo = await login(http, SMOKE_ADMIN_WEBID);
 
     const created = await http.post('/api/schedule')
       .set(auth(manager))
@@ -157,7 +160,7 @@ async function main(): Promise<void> {
     const app = await createTestApp();
     const http = request(app.getHttpServer());
     const manager = await login(http, 'manager');
-    const ceo = await login(http, 'admin');
+    const ceo = await login(http, SMOKE_ADMIN_WEBID);
 
     const attendance = (await http.get(`/api/attendance?sessionId=${sessionId}`)
       .set(auth(manager))
