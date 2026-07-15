@@ -86,11 +86,17 @@ export class ProfileChangeRequestsService implements OnModuleInit {
           verificationChallengeId: contact ? dto.verificationChallengeId ?? null : null,
         });
         // challenge 소비는 요청 생성과 **같은 tx** — 소비 실패(만료/불일치/이중 소비) 시 요청까지 롤백(§5).
+        //  [2026-07-15 SMS 추후 구현] 휴대전화 인증은 SMS provider(NCP SENS/Twilio) 설정이 있을 때만
+        //  필수 — 미설정(현 시범운영)이면 형식 검증+관리자 승인으로만 처리하고, provider env가
+        //  들어오는 즉시 인증 필수가 자동 복원된다(FE 스테퍼 복원은 lib/domain/profile.ts 참조).
         if (contact) {
-          if (dto.verificationChallengeId == null) {
+          const challengeRequired = contact.channel === 'email' || this.smsChallengeAvailable();
+          if (challengeRequired && dto.verificationChallengeId == null) {
             throw new BadRequestException('연락처 변경에는 완료된 인증(verificationChallengeId)이 필요합니다.');
           }
-          await this.verifications.consumeForRequest(dto.verificationChallengeId, requesterId, row.id, contact);
+          if (dto.verificationChallengeId != null) {
+            await this.verifications.consumeForRequest(dto.verificationChallengeId, requesterId, row.id, contact);
+          }
         }
         await this.audit.log({
           entity: PROFILE_CHANGE_REQUESTS,
@@ -253,6 +259,15 @@ export class ProfileChangeRequestsService implements OnModuleInit {
       PROFILE_CHANGE_REQUESTS,
       (request) => request.requesterId === requesterId && request.status === 'pending',
     )[0];
+  }
+
+  /** SMS 인증 가능 여부 — provider(NCP SENS 4종 또는 Twilio 3종) env가 완비된 경우만 true.
+   *  미설정이면 phone 변경은 challenge 없이 접수(중복 연락처 검사·형식 정규화·승인 경로는 유지). */
+  private smsChallengeAvailable(): boolean {
+    const sens = process.env.NCP_SENS_ACCESS_KEY && process.env.NCP_SENS_SECRET_KEY
+      && process.env.NCP_SENS_SERVICE_ID && process.env.NCP_SENS_FROM;
+    const twilio = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_VERIFY_SERVICE_SID;
+    return Boolean(sens || twilio);
   }
 
   /** [TBO-29B-4] 인증 필요 연락처 변경(값 설정) 추출 — email·phone 동시 변경은 400(채널당 challenge 1건). */
