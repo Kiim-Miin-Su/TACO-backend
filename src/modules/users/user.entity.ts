@@ -45,6 +45,11 @@ export type StaffAccount = {
   lastLoginAt?: string | null; // 최신 로그인 성공 시각 summary(이력 진실원=auth_events).
   countryCode?: string | null; // 강사/직원 근무 국가. 캘린더 owner timezone resolver 입력.
   timeZone?: string | null; // IANA timezone override. 미지정 시 countryCode 대표 timezone 사용.
+  // [E0.5 ④b 2026-07-15] 가입 폼 확장 — 지원자 제공 정보(승인 판단 근거: 승인센터 상세 표시).
+  //  승인 tx에서 instructor_profiles로 승계(COALESCE)되고 이후 운영 권위는 프로필이다.
+  university?: string | null; // 대학교(출신교)
+  major?: string | null; // 전공
+  birthYear?: number | null; // 출생연도(나이는 가변이라 연도로 보관 — instructor_profiles와 동일 규약)
   // [강사 식별자 통일 2026-07-07] 강사의 도메인 식별자 = users.id 자체(별도 instructorId 브리지 폐기).
   //  courses/class_sessions 등의 instructorId가 이 users.id를 직접 참조한다.
 } & BaseRow;

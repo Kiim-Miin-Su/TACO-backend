@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
+import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { AuditService } from '../src/modules/audit/audit.service';
 
 type UserRow = {
@@ -29,6 +30,10 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
     (await http.post('/api/auth/login').send({ webId, password }).expect(201)).body;
 
   it('CEO first login: both fields required, business blocked, atomic change invalidates old JWT', async () => {
+    // [E0.5 검증 보강] PG 모드는 로그인 경로가 refreshFromDb로 권위(DB)를 재수화 — 메모리만 갱신하면
+    //  플래그가 지워진다. 권위 소스(PG)와 메모리 양쪽에 세팅(§13.83 이중 모드 학습 재적용).
+    const pg = app.get(PostgresConnectionService);
+    if (pg.ready) await pg.query('UPDATE users SET must_change_password = true WHERE id = 3');
     db.update<UserRow>('users', 3, { mustChangePassword: true });
     const initial = await login('admin', 'demo1234');
     expect(initial.account.mustChangePassword).toBe(true);
@@ -60,6 +65,52 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
     expect(serialized).not.toContain('demo1234');
     expect(serialized).not.toContain('SecurePass123!');
     expect(serialized).not.toContain('passwordHash');
+  });
+
+  // [E0.5 ⑥ 대표 지시 2026-07-15] 첫 로그인 강제 변경에서 프로필(이름·이메일·휴대폰)까지 한 번에 —
+  //  강제 흐름에서만 허용(평시엔 400 — 29B-4 인증/승인 경로 우회 금지), 이메일은 verified 유지·masked audit.
+  it('forced rotation captures profile in one submit; non-forced profile via credentials is 400', async () => {
+    // 평시(비강제) 프로필 동시 변경 시도 → 400
+    const manager = await login('manager', 'demo1234');
+    await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${manager.accessToken}`)
+      .send({ currentPassword: 'demo1234', newPassword: 'ManagerPass456!', email: 'bypass@t.test' }).expect(400);
+
+    // 강제 변경 재설정(앞 테스트에서 user 3은 ceo_owner/SecurePass123!로 회전됨)
+    const pg = app.get(PostgresConnectionService);
+    if (pg.ready) await pg.query('UPDATE users SET must_change_password = true WHERE id = 3');
+    db.update<UserRow>('users', 3, { mustChangePassword: true });
+    const ceo = await login('ceo_owner', 'SecurePass123!');
+    expect(ceo.account.mustChangePassword).toBe(true);
+
+    // 전화 형식 위반 → 400 (가입 폼과 동일 규칙)
+    await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${ceo.accessToken}`)
+      .send({
+        currentPassword: 'SecurePass123!', newWebId: 'ceo_minsun', newPassword: 'MinsunSecure1!',
+        name: '김민선', email: 'ceo@tnacademy.test', phone: '0101234567',
+      }).expect(400);
+
+    const changed = await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${ceo.accessToken}`)
+      .send({
+        currentPassword: 'SecurePass123!', newWebId: 'ceo_minsun', newPassword: 'MinsunSecure1!',
+        name: '김민선', email: 'CEO@tnacademy.test', phone: '010-5555-6666',
+      }).expect(200);
+    expect(changed.body).toMatchObject({ id: 3, webId: 'ceo_minsun', name: '김민선', mustChangePassword: false });
+
+    // DB 반영: 이름/이메일(canonical lowercase)/전화 + emailVerified 유지(로그인·복구 게이트 잠금 방지)
+    const row = db.findById<UserRow & { name?: string; email?: string; phone?: string; emailVerified?: boolean }>('users', 3)!;
+    expect(row).toMatchObject({ name: '김민선', email: 'ceo@tnacademy.test', phone: '010-5555-6666', emailVerified: true });
+
+    // audit: 이메일/전화는 masked만 — 원문 미노출
+    const audits = db.findAll<Record<string, unknown> & { id: number }>('audit_log')
+      .filter((r) => r.entity === 'users' && r.entityId === 3 && r.action === 'update');
+    const last = JSON.stringify(audits[audits.length - 1]);
+    expect(last).not.toContain('ceo@tnacademy.test');
+    expect(last).not.toContain('010-5555-6666');
+    expect(last).not.toContain('MinsunSecure1!');
+
+    // 새 자격증명으로 즉시 로그인 가능 + 강제 플래그 해제
+    const fresh = await login('ceo_minsun', 'MinsunSecure1!');
+    expect(fresh.account.mustChangePassword).toBe(false);
   });
 
   it('duplicate webId returns 409 without changing credential state', async () => {
@@ -126,6 +177,9 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
 
     const expired = await signup('expired');
     const expiredAccount = db.findAll<UserRow>('users').find((user) => user.webId === expired.webId)!;
+    // [E0.5 검증 보강] PG 모드 권위 소스에도 만료 기록(메모리만 갱신 시 refreshFromDb가 되돌림).
+    const pg = app.get(PostgresConnectionService);
+    if (pg.ready) await pg.query(`UPDATE users SET email_verify_expires_at = '2000-01-01T00:00:00Z' WHERE id = ${expiredAccount.id}`);
     db.update<UserRow>('users', expiredAccount.id, { emailVerifyExpiresAt: '2000-01-01T00:00:00.000Z' });
     await http.get(`/api/auth/verify-email?token=${expired.token}`).expect(400);
   });

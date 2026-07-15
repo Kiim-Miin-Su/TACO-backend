@@ -201,6 +201,36 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     expect(Date.parse(String(row.emailVerifyExpiresAt))).toBeGreaterThan(Date.now());
   });
 
+  // [E0.5 ④b] 가입 폼 확장 — 전화·대학·전공·출생연도가 pending 목록에 노출되고 승인 tx에서 프로필로 승계.
+  it('가입 폼 확장 필드 — 형식 검증·pending 노출·승인 시 instructor_profiles 승계', async () => {
+    // 전화 형식 위반 → 400 (SignupDto @Matches — SMS 유예 규약과 동일 정규식)
+    await http.post('/api/auth/signup')
+      .send({ webId: 'e05_badphone', name: '형식오류', email: 'e05bad@t.test', password: 'password123', phone: '01012345678' })
+      .expect(400);
+    // 정상 가입(확장 필드 포함) → 인증 → pending 목록에 상세 노출
+    const signup = (await http.post('/api/auth/signup')
+      .send({
+        webId: 'e05_inst', name: '확장필드', email: 'e05@t.test', password: 'password123',
+        phone: '010-9876-5432', university: '연세대학교', major: '영어영문학', birthYear: 1997,
+      })
+      .expect(201)).body;
+    const token = new URL(signup.devVerifyLink).searchParams.get('token')!;
+    await http.get(`/api/auth/verify-email?token=${token}`).expect(200);
+    const admin = await login('admin');
+    const pending = (await http.get('/api/auth/pending').set('Authorization', `Bearer ${admin}`).expect(200)).body;
+    const mine = pending.find((row: { webId: string }) => row.webId === 'e05_inst');
+    expect(mine).toMatchObject({
+      phone: '010-9876-5432', university: '연세대학교', major: '영어영문학', birthYear: 1997,
+    });
+    expect(mine.passwordHash).toBeUndefined();
+    // 승인 — 같은 tx에서 프로필로 승계(COALESCE upsert)
+    await http.post(`/api/auth/approve/${signup.account.id}`).set('Authorization', `Bearer ${admin}`)
+      .send({ reason: '지원 정보 확인 완료' }).expect(201);
+    expect(profileOf(signup.account.id)).toMatchObject({
+      active: true, university: '연세대학교', major: '영어영문학', birthYear: 1997,
+    });
+  });
+
   it('강사 직접 등록(운영 흐름 2026-07-14) — 대표 전용, 즉시 active+프로필+audit, 곧바로 로그인 가능', async () => {
     const admin = await login('admin');
     const inst = await login('park_inst');

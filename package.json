@@ -33,6 +33,9 @@
     "db:migrate:sens-provider": "ts-node scripts/migrate-sens-provider.ts",
     "db:migrate:parents": "ts-node scripts/migrate-parents.ts",
     "db:migrate:academy-events": "ts-node scripts/migrate-academy-events.ts",
+    "db:migrate:countries": "ts-node scripts/migrate-countries.ts",
+    "db:migrate:signup-profile-fields": "ts-node scripts/migrate-signup-profile-fields.ts",
+    "db:migrate:profile-self-decision": "ts-node scripts/migrate-profile-self-decision.ts",
     "db:cleanup:demo-data": "ts-node scripts/cleanup-demo-data.ts"
   },
   "dependencies": {

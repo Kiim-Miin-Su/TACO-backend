@@ -12,6 +12,7 @@ import { USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
+import { maskTarget } from '../profile-verifications/profile-verification.entity'; // [E0.5 ⑥] audit 마스킹
 import { InstructorProfilesStore } from './instructor-profiles.store';
 import {
   USERS, authVersionOf, isStaffRole, toSafe,
@@ -141,7 +142,11 @@ export class UsersService implements OnModuleInit {
 
   // 가입 신청 — 직원 역할만 요청 가능(super_admin 자가신청 불가). 상태=pending, 이메일 미인증.
   //  [TBO-28B] 토큰은 sha256 hash + 48h 만료로만 저장(평문 emailVerifyToken 쓰기 중단).
-  async signup(input: { webId: string; name: string; email: string; password: string; role?: string }): Promise<{ account: SafeAccount; verifyToken: string }> {
+  async signup(input: {
+    webId: string; name: string; email: string; password: string; role?: string;
+    // [E0.5 ④b] 대표 기대 필드 — 승인 판단 근거(승인센터 상세 표시 → 승인 tx에서 프로필 승계).
+    phone?: string; university?: string; major?: string; birthYear?: number;
+  }): Promise<{ account: SafeAccount; verifyToken: string }> {
     await this.refreshFromDb(); // [28F] 교차 인스턴스 중복 검사 정합
     const webId = input.webId.trim();
     const email = input.email.trim().toLowerCase();
@@ -166,6 +171,11 @@ export class UsersService implements OnModuleInit {
       authVersion: 1,
       profileVersion: 1,
       mustChangePassword: false,
+      // [E0.5 ④b] 지원자 제공 정보 — 승인센터 상세에 노출, 승인 tx에서 instructor_profiles 승계.
+      phone: input.phone?.trim() || null,
+      university: input.university?.trim() || null,
+      major: input.major?.trim() || null,
+      birthYear: input.birthYear ?? null,
     });
     return { account: toSafe(acc), verifyToken };
   }
@@ -203,10 +213,17 @@ export class UsersService implements OnModuleInit {
    */
   async changeCredentials(
     id: number,
-    input: { currentPassword: string; newWebId?: string; newPassword?: string },
+    input: {
+      currentPassword: string; newWebId?: string; newPassword?: string;
+      // [E0.5 ⑥] 첫 로그인 강제 변경에서만 허용되는 프로필 동시 설정(가입 폼 재사용 — 대표 지시 2026-07-15).
+      name?: string; email?: string; phone?: string;
+    },
   ): Promise<SafeAccount> {
     const newWebId = input.newWebId?.trim();
     const newPassword = input.newPassword;
+    const newName = input.name?.trim();
+    const newEmail = input.email?.trim().toLowerCase();
+    const newPhone = input.phone?.trim();
     if (!newWebId && !newPassword) throw new BadRequestException('새 아이디 또는 새 비밀번호 중 하나는 필수입니다.');
     if (newWebId && newWebId.length < 3) throw new BadRequestException('아이디는 3자 이상이어야 합니다.');
     const passwordBytes = newPassword ? Buffer.byteLength(newPassword, 'utf8') : 0;
@@ -226,6 +243,12 @@ export class UsersService implements OnModuleInit {
       if (!(await this.validatePassword(before, input.currentPassword))) {
         throw new ForbiddenException('현재 비밀번호가 올바르지 않습니다.');
       }
+      // [E0.5 ⑥] 프로필 동시 설정은 강제 변경(부트스트랩/리셋 직후) 컨텍스트에서만 — 평시 이메일/전화
+      //  변경은 29B-4 인증(challenge)·승인 경로를 우회할 수 없다(마이 페이지로 안내).
+      const wantsProfile = newName !== undefined || newEmail !== undefined || newPhone !== undefined;
+      if (wantsProfile && !before.mustChangePassword) {
+        throw new BadRequestException('이름·이메일·전화 변경은 마이 페이지(프로필 변경)에서 해주세요.');
+      }
       if (before.mustChangePassword && (!newWebId || !newPassword)) {
         throw new BadRequestException('첫 로그인에서는 새 아이디와 새 비밀번호를 모두 변경해야 합니다.');
       }
@@ -239,6 +262,11 @@ export class UsersService implements OnModuleInit {
         const duplicate = this.findByWebId(newWebId);
         if (duplicate && duplicate.id !== id) throw new ConflictException('이미 사용 중인 아이디입니다.');
       }
+      if (newEmail) {
+        const emailTaken = this.db.findBy<StaffAccount>(USERS, (a) =>
+          a.id !== id && !!a.email && a.email.toLowerCase() === newEmail).length > 0;
+        if (emailTaken) throw new ConflictException('이미 사용 중인 이메일입니다.');
+      }
 
       let updated: StaffAccount | undefined;
       try {
@@ -249,6 +277,12 @@ export class UsersService implements OnModuleInit {
           {
             ...(newWebId ? { webId: newWebId } : {}),
             ...(nextPasswordHash ? { passwordHash: nextPasswordHash } : {}),
+            // [E0.5 ⑥] 부트스트랩 프로필 — 이메일은 verified 유지(임시 비밀번호로 본인이 리셋한 신뢰
+            //  컨텍스트 + 미검증이면 로그인 게이트(email_unverified)와 복구 흐름이 잠긴다). 오타 리스크는
+            //  마이 페이지 재변경(인증 경로)으로 정정 가능.
+            ...(newName ? { name: newName } : {}),
+            ...(newEmail ? { email: newEmail, emailVerified: true } : {}),
+            ...(newPhone ? { phone: newPhone } : {}),
             authVersion: authVersionOf(before) + 1,
             mustChangePassword: false,
           },
@@ -256,7 +290,7 @@ export class UsersService implements OnModuleInit {
       } catch (error) {
         const code = (error as { code?: string; driverError?: { code?: string } }).code
           ?? (error as { driverError?: { code?: string } }).driverError?.code;
-        if (code === '23505') throw new ConflictException('이미 사용 중인 아이디입니다.');
+        if (code === '23505') throw new ConflictException('이미 사용 중인 아이디 또는 이메일입니다.');
         throw error;
       }
       if (!updated) throw new ConflictException('계정 정보가 변경되었습니다. 다시 로그인해 주세요.');
@@ -268,6 +302,10 @@ export class UsersService implements OnModuleInit {
         changes: {
           ...(newWebId && newWebId !== before.webId ? { webId: { before: before.webId, after: newWebId } } : {}),
           ...(newPassword ? { password: { before: '[redacted]', after: '[changed]' } } : {}),
+          // [보안] 이메일/전화는 audit에 masked만 (29B-4 §5와 동일 규약)
+          ...(newName && newName !== before.name ? { name: { before: before.name, after: newName } } : {}),
+          ...(newEmail && newEmail !== (before.email ?? '') ? { email: { before: before.email ? maskTarget('email', before.email) : null, after: maskTarget('email', newEmail) } } : {}),
+          ...(newPhone && newPhone !== (before.phone ?? '') ? { phone: { before: before.phone ? maskTarget('sms', before.phone) : null, after: maskTarget('sms', newPhone) } } : {}),
           ...(before.mustChangePassword ? { mustChangePassword: { before: true, after: false } } : {}),
           authVersion: { before: authVersionOf(before), after: authVersionOf(before) + 1 },
         },
@@ -385,7 +423,14 @@ export class UsersService implements OnModuleInit {
         throw new ConflictException('이미 처리된 계정입니다(대기 상태가 아님).');
       }
       // 불변식: active instructor ↔ active instructor_profiles 정확 1행.
-      if (updated.role === 'instructor') await this.profiles.upsertActive(id, actorId, approvedAt);
+      // [E0.5 ④b] 가입 폼 제공 정보(대학·전공·출생연도)를 같은 tx에서 프로필로 승계(COALESCE upsert).
+      if (updated.role === 'instructor') {
+        await this.profiles.upsertActive(id, actorId, approvedAt, {
+          university: updated.university ?? null,
+          major: updated.major ?? null,
+          birthYear: updated.birthYear ?? null,
+        });
+      }
       await this.audit.log({
         entity: 'users', entityId: id, action: 'approve', actorId,
         changes: {
