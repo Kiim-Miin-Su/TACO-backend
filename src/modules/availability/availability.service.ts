@@ -125,12 +125,20 @@ export class AvailabilityService implements OnModuleInit {
    *  availability(겹침) · sessions(impact·schedule create와 교차 경쟁) · users/students/rooms(owner 존재)
    *  · enrollments(학생의 코스 세션 역추적). 단일 PG 커넥션 tx 안이므로 순차 실행(병렬 query 금지). */
   private async refreshAuthoritative(): Promise<void> {
-    await this.store.hydrate<AvailabilityBlock>(AVAILABILITY_SPEC);
-    await this.sessions.ensureReady();
-    await this.store.hydrate<StaffAccount>(USERS_SPEC);
-    await this.store.hydrate<Student>(STUDENTS_SPEC);
-    await this.store.hydrate(ROOMS_SPEC);
-    await this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
+    // [C5 성능 수정] pg tx 안=순차(단일 커넥션) · 밖=병렬(Neon WAN 왕복 합산 방지 — db-crud 실측).
+    const tasks = [
+      () => this.store.hydrate<AvailabilityBlock>(AVAILABILITY_SPEC),
+      () => this.sessions.ensureReady(),
+      () => this.store.hydrate<StaffAccount>(USERS_SPEC),
+      () => this.store.hydrate<Student>(STUDENTS_SPEC),
+      () => this.store.hydrate(ROOMS_SPEC),
+      () => this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC),
+    ];
+    if (this.unitOfWork.inPgTransaction) {
+      for (const task of tasks) await task();
+    } else {
+      await Promise.all(tasks.map((task) => task()));
+    }
   }
 
   list(ownerType?: AvailabilityOwner, ownerId?: number): AvailabilityBlock[] {

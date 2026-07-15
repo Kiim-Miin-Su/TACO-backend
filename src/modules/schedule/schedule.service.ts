@@ -179,13 +179,21 @@ export class ScheduleService implements OnModuleInit {
   }
 
   async ensureReady(): Promise<void> {
-    // [TBO-28F] users도 재조회 — 다른 인스턴스에서 승인/등록된 강사가 리소스·검증에 즉시 반영.
-    // [TBO-29C C2] series 투영 추가 + 순차 실행 — refreshAfterLock이 pg tx 안에서 호출되므로
-    //  한 커넥션에 병렬 query를 걸지 않는다(pg 직렬화 deprecation 제거·결정성).
-    await this.sessions.ensureReady();
-    await this.availability.refresh();
-    await this.collections.hydrate<StaffAccount>(USERS_SPEC);
-    await this.collections.hydrate<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC);
+    // [TBO-28F] users도 재조회 — 다른 인스턴스에서 승인/등록된 계정이 리소스·검증에 즉시 반영.
+    // [TBO-29C C2→C5 성능 수정] pg tx **안**(refreshAfterLock)에서는 단일 커넥션이라 순차 실행,
+    //  tx **밖**(일반 조회 경로)에서는 병렬 — 순차 고정이 Neon(WAN) 왕복 지연을 합산시켜
+    //  release 게이트 db-crud가 타임아웃하는 회귀를 만들었다(실측 2026-07-15).
+    const tasks = [
+      () => this.sessions.ensureReady(),
+      () => this.availability.refresh(),
+      () => this.collections.hydrate<StaffAccount>(USERS_SPEC),
+      () => this.collections.hydrate<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC),
+    ];
+    if (this.unitOfWork.inPgTransaction) {
+      for (const task of tasks) await task();
+    } else {
+      await Promise.all(tasks.map((task) => task()));
+    }
   }
 
   // [TBO-28C] 캘린더 명령의 advisory lock 키 — 대상 강사·강의실·학생·세션. UoW.lockTargets가 정렬·중복 제거.

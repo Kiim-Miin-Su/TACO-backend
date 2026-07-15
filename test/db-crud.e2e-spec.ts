@@ -7,7 +7,9 @@ import { PostgresConnectionService } from '../src/database/postgres-connection.s
 const enabled = process.env.RUN_DB_CRUD_E2E === '1';
 const describeDb = enabled ? describe : describe.skip;
 
-jest.setTimeout(120_000);
+// [TBO-29C C5] 실 Neon(WAN) 재시작 시나리오 — 부팅×N + 권위 재수화가 왕복 지연을 그대로 받는
+//  장기 실행 스위트라 상향(로컬 PG는 수 초 내 완료). 개별 시나리오가 300s를 넘으면 그건 회귀다.
+jest.setTimeout(300_000);
 
 type AvailabilityRow = {
   id: number;

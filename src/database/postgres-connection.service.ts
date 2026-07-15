@@ -148,6 +148,11 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
     return this.dataSource;
   }
 
+  /** 현재 AsyncLocalStorage 문맥이 transaction 안인지(중첩 passthrough 판정과 동일 근거). */
+  get inTransaction(): boolean {
+    return !!this.transactionContext.getStore();
+  }
+
   async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
     const executor = this.transactionContext.getStore() ?? this.getDataSource();
     return executor.query(sql, params) as Promise<T[]>;

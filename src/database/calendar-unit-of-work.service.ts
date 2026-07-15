@@ -35,6 +35,12 @@ export class CalendarUnitOfWork {
     return this.memory.transaction(() => this.postgres.transaction(async () => fn()));
   }
 
+  /** [TBO-29C 성능] 현재 실행 문맥이 pg transaction 안인지 — tx 안에서는 hydrate를 순차(단일 커넥션),
+   *  밖에서는 병렬(WAN(Neon) 왕복 지연 합산 방지 — release 게이트 실측 회귀의 원인)로 고른다. */
+  get inPgTransaction(): boolean {
+    return this.postgres.inTransaction;
+  }
+
   /** 반드시 run(=pg tx) 안에서 호출. 키를 정렬·중복 제거 후 순서대로 잠근다. */
   async lockTargets(keys: CalendarLockKey[]): Promise<void> {
     if (!this.postgres.ready || !keys.length) return;
