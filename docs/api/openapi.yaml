@@ -51,6 +51,54 @@ paths:
       summary: 로그인(비밀번호 해시 검증 + 상태 게이트 + rate limit). 성공/실패는 auth_events 기록.
       tags:
       - auth
+  /api/auth/recover-id:
+    post:
+      operationId: AuthController_recoverId
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoverIdDto'
+      responses:
+        '201':
+          description: ''
+      summary: 아이디 찾기 — 가입 이메일이 일치하면 아이디를 메일로 안내(항상 동일 응답).
+      tags:
+      - auth
+  /api/auth/recover-password:
+    post:
+      operationId: AuthController_recoverPassword
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RecoverPasswordDto'
+      responses:
+        '201':
+          description: ''
+      summary: 비밀번호 재설정 요청 — 아이디+이메일이 일치하면 1시간 유효 링크 발송(항상 동일 응답).
+      tags:
+      - auth
+  /api/auth/reset-password:
+    post:
+      operationId: AuthController_resetPassword
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResetPasswordDto'
+      responses:
+        '201':
+          description: ''
+      summary: 비밀번호 재설정 확정 — 토큰 검증 후 변경. 성공 시 기존 세션 전부 무효(auth_version+1).
+      tags:
+      - auth
   /api/auth/logout:
     post:
       operationId: AuthController_logout
@@ -2302,6 +2350,51 @@ components:
       required:
       - accessToken
       - account
+    RecoverIdDto:
+      type: object
+      properties:
+        email:
+          type: string
+          maxLength: 255
+          format: email
+          example: staff@tnacademy.test
+          description: 가입 이메일 — 일치하면 아이디를 메일로 안내
+      required:
+      - email
+    RecoverPasswordDto:
+      type: object
+      properties:
+        webId:
+          type: string
+          minLength: 1
+          maxLength: 50
+          example: staff01
+          description: 아이디
+        email:
+          type: string
+          maxLength: 255
+          format: email
+          example: staff@tnacademy.test
+          description: 가입 이메일 — 아이디와 함께 일치해야 발송
+      required:
+      - webId
+      - email
+    ResetPasswordDto:
+      type: object
+      properties:
+        token:
+          type: string
+          minLength: 16
+          maxLength: 128
+          description: 메일로 받은 재설정 토큰
+        newPassword:
+          type: string
+          minLength: 8
+          maxLength: 72
+          writeOnly: true
+      required:
+      - token
+      - newPassword
     ApproveDto:
       type: object
       properties:

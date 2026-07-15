@@ -12,7 +12,10 @@ import { PostgresCollectionStore } from '../../database/postgres-collection.stor
 
 export const AUTH_EVENTS = 'auth_events';
 
-export type AuthEventType = 'login_success' | 'login_failure' | 'logout';
+export type AuthEventType =
+  | 'login_success' | 'login_failure' | 'logout'
+  // [TBO-29C C5] 비로그인 복구 흐름 — 계정 열거 방지를 위해 결과와 무관하게 요청 자체를 기록.
+  | 'recover_id_requested' | 'password_reset_requested' | 'password_reset_completed';
 
 export type AuthEvent = {
   eventType: AuthEventType;
@@ -58,7 +61,7 @@ export class AuthEventsService implements OnModuleInit {
         requestId,
         ipHash: forwarded ? sha256(forwarded) : null,
         userAgent,
-        success: input.type === 'login_success' || input.type === 'logout',
+        success: input.type === 'login_success' || input.type === 'logout' || input.type === 'password_reset_completed',
         failureCode: input.failureCode ?? null,
         at: new Date().toISOString(),
       } as Omit<AuthEvent, keyof BaseRow>);

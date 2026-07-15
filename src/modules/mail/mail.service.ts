@@ -42,6 +42,47 @@ export class MailService implements OnModuleDestroy {
   }
 
   // [TBO-29B-4] 연락처 재인증 OTP 발송 — 평문 코드는 발송 직후 폐기(저장은 서비스가 salted hash만).
+  // [TBO-29C C5] 아이디 찾기 — 가입 이메일로 아이디 안내. dev(무SMTP·비production)는 콘솔+devWebId 반환.
+  async sendRecoverIdEmail(to: string, webId: string): Promise<{ sent: boolean; devWebId?: string }> {
+    if (!this.transporter) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('[mail] production에서 SMTP 미설정 — 아이디 안내 메일을 보낼 수 없습니다.');
+      }
+      this.logger.warn(`[MAIL:dev] 아이디 안내 (${to}): webId=${webId}`);
+      return { sent: false, devWebId: webId };
+    }
+    await this.transporter.sendMail({
+      from: process.env.MAIL_FROM ?? 'no-reply@tnacademy.test',
+      to,
+      subject: '[TACO ERP] 아이디 안내',
+      text: `요청하신 아이디는 다음과 같습니다: ${webId}
+본인이 요청하지 않았다면 이 메일을 무시하세요.`,
+      html: `<p>요청하신 아이디</p><p style="font-size:20px;font-weight:bold">${webId}</p><p>본인이 요청하지 않았다면 이 메일을 무시하세요.</p>`,
+    });
+    return { sent: true };
+  }
+
+  // [TBO-29C C5] 비밀번호 재설정 링크 — 토큰은 sha256만 저장·1시간 만료. dev는 콘솔+devLink 반환.
+  async sendPasswordResetEmail(to: string, link: string): Promise<{ sent: boolean; devLink?: string }> {
+    if (!this.transporter) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new Error('[mail] production에서 SMTP 미설정 — 재설정 메일을 보낼 수 없습니다.');
+      }
+      this.logger.warn(`[MAIL:dev] 비밀번호 재설정 링크 (${to}): ${link}`);
+      return { sent: false, devLink: link };
+    }
+    await this.transporter.sendMail({
+      from: process.env.MAIL_FROM ?? 'no-reply@tnacademy.test',
+      to,
+      subject: '[TACO ERP] 비밀번호 재설정',
+      text: `아래 링크에서 1시간 안에 비밀번호를 재설정하세요:
+${link}
+본인이 요청하지 않았다면 이 메일을 무시하세요.`,
+      html: `<p>아래 버튼을 눌러 1시간 안에 비밀번호를 재설정하세요.</p><p><a href="${link}">비밀번호 재설정</a></p><p>${link}</p><p>본인이 요청하지 않았다면 이 메일을 무시하세요.</p>`,
+    });
+    return { sent: true };
+  }
+
   //  fail-closed: SMTP 미설정이면 false 반환(호출부가 채널 차단) — devLink류 폴백을 만들지 않는다(§4).
   async sendOtpEmail(to: string, code: string): Promise<boolean> {
     if (!this.transporter) return false;

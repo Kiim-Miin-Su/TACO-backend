@@ -277,6 +277,81 @@ export class UsersService implements OnModuleInit {
     });
   }
 
+  // ── [TBO-29C C5] 비로그인 복구(아이디 찾기·비밀번호 재설정) ────────────────────
+  //  규약: 응답은 계정 존재와 무관하게 동일(열거 방지 — 호출부 책임), 토큰은 sha256+1h 만료만 저장,
+  //  재설정 성공 = 토큰 명시 NULL + auth_version+1(기존 세션 전부 무효) + audit.
+
+  /** canonical 이메일로 활성·검증 계정 조회(아이디 찾기용). */
+  findActiveByEmail(email: string): StaffAccount | undefined {
+    const canonical = email.trim().toLowerCase();
+    if (!canonical) return undefined;
+    return this.db.findBy<StaffAccount>(USERS, (a) =>
+      (a.email ?? '').trim().toLowerCase() === canonical && a.status === 'active' && a.emailVerified === true,
+    )[0];
+  }
+
+  /** 재설정 시작 — webId+이메일이 모두 일치하는 활성 계정만 토큰 발급(불일치=조용히 무시). */
+  async beginPasswordReset(webId: string, email: string): Promise<{ account?: SafeAccount; resetToken?: string }> {
+    await this.refreshFromDb();
+    const acc = this.findByWebId(webId);
+    const canonical = email.trim().toLowerCase();
+    if (!acc || acc.status !== 'active' || (acc.email ?? '').trim().toLowerCase() !== canonical) return {};
+    const resetToken = randomBytes(24).toString('hex');
+    await this.store.update<StaffAccount>(USERS_SPEC, acc.id, {
+      passwordResetTokenHash: sha256(resetToken),
+      passwordResetExpiresAt: new Date(Date.now() + 60 * 60 * 1000).toISOString(), // 1시간
+    } as Partial<StaffAccount> as never);
+    return { account: toSafe(acc), resetToken };
+  }
+
+  /** 토큰으로 비밀번호 재설정 — 무효/만료/재사용은 동일 400 메시지(토큰 상태 열거 방지). */
+  async resetPasswordWithToken(token: string, newPassword: string): Promise<SafeAccount> {
+    const bytes = Buffer.byteLength(newPassword, 'utf8');
+    if (bytes < 8) throw new BadRequestException('새 비밀번호는 8바이트 이상이어야 합니다.');
+    if (bytes > 72) throw new BadRequestException('새 비밀번호는 72바이트 이하여야 합니다.');
+    const invalid = () => new BadRequestException('재설정 링크가 유효하지 않거나 만료되었습니다. 다시 요청해 주세요.');
+    const hash = sha256(token);
+    await this.refreshFromDb();
+    const found = this.db.findBy<StaffAccount>(USERS, (a) => !!a.passwordResetTokenHash && a.passwordResetTokenHash === hash)[0];
+    if (!found) throw invalid();
+    const nextPasswordHash = await bcrypt.hash(newPassword, 12);
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'user', id: found.id }]);
+      await this.refreshFromDb();
+      const before = this.findById(found.id);
+      if (!before || before.passwordResetTokenHash !== hash) throw invalid();
+      // [크로스 모드] PG hydrate는 timestamptz를 Date 객체로 되돌린다 — 문자열 비교는 항상 false가 되어
+      //  만료 토큰이 수용되는 결함(PG 모드 e2e 실측). epoch(ms)로 정규화해 판정한다.
+      const expiresAtMs = before.passwordResetExpiresAt ? new Date(before.passwordResetExpiresAt as unknown as string | Date).getTime() : Number.NaN;
+      if (!Number.isFinite(expiresAtMs) || expiresAtMs < Date.now()) throw invalid();
+      const updated = await this.store.updateIf<StaffAccount>(
+        USERS_SPEC,
+        found.id,
+        { passwordResetTokenHash: hash } as Partial<StaffAccount> as never,
+        {
+          passwordHash: nextPasswordHash,
+          passwordResetTokenHash: null,
+          passwordResetExpiresAt: null,
+          authVersion: authVersionOf(before) + 1, // 기존 JWT 전부 무효(탈취 세션 차단)
+          mustChangePassword: false,
+        } as Partial<StaffAccount> as never,
+      );
+      if (!updated) throw invalid();
+      await this.audit.log({
+        entity: 'users',
+        entityId: found.id,
+        action: 'update',
+        actorId: found.id,
+        changes: {
+          password: { before: '[redacted]', after: '[changed]' },
+          authVersion: { before: authVersionOf(before), after: authVersionOf(before) + 1 },
+        },
+        reason: '비밀번호 재설정(이메일 토큰)',
+      });
+      return toSafe(updated);
+    });
+  }
+
   async listPending(): Promise<SafeAccount[]> {
     await this.refreshFromDb(); // [28F] 다른 인스턴스의 신규 가입이 대표 대기목록에 즉시 반영
     return this.db.findBy<StaffAccount>(USERS, (a) => a.status === 'pending').map(toSafe);

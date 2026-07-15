@@ -31,6 +31,8 @@ export type StaffAccount = {
   emailVerifyExpiresAt?: string | null;
   /** role/status/credential 변경 시 +1 — JWT claim과 대조해 구 토큰 즉시 무효화(AccountStateService). 미설정=1. */
   authVersion?: number;
+  passwordResetTokenHash?: string | null; // [TBO-29C C5] 비밀번호 재설정 토큰(sha256만 저장·1h 만료)
+  passwordResetExpiresAt?: string | null;
   /** 프로필 변경 승인 CAS 버전. 승인된 변경마다 정확히 1 증가한다. */
   profileVersion: number;
   /** 임시 비밀번호 계정은 true. 변경 완료 전 업무 API는 RolesGuard가 차단한다. */
@@ -48,9 +50,9 @@ export type StaffAccount = {
 } & BaseRow;
 
 // 외부 노출용(안전) 계정 뷰 — 해시·토큰(평문/해시/만료) 제외.
-export type SafeAccount = Omit<StaffAccount, 'passwordHash' | 'emailVerifyTokenHash' | 'emailVerifyExpiresAt'>;
+export type SafeAccount = Omit<StaffAccount, 'passwordHash' | 'emailVerifyTokenHash' | 'emailVerifyExpiresAt' | 'passwordResetTokenHash' | 'passwordResetExpiresAt'>;
 export const toSafe = (a: StaffAccount): SafeAccount => {
-  const { passwordHash: _ph, emailVerifyTokenHash: _th, emailVerifyExpiresAt: _te, ...safe } = a;
+  const { passwordHash: _ph, emailVerifyTokenHash: _th, emailVerifyExpiresAt: _te, passwordResetTokenHash: _rt, passwordResetExpiresAt: _re, ...safe } = a;
   void _ph; void _th; void _te;
   return safe;
 };

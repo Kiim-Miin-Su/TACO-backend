@@ -17,6 +17,7 @@ import { RolesGuard } from './roles.guard';
 import { Roles, STAFF_ROLES } from './roles.decorator';
 import type { Request } from 'express';
 import { isForbiddenDemoCredential } from '../../config/production-guards';
+import { RecoverIdDto, RecoverPasswordDto, ResetPasswordDto } from './dto/recovery.dto';
 import { AuthService, JwtClaims } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
@@ -115,6 +116,55 @@ export class AuthController {
       accessToken: this.auth.sign(claims),
       account: { id: account.id, name: account.name, role: account.role, mustChangePassword: account.mustChangePassword === true },
     };
+  }
+
+  // ── [TBO-29C C5] 비로그인 복구 — 아이디 찾기·비밀번호 재설정 ──────────────────
+  //  응답은 계정 존재/일치 여부와 무관하게 동일(열거 방지). 실패 사유는 auth_events로만 추적.
+  //  dev(무SMTP·비production)는 devWebId/devResetUrl을 응답에 포함(기존 signup devLink 규약과 동일).
+  @Post('recover-id')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '아이디 찾기 — 가입 이메일이 일치하면 아이디를 메일로 안내(항상 동일 응답).' })
+  async recoverId(@Body() dto: RecoverIdDto, @Req() req: Request): Promise<{ ok: true; message: string; devWebId?: string }> {
+    await this.users.refreshFromDb();
+    const acc = this.users.findActiveByEmail(dto.email);
+    let devWebId: string | undefined;
+    if (acc?.email) {
+      const sentResult = await this.mail.sendRecoverIdEmail(acc.email, acc.webId);
+      if (process.env.NODE_ENV !== 'production') devWebId = sentResult.devWebId;
+    }
+    await this.events.record({ type: 'recover_id_requested', userId: acc?.id, attemptedWebId: dto.email, req });
+    return { ok: true, message: '가입된 이메일이면 아이디 안내 메일을 보냈습니다.', ...(devWebId ? { devWebId } : {}) };
+  }
+
+  @Post('recover-password')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '비밀번호 재설정 요청 — 아이디+이메일이 일치하면 1시간 유효 링크 발송(항상 동일 응답).' })
+  async recoverPassword(@Body() dto: RecoverPasswordDto, @Req() req: Request): Promise<{ ok: true; message: string; devResetUrl?: string }> {
+    const { account, resetToken } = await this.users.beginPasswordReset(dto.webId, dto.email);
+    let devResetUrl: string | undefined;
+    if (account?.email && resetToken) {
+      const base = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
+      const link = `${base}/reset-password?token=${resetToken}`;
+      const sentResult = await this.mail.sendPasswordResetEmail(account.email, link);
+      if (process.env.NODE_ENV !== 'production') devResetUrl = sentResult.devLink;
+    }
+    await this.events.record({ type: 'password_reset_requested', userId: account?.id, attemptedWebId: dto.webId, req });
+    return { ok: true, message: '아이디와 이메일이 일치하면 재설정 링크를 보냈습니다.', ...(devResetUrl ? { devResetUrl } : {}) };
+  }
+
+  @Post('reset-password')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '비밀번호 재설정 확정 — 토큰 검증 후 변경. 성공 시 기존 세션 전부 무효(auth_version+1).' })
+  async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request): Promise<{ ok: true }> {
+    const account = await this.users.resetPasswordWithToken(dto.token, dto.newPassword);
+    await this.events.record({ type: 'password_reset_completed', userId: account.id, req });
+    return { ok: true };
   }
 
   // 4) 로그아웃 — stateless JWT라 서버 무효화는 없지만 보안 이벤트로 기록한다(FE가 best-effort 호출).
