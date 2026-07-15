@@ -19,6 +19,10 @@ import {
 class FakeContactVerificationProvider implements ContactVerificationProvider {
   sent: Array<{ channel: string; target: string; code?: string }> = [];
   failNextSend = false;
+  // Twilio Verify형 fake — sms 코드는 provider 소유(check 위임 경로 회귀 유지). SENS형은 별도 스펙.
+  ownsCode(channel: 'email' | 'sms'): boolean {
+    return channel === 'sms';
+  }
   async send(input: SendChallengeInput): Promise<ProviderChallenge> {
     if (this.failNextSend) {
       this.failNextSend = false;

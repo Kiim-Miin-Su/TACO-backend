@@ -85,7 +85,9 @@ export class ProfileVerificationsService implements OnModuleInit {
         });
       }
       // provider 발송을 tx 안·insert 전에 수행 — 발송 실패 시 row +0(§8 V4 rollback 규약).
-      const code = dto.channel === 'email' ? String(randomInt(100000, 1000000)) : undefined;
+      //  [SENS 전환] 코드 생성 여부는 채널 하드코딩이 아니라 provider 코드 소유권으로 판정 —
+      //  email·SENS는 서비스 생성(hash 저장), Twilio Verify는 provider 생성(codeHash null).
+      const code = this.provider.ownsCode(dto.channel) ? undefined : String(randomInt(100000, 1000000));
       const sent = await this.provider.send({ channel: dto.channel, target, code });
       const seed = `${requesterId}:${dto.channel}:${target}`;
       return this.store.insert<ProfileVerificationChallenge>(PROFILE_VERIFICATION_CHALLENGES_SPEC, {
@@ -173,7 +175,7 @@ export class ProfileVerificationsService implements OnModuleInit {
       if (Date.parse(challenge.resendAvailableAt) > now) return { kind: 'cooldown' as const, challenge };
       if (challenge.resendCount >= MAX_RESENDS) return { kind: 'resend_limit' as const };
 
-      const code = challenge.channel === 'email' ? String(randomInt(100000, 1000000)) : undefined;
+      const code = this.provider.ownsCode(challenge.channel) ? undefined : String(randomInt(100000, 1000000));
       await this.provider.send({ channel: challenge.channel, target: challenge.targetNormalized, code });
       const seed = `${requesterId}:${challenge.channel}:${challenge.targetNormalized}`;
       const updated = await this.store.update<ProfileVerificationChallenge>(PROFILE_VERIFICATION_CHALLENGES_SPEC, id, {
@@ -254,10 +256,13 @@ export class ProfileVerificationsService implements OnModuleInit {
 
   // ── 내부 ────────────────────────────────────────────────────────────────
   private async verifyCode(challenge: ProfileVerificationChallenge, code: string): Promise<boolean> {
-    if (challenge.channel === 'email') {
+    // 확인 경로는 challenge 행이 결정한다 — codeHash가 있으면 발송 당시 서비스 소유(email·SENS)였다는
+    // 뜻이므로 hash 대조. provider 설정이 발송 후 바뀌어도 진행 중 challenge 규약이 유지된다.
+    if (challenge.codeHash) {
       const seed = `${challenge.requesterId}:${challenge.channel}:${challenge.targetNormalized}`;
-      return !!challenge.codeHash && challenge.codeHash === codeHashOf(seed, code);
+      return challenge.codeHash === codeHashOf(seed, code);
     }
+    if (challenge.channel === 'email') return false; // email인데 hash 없음 = 비정상 행 — fail-closed
     const result = await this.provider.check({
       channel: challenge.channel,
       target: challenge.targetNormalized,

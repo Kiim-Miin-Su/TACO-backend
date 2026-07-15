@@ -29,7 +29,8 @@
     "lint": "eslint \"src/**/*.ts\"",
     "db:migrate:profile-verifications": "ts-node scripts/migrate-profile-verification-challenges.ts",
     "db:migrate:class-session-series": "ts-node scripts/migrate-class-session-series.ts",
-    "db:migrate:credential-recovery": "ts-node scripts/migrate-credential-recovery.ts"
+    "db:migrate:credential-recovery": "ts-node scripts/migrate-credential-recovery.ts",
+    "db:migrate:sens-provider": "ts-node scripts/migrate-sens-provider.ts"
   },
   "dependencies": {
     "@kms545487/contracts": "^0.2.1",

@@ -7,7 +7,7 @@ export const PROFILE_VERIFICATION_CHALLENGES = 'profile_verification_challenges'
 
 export type VerificationChannel = 'email' | 'sms';
 export type VerificationStatus = 'pending' | 'verified' | 'consumed' | 'expired' | 'locked';
-export type VerificationProviderName = 'email_smtp' | 'twilio_verify' | 'fake_test';
+export type VerificationProviderName = 'email_smtp' | 'ncp_sens' | 'twilio_verify' | 'fake_test';
 
 export type ProfileVerificationChallenge = {
   requesterId: number;
@@ -17,7 +17,7 @@ export type ProfileVerificationChallenge = {
   targetHash: string;
   provider: VerificationProviderName;
   providerReference?: string | null;
-  /** email OTP salted sha256 — SMS는 provider가 코드를 소유(null) */
+  /** 서비스 소유 OTP salted sha256(email·ncp_sens SMS) — Twilio Verify는 provider가 코드 소유(null) */
   codeHash?: string | null;
   status: VerificationStatus;
   attemptCount: number;

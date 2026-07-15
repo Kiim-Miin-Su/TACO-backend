@@ -1,5 +1,6 @@
 import type { PostgresCollectionSpec } from './postgres-collection.store';
 import { CLASS_SESSION_SERIES_TABLE_SQL } from './migrations/class-session-series.migration';
+import { SENS_PROVIDER_MIGRATION_SQL } from './migrations/sens-provider.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -120,7 +121,7 @@ export const PROFILE_VERIFICATION_CHALLENGES_SPEC: PostgresCollectionSpec = {
       channel varchar(16) NOT NULL CHECK (channel IN ('email','sms')),
       target_normalized varchar(320) NOT NULL,
       target_hash varchar(64) NOT NULL,
-      provider varchar(32) NOT NULL CHECK (provider IN ('email_smtp','twilio_verify','fake_test')),
+      provider varchar(32) NOT NULL CHECK (provider IN ('email_smtp','ncp_sens','twilio_verify','fake_test')),
       provider_reference varchar(128),
       code_hash varchar(128),
       status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','consumed','expired','locked')),
@@ -153,6 +154,8 @@ export const PROFILE_VERIFICATION_CHALLENGES_SPEC: PostgresCollectionSpec = {
     activeIndex('profile_verification_challenges', 'idx_profile_verification_expires_at', 'expires_at'),
     activeIndex('profile_verification_challenges', 'idx_profile_verification_consumed_by', 'consumed_by_request_id'),
   ],
+  // [2026-07-15 SENS 전환] 기존 DB의 provider CHECK에 ncp_sens 허용(20260715_03과 SQL 공유 — 멱등 DO 블록).
+  migrations: [...SENS_PROVIDER_MIGRATION_SQL],
   timestampFields: ['resendAvailableAt', 'expiresAt', 'verifiedAt', 'consumedAt'],
 };
 
