@@ -106,6 +106,31 @@ export class ReportsService implements OnModuleInit {
     });
   }
 
+  // [E0.6 H1] 강사: 본문/숙제 수정(임시 저장·제출 전 정정) — 승인 후 불변(시수 반영).
+  //  종전엔 update 경로가 없어 기존 보고서 '임시 저장'이 조용히 유실됐다(UX 감사 H1).
+  async updateContent(
+    id: number,
+    dto: { content?: string; homework?: string },
+    actor?: ReportActor,
+  ): Promise<SessionReportRow> {
+    const r = this.findOne(id);
+    // 소유권(H2 IDOR 차단) — 비관리자는 본인 명의 보고서만 수정 가능(submit과 동일 규칙).
+    if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
+      throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 수정할 수 있습니다.');
+    if (r.approvalStatus === 'approved') throw new BadRequestException('이미 승인된 보고서는 수정할 수 없습니다.');
+    if (dto.content === undefined && dto.homework === undefined)
+      throw new BadRequestException('수정할 내용(content/homework)이 필요합니다.');
+    return await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+      ...(dto.content !== undefined ? { content: dto.content } : {}),
+      // 빈 문자열 = 숙제 비움(명시 null 저장 — undefined는 skip되는 UPDATE 함정 방지).
+      //  contracts SessionReport.homework가 optional(string)뿐이라 null 캐스팅 — DB 컬럼은 nullable
+      //  (contracts nullable 확장은 다음 계약 버전에서).
+      ...(dto.homework !== undefined
+        ? { homework: (dto.homework.trim() ? dto.homework : null) as unknown as string }
+        : {}),
+    }) as SessionReportRow;
+  }
+
   // 강사: 작성완료 제출(draft → submitted)
   async submit(id: number, actor?: ReportActor): Promise<SessionReportRow> {
     const r = this.findOne(id);

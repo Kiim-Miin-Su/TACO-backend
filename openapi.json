@@ -378,43 +378,6 @@
         ]
       }
     },
-    "/api/users/me/credentials": {
-      "patch": {
-        "operationId": "UsersController_changeCredentials",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChangeCredentialsDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "200": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/CredentialAccountResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "내 아이디/비밀번호 변경 — 현재 비밀번호 재검증, auth_version 증가, audit 원자 tx.",
-        "tags": [
-          "Users"
-        ]
-      }
-    },
     "/api/users/exists": {
       "get": {
         "operationId": "UsersController_exists",
@@ -554,6 +517,182 @@
         "summary": "Database connection check. In-memory remains runtime store until Postgres cutover.",
         "tags": [
           "health"
+        ]
+      }
+    },
+    "/api/catalog/countries": {
+      "get": {
+        "operationId": "CatalogController_findCountries",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "Country[] — code·nameKo·nameEn·timeZone·flag·sortOrder"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "국가·시간대 카탈로그(Country[]) — 프로필 국가/시간대 토글 옵션(sort_order 순)",
+        "tags": [
+          "catalog"
+        ]
+      }
+    },
+    "/api/users/me/credentials": {
+      "patch": {
+        "operationId": "CredentialsController_changeCredentials",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChangeCredentialsDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialAccountResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "내 아이디/비밀번호 변경 — 현재 비밀번호 재검증 + (평시) 본인 이메일 OTP 소비, auth_version 증가, audit 원자 tx. 아이디 변경은 승인제(강제 변경 흐름만 직접).",
+        "tags": [
+          "Credentials"
+        ]
+      }
+    },
+    "/api/profile-verifications": {
+      "post": {
+        "operationId": "ProfileVerificationsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateProfileVerificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileVerificationResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "연락처 인증 발송 — 현재 비밀번호 재확인 + 채널(email/sms) + 대상. 응답은 masked만.",
+        "tags": [
+          "profile-verifications"
+        ]
+      }
+    },
+    "/api/profile-verifications/{id}/confirm": {
+      "post": {
+        "operationId": "ProfileVerificationsController_confirm",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmProfileVerificationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileVerificationResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "인증 코드 확인 — 실패 5회 잠금(400 일반화 메시지), 성공 시 verified.",
+        "tags": [
+          "profile-verifications"
+        ]
+      }
+    },
+    "/api/profile-verifications/{id}/resend": {
+      "post": {
+        "operationId": "ProfileVerificationsController_resend",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProfileVerificationResponseDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "인증 코드 재전송 — cooldown 60초·최대 5회, 만료 10분 갱신.",
+        "tags": [
+          "profile-verifications"
         ]
       }
     },
@@ -767,125 +906,6 @@
         "summary": "프로필 변경 요청 반려. 사유 필수, 본인 반려 불가. [관리자]",
         "tags": [
           "profile-change-requests"
-        ]
-      }
-    },
-    "/api/profile-verifications": {
-      "post": {
-        "operationId": "ProfileVerificationsController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateProfileVerificationDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileVerificationResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "연락처 인증 발송 — 현재 비밀번호 재확인 + 채널(email/sms) + 대상. 응답은 masked만.",
-        "tags": [
-          "profile-verifications"
-        ]
-      }
-    },
-    "/api/profile-verifications/{id}/confirm": {
-      "post": {
-        "operationId": "ProfileVerificationsController_confirm",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ConfirmProfileVerificationDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileVerificationResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "인증 코드 확인 — 실패 5회 잠금(400 일반화 메시지), 성공 시 verified.",
-        "tags": [
-          "profile-verifications"
-        ]
-      }
-    },
-    "/api/profile-verifications/{id}/resend": {
-      "post": {
-        "operationId": "ProfileVerificationsController_resend",
-        "parameters": [
-          {
-            "name": "id",
-            "required": true,
-            "in": "path",
-            "schema": {
-              "type": "number"
-            }
-          }
-        ],
-        "responses": {
-          "201": {
-            "description": "",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProfileVerificationResponseDto"
-                }
-              }
-            }
-          }
-        },
-        "security": [
-          {
-            "bearer": []
-          }
-        ],
-        "summary": "인증 코드 재전송 — cooldown 60초·최대 5회, 만료 10분 갱신.",
-        "tags": [
-          "profile-verifications"
         ]
       }
     },
@@ -2397,6 +2417,50 @@
         "tags": [
           "reports"
         ]
+      },
+      "patch": {
+        "operationId": "ReportsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateReportDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "보고서 본문/숙제 수정(승인 전) — 본인 보고서만. 기존 보고서 임시 저장 경로.",
+        "tags": [
+          "reports"
+        ]
       }
     },
     "/api/reports/{id}/submit": {
@@ -3869,6 +3933,23 @@
               "manager",
               "admin"
             ]
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\d{2,3}-\\d{3,4}-\\d{4}$"
+          },
+          "university": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "major": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "birthYear": {
+            "type": "number",
+            "minimum": 1940,
+            "maximum": 2020
           }
         },
         "required": [
@@ -4182,6 +4263,25 @@
             "minLength": 8,
             "maxLength": 72,
             "writeOnly": true
+          },
+          "verificationChallengeId": {
+            "type": "number",
+            "description": "비밀번호 변경 시 소비할 본인 이메일 verified challenge id(평시 필수)"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "format": "email"
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\d{2,3}-\\d{3,4}-\\d{4}$",
+            "example": "010-1234-5678"
           }
         },
         "required": [
@@ -4222,147 +4322,6 @@
           "name",
           "role",
           "mustChangePassword"
-        ]
-      },
-      "ProfileChangeRequestResponseDto": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "number"
-          },
-          "requesterId": {
-            "type": "number"
-          },
-          "baseProfileVersion": {
-            "type": "number",
-            "minimum": 1
-          },
-          "beforeValues": {
-            "type": "object",
-            "additionalProperties": true
-          },
-          "requestedChanges": {
-            "type": "object",
-            "additionalProperties": true
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 5,
-            "maxLength": 500
-          },
-          "status": {
-            "type": "string",
-            "enum": [
-              "pending",
-              "approved",
-              "rejected"
-            ]
-          },
-          "decidedBy": {
-            "type": "number",
-            "nullable": true
-          },
-          "decidedAt": {
-            "type": "string",
-            "nullable": true
-          },
-          "rejectionReason": {
-            "type": "string",
-            "nullable": true
-          },
-          "appliedProfileVersion": {
-            "type": "number",
-            "nullable": true,
-            "minimum": 2
-          },
-          "createdAt": {
-            "type": "string"
-          },
-          "updatedAt": {
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "requesterId",
-          "baseProfileVersion",
-          "beforeValues",
-          "requestedChanges",
-          "reason",
-          "status",
-          "createdAt",
-          "updatedAt"
-        ]
-      },
-      "CreateProfileChangeRequestDto": {
-        "type": "object",
-        "properties": {
-          "currentPassword": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 72,
-            "description": "현재 비밀번호(재확인)"
-          },
-          "name": {
-            "type": "string",
-            "minLength": 1,
-            "maxLength": 50,
-            "example": "박지훈"
-          },
-          "email": {
-            "type": "string",
-            "maxLength": 320,
-            "format": "email",
-            "example": "new@tnacademy.test",
-            "description": "변경할 이메일(사전 인증 필수)"
-          },
-          "verificationChallengeId": {
-            "type": "number",
-            "description": "연락처(email/phone) 변경 시 소비할 verified challenge id"
-          },
-          "phone": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 20,
-            "example": "+82-10-1234-5678"
-          },
-          "countryCode": {
-            "type": "string",
-            "nullable": true,
-            "pattern": "^[A-Za-z][A-Za-z0-9-]{1,7}$",
-            "example": "KR",
-            "description": "국가/권역 코드(예: KR, US-W)"
-          },
-          "timeZone": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 64,
-            "example": "Asia/Seoul"
-          },
-          "reason": {
-            "type": "string",
-            "minLength": 5,
-            "maxLength": 500,
-            "example": "업무 연락처가 변경되었습니다."
-          }
-        },
-        "required": [
-          "currentPassword",
-          "reason"
-        ]
-      },
-      "RejectProfileChangeRequestDto": {
-        "type": "object",
-        "properties": {
-          "reason": {
-            "type": "string",
-            "minLength": 5,
-            "maxLength": 500,
-            "example": "전화번호 확인 후 다시 요청해 주세요."
-          }
-        },
-        "required": [
-          "reason"
         ]
       },
       "CreateProfileVerificationDto": {
@@ -4457,6 +4416,154 @@
         },
         "required": [
           "code"
+        ]
+      },
+      "ProfileChangeRequestResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number"
+          },
+          "requesterId": {
+            "type": "number"
+          },
+          "baseProfileVersion": {
+            "type": "number",
+            "minimum": 1
+          },
+          "beforeValues": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "requestedChanges": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending",
+              "approved",
+              "rejected"
+            ]
+          },
+          "decidedBy": {
+            "type": "number",
+            "nullable": true
+          },
+          "decidedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "rejectionReason": {
+            "type": "string",
+            "nullable": true
+          },
+          "appliedProfileVersion": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 2
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "requesterId",
+          "baseProfileVersion",
+          "beforeValues",
+          "requestedChanges",
+          "reason",
+          "status",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
+      "CreateProfileChangeRequestDto": {
+        "type": "object",
+        "properties": {
+          "currentPassword": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 72,
+            "description": "현재 비밀번호(재확인)"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 50,
+            "example": "박지훈"
+          },
+          "webId": {
+            "type": "string",
+            "minLength": 3,
+            "maxLength": 50,
+            "example": "jihoon_park",
+            "description": "변경할 아이디(대표 승인 후 적용·재로그인 필요)"
+          },
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "format": "email",
+            "example": "new@tnacademy.test",
+            "description": "변경할 이메일(사전 인증 필수)"
+          },
+          "verificationChallengeId": {
+            "type": "number",
+            "description": "연락처(email/phone) 변경 시 소비할 verified challenge id"
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 20,
+            "example": "+82-10-1234-5678"
+          },
+          "countryCode": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^[A-Za-z][A-Za-z0-9-]{1,7}$",
+            "example": "KR",
+            "description": "국가/권역 코드(예: KR, US-W)"
+          },
+          "timeZone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 64,
+            "example": "Asia/Seoul"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500,
+            "example": "업무 연락처가 변경되었습니다."
+          }
+        },
+        "required": [
+          "currentPassword",
+          "reason"
+        ]
+      },
+      "RejectProfileChangeRequestDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500,
+            "example": "전화번호 확인 후 다시 요청해 주세요."
+          }
+        },
+        "required": [
+          "reason"
         ]
       },
       "CreateStudentDto": {
@@ -5420,6 +5527,23 @@
           "studentId",
           "content"
         ]
+      },
+      "UpdateReportDto": {
+        "type": "object",
+        "properties": {
+          "content": {
+            "type": "string",
+            "maxLength": 4000,
+            "example": "오늘 진도: 추론 문제 3세트. 정답률 향상.",
+            "description": "보고서 본문(진도·피드백)"
+          },
+          "homework": {
+            "type": "string",
+            "maxLength": 2000,
+            "example": "워크북 12–15p",
+            "description": "숙제(선택 — 빈 문자열로 비움)"
+          }
+        }
       },
       "ApproveReportDto": {
         "type": "object",

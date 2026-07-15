@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiForbiddenResponse } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
+import { UpdateReportDto } from './dto/update-report.dto';
 import { ApproveReportDto, RejectReportDto } from './dto/report-action.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
@@ -35,6 +36,14 @@ export class ReportsController {
   create(@Body() dto: CreateReportDto, @Req() req: Request & { user?: JwtClaims }) {
     // 소유권 검증(H2 IDOR): 비관리자는 본인 담당 세션만.
     return this.reports.create(dto, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
+  }
+
+  // [E0.6 H1] 본문/숙제 수정(임시 저장) — 승인 전까지, 본인 보고서만.
+  @Patch(':id')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '보고서 본문/숙제 수정(승인 전) — 본인 보고서만. 기존 보고서 임시 저장 경로.' })
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReportDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.reports.updateContent(id, dto, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }
 
   @Post(':id/submit')
