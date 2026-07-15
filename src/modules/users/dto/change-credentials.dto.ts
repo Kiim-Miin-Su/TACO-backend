@@ -1,4 +1,4 @@
-import { IsEmail, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ChangeCredentialsDto {
@@ -20,6 +20,13 @@ export class ChangeCredentialsDto {
   @MinLength(8)
   @MaxLength(72)
   newPassword?: string;
+
+  // [E0 2026-07-15] 평시 비밀번호 변경 = 본인 현재 이메일 OTP 소비 필수(같은 tx).
+  //  첫 로그인 강제 변경(must_change_password)은 예외(부트스트랩 컨텍스트).
+  @ApiPropertyOptional({ description: '비밀번호 변경 시 소비할 본인 이메일 verified challenge id(평시 필수)' })
+  @IsOptional()
+  @IsInt()
+  verificationChallengeId?: number;
 
   // [E0.5 ⑥ 2026-07-15 대표 지시] 첫 로그인 강제 변경(must_change_password) 화면에서 가입 폼처럼
   //  프로필(이름·이메일·휴대폰)을 한 번에 받는다. **강제 변경 흐름에서만 허용** — 일반 변경은

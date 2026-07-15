@@ -33,6 +33,7 @@ import { RegistrationsModule } from './modules/registrations/registrations.modul
 import { ProfileChangeRequestsModule } from './modules/profile-change-requests/profile-change-requests.module';
 import { ProfileVerificationsModule } from './modules/profile-verifications/profile-verifications.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
+import { CredentialsModule } from './modules/credentials/credentials.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
     HealthModule,
     UsersModule,
     CatalogModule, // [E0.5 ④] 국가·시간대 참조 카탈로그
+    CredentialsModule, // [E0] 자격증명 변경(비밀번호 이메일 OTP·webId 승인제 안내)
     ProfileChangeRequestsModule,
     ProfileVerificationsModule, // [TBO-29B-4] 연락처 재인증
     StudentsModule,

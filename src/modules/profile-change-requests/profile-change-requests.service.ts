@@ -12,8 +12,8 @@ import { PROFILE_CHANGE_REQUESTS_SPEC, USERS_SPEC } from '../../database/calenda
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { AuditService } from '../audit/audit.service';
 import { hasAdminRole } from '../auth/roles.decorator';
-import { USERS, profileVersionOf, type StaffAccount } from '../users/user.entity';
-import { UsersService } from '../users/users.service';
+import { USERS, authVersionOf, profileVersionOf, type StaffAccount } from '../users/user.entity';
+import { UsersService, identityLockId } from '../users/users.service';
 import { ProfileVerificationsService } from '../profile-verifications/profile-verifications.service';
 import { maskTarget } from '../profile-verifications/profile-verification.entity';
 import { CountriesService } from '../catalog/countries.service';
@@ -50,6 +50,11 @@ export class ProfileChangeRequestsService implements OnModuleInit {
         ...(dto.verificationChallengeId != null
           ? [{ kind: 'verificationChallenge' as const, id: dto.verificationChallengeId }]
           : []),
+        // [E0] webId 변경 요청 — 즉시 변경 경로(changeCredentials)와 같은 identity lock으로 직렬화
+        //  (super_admin 즉시 적용이 같은 tx에서 unique 선점을 판정할 수 있도록).
+        ...(dto.webId !== undefined
+          ? [{ kind: 'loginIdentity' as const, id: identityLockId(dto.webId) }]
+          : []),
       ]);
       await this.refresh();
       const requester = this.users.findById(requesterId);
@@ -68,6 +73,8 @@ export class ProfileChangeRequestsService implements OnModuleInit {
       //  값 설정은 verified challenge 필수 + canonical 값 일치 + 발송 전/승인 시 중복 재검사.
       const contact = this.contactChangeOf(actualChanges);
       if (contact) this.verifications.assertTargetAvailable(contact.channel, contact.target, requesterId);
+      // [E0] webId 중복 선검사(case-insensitive, 본인 제외) — 최종 권위는 승인 tx의 재검사+DB unique.
+      if (actualChanges.webId) this.assertWebIdAvailable(actualChanges.webId, requesterId);
 
       const beforeValues = Object.fromEntries(
         Object.keys(actualChanges).map((field) => [field, this.profileValue(requester, field)]),
@@ -172,6 +179,10 @@ export class ProfileChangeRequestsService implements OnModuleInit {
       await this.uow.lockTargets([
         { kind: 'user', id: initial.requesterId },
         { kind: 'profileRequest', id },
+        // [E0] webId 변경 요청 승인 — 즉시 변경 경로와 같은 identity lock으로 동시 선점을 직렬화.
+        ...(initial.requestedChanges?.webId
+          ? [{ kind: 'loginIdentity' as const, id: identityLockId(initial.requestedChanges.webId) }]
+          : []),
       ]);
       await this.refresh();
       const request = this.db.findById<ProfileChangeRequest>(PROFILE_CHANGE_REQUESTS, id);
@@ -236,6 +247,10 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     // [TBO-29B-4 §5] 승인 시 연락처 uniqueness 재검사 — 가입/다른 변경이 먼저 점유했으면 409(요청은 pending 유지).
     const contact = this.contactChangeOf(request.requestedChanges);
     if (contact) this.verifications.assertTargetAvailable(contact.channel, contact.target, request.requesterId);
+    // [E0] webId 재검사(승인 시점 — 요청 이후 다른 계정이 선점했을 수 있음) + auth_version+1 준비.
+    //  아이디 변경은 로그인 식별자 교체라 기존 JWT를 전부 무효화한다(재로그인 필요 — FE 안내).
+    const webIdChange = request.requestedChanges.webId;
+    if (webIdChange) this.assertWebIdAvailable(webIdChange, request.requesterId);
 
     const changes: Record<string, { before?: unknown; after?: unknown }> = {
       status: { before: 'pending', after: 'approved' },
@@ -248,12 +263,23 @@ export class ProfileChangeRequestsService implements OnModuleInit {
       };
     }
     changes.profileVersion = { before: currentVersion, after: currentVersion + 1 };
-    const updated = await this.store.updateIf<StaffAccount>(
-      USERS_SPEC,
-      before.id,
-      { profileVersion: currentVersion },
-      { ...request.requestedChanges, profileVersion: currentVersion + 1 },
-    );
+    if (webIdChange) changes.authVersion = { before: authVersionOf(before), after: authVersionOf(before) + 1 };
+    let updated: StaffAccount | undefined;
+    try {
+      updated = await this.store.updateIf<StaffAccount>(
+        USERS_SPEC,
+        before.id,
+        { profileVersion: currentVersion },
+        {
+          ...request.requestedChanges,
+          profileVersion: currentVersion + 1,
+          ...(webIdChange ? { authVersion: authVersionOf(before) + 1 } : {}),
+        },
+      );
+    } catch (error) {
+      if (this.errorCode(error) === '23505') throw new ConflictException('이미 사용 중인 아이디입니다.'); // DB unique 최종 방어
+      throw error;
+    }
     if (!updated) throw new ConflictException('프로필이 요청 이후 변경되어 처리할 수 없습니다.');
     await this.audit.log({
       entity: USERS,
@@ -359,9 +385,21 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     };
   }
 
+  /** [E0] webId 중복 검사(case-insensitive, 본인 제외) — 생성 선검사·승인 tx 재검사 공용. */
+  private assertWebIdAvailable(webId: string, requesterId: number): void {
+    const duplicate = this.users.findByWebId(webId);
+    if (duplicate && duplicate.id !== requesterId) throw new ConflictException('이미 사용 중인 아이디입니다.');
+  }
+
   private normalizeChanges(dto: CreateProfileChangeRequestDto): ProfileChanges {
     const changes: ProfileChanges = {};
     if (dto.name !== undefined) changes.name = dto.name.trim();
+    // [E0] 아이디(webId) — 승인제 전환(즉시 변경 경로에서 분리). 형식은 즉시 변경과 동일 최소 규칙.
+    if (dto.webId !== undefined) {
+      const webId = dto.webId.trim();
+      if (webId.length < 3) throw new BadRequestException('아이디는 3자 이상이어야 합니다.');
+      changes.webId = webId;
+    }
     // [TBO-29B-4 §3] 연락처는 canonical로 정규화 — email lowercase·phone E.164(설정 시).
     if (dto.email !== undefined) changes.email = this.verifications.normalizeTarget('email', dto.email);
     if (dto.phone !== undefined) {

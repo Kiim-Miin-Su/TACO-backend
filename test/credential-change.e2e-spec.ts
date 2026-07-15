@@ -113,44 +113,109 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
     expect(fresh.account.mustChangePassword).toBe(false);
   });
 
-  it('duplicate webId returns 409 without changing credential state', async () => {
+  // [E0] 검증용 verified 이메일 challenge 위조 헬퍼 — store.insert(양 모드 권위 소스에 기록).
+  //  실제 발송/코드 확인 흐름 회귀는 profile-verification.e2e-spec — 여기서는 소비 규약만 검증.
+  const forgeVerifiedEmailChallenge = async (requesterId: number, target: string) => {
+    const { PROFILE_VERIFICATION_CHALLENGES_SPEC } = await import('../src/database/calendar-asset-specs');
+    const { PostgresCollectionStore } = await import('../src/database/postgres-collection.store');
+    const store = app.get(PostgresCollectionStore);
+    const now = Date.now();
+    return store.insert<Record<string, unknown> & { id: number }>(PROFILE_VERIFICATION_CHALLENGES_SPEC, {
+      requesterId, channel: 'email', targetNormalized: target,
+      targetHash: 'test-forged', provider: 'fake_test', providerReference: null,
+      codeHash: 'test-forged', status: 'verified', attemptCount: 0, resendCount: 0,
+      resendAvailableAt: new Date(now).toISOString(), expiresAt: new Date(now + 600_000).toISOString(),
+      verifiedAt: new Date(now).toISOString(), consumedAt: null, consumedByRequestId: null,
+    });
+  };
+
+  // [E0] 평시 비밀번호 변경 = 본인 이메일 OTP 소비 필수(같은 tx) — 미제출 400·소진 후 재사용 불가.
+  it('password change requires own-email OTP and consumes it exactly once', async () => {
     const manager = await login('manager', 'demo1234');
-    const before = { ...db.findById<UserRow>('users', 4)! };
+    // OTP 없이 → 400 (변경 없음)
     await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${manager.accessToken}`)
-      .send({ currentPassword: 'demo1234', newWebId: 'park_inst', newPassword: 'ManagerPass123!' }).expect(409);
-    const after = db.findById<UserRow>('users', 4)!;
-    expect(after.webId).toBe(before.webId);
-    expect(after.authVersion ?? 1).toBe(before.authVersion ?? 1);
+      .send({ currentPassword: 'demo1234', newPassword: 'ManagerPass123!' }).expect(400);
     await login('manager', 'demo1234');
+    // 다른 이메일로 verified된 챌린지 → 400 (본인 현재 이메일만)
+    const wrongTarget = await forgeVerifiedEmailChallenge(4, 'other@tnacademy.test');
+    await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${manager.accessToken}`)
+      .send({ currentPassword: 'demo1234', newPassword: 'ManagerPass123!', verificationChallengeId: wrongTarget.id }).expect(400);
+    // [PG 불변식] 활성 챌린지는 (requester,channel)당 1건(partial unique) — 다음 위조 전 만료 처리.
+    {
+      const { PROFILE_VERIFICATION_CHALLENGES_SPEC } = await import('../src/database/calendar-asset-specs');
+      const { PostgresCollectionStore } = await import('../src/database/postgres-collection.store');
+      await app.get(PostgresCollectionStore).update(PROFILE_VERIFICATION_CHALLENGES_SPEC, wrongTarget.id, { status: 'expired' });
+    }
+    // 본인 이메일 verified 챌린지 → 200 + 챌린지 consumed + 기존 토큰 무효
+    const challenge = await forgeVerifiedEmailChallenge(4, 'manager@tnacademy.test');
+    await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${manager.accessToken}`)
+      .send({ currentPassword: 'demo1234', newPassword: 'ManagerPass123!', verificationChallengeId: challenge.id }).expect(200);
+    expect(db.findById<Record<string, unknown>>('profile_verification_challenges', challenge.id)).toMatchObject({ status: 'consumed' });
+    await http.get('/api/auth/me').set('Authorization', `Bearer ${manager.accessToken}`).expect(401);
+    const fresh = await login('manager', 'ManagerPass123!');
+    // 소진된 챌린지 재사용 → 400 (비밀번호는 유지)
+    await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${fresh.accessToken}`)
+      .send({ currentPassword: 'ManagerPass123!', newPassword: 'ManagerPass456!', verificationChallengeId: challenge.id }).expect(400);
+    await login('manager', 'ManagerPass123!');
   });
 
-  it('audit failure rolls back webId, password, flag, and authVersion', async () => {
-    const manager = await login('manager', 'demo1234');
+  it('audit failure rolls back password change and keeps the OTP unconsumed', async () => {
+    const manager = await login('manager', 'ManagerPass123!');
     const before = { ...db.findById<UserRow>('users', 4)! };
+    const challenge = await forgeVerifiedEmailChallenge(4, 'manager@tnacademy.test');
     const audit = app.get(AuditService);
     const spy = jest.spyOn(audit, 'log').mockRejectedValueOnce(new Error('injected audit failure'));
     await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${manager.accessToken}`)
-      .send({ currentPassword: 'demo1234', newWebId: 'manager_new', newPassword: 'ManagerPass123!' }).expect(500);
+      .send({ currentPassword: 'ManagerPass123!', newPassword: 'ManagerPass456!', verificationChallengeId: challenge.id }).expect(500);
     spy.mockRestore();
     const after = db.findById<UserRow>('users', 4)!;
-    expect(after.webId).toBe(before.webId);
     expect(after.passwordHash).toBe(before.passwordHash);
     expect(after.mustChangePassword).toBe(before.mustChangePassword);
     expect(after.authVersion ?? 1).toBe(before.authVersion ?? 1);
-    await login('manager', 'demo1234');
-    await http.post('/api/auth/login').send({ webId: 'manager_new', password: 'ManagerPass123!' }).expect(401);
+    // [E0] 같은 tx 롤백 — 챌린지도 소비되지 않고 남는다(재시도 가능).
+    expect(db.findById<Record<string, unknown>>('profile_verification_challenges', challenge.id)).toMatchObject({ status: 'verified' });
+    await login('manager', 'ManagerPass123!');
   });
 
-  it('case-insensitive concurrent webId claim commits exactly once', async () => {
-    const manager = await login('manager', 'demo1234');
+  // [E0] 아이디(webId) 즉시 변경 폐지 — 승인제(프로필 변경 요청) 경유. 강제 변경 흐름만 예외.
+  it('webId change moves to the approval path: instant change 400, approve applies with auth_version bump', async () => {
+    const inst = await login('park_inst', 'demo1234');
+    // 평시 즉시 변경 시도 → 400 (승인제 안내)
+    await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${inst.accessToken}`)
+      .send({ currentPassword: 'demo1234', newWebId: 'park_renamed' }).expect(400);
+    // 중복 webId 요청 → 409 (생성 선검사, case-insensitive)
+    await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${inst.accessToken}`)
+      .send({ currentPassword: 'demo1234', webId: 'MANAGER', reason: '다른 계정 아이디로 변경 시도.' }).expect(409);
+    // 정상 요청 → pending → 관리자 승인 → users 반영 + auth_version+1(기존 토큰 즉시 무효)
+    const created = await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${inst.accessToken}`)
+      .send({ currentPassword: 'demo1234', webId: 'park_renamed', reason: '아이디 표기 정비를 요청합니다.' }).expect(201);
+    expect(created.body).toMatchObject({ status: 'pending', requestedChanges: { webId: 'park_renamed' } });
+    const before = { ...db.findById<UserRow>('users', 1)! };
     const admin = await login('prof_admin', 'demo1234');
-    const [left, right] = await Promise.all([
-      http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${manager.accessToken}`)
-        .send({ currentPassword: 'demo1234', newWebId: 'SharedOps', newPassword: 'ManagerPass123!' }),
-      http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${admin.accessToken}`)
-        .send({ currentPassword: 'demo1234', newWebId: 'sharedops', newPassword: 'AdminSecure123!' }),
+    await http.post(`/api/profile-change-requests/${created.body.id}/approve`)
+      .set('Authorization', `Bearer ${admin.accessToken}`).expect(201);
+    const after = db.findById<UserRow>('users', 1)!;
+    expect(after.webId).toBe('park_renamed');
+    expect(after.authVersion ?? 1).toBe((before.authVersion ?? 1) + 1);
+    await http.get('/api/auth/me').set('Authorization', `Bearer ${inst.accessToken}`).expect(401); // 세션 무효
+    await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(401);
+    await login('park_renamed', 'demo1234');
+  });
+
+  it('case-insensitive concurrent webId approvals commit exactly once', async () => {
+    const manager = await login('manager', 'ManagerPass123!');
+    const profAdmin = await login('prof_admin', 'demo1234');
+    const left = await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${manager.accessToken}`)
+      .send({ currentPassword: 'ManagerPass123!', webId: 'SharedOps', reason: '운영 계정 아이디로 변경 요청.' }).expect(201);
+    const right = await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${profAdmin.accessToken}`)
+      .send({ currentPassword: 'demo1234', webId: 'sharedops', reason: '운영 계정 아이디로 변경 요청.' }).expect(201);
+    // user 3은 앞 테스트(⑥ 통합 rotation)에서 ceo_minsun으로 회전됨.
+    const superToken = (await login('ceo_minsun', 'MinsunSecure1!')).accessToken;
+    const [a, b] = await Promise.all([
+      http.post(`/api/profile-change-requests/${left.body.id}/approve`).set('Authorization', `Bearer ${superToken}`),
+      http.post(`/api/profile-change-requests/${right.body.id}/approve`).set('Authorization', `Bearer ${superToken}`),
     ]);
-    expect([left.status, right.status].sort()).toEqual([200, 409]);
+    expect([a.status, b.status].sort()).toEqual([201, 409]); // identity lock + 재검사 — 한쪽만 선점
     const owners = db.findAll<UserRow>('users').filter((user) => user.webId.toLowerCase() === 'sharedops');
     expect(owners).toHaveLength(1);
   });

@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Patch, Post, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { UsersService } from './users.service';
@@ -7,8 +7,6 @@ import { ADMIN_ROLES, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
 import { CreateInstructorDto } from './dto/create-instructor.dto';
 import type { JwtClaims } from '../auth/auth.service';
-import { ChangeCredentialsDto } from './dto/change-credentials.dto';
-import { CredentialAccountResponseDto } from './dto/credential-account-response.dto';
 import { ProfileResponseDto } from './dto/profile-response.dto';
 import { profileVersionOf } from './user.entity';
 
@@ -53,23 +51,8 @@ export class UsersController {
     return this.users.provisionInstructor(dto, sub);
   }
 
-  @Patch('me/credentials')
-  @Roles(...STAFF_ROLES)
-  @ApiBearerAuth()
-  @ApiOperation({ summary: '내 아이디/비밀번호 변경 — 현재 비밀번호 재검증, auth_version 증가, audit 원자 tx.' })
-  @ApiOkResponse({ type: CredentialAccountResponseDto })
-  async changeCredentials(@Body() dto: ChangeCredentialsDto, @Req() req: Request & { user?: JwtClaims }) {
-    const sub = req.user?.sub;
-    if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
-    const account = await this.users.changeCredentials(sub, dto);
-    return {
-      id: account.id,
-      webId: account.webId,
-      name: account.name,
-      role: account.role,
-      mustChangePassword: account.mustChangePassword === true,
-    };
-  }
+  // [E0] PATCH me/credentials는 CredentialsModule로 이동(비밀번호 변경 이메일 OTP 오케스트레이션 —
+  //  Users↔ProfileVerifications 모듈 순환 회피). 경로·계약은 동일.
 
   // 학생/학부모 web id 존재 확인 (등록 폼 "확인하기" — 스태프 앱 내부에서만 호출)
   @Get('exists')

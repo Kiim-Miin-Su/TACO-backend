@@ -12,6 +12,12 @@ export class CreateProfileChangeRequestDto {
   @IsString() @MinLength(1) @MaxLength(50)
   name?: string;
 
+  // [E0] 아이디(webId) 변경 — 승인제(대표 결정). 승인 시 auth_version+1로 기존 세션 전부 무효.
+  @ApiPropertyOptional({ example: 'jihoon_park', minLength: 3, maxLength: 50, description: '변경할 아이디(대표 승인 후 적용·재로그인 필요)' })
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString() @MinLength(3) @MaxLength(50)
+  webId?: string;
+
   // [TBO-29B-4] 이메일 변경 — 인증된 challenge(verificationChallengeId) 소비 필수.
   @ApiPropertyOptional({ example: 'new@tnacademy.test', maxLength: 320, description: '변경할 이메일(사전 인증 필수)' })
   @ValidateIf((_object, value) => value !== undefined)

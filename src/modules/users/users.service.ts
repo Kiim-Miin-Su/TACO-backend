@@ -30,7 +30,9 @@ let demoPwHash: string | undefined;
 const DEMO_PW = (): string => (demoPwHash ??= bcrypt.hashSync('demo1234', 12));
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
-const identityLockId = (webId: string): number => Number.parseInt(sha256(webId.trim().toLowerCase()).slice(0, 7), 16);
+// [E0] export — 프로필 변경 요청(webId 승인제)의 잠금이 즉시 변경 경로와 같은 lock id를 쓴다
+//  (case-insensitive 동시 선점을 한 직렬화 지점에서 판정 — TBO-29B 규약 유지).
+export const identityLockId = (webId: string): number => Number.parseInt(sha256(webId.trim().toLowerCase()).slice(0, 7), 16);
 const VERIFY_TOKEN_TTL_MS = 48 * 60 * 60 * 1000; // 48h
 
 const isProduction = (): boolean => process.env.NODE_ENV === 'production';
@@ -248,6 +250,11 @@ export class UsersService implements OnModuleInit {
       const wantsProfile = newName !== undefined || newEmail !== undefined || newPhone !== undefined;
       if (wantsProfile && !before.mustChangePassword) {
         throw new BadRequestException('이름·이메일·전화 변경은 마이 페이지(프로필 변경)에서 해주세요.');
+      }
+      // [E0 2026-07-15] 아이디(webId) 즉시 변경 폐지 — 승인제(프로필 변경 요청) 경유.
+      //  예외: 첫 로그인 강제 변경(rotation)은 부트스트랩 컨텍스트라 직접 변경 유지.
+      if (newWebId && !before.mustChangePassword) {
+        throw new BadRequestException('아이디 변경은 마이 페이지의 프로필 변경 요청(대표 승인)으로 진행해 주세요.');
       }
       if (before.mustChangePassword && (!newWebId || !newPassword)) {
         throw new BadRequestException('첫 로그인에서는 새 아이디와 새 비밀번호를 모두 변경해야 합니다.');

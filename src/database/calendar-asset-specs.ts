@@ -96,7 +96,7 @@ export const PROFILE_CHANGE_REQUESTS_SPEC: PostgresCollectionSpec = {
       CONSTRAINT profile_change_requested_keys_check CHECK (
         jsonb_typeof(requested_changes) = 'object'
         AND requested_changes <> '{}'::jsonb
-        AND requested_changes - ARRAY['name','phone','countryCode','timeZone','email'] = '{}'::jsonb
+        AND requested_changes - ARRAY['name','phone','countryCode','timeZone','email','webId'] = '{}'::jsonb
       ),
       CONSTRAINT profile_change_decision_check CHECK (
         (status = 'pending' AND decided_by IS NULL AND decided_at IS NULL
@@ -129,6 +129,23 @@ export const PROFILE_CHANGE_REQUESTS_SPEC: PostgresCollectionSpec = {
     `CREATE TRIGGER trg_profile_change_self_decision
        BEFORE INSERT OR UPDATE ON profile_change_requests
        FOR EACH ROW EXECUTE FUNCTION profile_change_self_decision_guard()`,
+    // [E0 2026-07-15] keys CHECK에 webId 편입(아이디 변경 승인제) — DROP+ADD는 IF NOT EXISTS가
+    //  없어 정의 검사 후 교체하는 멱등 DO 블록(20260715_09와 SQL 공유).
+    `DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1 FROM pg_constraint
+         WHERE conname = 'profile_change_requested_keys_check'
+           AND pg_get_constraintdef(oid) NOT LIKE '%webId%'
+       ) THEN
+         ALTER TABLE profile_change_requests DROP CONSTRAINT profile_change_requested_keys_check;
+         ALTER TABLE profile_change_requests ADD CONSTRAINT profile_change_requested_keys_check CHECK (
+           jsonb_typeof(requested_changes) = 'object'
+           AND requested_changes <> '{}'::jsonb
+           AND requested_changes - ARRAY['name','phone','countryCode','timeZone','email','webId'] = '{}'::jsonb
+         );
+       END IF;
+     END $$`,
   ],
   indexes: [
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_profile_change_requests_pending_requester
@@ -172,7 +189,7 @@ export const PROFILE_VERIFICATION_CHALLENGES_SPEC: PostgresCollectionSpec = {
       CONSTRAINT profile_verification_state_check CHECK (
         (status = 'pending' AND verified_at IS NULL AND consumed_at IS NULL AND consumed_by_request_id IS NULL)
         OR (status = 'verified' AND verified_at IS NOT NULL AND consumed_at IS NULL AND consumed_by_request_id IS NULL)
-        OR (status = 'consumed' AND verified_at IS NOT NULL AND consumed_at IS NOT NULL AND consumed_by_request_id IS NOT NULL)
+        OR (status = 'consumed' AND verified_at IS NOT NULL AND consumed_at IS NOT NULL)
         OR (status IN ('expired','locked'))
       )
     )
@@ -187,7 +204,27 @@ export const PROFILE_VERIFICATION_CHALLENGES_SPEC: PostgresCollectionSpec = {
     activeIndex('profile_verification_challenges', 'idx_profile_verification_consumed_by', 'consumed_by_request_id'),
   ],
   // [2026-07-15 SENS 전환] 기존 DB의 provider CHECK에 ncp_sens 허용(20260715_03과 SQL 공유 — 멱등 DO 블록).
-  migrations: [...SENS_PROVIDER_MIGRATION_SQL],
+  // [E0 2026-07-15] consumed의 consumed_by_request_id NOT NULL 강제 해제 — 비밀번호 변경(자격증명)
+  //  소비는 프로필 요청 행이 없다(NULL = 자격증명 소비, NOT NULL = 프로필 요청 소비 — 20260715_10과 SQL 공유).
+  migrations: [
+    ...SENS_PROVIDER_MIGRATION_SQL,
+    `DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1 FROM pg_constraint
+         WHERE conname = 'profile_verification_state_check'
+           AND pg_get_constraintdef(oid) LIKE '%consumed_by_request_id IS NOT NULL%'
+       ) THEN
+         ALTER TABLE profile_verification_challenges DROP CONSTRAINT profile_verification_state_check;
+         ALTER TABLE profile_verification_challenges ADD CONSTRAINT profile_verification_state_check CHECK (
+           (status = 'pending' AND verified_at IS NULL AND consumed_at IS NULL AND consumed_by_request_id IS NULL)
+           OR (status = 'verified' AND verified_at IS NOT NULL AND consumed_at IS NULL AND consumed_by_request_id IS NULL)
+           OR (status = 'consumed' AND verified_at IS NOT NULL AND consumed_at IS NOT NULL)
+           OR (status IN ('expired','locked'))
+         );
+       END IF;
+     END $$`,
+  ],
   timestampFields: ['resendAvailableAt', 'expiresAt', 'verifiedAt', 'consumedAt'],
 };
 

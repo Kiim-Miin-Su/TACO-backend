@@ -225,6 +225,32 @@ export class ProfileVerificationsService implements OnModuleInit {
     return consumed;
   }
 
+  // ── 소비(자격증명 변경 tx 안에서만 호출) ─────────────────────────────────
+  /** [E0 2026-07-15] 비밀번호 변경 본인 인증 — **본인 현재 이메일**로 verified된 challenge를 소비한다.
+   *  호출자는 반드시 자신의 uow.run 안에서 부른다(실패 시 비밀번호 변경까지 전체 롤백).
+   *  consumedByRequestId는 null 유지(프로필 요청이 아닌 자격증명 변경 소비 — consumedAt만 기록). */
+  async consumeForCredentialChange(
+    challengeId: number,
+    requesterId: number,
+    expectedEmail: string,
+  ): Promise<ProfileVerificationChallenge> {
+    await this.refresh();
+    const challenge = this.ownChallenge(requesterId, challengeId);
+    if (!challenge) throw new BadRequestException(GENERIC_INVALID);
+    if (challenge.status !== 'verified' || this.isExpired(challenge)) throw new BadRequestException(GENERIC_INVALID);
+    if (challenge.channel !== 'email' || challenge.targetNormalized !== expectedEmail) {
+      throw new BadRequestException('본인 이메일로 완료한 인증이 필요합니다.');
+    }
+    const consumed = await this.store.updateIf<ProfileVerificationChallenge>(
+      PROFILE_VERIFICATION_CHALLENGES_SPEC,
+      challengeId,
+      { status: 'verified' },
+      { status: 'consumed', consumedAt: new Date().toISOString() },
+    );
+    if (!consumed) throw new ConflictException('이미 사용된 인증입니다.'); // 동시 소비 — 한쪽만 성공
+    return consumed;
+  }
+
   // ── 정규화·중복 검사(생성·승인 공용) ────────────────────────────────────
   normalizeTarget(channel: VerificationChannel, raw: string): string {
     if (channel === 'email') {

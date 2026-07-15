@@ -36,6 +36,8 @@
     "db:migrate:countries": "ts-node scripts/migrate-countries.ts",
     "db:migrate:signup-profile-fields": "ts-node scripts/migrate-signup-profile-fields.ts",
     "db:migrate:profile-self-decision": "ts-node scripts/migrate-profile-self-decision.ts",
+    "db:migrate:webid-approval": "ts-node scripts/migrate-webid-approval.ts",
+    "db:migrate:credential-otp": "ts-node scripts/migrate-credential-otp.ts",
     "db:cleanup:demo-data": "ts-node scripts/cleanup-demo-data.ts"
   },
   "dependencies": {
