@@ -5,6 +5,7 @@ import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedRes
 import { ScheduleService } from './schedule.service';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES, isInstructorOnly } from '../auth/roles.decorator';
@@ -99,6 +100,18 @@ export class ScheduleController {
   @ApiUnauthorizedResponse({ description: '토큰 없음(로그인 필요)' })
   create(@Body() dto: CreateScheduleDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.schedule.create(dto, req.user?.sub); // actor → audit_log(create)
+  }
+
+  // [TBO-29C C2] POST /api/schedule/series — 반복 생성 bulk command. 서버가 series ID 발급,
+  //  전체 conflict 선계산 후 series+occurrence+audit를 한 transaction으로 저장(중간 실패=전부 롤백).
+  @Post('series')
+  @Roles(...ADMIN_ROLES) // 직접 배정 manager 이상 — 강사 반복 요청은 schedule-requests 승인 흐름
+  @ApiOperation({ summary: '반복 세션 bulk 생성 — 서버 발급 series ID + 규칙 자산화 + 원자 커밋. [로그인]' })
+  @ApiCreatedResponse({ description: '{ series: ScheduleSeries, rows: ScheduleRow[], conflicts: Conflict[] }' })
+  @ApiConflictResponse({ description: '{ message, conflicts: Conflict[] } — force=false에서 전체 충돌 목록' })
+  @ApiUnauthorizedResponse({ description: '토큰 없음(로그인 필요)' })
+  createSeries(@Body() dto: CreateScheduleSeriesDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.schedule.createSeries(dto, req.user?.sub);
   }
 
   // 이동·리사이즈·상세편집. 충돌 시 409 {message, conflicts} (force=true면 적용).

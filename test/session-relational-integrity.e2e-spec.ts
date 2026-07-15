@@ -110,17 +110,14 @@ describe('session joined-table expected/after integrity (e2e)', () => {
   });
 
   it('반복 범위 변경은 동반 회차 하나라도 정산 연결이면 시리즈 전체를 불변으로 둔다', async () => {
-    const seriesId = 2513001;
-    const first = (await http.post('/api/schedule').set(auth()).send({
-      courseId: 10, instructorId: 1, seriesId,
-      sessionDate: '2099-12-01', startTime: '08:00', durationMinutes: 60,
-      topic: '정산 잠금 반복 1', force: true,
-    }).expect(201)).body.row;
-    const second = (await http.post('/api/schedule').set(auth()).send({
-      courseId: 10, instructorId: 1, seriesId,
-      sessionDate: '2099-12-08', startTime: '08:00', durationMinutes: 60,
-      topic: '정산 잠금 반복 2', force: true,
-    }).expect(201)).body.row;
+    // [TBO-29C C2] 시리즈는 서버 발급 bulk command로 생성(클라이언트 seriesId 폐기). 2099-12-01=화.
+    const madeSeries = (await http.post('/api/schedule/series').set(auth()).send({
+      courseId: 10, instructorId: 1,
+      repeat: { kind: 'weekly', weekdays: [2], startsOn: '2099-12-01', endsOn: '2099-12-08' },
+      startTime: '08:00', durationMinutes: 60, topic: '정산 잠금 반복', force: true,
+    }).expect(201)).body as { series: { id: number }; rows: Array<{ id: number }> };
+    const seriesId = madeSeries.series.id;
+    const [first, second] = madeSeries.rows;
 
     const db = app.get(InMemoryDatabase);
     db.update<ClassSession>(SESSIONS, second.id, { payoutId: 999 });

@@ -185,13 +185,11 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
   });
 
   it('[C3b] 반복 수업 변경 요청: 사유와 적용 범위를 저장하고 승인 시 이후 세션까지 업데이트한다', async () => {
-    const seriesId = 990901;
-    const first = (await http.post('/api/schedule').set(asAdmin())
-      .send({ courseId: 10, seriesId, sessionDate: '2099-08-03', startTime: '08:00', endTime: '09:00', force: true, topic: '반복 변경 1' })
-      .expect(201)).body.row;
-    const second = (await http.post('/api/schedule').set(asAdmin())
-      .send({ courseId: 10, seriesId, sessionDate: '2099-08-10', startTime: '08:00', endTime: '09:00', force: true, topic: '반복 변경 2' })
-      .expect(201)).body.row;
+    // [TBO-29C C2] 시리즈는 서버 발급 bulk command로 생성(클라이언트 seriesId 폐기).
+    const made2 = (await http.post('/api/schedule/series').set(asAdmin())
+      .send({ courseId: 10, repeat: { kind: 'weekly', weekdays: [1], startsOn: '2099-08-03', endsOn: '2099-08-10' }, startTime: '08:00', endTime: '09:00', force: true, topic: '반복 변경' })
+      .expect(201)).body as { rows: Array<{ id: number; sessionDate: string }> };
+    const [first, second] = made2.rows;
 
     const made = (await http.post('/api/schedule-requests').set(asInst())
       .send({

@@ -135,6 +135,25 @@ async function assertFixtureIntegrity(manager: EntityManager, fixture: Fixture):
   if (restricted.length) throw new Error(`fixture ${fixture.id} violates availability: ${JSON.stringify(restricted)}`);
 }
 
+// [TBO-29C C2] class_sessions.series_id는 FK(class_session_series) — 회차보다 먼저 시리즈 자산 행을 보장.
+async function ensureSeriesRow(manager: EntityManager, id: number, rows: Fixture[]): Promise<void> {
+  const members = rows.filter((row) => row.seriesId === id);
+  if (!members.length) return;
+  const dates = members.map((m) => m.sessionDate).sort();
+  const weekdays = [...new Set(members.map((m) => new Date(`${m.sessionDate}T00:00:00Z`).getUTCDay()))].sort((a, b) => a - b);
+  await manager.query(
+    `INSERT INTO class_session_series (id, repeat_kind, weekdays, starts_on, ends_on, start_time, duration_minutes, time_zone, version)
+     VALUES ($1, 'custom', $2, $3::date, $4::date, $5, $6, 'Asia/Seoul', 1)
+     ON CONFLICT (id) DO UPDATE SET
+       weekdays = EXCLUDED.weekdays, starts_on = EXCLUDED.starts_on, ends_on = EXCLUDED.ends_on,
+       start_time = EXCLUDED.start_time, duration_minutes = EXCLUDED.duration_minutes,
+       updated_at = now(), deleted_at = NULL, deleted_by = NULL`,
+    [id, JSON.stringify(weekdays), dates[0], dates[dates.length - 1], members[0].startTime, members[0].durationMinutes],
+  );
+  await manager.query(`SELECT setval(pg_get_serial_sequence('class_session_series','id'),
+    GREATEST((SELECT COALESCE(MAX(id), 1) FROM class_session_series), 1))`);
+}
+
 async function upsertFixture(manager: EntityManager, fixture: Fixture): Promise<void> {
   await manager.query(
     `INSERT INTO class_sessions
@@ -185,6 +204,7 @@ async function main(): Promise<void> {
     await dataSource.transaction(async (manager) => {
       for (const fixture of fixtures) await assertFixtureIntegrity(manager, fixture);
       if (!apply) return;
+      await ensureSeriesRow(manager, seriesId, fixtures); // [C2] FK 정합 — 시리즈 자산 먼저
       for (const fixture of fixtures) await upsertFixture(manager, fixture);
       await manager.query(
         `SELECT setval(pg_get_serial_sequence('class_sessions', 'id'), COALESCE((SELECT MAX(id) FROM class_sessions), 1), true)`,

@@ -11,6 +11,12 @@ import {
   type PostgresRow,
 } from '../../database/postgres-row.util';
 import { ClassSession, SESSIONS } from './schedule.entity';
+import {
+  CLASS_SESSIONS_SERIES_FK_SQL,
+  CLASS_SESSION_SERIES_BACKFILL_SQL,
+  CLASS_SESSION_SERIES_SETVAL_SQL,
+  CLASS_SESSION_SERIES_TABLE_SQL,
+} from '../../database/migrations/class-session-series.migration';
 
 const TABLE = SESSIONS;
 
@@ -174,6 +180,13 @@ export class ClassSessionsStore implements OnModuleInit {
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_payout_id ON ${TABLE} (payout_id) WHERE deleted_at IS NULL`);
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_room_date ON ${TABLE} (room_id, session_date) WHERE deleted_at IS NULL`);
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_date_status ON ${TABLE} (session_date, status) WHERE deleted_at IS NULL`);
+    // [TBO-29C C2] series 자산 표를 먼저 보장(생성 순서 결정성) → orphan series_id backfill → FK 승격.
+    //  Neon 기존 DB는 versioned migration(20260715_01)이 같은 SQL을 실행 — 어느 쪽이 먼저여도 멱등.
+    await this.postgres.ddl(CLASS_SESSION_SERIES_TABLE_SQL);
+    await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_session_series_range ON class_session_series (starts_on, ends_on) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(CLASS_SESSION_SERIES_BACKFILL_SQL);
+    await this.postgres.ddl(CLASS_SESSION_SERIES_SETVAL_SQL);
+    await this.postgres.ddl(CLASS_SESSIONS_SERIES_FK_SQL);
     this.ready = true;
     this.logger.log('class_sessions table ready (Postgres-backed)');
   }

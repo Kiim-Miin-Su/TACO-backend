@@ -27,7 +27,8 @@
     "test:e2e": "jest --config test/jest-e2e.json --runInBand",
     "test:e2e:db-crud": "RUN_DB_CRUD_E2E=1 jest --config test/jest-e2e.json --runInBand test/db-crud.e2e-spec.ts",
     "lint": "eslint \"src/**/*.ts\"",
-    "db:migrate:profile-verifications": "ts-node scripts/migrate-profile-verification-challenges.ts"
+    "db:migrate:profile-verifications": "ts-node scripts/migrate-profile-verification-challenges.ts",
+    "db:migrate:class-session-series": "ts-node scripts/migrate-class-session-series.ts"
   },
   "dependencies": {
     "@kms545487/contracts": "^0.2.1",

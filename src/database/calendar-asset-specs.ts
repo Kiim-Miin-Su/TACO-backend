@@ -1,4 +1,5 @@
 import type { PostgresCollectionSpec } from './postgres-collection.store';
+import { CLASS_SESSION_SERIES_TABLE_SQL } from './migrations/class-session-series.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -307,6 +308,19 @@ export const ENROLLMENTS_SPEC: PostgresCollectionSpec = {
   indexes: [
     activeIndex('enrollments', 'idx_enrollments_course_status', 'course_id, status'),
     activeIndex('enrollments', 'idx_enrollments_student_status', 'student_id, status'),
+  ],
+};
+
+// [TBO-29C C2] 반복 시리즈 자산 — DDL/backfill/FK 원문은 migrations/class-session-series.migration.ts가
+//  단일 소스(Neon versioned migration과 런타임 spec이 같은 SQL을 공유). FK 승격/backfill은 ClassSessionsStore가
+//  class_sessions 생성 직후 실행한다(테이블 생성 순서 결정성).
+export const CLASS_SESSION_SERIES_SPEC: PostgresCollectionSpec = {
+  table: 'class_session_series',
+  createSql: CLASS_SESSION_SERIES_TABLE_SQL,
+  jsonFields: ['weekdays'],
+  dateFields: ['startsOn', 'endsOn'],
+  indexes: [
+    'CREATE INDEX IF NOT EXISTS idx_session_series_range ON class_session_series (starts_on, ends_on) WHERE deleted_at IS NULL',
   ],
 };
 

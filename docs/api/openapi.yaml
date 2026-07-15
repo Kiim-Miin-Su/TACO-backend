@@ -1227,6 +1227,28 @@ paths:
       summary: 충돌 드라이런 — 강사는 JWT 본인 수업 범위, 생성·이동 전 이중예약/불가시간 겹침 검사
       tags:
       - scheduling
+  /api/schedule/series:
+    post:
+      operationId: ScheduleController_createSeries
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateScheduleSeriesDto'
+      responses:
+        '201':
+          description: '{ series: ScheduleSeries, rows: ScheduleRow[], conflicts: Conflict[] }'
+        '401':
+          description: 토큰 없음(로그인 필요)
+        '409':
+          description: '{ message, conflicts: Conflict[] } — force=false에서 전체 충돌 목록'
+      security:
+      - bearer: []
+      summary: 반복 세션 bulk 생성 — 서버 발급 series ID + 규칙 자산화 + 원자 커밋. [로그인]
+      tags:
+      - scheduling
   /api/schedule/{id}:
     patch:
       operationId: ScheduleController_update
@@ -3053,6 +3075,135 @@ components:
       required:
       - courseId
       - sessionDate
+      - startTime
+    ScheduleSeriesRepeatDto:
+      type: object
+      properties:
+        kind:
+          enum:
+          - weekly
+          - custom
+          type: string
+          example: weekly
+          description: weekly=시작일 요일 1개 · custom=선택 요일들
+        weekdays:
+          uniqueItems: true
+          minItems: 1
+          maxItems: 7
+          example:
+          - 1
+          - 3
+          - 5
+          description: 0(일)~6(토) — 중복 없음. weekly는 1개
+          type: array
+          items:
+            type: number
+            maximum: 6
+            minimum: 0
+        startsOn:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+          example: '2026-07-20'
+          description: 첫 occurrence 후보일(KST)
+        endsOn:
+          type: string
+          pattern: ^\d{4}-\d{2}-\d{2}$
+          example: '2026-08-24'
+          description: 마지막 occurrence 후보일(KST) — startsOn <= endsOn
+      required:
+      - kind
+      - weekdays
+      - startsOn
+      - endsOn
+    CreateScheduleSeriesDto:
+      type: object
+      properties:
+        courseId:
+          type: number
+          example: 10
+          description: 코스 FK(필수)
+        instructorId:
+          type: number
+          example: 1
+          description: 강사 FK(미지정 시 코스 기본 강사)
+        roomId:
+          type: number
+          example: 2
+          description: 강의실 FK
+        studentIds:
+          maxItems: 20
+          description: 명시 코호트 — 미지정=코스 활성 수강생 전원. 지정 시 부분집합만 허용
+          type: array
+          items:
+            type: number
+        repeat:
+          description: 반복 규칙 — 서버가 occurrence 날짜를 정규화·발급
+          allOf:
+          - $ref: '#/components/schemas/ScheduleSeriesRepeatDto'
+        startTime:
+          type: string
+          example: '16:00'
+        endTime:
+          type: string
+          example: '17:30'
+          description: 미지정 시 durationMinutes 사용. startTime보다 이르면 익일 종료(자정 크로스)
+        durationMinutes:
+          type: number
+          minimum: 10
+          maximum: 480
+          example: 90
+          description: endTime 없을 때 사용(기본 60)
+        timeZone:
+          type: string
+          maxLength: 64
+          example: Asia/Seoul
+          description: 규칙 해석 기준 시간대(MVP는 Asia/Seoul 고정)
+        topic:
+          type: string
+          maxLength: 200
+          example: 'Reading: 추론 문제 전략'
+        memo:
+          type: string
+          maxLength: 500
+          example: 교재 3장 지참
+        color:
+          type: string
+          maxLength: 20
+          example: '#0969da'
+        status:
+          enum:
+          - scheduled
+          - held
+          - canceled
+          - no_show
+          - makeup
+          type: string
+          example: scheduled
+        kind:
+          enum:
+          - class
+          - level_test
+          - counsel
+          type: string
+          example: class
+        price:
+          type: number
+          minimum: 0
+          example: 50000
+          description: 세션 단건 가격(상담 등)
+        mode:
+          enum:
+          - in_person
+          - online
+          type: string
+          example: in_person
+        force:
+          type: boolean
+          example: false
+          description: 충돌이 있어도 강제 적용(기본 false → 전체 충돌 목록과 함께 409)
+      required:
+      - courseId
+      - repeat
       - startTime
     UpdateScheduleDto:
       type: object

@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
-import type { Conflict, ScheduleRow } from '@kms545487/contracts';
+import type { Conflict, CreateScheduleSeriesResult, ScheduleRow, ScheduleSeries } from '@kms545487/contracts';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { RoomsService } from '../rooms/rooms.service';
 import { AvailabilityService } from '../availability/availability.service';
@@ -15,9 +15,11 @@ import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
 import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
 import { ClassSessionsStore } from './class-sessions.store';
+import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
+import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { USERS_SPEC } from '../../database/calendar-asset-specs';
+import { CLASS_SESSION_SERIES_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, isPayoutLocked, payoutIdOf, teachingMinutesOf, type SessionAccountingImpact } from './session-accounting.policy';
 import { studentBelongsToSession } from './session-participant.policy';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
@@ -124,6 +126,24 @@ export class ScheduleService implements OnModuleInit {
       // TOEFL 정규(강사1·강의실2) — 월·수 18:00 · [v0.1.16] 비대면(미국 학생 수강 — 수업방식 필터 데모)
       { courseId: 12, instructorId: 1, topic: 'TOEFL 정규', roomId: 2, weekdayOffsets: [0, 2], startTime: '18:00', durationMinutes: 90, mode: 'online' },
     ];
+    // [TBO-29C C2] class_sessions.series_id FK 승격 — 시리즈 자산 행을 회차보다 먼저 시드.
+    let seedSid = 0;
+    const seriesRows = series.map((sr) => {
+      const dates = sr.weekdayOffsets.map((off) => { const d = new Date(mon); d.setUTCDate(d.getUTCDate() + off); return fmt(d); });
+      return {
+        id: ++seedSid,
+        repeatKind: 'custom' as const,
+        weekdays: [...new Set(dates.map((d) => weekdayOf(d)))].sort(),
+        startsOn: dates[0],
+        endsOn: dates[dates.length - 1],
+        startTime: sr.startTime,
+        durationMinutes: sr.durationMinutes,
+        timeZone: 'Asia/Seoul',
+        version: 1,
+      };
+    });
+    await this.collections.seed<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC, seriesRows);
+
     let seriesId = 0;
     for (const sr of series) {
       const sid = ++seriesId;
@@ -179,11 +199,12 @@ export class ScheduleService implements OnModuleInit {
 
   async ensureReady(): Promise<void> {
     // [TBO-28F] users도 재조회 — 다른 인스턴스에서 승인/등록된 강사가 리소스·검증에 즉시 반영.
-    await Promise.all([
-      this.sessions.ensureReady(),
-      this.availability.refresh(),
-      this.collections.hydrate<StaffAccount>(USERS_SPEC),
-    ]);
+    // [TBO-29C C2] series 투영 추가 + 순차 실행 — refreshAfterLock이 pg tx 안에서 호출되므로
+    //  한 커넥션에 병렬 query를 걸지 않는다(pg 직렬화 deprecation 제거·결정성).
+    await this.sessions.ensureReady();
+    await this.availability.refresh();
+    await this.collections.hydrate<StaffAccount>(USERS_SPEC);
+    await this.collections.hydrate<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC);
   }
 
   // [TBO-28C] 캘린더 명령의 advisory lock 키 — 대상 강사·강의실·학생·세션. UoW.lockTargets가 정렬·중복 제거.
@@ -416,6 +437,9 @@ export class ScheduleService implements OnModuleInit {
         instructorIds: [instructorId], roomIds: [dto.roomId], studentIds,
       }));
       await this.refreshAfterLock();
+      // [TBO-29C C2] seriesId는 서버 발급 자산만 허용 — 유령 시리즈 참조 차단(PG FK와 동일 규칙을 메모리에도).
+      if (dto.seriesId != null && !this.db.findById<ScheduleSeriesRow>(CLASS_SESSION_SERIES, dto.seriesId))
+        throw new BadRequestException(`seriesId ${dto.seriesId} 없음 — 반복 생성은 POST /schedule/series를 사용하세요`);
       const conflicts = detectConflicts(
         { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
         this.db.findAll<ClassSession>(SESSIONS),
@@ -453,6 +477,126 @@ export class ScheduleService implements OnModuleInit {
     });
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
     return { row: this.enrich(row, roomsMap), conflicts };
+  }
+
+  /** [TBO-29C C2] 반복 규칙 -> occurrence 날짜 정규화(순수) — [startsOn, endsOn]에서 weekdays에 속하는 날짜.
+   *  범위 366일·회차 120건 상한(운영 가드). weekly는 요일 1개 강제. */
+  static occurrenceDatesOf(repeat: { kind: 'weekly' | 'custom'; weekdays: number[]; startsOn: string; endsOn: string }): string[] {
+    if (repeat.startsOn > repeat.endsOn) throw new BadRequestException('startsOn은 endsOn보다 늦을 수 없습니다');
+    if (repeat.kind === 'weekly' && repeat.weekdays.length !== 1)
+      throw new BadRequestException('weekly 반복은 요일을 정확히 1개 지정합니다');
+    if (dayDiff(repeat.startsOn, repeat.endsOn) > 366) throw new BadRequestException('반복 기간은 최대 366일입니다');
+    const wanted = new Set(repeat.weekdays);
+    const dates: string[] = [];
+    for (let d = repeat.startsOn; d <= repeat.endsOn; d = addDaysISO(d, 1)) {
+      if (wanted.has(weekdayOf(d))) dates.push(d);
+      if (dates.length > 120) throw new BadRequestException('반복 회차는 최대 120건입니다');
+    }
+    if (!dates.length) throw new BadRequestException('반복 기간 안에 해당 요일이 없습니다');
+    return dates;
+  }
+
+  /** [TBO-29C C2] 반복 생성 bulk command — 서버가 series ID를 발급하고 규칙/날짜/기간/시간/cohort/FK를
+   *  전체 정규화한 뒤, 모든 자원 lock -> 권위 재조회 -> **전체 conflict 선계산** -> series+occurrence+audit를
+   *  **한 transaction**으로 저장한다. 중간 실패는 전부 롤백(series +0, sessions +0, audit +0). */
+  async createSeries(dto: CreateScheduleSeriesDto, actorId?: number): Promise<CreateScheduleSeriesResult> {
+    await this.ensureReady();
+    const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(단건 create와 같은 함수)
+    const course = this.courseOf(dto.courseId)!;
+    const studentIds = dto.studentIds?.length ? dto.studentIds : this.activeStudentIds(dto.courseId);
+    const timeZone = dto.timeZone ?? 'Asia/Seoul';
+    if (timeZone !== 'Asia/Seoul') throw new BadRequestException('반복 규칙 시간대는 MVP에서 Asia/Seoul만 지원합니다');
+
+    const startTime = dto.startTime;
+    const durationMinutes = dto.endTime
+      ? durationMinutesBetween(startTime, dto.endTime)
+      : dto.durationMinutes ?? SESSION_DEFAULTS.durationMinutes;
+    assertDuration(startTime, durationMinutes);
+    const endTime = endTimeOf(startTime, durationMinutes); // 자정 크로스면 undefined(durationMinutes 파생)
+    const weekdays = [...new Set(dto.repeat.weekdays)].sort((a, b) => a - b);
+    const dates = ScheduleService.occurrenceDatesOf({ ...dto.repeat, weekdays });
+
+    const result = await this.unitOfWork.run(async () => {
+      // 모든 자원 lock을 결정적 순서로(강사·강의실·학생) — 회차 전체가 같은 자원 집합을 공유.
+      await this.unitOfWork.lockTargets(this.calendarLockKeys({
+        instructorIds: [instructorId], roomIds: [dto.roomId], studentIds,
+      }));
+      await this.refreshAfterLock();
+
+      // 전체 conflict 선계산 — 어떤 회차도 쓰기 전에 모든 날짜를 검사(부분 커밋 원천 차단).
+      const existing = this.db.findAll<ClassSession>(SESSIONS);
+      const allConflicts: Conflict[] = [];
+      for (const sessionDate of dates) {
+        allConflicts.push(...detectConflicts(
+          { sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
+          existing,
+          this.availability.list(),
+          this.effectiveStudentIds,
+        ));
+      }
+      if (allConflicts.length && !dto.force) {
+        this.logger.warn(`createSeries 충돌 ${allConflicts.length}건 — course=${dto.courseId} ${dates[0]}~${dates[dates.length - 1]} ${startTime} (force로 강제 가능)`);
+        throw new ConflictException({ message: '스케줄 충돌', conflicts: allConflicts });
+      }
+
+      // 서버 발급 series ID — 규칙·생성자·기간을 자산화(audit 포함 원자성).
+      const series = await this.collections.insert<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC, {
+        repeatKind: dto.repeat.kind,
+        weekdays,
+        startsOn: dto.repeat.startsOn,
+        endsOn: dto.repeat.endsOn,
+        startTime,
+        durationMinutes,
+        timeZone,
+        version: 1,
+        createdBy: actorId ?? null,
+        updatedBy: null,
+      });
+      if (actorId != null)
+        await this.audit.log({ entity: CLASS_SESSION_SERIES, entityId: series.id, action: 'create', actorId, changes: this.audit.snapshotOf(series) as never });
+
+      const rows: ClassSession[] = [];
+      for (const sessionDate of dates) {
+        const created = await this.sessions.insert({
+          studentIds,
+          seriesId: series.id,
+          courseId: dto.courseId,
+          instructorId,
+          roomId: dto.roomId,
+          sessionDate,
+          startTime,
+          endTime,
+          durationMinutes,
+          status: dto.status ?? SESSION_DEFAULTS.status,
+          kind: dto.kind ?? SESSION_DEFAULTS.kind,
+          mode: dto.mode ?? SESSION_DEFAULTS.mode,
+          price: dto.price,
+          topic: dto.topic ?? course.name,
+          memo: dto.memo,
+          color: dto.color ?? course.color,
+        } as Omit<ClassSession, keyof BaseRow>);
+        if (actorId != null)
+          await this.audit.log({ entity: SESSIONS, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
+        rows.push(created);
+      }
+      return { series, rows, conflicts: allConflicts };
+    });
+
+    const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
+    const seriesOut: ScheduleSeries = {
+      id: result.series.id,
+      repeatKind: result.series.repeatKind,
+      weekdays: result.series.weekdays,
+      startsOn: result.series.startsOn,
+      endsOn: result.series.endsOn,
+      startTime: result.series.startTime,
+      durationMinutes: result.series.durationMinutes,
+      timeZone: result.series.timeZone,
+      version: result.series.version,
+      createdBy: result.series.createdBy ?? undefined,
+      updatedBy: result.series.updatedBy ?? undefined,
+    };
+    return { series: seriesOut, rows: result.rows.map((r) => this.enrich(r, roomsMap)), conflicts: result.conflicts };
   }
 
   // 세션 삭제 — [v9] soft delete(행 보존·deletedBy 기록) + audit before 스냅샷 + 동반 정리(출결·리포트) 단일 tx.

@@ -50,18 +50,16 @@ describe("Full Flow (e2e)", () => {
     expect(res.body.conflicts).toEqual([]);
   });
 
-  // 3) 커스텀 반복(같은 seriesId, 3회)
-  const seriesId = Date.now();
+  // 3) 커스텀 반복 — [TBO-29C C2] 서버 발급 bulk command(클라이언트 seriesId 폐기)
   const seriesIds: number[] = [];
-  it("3) 커스텀 반복 시리즈 생성(화 14:00, 매주 3회, 같은 seriesId)", async () => {
-    for (const d of [W3TUE, addDaysISO(W3TUE, 7), addDaysISO(W3TUE, 14)]) {
-      const res = await http
-        .post("/api/schedule")
-        .set(asAdmin())
-        .send({ courseId: 10, instructorId: 1, sessionDate: d, startTime: "14:00", durationMinutes: 90, seriesId })
-        .expect(201);
-      seriesIds.push(res.body.row.id);
-    }
+  it("3) 커스텀 반복 시리즈 생성(화 14:00, 매주 3회 — 서버 발급 series)", async () => {
+    const res = await http
+      .post("/api/schedule/series")
+      .set(asAdmin())
+      .send({ courseId: 10, instructorId: 1, repeat: { kind: "weekly", weekdays: [2], startsOn: W3TUE, endsOn: addDaysISO(W3TUE, 14) }, startTime: "14:00", durationMinutes: 90 })
+      .expect(201);
+    expect(res.body.series.id).toBeGreaterThan(0);
+    seriesIds.push(...(res.body.rows as Array<{ id: number }>).map((r) => r.id));
     expect(seriesIds).toHaveLength(3);
   });
 
