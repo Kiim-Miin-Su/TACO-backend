@@ -170,6 +170,12 @@ export class InMemoryDatabase {
    */
   seed<T extends BaseRow>(name: string, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): T[] {
     if (!demoSeedEnabled()) return []; // [시범운영] 데모 시드 단일 관문 — production 기본 차단
+    return this.seedReference<T>(name, rows);
+  }
+
+  /** [E0.5 ④] 참조 데이터(제품 카탈로그) 시드 — 데모 관문 비대상(production 포함 항상 존재 보장).
+   *  업무(데모) 데이터에는 쓰지 말 것 — 반드시 seed()를 지나야 시범운영 차단이 걸린다. */
+  seedReference<T extends BaseRow>(name: string, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): T[] {
     const coll = this.collection<T>(name);
     const now = new Date().toISOString();
     const inserted: T[] = [];

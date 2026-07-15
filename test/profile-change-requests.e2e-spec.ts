@@ -135,4 +135,39 @@ describe('Profile change requests (e2e)', () => {
     expect(after.profileVersion).toBe(before.profileVersion);
     expect(db.findById<RequestRow>('profile_change_requests', created.body.id)?.status).toBe('pending');
   });
+
+  // [E0.5 ①] 대표(super_admin)는 자기 결정 금지 규칙의 명시 예외 — 같은 tx에서 즉시 적용.
+  //  요청 행·audit(create+users update+approve)는 일반 경로와 동일하게 남는다(추적성).
+  it('applies super_admin changes instantly in the same tx with full audit', async () => {
+    const me = await http.get('/api/users/me/profile').set(bearer(tokens.super)).expect(200);
+    const version = me.body.profileVersion as number;
+    const created = await http.post('/api/profile-change-requests').set(bearer(tokens.super))
+      .send({ currentPassword: 'demo1234', name: '김민선', reason: '대표 표시 이름을 실명으로 변경합니다.' })
+      .expect(201);
+    expect(created.body).toMatchObject({
+      requesterId: me.body.id,
+      status: 'approved',
+      decidedBy: me.body.id,
+      appliedProfileVersion: version + 1,
+    });
+    expect(created.body.decidedAt).toBeTruthy();
+
+    const after = await http.get('/api/users/me/profile').set(bearer(tokens.super)).expect(200);
+    expect(after.body).toMatchObject({ name: '김민선', profileVersion: version + 1 });
+
+    // audit 3건: 요청 create + users update + 요청 approve (모두 대표 본인 actor).
+    const requestAudits = db.findAll<Record<string, unknown> & { id: number }>('audit_log')
+      .filter((row) => row.entity === 'profile_change_requests' && row.entityId === created.body.id);
+    expect(requestAudits.map((row) => row.action).sort()).toEqual(['approve', 'create']);
+    const userAudits = db.findAll<Record<string, unknown> & { id: number }>('audit_log')
+      .filter((row) => row.entity === 'users' && row.entityId === me.body.id && row.action === 'update');
+    expect(userAudits.length).toBeGreaterThanOrEqual(1);
+
+    // 즉시 적용이라 pending이 남지 않는다 — 연속 변경이 409 없이 가능.
+    const second = await http.post('/api/profile-change-requests').set(bearer(tokens.super))
+      .send({ currentPassword: 'demo1234', timeZone: 'Asia/Seoul', countryCode: 'KR', reason: '대표 근무지 정보를 정리합니다.' })
+      .expect(201);
+    expect(second.body.status).toBe('approved');
+    // 일반 역할(강사·매니저·admin)은 종전대로 승인제 — 위 테스트들이 pending 경로를 계속 검증한다.
+  });
 });

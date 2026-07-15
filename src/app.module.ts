@@ -32,6 +32,7 @@ import { ParentsModule } from './modules/parents/parents.module';
 import { RegistrationsModule } from './modules/registrations/registrations.module';
 import { ProfileChangeRequestsModule } from './modules/profile-change-requests/profile-change-requests.module';
 import { ProfileVerificationsModule } from './modules/profile-verifications/profile-verifications.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { ProfileVerificationsModule } from './modules/profile-verifications/prof
     AuthModule,
     HealthModule,
     UsersModule,
+    CatalogModule, // [E0.5 ④] 국가·시간대 참조 카탈로그
     ProfileChangeRequestsModule,
     ProfileVerificationsModule, // [TBO-29B-4] 연락처 재인증
     StudentsModule,

@@ -16,6 +16,7 @@ import { USERS, profileVersionOf, type StaffAccount } from '../users/user.entity
 import { UsersService } from '../users/users.service';
 import { ProfileVerificationsService } from '../profile-verifications/profile-verifications.service';
 import { maskTarget } from '../profile-verifications/profile-verification.entity';
+import { CountriesService } from '../catalog/countries.service';
 import { CreateProfileChangeRequestDto } from './dto/create-profile-change-request.dto';
 import {
   CONTACT_CHANGE_FIELDS,
@@ -33,6 +34,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     private readonly users: UsersService,
     private readonly audit: AuditService,
     private readonly verifications: ProfileVerificationsService,
+    private readonly countries: CountriesService, // [E0.5 ④] 국가·시간대 카탈로그 검증
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -110,6 +112,13 @@ export class ProfileChangeRequestsService implements OnModuleInit {
           },
           reason: reason.slice(0, 200),
         });
+        // [E0.5 ① 2026-07-15] 대표(super_admin)는 '자기 결정 금지' 규칙의 명시 예외 — 최상위
+        //  결정권자라 자기 프로필을 승인해 줄 상급자가 없다. 요청 행·create/approve audit는
+        //  일반 경로와 동일하게 남기고(추적성 보존), **같은 tx**에서 즉시 적용한다
+        //  (적용 실패 시 요청 생성까지 롤백 — 부분 상태 없음). admin(교수부장) 이하는 종전대로 승인제.
+        if (requester.role === 'super_admin') {
+          return this.applyApprovedInTx(row, requesterId, `프로필 변경 요청 #${row.id} 즉시 적용(대표)`);
+        }
         return row;
       } catch (error) {
         if (this.errorCode(error) === '23505') {
@@ -171,50 +180,9 @@ export class ProfileChangeRequestsService implements OnModuleInit {
       if (request.requesterId === actorId) throw new ForbiddenException('본인의 프로필 변경 요청은 본인이 처리할 수 없습니다.');
       if (request.status !== 'pending') throw new ConflictException('이미 처리된 프로필 변경 요청입니다.');
 
-      const beforeLive = this.users.findById(request.requesterId);
-      if (!beforeLive) throw new NotFoundException(`계정 ${request.requesterId} 없음`);
-      // [29B-4 수정] 메모리 모드에서 updateIf가 행을 in-place 변경 → 라이브 참조로 diff하면 항상 빈 diff.
-      //  스냅샷으로 before를 고정한다(users update audit에 실제 변경 내용이 남도록).
-      const before = { ...beforeLive };
-      if (before.status !== 'active') throw new ConflictException('활성 계정의 프로필만 변경할 수 있습니다.');
-      const currentVersion = profileVersionOf(before);
-      if (request.baseProfileVersion !== currentVersion) {
-        throw new ConflictException('프로필이 요청 이후 변경되어 처리할 수 없습니다.');
-      }
-
-      const decidedAt = new Date().toISOString();
-      const changes: Record<string, { before?: unknown; after?: unknown }> = {
-        status: { before: 'pending', after: status },
-      };
       if (status === 'approved') {
-        // [TBO-29B-4 §5] 승인 시 연락처 uniqueness 재검사 — 가입/다른 변경이 먼저 점유했으면 409(요청은 pending 유지).
-        const contact = this.contactChangeOf(request.requestedChanges);
-        if (contact) this.verifications.assertTargetAvailable(contact.channel, contact.target, request.requesterId);
-        const masked = this.maskChanges(request.requestedChanges);
-        for (const field of Object.keys(request.requestedChanges)) {
-          changes[field] = {
-            before: this.maskFieldValue(field, (before as unknown as Record<string, unknown>)[field]),
-            after: (masked as Record<string, unknown>)[field],
-          };
-        }
-        changes.profileVersion = { before: currentVersion, after: currentVersion + 1 };
-        const updated = await this.store.updateIf<StaffAccount>(
-          USERS_SPEC,
-          before.id,
-          { profileVersion: currentVersion },
-          { ...request.requestedChanges, profileVersion: currentVersion + 1 },
-        );
-        if (!updated) throw new ConflictException('프로필이 요청 이후 변경되어 처리할 수 없습니다.');
-        await this.audit.log({
-          entity: USERS,
-          entityId: before.id,
-          action: 'update',
-          actorId,
-          changes: this.maskDiff(this.audit.diffOf(before, updated)), // [§5] audit masked
-          reason: `프로필 변경 요청 #${id} 승인`,
-        });
-      } else {
-        changes.rejectionReason = { after: decisionReason };
+        const applied = await this.applyApprovedInTx(request, actorId, `프로필 변경 요청 #${id} 승인`);
+        return this.maskRequest(applied);
       }
 
       const decided = await this.store.updateIf<ProfileChangeRequest>(
@@ -222,11 +190,11 @@ export class ProfileChangeRequestsService implements OnModuleInit {
         id,
         { status: 'pending', baseProfileVersion: request.baseProfileVersion },
         {
-          status,
+          status: 'rejected',
           decidedBy: actorId,
-          decidedAt,
+          decidedAt: new Date().toISOString(),
           rejectionReason: decisionReason ?? null,
-          appliedProfileVersion: status === 'approved' ? currentVersion + 1 : null,
+          appliedProfileVersion: null,
         },
       );
       if (!decided) throw new ConflictException('이미 처리된 프로필 변경 요청입니다.');
@@ -234,13 +202,91 @@ export class ProfileChangeRequestsService implements OnModuleInit {
       await this.audit.log({
         entity: PROFILE_CHANGE_REQUESTS,
         entityId: id,
-        action: status === 'approved' ? 'approve' : 'reject',
+        action: 'reject',
         actorId,
-        changes,
-        reason: status === 'approved' ? `프로필 변경 요청 #${id} 승인` : decisionReason?.slice(0, 200),
+        changes: {
+          status: { before: 'pending', after: 'rejected' },
+          rejectionReason: { after: decisionReason },
+        },
+        reason: decisionReason?.slice(0, 200),
       });
       return this.maskRequest(decided);
     });
+  }
+
+  /** [E0.5 ①] 승인 적용 공통 경로 — decide(관리자 결정)와 create(super_admin 즉시 적용)가 공유.
+   *  전제: 호출자가 같은 uow tx 안에서 user·해당 요청 잠금을 보유하고 request.status === 'pending'.
+   *  users CAS(profileVersion)·masked audit 2건(users update + request approve)·요청 행 확정을 원자로 수행. */
+  private async applyApprovedInTx(
+    request: ProfileChangeRequest,
+    actorId: number,
+    decisionReason: string,
+  ): Promise<ProfileChangeRequest> {
+    const beforeLive = this.users.findById(request.requesterId);
+    if (!beforeLive) throw new NotFoundException(`계정 ${request.requesterId} 없음`);
+    // [29B-4 수정] 메모리 모드에서 updateIf가 행을 in-place 변경 → 라이브 참조로 diff하면 항상 빈 diff.
+    //  스냅샷으로 before를 고정한다(users update audit에 실제 변경 내용이 남도록).
+    const before = { ...beforeLive };
+    if (before.status !== 'active') throw new ConflictException('활성 계정의 프로필만 변경할 수 있습니다.');
+    const currentVersion = profileVersionOf(before);
+    if (request.baseProfileVersion !== currentVersion) {
+      throw new ConflictException('프로필이 요청 이후 변경되어 처리할 수 없습니다.');
+    }
+
+    // [TBO-29B-4 §5] 승인 시 연락처 uniqueness 재검사 — 가입/다른 변경이 먼저 점유했으면 409(요청은 pending 유지).
+    const contact = this.contactChangeOf(request.requestedChanges);
+    if (contact) this.verifications.assertTargetAvailable(contact.channel, contact.target, request.requesterId);
+
+    const changes: Record<string, { before?: unknown; after?: unknown }> = {
+      status: { before: 'pending', after: 'approved' },
+    };
+    const masked = this.maskChanges(request.requestedChanges);
+    for (const field of Object.keys(request.requestedChanges)) {
+      changes[field] = {
+        before: this.maskFieldValue(field, (before as unknown as Record<string, unknown>)[field]),
+        after: (masked as Record<string, unknown>)[field],
+      };
+    }
+    changes.profileVersion = { before: currentVersion, after: currentVersion + 1 };
+    const updated = await this.store.updateIf<StaffAccount>(
+      USERS_SPEC,
+      before.id,
+      { profileVersion: currentVersion },
+      { ...request.requestedChanges, profileVersion: currentVersion + 1 },
+    );
+    if (!updated) throw new ConflictException('프로필이 요청 이후 변경되어 처리할 수 없습니다.');
+    await this.audit.log({
+      entity: USERS,
+      entityId: before.id,
+      action: 'update',
+      actorId,
+      changes: this.maskDiff(this.audit.diffOf(before, updated)), // [§5] audit masked
+      reason: decisionReason,
+    });
+
+    const decided = await this.store.updateIf<ProfileChangeRequest>(
+      PROFILE_CHANGE_REQUESTS_SPEC,
+      request.id,
+      { status: 'pending', baseProfileVersion: request.baseProfileVersion },
+      {
+        status: 'approved',
+        decidedBy: actorId,
+        decidedAt: new Date().toISOString(),
+        rejectionReason: null,
+        appliedProfileVersion: currentVersion + 1,
+      },
+    );
+    if (!decided) throw new ConflictException('이미 처리된 프로필 변경 요청입니다.');
+
+    await this.audit.log({
+      entity: PROFILE_CHANGE_REQUESTS,
+      entityId: request.id,
+      action: 'approve',
+      actorId,
+      changes,
+      reason: decisionReason,
+    });
+    return decided;
   }
 
   private async findAuthoritative(id: number): Promise<ProfileChangeRequest> {
@@ -323,7 +369,15 @@ export class ProfileChangeRequestsService implements OnModuleInit {
         ? null
         : this.verifications.normalizeTarget('sms', dto.phone);
     }
-    if (dto.countryCode !== undefined) changes.countryCode = dto.countryCode == null ? null : dto.countryCode.trim().toUpperCase() || null;
+    // [E0.5 ④] 국가·시간대 자유 입력 폐지 — 카탈로그(countries 표) 값만 허용(비움 null은 허용).
+    //  국가↔시간대 교차 일치는 강제하지 않는다(FE 토글이 국가 선택 시 tz 자동 세팅 — 서버는 목록 밖 차단만).
+    if (dto.countryCode !== undefined) {
+      const countryCode = dto.countryCode == null ? null : dto.countryCode.trim().toUpperCase() || null;
+      if (countryCode != null && !this.countries.isValidCountryCode(countryCode)) {
+        throw new BadRequestException('국가 코드는 카탈로그에서 선택해 주세요.');
+      }
+      changes.countryCode = countryCode;
+    }
     if (dto.timeZone !== undefined) {
       const timeZone = dto.timeZone?.trim() || null;
       if (timeZone) {
@@ -331,6 +385,9 @@ export class ProfileChangeRequestsService implements OnModuleInit {
           new Intl.DateTimeFormat('en-US', { timeZone }).format();
         } catch {
           throw new BadRequestException('올바른 IANA 타임존이 아닙니다.');
+        }
+        if (!this.countries.isValidTimeZone(timeZone)) {
+          throw new BadRequestException('시간대는 카탈로그에서 선택해 주세요.');
         }
       }
       changes.timeZone = timeZone;

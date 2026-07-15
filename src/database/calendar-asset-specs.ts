@@ -8,6 +8,7 @@ import {
   PARENT_FK_SQL,
 } from './migrations/parents.migration';
 import { ACADEMY_EVENTS_TABLE_SQL, ACADEMY_EVENTS_INDEX_SQL } from './migrations/academy-events.migration';
+import { COUNTRIES_TABLE_SQL } from './migrations/countries.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -37,6 +38,9 @@ export const USERS_SPEC: PostgresCollectionSpec = {
       last_login_at timestamptz,
       country_code varchar(8),
       time_zone varchar(64),
+      university varchar(100),
+      major varchar(100),
+      birth_year integer,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now(),
       deleted_at timestamptz,
@@ -54,6 +58,11 @@ export const USERS_SPEC: PostgresCollectionSpec = {
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS profile_version integer NOT NULL DEFAULT 1`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password boolean NOT NULL DEFAULT false`,
     `ALTER TABLE users DROP COLUMN IF EXISTS email_verify_token`,
+    // [E0.5 ④b 2026-07-15] 가입 폼 확장 — 지원자 제공(전화는 기존 phone 컬럼). 승인 tx에서
+    //  instructor_profiles로 승계(COALESCE)되며 이후 운영 권위는 프로필 쪽이다(20260715_07과 SQL 공유).
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS university varchar(100)`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS major varchar(100)`,
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_year integer`,
   ],
   indexes: [
     activeIndex('users', 'idx_users_role', 'role'),
@@ -96,14 +105,30 @@ export const PROFILE_CHANGE_REQUESTS_SPEC: PostgresCollectionSpec = {
           AND rejection_reason IS NULL AND applied_profile_version = base_profile_version + 1)
         OR (status = 'rejected' AND decided_by IS NOT NULL AND decided_at IS NOT NULL
           AND char_length(btrim(rejection_reason)) BETWEEN 5 AND 500 AND applied_profile_version IS NULL)
-      ),
-      CONSTRAINT profile_change_no_self_decision_check CHECK (decided_by IS NULL OR decided_by <> requester_id)
+      )
     )
   `,
   // [TBO-29B-4] 기존 테이블용 멱등 마이그레이션 — 신규 설치는 createSql이 이미 포함.
   //  keys CHECK의 email 확장은 versioned migration(20260714_03)이 담당(DROP+ADD는 IF NOT EXISTS 불가).
+  // [E0.5 ① 2026-07-15] '자기 결정 금지' DB 방어를 CHECK → 트리거로 교체 — CHECK는 users.role을 볼 수
+  //  없어 super_admin 즉시 적용(본인 결정 예외)을 표현 못 한다. 트리거가 비-super_admin 자기 결정만 차단
+  //  (서비스 403과 이중 방어 유지). PG-mode e2e가 23514로 검출했던 회귀의 해소(20260715_08과 SQL 공유).
   migrations: [
     `ALTER TABLE profile_change_requests ADD COLUMN IF NOT EXISTS verification_challenge_id integer`,
+    `ALTER TABLE profile_change_requests DROP CONSTRAINT IF EXISTS profile_change_no_self_decision_check`,
+    `CREATE OR REPLACE FUNCTION profile_change_self_decision_guard() RETURNS trigger AS $$
+       BEGIN
+         IF NEW.decided_by IS NOT NULL AND NEW.decided_by = NEW.requester_id
+            AND NOT EXISTS (SELECT 1 FROM users WHERE id = NEW.requester_id AND role = 'super_admin') THEN
+           RAISE EXCEPTION '본인의 프로필 변경 요청은 본인이 처리할 수 없습니다'
+             USING ERRCODE = '23514', CONSTRAINT = 'profile_change_no_self_decision_check';
+         END IF;
+         RETURN NEW;
+       END $$ LANGUAGE plpgsql`,
+    `DROP TRIGGER IF EXISTS trg_profile_change_self_decision ON profile_change_requests`,
+    `CREATE TRIGGER trg_profile_change_self_decision
+       BEFORE INSERT OR UPDATE ON profile_change_requests
+       FOR EACH ROW EXECUTE FUNCTION profile_change_self_decision_guard()`,
   ],
   indexes: [
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_profile_change_requests_pending_requester
@@ -253,6 +278,13 @@ export const ACADEMY_EVENTS_SPEC: PostgresCollectionSpec = {
   createSql: ACADEMY_EVENTS_TABLE_SQL,
   indexes: [...ACADEMY_EVENTS_INDEX_SQL],
   dateFields: ['startDate', 'endDate'],
+};
+
+// [E0.5 ④] 국가·시간대 카탈로그 — **참조 데이터**(데모 시드 관문 비대상, seedReference 경유).
+//  profile countryCode/timeZone 자유 입력 폐지의 권위: FE 토글 옵션·BE 검증이 이 표를 본다(20260715_06과 SQL 공유).
+export const COUNTRIES_SPEC: PostgresCollectionSpec = {
+  table: 'countries',
+  createSql: COUNTRIES_TABLE_SQL,
 };
 
 export const SUBJECTS_SPEC: PostgresCollectionSpec = {
