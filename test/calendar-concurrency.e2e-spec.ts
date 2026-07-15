@@ -128,4 +128,78 @@ describe('Calendar concurrency + integrity (e2e, TBO-28C)', () => {
       .expect(201);
     expect((await sessionsOn('2099-06-18')).filter((r) => r.topic === '롤백검증')).toHaveLength(1);
   });
+
+  // ── [TBO-29C C1] availability 잠금 후 권위 재검증 — lock 대기 중 커밋된 겹침/세션을 다시 본다 ──
+  describe('[TBO-29C C1] availability lock-after-revalidation', () => {
+    const activeBlocks = async (ownerType: string, ownerId: number) =>
+      (await http.get(`/api/availability?ownerType=${ownerType}&ownerId=${ownerId}`).set(asAdmin()).expect(200))
+        .body as Array<{ id: number; weekday: number; startTime: string; endTime: string; kind: string }>;
+    const availabilityAudits = (entityId: number, action: string) =>
+      db.findAll<{ id: number; entity: string; entityId: number; action: string }>('audit_log')
+        .filter((x) => x.entity === 'availability_blocks' && x.entityId === entityId && x.action === action);
+
+    it('같은 owner 겹침 블록 동시 create — 성공 1 · 409 1, active row +1, audit create +1', async () => {
+      const base = { ownerType: 'student', ownerId: 2, kind: 'unavailable', weekday: 6 };
+      const before = (await activeBlocks('student', 2)).length;
+      const [a, b] = await Promise.all([
+        http.put('/api/availability').set(asAdmin()).send({ ...base, startTime: '05:00', endTime: '06:00' }),
+        http.put('/api/availability').set(asAdmin()).send({ ...base, startTime: '05:30', endTime: '06:30' }),
+      ]);
+      expect([a.status, b.status].sort()).toEqual([200, 409]);
+      const after = await activeBlocks('student', 2);
+      expect(after.length).toBe(before + 1); // 겹침 이중 저장 0
+      const winner = (a.status === 200 ? a : b).body as { id: number };
+      expect(availabilityAudits(winner.id, 'create')).toHaveLength(1);
+      const loser = a.status === 200 ? b : a;
+      expect(String(loser.body.message)).toContain('겹칩니다');
+    });
+
+    it('다른 owner 동시 create — 둘 다 200(직렬화가 커밋을 잃지 않음)', async () => {
+      const slot = { kind: 'unavailable', weekday: 6, startTime: '07:00', endTime: '08:00' };
+      const [a, b] = await Promise.all([
+        http.put('/api/availability').set(asAdmin()).send({ ...slot, ownerType: 'student', ownerId: 3 }),
+        http.put('/api/availability').set(asAdmin()).send({ ...slot, ownerType: 'student', ownerId: 4 }),
+      ]);
+      expect([a.status, b.status]).toEqual([200, 200]);
+      expect((await activeBlocks('student', 3)).some((x) => x.weekday === 6 && x.startTime === '07:00')).toBe(true);
+      expect((await activeBlocks('student', 4)).some((x) => x.weekday === 6 && x.startTime === '07:00')).toBe(true);
+    });
+
+    it('audit 실패 주입 — availability·audit 모두 +0(원자 롤백), 이후 재시도 정상', async () => {
+      const audit = app.get(AuditService);
+      const before = (await activeBlocks('student', 1)).length;
+      const spy = jest.spyOn(audit, 'log').mockRejectedValueOnce(new Error('injected availability audit failure'));
+      await http.put('/api/availability').set(asAdmin())
+        .send({ ownerType: 'student', ownerId: 1, kind: 'unavailable', weekday: 6, startTime: '05:00', endTime: '06:00' })
+        .expect(500);
+      spy.mockRestore();
+      const mid = await activeBlocks('student', 1);
+      expect(mid.length).toBe(before); // 블록 +0
+      expect(mid.some((x) => x.weekday === 6 && x.startTime === '05:00')).toBe(false);
+      const retry = await http.put('/api/availability').set(asAdmin())
+        .send({ ownerType: 'student', ownerId: 1, kind: 'unavailable', weekday: 6, startTime: '05:00', endTime: '06:00' })
+        .expect(200);
+      expect(availabilityAudits(retry.body.id, 'create')).toHaveLength(1);
+    });
+
+    it('교차 경쟁: 세션 create vs 제한 블록 upsert(같은 강사 lock 공간) — 정확히 한쪽만 커밋, 모순 조합 0', async () => {
+      const date = '2099-06-22';
+      const weekday = new Date(`${date}T00:00:00Z`).getUTCDay();
+      const [sessionRes, blockRes] = await Promise.all([
+        http.post('/api/schedule').set(asAdmin())
+          .send({ courseId: 10, instructorId: 1, sessionDate: date, startTime: '09:00', endTime: '10:00', topic: '교차경쟁' }),
+        http.put('/api/availability').set(asInst())
+          .send({ ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday, startTime: '09:00', endTime: '10:00' }),
+      ]);
+      // 한쪽 선점 → 다른 쪽은 409(unavailable 충돌 또는 approvalRequired)
+      const statuses = [sessionRes.status, blockRes.status].sort((x, y) => x - y);
+      expect(statuses[1]).toBe(409);
+      expect([200, 201]).toContain(statuses[0]);
+      const sessionSaved = (await sessionsOn(date)).some((r) => r.topic === '교차경쟁');
+      const blockSaved = (await activeBlocks('instructor', 1)).some((x) => x.weekday === weekday && x.startTime === '09:00' && x.kind === 'unavailable');
+      expect(sessionSaved !== blockSaved).toBe(true); // XOR — 모순 row 조합 0
+      expect(sessionSaved).toBe(sessionRes.status === 201);
+      expect(blockSaved).toBe(blockRes.status === 200);
+    });
+  });
 });

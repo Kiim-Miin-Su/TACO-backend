@@ -11,9 +11,11 @@ import { AvailabilityBlock, AVAILABILITY, AvailabilityKind, AvailabilityOwner } 
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
 import { RoomsService } from '../rooms/rooms.service';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
+import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { sessionEndMin } from '../schedule/conflict.util';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { ENROLLMENTS_SPEC, ROOMS_SPEC, STUDENTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 
 type Seed = Omit<AvailabilityBlock, 'id' | 'createdAt' | 'updatedAt'>;
 type AvailabilityKindEx = AvailabilityKind | 'online_only';
@@ -62,6 +64,7 @@ export class AvailabilityService implements OnModuleInit {
     private readonly audit: AuditService, // [TBO-16 Q3] 가용/불가 변경 이력
     private readonly rooms: RoomsService,
     private readonly unitOfWork: CalendarUnitOfWork,
+    private readonly sessions: ClassSessionsStore, // [TBO-29C C1] 잠금 후 세션 투영 권위 재조회(DatabaseModule @Global)
   ) {}
 
   // owner_id 참조 무결성(#7): owner 3종 모두 실제 컬렉션 기준으로 검증.
@@ -116,6 +119,18 @@ export class AvailabilityService implements OnModuleInit {
 
   async refresh(): Promise<void> {
     await this.store.hydrate<AvailabilityBlock>(AVAILABILITY_SPEC);
+  }
+
+  /** [TBO-29C C1] 잠금 후 권위 재조회 — 검증(owner 존재/겹침/impact)이 읽는 모든 투영을 최신화.
+   *  availability(겹침) · sessions(impact·schedule create와 교차 경쟁) · users/students/rooms(owner 존재)
+   *  · enrollments(학생의 코스 세션 역추적). 단일 PG 커넥션 tx 안이므로 순차 실행(병렬 query 금지). */
+  private async refreshAuthoritative(): Promise<void> {
+    await this.store.hydrate<AvailabilityBlock>(AVAILABILITY_SPEC);
+    await this.sessions.ensureReady();
+    await this.store.hydrate<StaffAccount>(USERS_SPEC);
+    await this.store.hydrate<Student>(STUDENTS_SPEC);
+    await this.store.hydrate(ROOMS_SPEC);
+    await this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
   }
 
   list(ownerType?: AvailabilityOwner, ownerId?: number): AvailabilityBlock[] {
@@ -244,39 +259,56 @@ export class AvailabilityService implements OnModuleInit {
       throw new ConflictException({ message: '매니저 승인 필요', approvalRequired: true, impactedSessions: impacted });
   }
 
+  /** [취약점 수정 2026-07-03 · C1 통합] id 지정 갱신은 **소유자 일치** 강제 — 임의 id로 남의(다른
+   *  강사·학생·강의실) 블록을 변조하는 크로스-오너 공격 차단. 소유자 이전은 삭제 후 재생성으로만.
+   *  반환 = 기존 블록(update 판별·post-lock before 스냅샷용). */
+  private assertOwnerMatch(dto: UpsertAvailabilityDto): AvailabilityBlock | undefined {
+    if (!dto.id) return undefined;
+    const existing = this.db.findById<AvailabilityBlock>(AVAILABILITY, dto.id);
+    if (existing && (existing.ownerType !== dto.ownerType || Number(existing.ownerId) !== Number(dto.ownerId))) {
+      throw new BadRequestException(
+        `블록 소유자가 일치하지 않습니다 (id=${dto.id}는 ${existing.ownerType} ${existing.ownerId} 소유)`,
+      );
+    }
+    return existing;
+  }
+
+  /** 요청 생성/수정 경로 검증 — 시간/owner 존재/IDOR/소유자 일치/겹침. impact(승인 게이트)는 제외:
+   *  승인 요청 자체가 impact를 다루는 경로라 요청은 impact가 있어도 유효하다. */
   validateRequestableUpsert(dto: UpsertAvailabilityDto, actorId?: number, actorRoles?: string[]): void {
     const asMin = hhmmToMin;
+    // [버그수정 2026-07-06] 자정 크로스(end<=start) 거부 — 세션과 동일 규칙. 시차 입력은 FE가 분할 저장(splitKstBand).
     if (asMin(dto.endTime) <= asMin(dto.startTime))
       throw new BadRequestException('종료 시각이 시작보다 빠릅니다(자정을 넘는 블록은 두 개로 나눠 저장하세요)');
     this.assertOwner(dto.ownerType, dto.ownerId);
     this.assertActorOwner(dto.ownerType, dto.ownerId, actorId, actorRoles);
+    this.assertOwnerMatch(dto);
     this.assertNoOverlap(dto);
   }
 
+  /** [TBO-29C C1] 직접 쓰기 경로의 **단일 권위 검증** — 시간/owner 존재/IDOR/소유자 일치/겹침/impact를
+   *  한 함수로 통일. 쓰기 경로는 반드시 owner lock + refreshAuthoritative() **후에** 호출해야 판정이
+   *  권위다(잠금 대기 중 다른 커밋이 겹침·impact를 바꿀 수 있음 — 기존 결함: lock 후 impact만 재검사).
+   *  잠금 전 호출은 fail-fast 용도로만 쓴다. 반환 = dto.id의 기존 블록(post-lock before 스냅샷). */
+  validateAuthoritativeUpsert(dto: UpsertAvailabilityDto, actorId?: number, actorRoles?: string[]): AvailabilityBlock | undefined {
+    this.validateRequestableUpsert(dto, actorId, actorRoles);
+    this.assertApprovalNotRequired(dto, actorRoles); // [TBO-22 C2] 수업 영향 가용 변경은 승인 요청으로 전환
+    return dto.id ? this.db.findById<AvailabilityBlock>(AVAILABILITY, dto.id) : undefined;
+  }
+
+  // [TBO-29C C1] create/update 공통 순서: owner lock -> 권위 재조회(전 투영) -> 전체 재검증 -> write+audit.
+  //  구 구현은 잠금 후 assertApprovalNotRequired만 재실행해, 잠금 대기 중 커밋된 겹침 블록을 보지 못하고
+  //  둘 다 저장될 수 있었다(같은 owner 겹침 동시 쓰기 = 성공 1 · 409 1이 계약).
   async upsert(dto: UpsertAvailabilityDto, actorId?: number, actorRoles?: string[]): Promise<AvailabilityBlock> {
     await this.refresh();
-    // [버그수정 2026-07-06] 자정 크로스(end<=start) 거부 — 세션과 동일 규칙. 시차 입력은 FE가 분할 저장(splitKstBand).
-    const asMin = hhmmToMin; // [R-3] 공통 유틸(로컬 중복 제거)
-    if (asMin(dto.endTime) <= asMin(dto.startTime))
-      throw new BadRequestException('종료 시각이 시작보다 빠릅니다(자정을 넘는 블록은 두 개로 나눠 저장하세요)');
-    this.validateRequestableUpsert(dto, actorId, actorRoles); // owner·IDOR·겹침 검증(요청 생성 경로와 동일)
-    this.assertApprovalNotRequired(dto, actorRoles); // [TBO-22 C2] 수업 영향 가용 변경은 승인 요청으로 전환
-    if (dto.id) {
-      // [취약점 수정 2026-07-03] id 지정 갱신은 **소유자 일치**를 강제 — 임의 id로 남의(다른
-      //  강사·학생·강의실) 블록을 변조하는 크로스-오너 공격 차단. 소유자 이전은 삭제 후 재생성으로만.
-      const existing = this.db.findById<AvailabilityBlock>(AVAILABILITY, dto.id);
-      if (existing && (existing.ownerType !== dto.ownerType || Number(existing.ownerId) !== Number(dto.ownerId))) {
-        throw new BadRequestException(
-          `블록 소유자가 일치하지 않습니다 (id=${dto.id}는 ${existing.ownerType} ${existing.ownerId} 소유)`,
-        );
-      }
-      const beforeSnap = existing ? { ...existing } : undefined;
-      const updated = await this.unitOfWork.run(async () => {
-        // [TBO-28C] owner 잠금(세션 create/update의 같은 자원 키 공간) + 권위 재조회 + 승인 필요 재검증
-        await this.unitOfWork.lockTargets([{ kind: dto.ownerType, id: Number(dto.ownerId) }]);
-        await this.refresh();
-        this.assertApprovalNotRequired(dto, actorRoles);
-        const u = await this.store.update<AvailabilityBlock>(AVAILABILITY_SPEC, dto.id!, {
+    this.validateAuthoritativeUpsert(dto, actorId, actorRoles); // 잠금 전 fail-fast(권위 판정은 잠금 후 재실행)
+    return this.unitOfWork.run(async () => {
+      await this.unitOfWork.lockTargets([{ kind: dto.ownerType, id: Number(dto.ownerId) }]);
+      await this.refreshAuthoritative();
+      const existing = this.validateAuthoritativeUpsert(dto, actorId, actorRoles); // 잠금 후 전체 재검증(권위)
+      if (dto.id && existing) {
+        const beforeSnap = { ...existing }; // [C1] before 스냅샷도 잠금 후 재조회 — stale audit 차단
+        const updated = await this.store.update<AvailabilityBlock>(AVAILABILITY_SPEC, dto.id, {
           kind: (dto.kind ?? 'available') as AvailabilityKind,
           weekday: dto.weekday,
           startTime: dto.startTime,
@@ -284,20 +316,15 @@ export class AvailabilityService implements OnModuleInit {
           effectiveFrom: dto.effectiveFrom,
           effectiveTo: dto.effectiveTo,
         });
-        if (u && actorId != null && beforeSnap) {
-          const diff = this.audit.diffOf(beforeSnap, u);
-          if (Object.keys(diff).length)
-            await this.audit.log({ entity: AVAILABILITY, entityId: u.id, action: 'update', actorId, changes: diff });
+        if (updated) {
+          if (actorId != null) {
+            const diff = this.audit.diffOf(beforeSnap, updated);
+            if (Object.keys(diff).length)
+              await this.audit.log({ entity: AVAILABILITY, entityId: updated.id, action: 'update', actorId, changes: diff });
+          }
+          return updated;
         }
-        return u;
-      });
-      if (updated) return updated;
-    }
-    return this.unitOfWork.run(async () => {
-      // [TBO-28C] owner 잠금 + 권위 재조회 + 승인 필요 재검증(잠금 후 impact가 달라졌을 수 있음)
-      await this.unitOfWork.lockTargets([{ kind: dto.ownerType, id: Number(dto.ownerId) }]);
-      await this.refresh();
-      this.assertApprovalNotRequired(dto, actorRoles);
+      }
       const created = await this.store.insert<AvailabilityBlock>(AVAILABILITY_SPEC, {
         ownerType: dto.ownerType,
         ownerId: dto.ownerId,
@@ -315,20 +342,26 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   // [v9] soft delete + before 스냅샷 audit(Q3) — 단일 tx
+  // [TBO-29C C1] before 재조회·actor/approval 재검증을 잠금 **후**로 이동 — stale audit/타 owner 변경 차단.
+  //  owner는 블록 불변(소유자 이전 금지)이라 잠금 키 선정용 사전 조회는 안전하다.
   async remove(id: number, actorId?: number, actorRoles?: string[]): Promise<{ id: number; deleted: boolean }> {
     await this.refresh();
-    const before = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
-    if (before) this.assertActorOwner(before.ownerType, before.ownerId, actorId, actorRoles);
-    this.assertDeleteApprovalNotRequired(id, actorRoles);
+    const current = this.db.findById<AvailabilityBlock>(AVAILABILITY, id);
+    if (current) {
+      // 잠금 전 fail-fast — 권위 판정은 잠금 후 재실행
+      this.assertActorOwner(current.ownerType, current.ownerId, actorId, actorRoles);
+      this.assertDeleteApprovalNotRequired(id, actorRoles);
+    }
     return this.unitOfWork.run(async () => {
-      if (before) {
-        // [TBO-28C] owner 잠금 + 권위 재조회 + 승인 필요 재검증
-        await this.unitOfWork.lockTargets([{ kind: before.ownerType, id: Number(before.ownerId) }]);
-        await this.refresh();
-        this.assertDeleteApprovalNotRequired(id, actorRoles);
-      }
-      const deleted = before ? await this.store.remove(AVAILABILITY_SPEC, id, actorId) : false;
-      if (deleted && actorId != null && before)
+      if (!current) return { id, deleted: false };
+      await this.unitOfWork.lockTargets([{ kind: current.ownerType, id: Number(current.ownerId) }]);
+      await this.refreshAuthoritative();
+      const before = this.db.findById<AvailabilityBlock>(AVAILABILITY, id); // [C1] 잠금 후 재조회
+      if (!before) return { id, deleted: false };
+      this.assertActorOwner(before.ownerType, before.ownerId, actorId, actorRoles);
+      this.assertDeleteApprovalNotRequired(id, actorRoles);
+      const deleted = await this.store.remove(AVAILABILITY_SPEC, id, actorId);
+      if (deleted && actorId != null)
         await this.audit.log({ entity: AVAILABILITY, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf({ ...before }) as never });
       return { id, deleted };
     });
