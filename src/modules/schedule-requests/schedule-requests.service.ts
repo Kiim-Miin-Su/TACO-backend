@@ -15,7 +15,7 @@ import { AvailabilityService } from '../availability/availability.service';
 import { hasAdminRole } from '../auth/roles.decorator';
 import { UpsertAvailabilityDto } from '../availability/dto/upsert-availability.dto';
 import { ScheduleRequestsStore } from './schedule-requests.store';
-import { durationMinutesBetween } from '../../common/time.util';
+import { normalizeSessionTime } from '../schedule/session-time.policy';
 
 export const SCHEDULE_REQUESTS = 'schedule_requests';
 
@@ -62,12 +62,8 @@ export class ScheduleRequestsService {
       return this.createSessionDeleteRequest(dto, requesterId, requesterRoles);
     }
     const instructorId = this.schedule.validateSessionInput({ ...dto, courseId: dto.courseId! }); // FK·코호트(함수 통일)
-    const durationMinutes = dto.endTime
-      ? durationMinutesBetween(dto.startTime!, dto.endTime)
-      : (dto.durationMinutes ?? 60);
-    if (durationMinutes < 10 || durationMinutes > 480) {
-      throw new BadRequestException('수업 진행시간은 10분 이상 480분 이하여야 합니다.');
-    }
+    // [TBO-29C C4] 시간 정규화 = session-time.policy 단일 소스 — 경로별 `?? 60`/범위 검사 사본 폐기.
+    const { durationMinutes } = normalizeSessionTime({ startTime: dto.startTime!, endTime: dto.endTime, durationMinutes: dto.durationMinutes });
     // 참고용 충돌 드라이런(승인 시점에 재검사가 확정본)
     const conflicts = this.schedule.checkConflicts({
       sessionDate: dto.sessionDate!, startTime: dto.startTime!, endTime: dto.endTime,

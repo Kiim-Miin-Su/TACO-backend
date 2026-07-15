@@ -5,7 +5,7 @@ import { PostgresCollectionStore } from '../../database/postgres-collection.stor
 import { hhmmToMin, minToHhmm } from '../../common/time.util'; // [R-3 함수 통일]
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
-import { countsForTeachingHours } from '../schedule/session-accounting.policy';
+import { countsForTeachingHours, payoutAmountOf } from '../schedule/session-accounting.policy';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { Course, COURSES } from '../courses/course.entity';
 import { ReportsService } from '../reports/reports.service';
@@ -128,7 +128,7 @@ export class PayoutsService implements OnModuleInit {
       const course = this.db.findById<Course>(COURSES, s.courseId);
       // (3) 코스 FK 무결성 — 시급 조인 불가면 산정 중단(데이터 오류를 조용히 넘기지 않음)
       if (!course) throw new BadRequestException(`courseId ${s.courseId} 없음 — 시급 조인 실패(세션 ${s.id})`);
-      const amount = this.round((s.durationMinutes / 60) * course.hourlyRate);
+      const amount = payoutAmountOf(s.durationMinutes, course.hourlyRate); // [C4] 환산식 단일 소스(policy)
       lines.push({
         sessionId: s.id,
         courseId: s.courseId,

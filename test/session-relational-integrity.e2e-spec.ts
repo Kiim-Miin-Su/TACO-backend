@@ -119,8 +119,11 @@ describe('session joined-table expected/after integrity (e2e)', () => {
     const seriesId = madeSeries.series.id;
     const [first, second] = madeSeries.rows;
 
+    // [TBO-29C C4] fixture도 write-through — InMemoryDatabase 직접 주입은 PG 권위 경로에 비가시(C0 발견 ③).
+    const { ClassSessionsStore } = await import('../src/modules/schedule/class-sessions.store');
+    const sessionsStore = app.get(ClassSessionsStore);
+    await sessionsStore.update(second.id, { payoutId: 999 } as never);
     const db = app.get(InMemoryDatabase);
-    db.update<ClassSession>(SESSIONS, second.id, { payoutId: 999 });
     const before = db.findBy<ClassSession>(SESSIONS, (row) => row.seriesId === seriesId)
       .map(({ id, sessionDate, durationMinutes, topic, payoutId }) => ({ id, sessionDate, durationMinutes, topic, payoutId }));
 

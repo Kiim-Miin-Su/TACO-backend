@@ -18,6 +18,7 @@ import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.enti
 import { ClassSessionsStore } from './class-sessions.store';
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
 import { selectSeriesScope, type SeriesScope } from './series-scope.policy';
+import { addMinutesGuarded, assertSessionDuration, normalizeSessionTime, storedEndTimeOf, SESSION_TIME_DEFAULTS } from './session-time.policy';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -43,38 +44,15 @@ const SESSION_DEFAULTS = {
   kind: 'class',
   mode: 'in_person',
   status: 'scheduled',
-  durationMinutes: 60,
+  durationMinutes: SESSION_TIME_DEFAULTS.durationMinutes, // [C4] 시간 기본값은 session-time.policy가 소유
 } as const satisfies { kind: ClassSession['kind']; mode: ClassSession['mode']; status: ClassSession['status']; durationMinutes: number };
 
-// ── 날짜/시간 유틸(결정론적, KST 의존 없음) — primitive는 common/time.util(위 import) ──
-// [R-3] 가드형 addMinutes만 로컬 유지(허용형 minToHhmm 위에 범위 가드를 얹음 — util은 순수/허용형).
-function addMinutes(hhmm: string, mins: number): string {
-  const t = toMin(hhmm) + mins;
-  // [M3] 시리즈 델타 적용 시 자정 범위를 벗어나면 '0-4:-30' 같은 오염 문자열이 커밋될 수 있음(코드리뷰).
-  //  여기서 400을 던지면 감싼 db.transaction이 시리즈 전체를 롤백한다(부분 오염 금지).
-  //  [R-9 2026-07-06] 이 가드는 이제 **시작시각**(시리즈 델타)과 24:00 미만 종료 파생에만 걸린다 —
-  //  자정 크로스 종료는 endTimeOf가 미리 undefined(파생 저장)로 분기하므로 이 함수에 도달하지 않는다.
-  if (t < 0 || t >= 24 * 60) throw new BadRequestException(`시간 범위를 벗어납니다(${hhmm} ${mins >= 0 ? '+' : ''}${mins}분)`);
-  return minToHhmm(t);
-}
-
-// ── [R-9 2026-07-06] 자정 크로스 수업 정식 지원(옵션 B — 단일 세션 모델) ──
-//  - 세션은 계속 **1레코드·sessionDate=시작일(KST)** — 분할 저장 금지(시수·출결·정산 이중 카운트 위험).
-//  - 입력 규칙: endTime < startTime → **익일 종료**로 해석(예: 23:00→01:00 = 120분). 같으면 400.
-//  - 저장 규칙: 종료가 24:00 이상이면 endTime을 **저장하지 않고**(HH:mm 계약 보호 — '25:00' 금지)
-//    durationMinutes로 파생한다. 조회(enrich)도 동일 — 크로스 세션의 endTime은 미제공(FE가 duration 파생).
-//  - 크로스 세션 duration 상한 = 480분(DTO [감사 H4]와 동일 — 시급 계산 오염 방지).
-//  - 충돌 검사는 conflict.util이 절대 분 좌표(±1일)로 이틀에 걸쳐 수행.
-const CROSS_MAX_MIN = 480;
-/** 저장/응답용 endTime — 자정(24:00) 이상 종료면 undefined(durationMinutes 파생 규칙). */
-const endTimeOf = (startTime: string, durationMinutes: number): string | undefined =>
-  toMin(startTime) + durationMinutes >= 24 * 60 ? undefined : addMinutes(startTime, durationMinutes);
-/** 크로스 duration 검증(공통) — 0 이하=400(같은 시각), 크로스면 상한 480분. */
-function assertDuration(startTime: string, durationMinutes: number): void {
-  if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작과 같을 수 없습니다');
-  if (toMin(startTime) + durationMinutes >= 24 * 60 && durationMinutes > CROSS_MAX_MIN)
-    throw new BadRequestException(`자정 크로스 수업은 최대 ${CROSS_MAX_MIN}분(8시간)까지 가능합니다`);
-}
+// ── [TBO-29C C4] 시간 정규화는 session-time.policy가 단일 소스 — 로컬 사본(addMinutes/endTimeOf/
+//  assertDuration/CROSS_MAX_MIN)을 폐기하고 별칭으로 위임한다. 자정 크로스 endTime은 **명시 null**
+//  (undefined는 PG UPDATE payload에서 skip돼 이전 end_time이 잔존 — 메모리/PG 투영 편차의 근본 원인).
+const addMinutes = addMinutesGuarded;
+const endTimeOf = storedEndTimeOf;
+const assertDuration = assertSessionDuration;
 function mondayOfThisWeekUTC(): Date {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
@@ -91,8 +69,9 @@ type SeedSeries = { courseId: number; instructorId: number; topic: string; roomI
 // 병합된 세션 필드(업데이트 적용 단위) — 이동/리사이즈/편집 공통.
 type MergedFields = {
   studentIds?: number[]; // 명시 코호트(v0.1.13)
-  // [R-9] endTime은 자정 크로스(익일 종료)면 undefined — durationMinutes 파생(단일 세션 모델)
-  sessionDate: string; startTime: string; endTime?: string; durationMinutes: number;
+  // [R-9→C4] endTime은 자정 크로스(익일 종료)면 **명시 null** — durationMinutes 파생(단일 세션 모델).
+  //  undefined는 PG UPDATE에서 skip돼 이전 값이 잔존하므로 update 경로는 null을 강제한다.
+  sessionDate: string; startTime: string; endTime?: string | null; durationMinutes: number;
   courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string; color?: string;
   instructorAttendance?: ClassSession['instructorAttendance'] | null;
   kind?: ClassSession['kind']; price?: number; // [v0.1.14]
@@ -424,13 +403,9 @@ export class ScheduleService implements OnModuleInit {
     const course = this.courseOf(dto.courseId)!;
     const studentIds = dto.studentIds?.length ? dto.studentIds : this.activeStudentIds(dto.courseId);
 
-    const startTime = dto.startTime;
-    // [R-9] endTime<startTime = 익일 종료(자정 크로스 — +1440 래핑). 같으면 400, 크로스 상한 480분.
-    const durationMinutes = dto.endTime
-      ? durationMinutesBetween(startTime, dto.endTime)
-      : dto.durationMinutes ?? SESSION_DEFAULTS.durationMinutes;
-    assertDuration(startTime, durationMinutes);
-    const endTime = endTimeOf(startTime, durationMinutes); // 크로스면 undefined(durationMinutes 파생 저장)
+    // [C4] 시간 정규화 단일 진입점 — endTime<startTime=익일 종료, 크로스=endTime null(duration 파생 저장)
+    const { startTime, durationMinutes, endTime } = normalizeSessionTime(
+      { startTime: dto.startTime, endTime: dto.endTime, durationMinutes: dto.durationMinutes });
 
     // [TBO-28C] 충돌 검사를 **tx 안으로**(잠금→권위 재조회→재검증) — read-check-then-write 레이스 차단.
     //  서로 다른 두 클라이언트/인스턴스의 겹치는 create는 advisory lock에서 직렬화되어 정확히 하나만 성공(409).
@@ -509,12 +484,9 @@ export class ScheduleService implements OnModuleInit {
     const timeZone = dto.timeZone ?? 'Asia/Seoul';
     if (timeZone !== 'Asia/Seoul') throw new BadRequestException('반복 규칙 시간대는 MVP에서 Asia/Seoul만 지원합니다');
 
-    const startTime = dto.startTime;
-    const durationMinutes = dto.endTime
-      ? durationMinutesBetween(startTime, dto.endTime)
-      : dto.durationMinutes ?? SESSION_DEFAULTS.durationMinutes;
-    assertDuration(startTime, durationMinutes);
-    const endTime = endTimeOf(startTime, durationMinutes); // 자정 크로스면 undefined(durationMinutes 파생)
+    // [C4] 시간 정규화 단일 진입점(session-time.policy)
+    const { startTime, durationMinutes, endTime } = normalizeSessionTime(
+      { startTime: dto.startTime, endTime: dto.endTime, durationMinutes: dto.durationMinutes });
     const weekdays = [...new Set(dto.repeat.weekdays)].sort((a, b) => a - b);
     const dates = ScheduleService.occurrenceDatesOf({ ...dto.repeat, weekdays });
 
@@ -837,8 +809,8 @@ export class ScheduleService implements OnModuleInit {
     const conflicts: Conflict[] = [];
     for (const f of [primary, ...seriesPatches.map((p) => p.fields)]) {
       conflicts.push(...detectConflicts(
-        // [R-9] 크로스 세션은 endTime이 undefined — durationMinutes로 이틀(±1일) 겹침 검사
-        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, studentIds: f.studentIds ?? this.activeStudentIds(f.courseId), mode: f.mode },
+        // [R-9→C4] 크로스 세션은 endTime이 null(명시) — durationMinutes로 이틀(±1일) 겹침 검사
+        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime ?? undefined, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, studentIds: f.studentIds ?? this.activeStudentIds(f.courseId), mode: f.mode },
         others, blocks,
         this.effectiveStudentIds, // [TBO-28C] 학생 세션 간 중복 포함
       ));
@@ -897,13 +869,11 @@ export class ScheduleService implements OnModuleInit {
     //  · durationMinutes 경로(드래그 이동 = {startTime, durationMinutes} 패치): 자정 초과 허용.
     //  어느 경로든 종료가 24:00 이상이면 endTime을 저장하지 않고(undefined) durationMinutes로 파생 —
     //  '25:00' 같은 무효 HH:mm이 DB에 남지 않는다. 크로스 상한 480분(assertDuration).
-    let durationMinutes: number;
-    if (dto.endTime) durationMinutes = durationMinutesBetween(startTime, dto.endTime);
-    else if (dto.durationMinutes != null) durationMinutes = dto.durationMinutes;
-    // 종료/시수 미지정 → 시수 유지(이동 시 종료는 시작 기준 재파생 — 크로스 여부도 재판정).
-    else durationMinutes = cur.durationMinutes;
-    assertDuration(startTime, durationMinutes);
-    const endTime = endTimeOf(startTime, durationMinutes);
+    // [C4] 시간 정규화 단일 진입점 — 종료/시수 미지정 = 기존 시수 유지(defaultDurationMinutes).
+    //  크로스 endTime은 명시 null(UPDATE에서 이전 end_time 잔존 차단 — C0 기준선 발견 ①② 해소).
+    const { durationMinutes, endTime } = normalizeSessionTime(
+      { startTime, endTime: dto.endTime, durationMinutes: dto.durationMinutes },
+      { defaultDurationMinutes: cur.durationMinutes });
 
     const courseId = dto.courseId ?? cur.courseId;
     const course = this.courseOf(courseId);
@@ -953,8 +923,8 @@ export class ScheduleService implements OnModuleInit {
       kind: s.kind ?? SESSION_DEFAULTS.kind, // [v0.1.14] 시드·구데이터 하위호환(미지정=class)
       mode: s.mode ?? SESSION_DEFAULTS.mode, // [v0.1.16] 하위호환(미지정=대면)
       weekday: weekdayOf(s.sessionDate),
-      // [R-9] 자정 크로스(시작+진행≥24:00)면 endTime 미제공 — FE가 durationMinutes로 파생(단일 규칙)
-      endTime: s.endTime ?? (s.startTime ? endTimeOf(s.startTime, s.durationMinutes) : undefined),
+      // [R-9→C4] 자정 크로스(시작+진행≥24:00)면 endTime 미제공(null→undefined) — FE가 durationMinutes로 파생(단일 규칙)
+      endTime: s.endTime ?? (s.startTime ? endTimeOf(s.startTime, s.durationMinutes) ?? undefined : undefined),
       courseName: c?.name ?? `course ${s.courseId}`,
       subjectName: this.subjectOf(c?.subjectId)?.name ?? '',
       instructorName: this.instructorName(s.instructorId) ?? `강사 ${s.instructorId}`,

@@ -37,6 +37,11 @@ export function payoutIdOf(session: AccountingSession): number | null | undefine
   return session.payoutId;
 }
 
+/** 시수 -> 정산 금액 환산의 단일 소스 — 정산 미리보기(accountingProjectionOf)와 정산서 라인 산정이 공유. */
+export function payoutAmountOf(minutes: number, hourlyRate: number): number {
+  return Math.round((minutes / 60) * hourlyRate);
+}
+
 export function accountingProjectionOf(
   session: AccountingSession,
   input: { approvedReport: boolean; hourlyRate: number },
@@ -46,7 +51,7 @@ export function accountingProjectionOf(
   return {
     teachingMinutes,
     payoutEligibleMinutes,
-    computedAmount: Math.round((payoutEligibleMinutes / 60) * input.hourlyRate),
+    computedAmount: payoutAmountOf(payoutEligibleMinutes, input.hourlyRate),
   };
 }
 
