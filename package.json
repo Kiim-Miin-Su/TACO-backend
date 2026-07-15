@@ -36,7 +36,7 @@
     "db:cleanup:demo-data": "ts-node scripts/cleanup-demo-data.ts"
   },
   "dependencies": {
-    "@kms545487/contracts": "^0.2.1",
+    "@kms545487/contracts": "^0.2.2",
     "@neondatabase/serverless": "^1.1.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
