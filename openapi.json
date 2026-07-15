@@ -3540,7 +3540,73 @@
             "bearer": []
           }
         ],
-        "summary": "학원 이벤트 발행(관리자) — 캘린더 구간 유효성 검증",
+        "summary": "학원 이벤트 발행(매니저 이상) — 캘린더 구간 유효성 검증 + audit",
+        "tags": [
+          "events"
+        ]
+      }
+    },
+    "/api/events/{id}": {
+      "patch": {
+        "operationId": "EventsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateEventDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "수정된 AcademyEvent"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "학원 이벤트 수정(매니저 이상) — 병합 후 구간 재검증 + diff audit",
+        "tags": [
+          "events"
+        ]
+      },
+      "delete": {
+        "operationId": "EventsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "삭제된 AcademyEvent(스냅샷)"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "학원 이벤트 삭제(매니저 이상) — soft delete + before 스냅샷 audit",
         "tags": [
           "events"
         ]
@@ -3728,6 +3794,31 @@
         "summary": "관계 수정(대표 이전·납부자 변경) — 대표 지정 시 기존 대표 강등",
         "tags": [
           "parents"
+        ]
+      }
+    },
+    "/api/students/registrations": {
+      "post": {
+        "operationId": "RegistrationsController_register",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterStudentDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ student, guardian: { parent, relation, linkedExisting } | null, enrollment | null }"
+          }
+        },
+        "summary": "학생 원자 등록 — student+guardian(선택)+enrollment(선택)+audit 단일 tx. 중간 실패 시 전부 +0.",
+        "tags": [
+          "students"
         ]
       }
     }
@@ -6070,6 +6161,46 @@
           "endDate"
         ]
       },
+      "UpdateEventDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "notice",
+              "exam",
+              "holiday",
+              "closure",
+              "event"
+            ]
+          },
+          "priority": {
+            "type": "string",
+            "enum": [
+              "low",
+              "normal",
+              "high"
+            ]
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": "string"
+          },
+          "allDay": {
+            "type": "boolean"
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 500
+          }
+        }
+      },
       "CreateRoadmapDto": {
         "type": "object",
         "properties": {
@@ -6173,6 +6304,70 @@
             "type": "boolean"
           }
         }
+      },
+      "RegistrationGuardianDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "김학부모",
+            "description": "보호자 이름"
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "010-1234-5678",
+            "description": "연락처 — 같은 번호는 기존 보호자에 연결(upsert-or-link)"
+          },
+          "relation": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "모",
+            "description": "학생과의 관계(모/부/조모 등 자유 문자열)"
+          },
+          "isPayer": {
+            "type": "boolean",
+            "description": "납부자 여부(기본 true)"
+          },
+          "isPrimary": {
+            "type": "boolean",
+            "description": "대표 보호자 여부(기본 true — 기존 대표는 자동 강등)"
+          }
+        },
+        "required": [
+          "name"
+        ]
+      },
+      "RegisterStudentDto": {
+        "type": "object",
+        "properties": {
+          "student": {
+            "description": "학생 정보(기존 POST /students와 동일 필드)",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/CreateStudentDto"
+              }
+            ]
+          },
+          "guardian": {
+            "description": "보호자 — 있으면 parent+관계를 같은 tx로 생성/연결",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/RegistrationGuardianDto"
+              }
+            ]
+          },
+          "courseId": {
+            "type": "number",
+            "minimum": 1,
+            "example": 10,
+            "description": "수강 코스 — 있으면 enrollment를 같은 tx로 생성"
+          }
+        },
+        "required": [
+          "student"
+        ]
       }
     }
   }
