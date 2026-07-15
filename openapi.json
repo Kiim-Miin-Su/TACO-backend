@@ -2117,11 +2117,34 @@
             "schema": {
               "type": "number"
             }
+          },
+          {
+            "name": "scope",
+            "required": false,
+            "in": "query",
+            "description": "[TBO-29C C3] 반복 삭제 범위(기본 this). payout lock은 전 회차 사전 검증 — 하나라도 걸리면 전체 불변",
+            "schema": {
+              "enum": [
+                "this",
+                "this_and_following",
+                "all"
+              ],
+              "type": "string"
+            }
+          },
+          {
+            "name": "expectedSeriesVersion",
+            "required": false,
+            "in": "query",
+            "description": "[C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
           "200": {
-            "description": "{ id, deleted: true }"
+            "description": "{ id, deleted, removedIds: number[] }"
           }
         },
         "security": [
@@ -2129,7 +2152,7 @@
             "bearer": []
           }
         ],
-        "summary": "세션 삭제 [로그인]",
+        "summary": "세션 삭제(반복 scope 지원) [로그인]",
         "tags": [
           "scheduling"
         ]
@@ -5055,6 +5078,12 @@
             "type": "string",
             "example": "this",
             "description": "반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)"
+          },
+          "expectedSeriesVersion": {
+            "type": "number",
+            "minimum": 1,
+            "example": 1,
+            "description": "[TBO-29C C3] series edit CAS — 클라이언트가 본 seriesVersion. 불일치 시 409 SERIES_VERSION_STALE"
           },
           "force": {
             "type": "boolean",

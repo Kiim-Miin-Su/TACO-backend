@@ -319,7 +319,8 @@ export class ScheduleRequestsService {
     if (req.targetSessionId == null) throw new BadRequestException('삭제할 세션 id가 없습니다.');
     return this.store.transaction(async () => {
       const before = { ...req };
-      await this.schedule.remove(req.targetSessionId!, decidedBy);
+      // [TBO-29C C3] 요청의 scope를 direct 삭제 명령과 동일하게 전달 — 승인=direct와 같은 series UoW.
+      await this.schedule.remove(req.targetSessionId!, decidedBy, { scope: (req.scope ?? 'this') as 'this' | 'this_and_following' | 'all' });
       const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
       }));

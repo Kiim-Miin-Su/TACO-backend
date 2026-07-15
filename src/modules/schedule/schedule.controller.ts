@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiOkResponse, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
@@ -129,9 +129,24 @@ export class ScheduleController {
   @Delete(':id')
   @Roles(...ADMIN_ROLES) // [TBO-16 #8] 수업 삭제 manager 이상(soft delete)
   @ApiParam({ name: 'id', description: '세션 id' })
-  @ApiOkResponse({ description: '{ id, deleted: true }' })
-  @ApiOperation({ summary: '세션 삭제 [로그인]' })
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
-    return this.schedule.remove(id, req.user?.sub); // actor → soft delete deletedBy + audit 스냅샷
+  @ApiQuery({ name: 'scope', required: false, enum: ['this', 'this_and_following', 'all'], description: '[TBO-29C C3] 반복 삭제 범위(기본 this). payout lock은 전 회차 사전 검증 — 하나라도 걸리면 전체 불변' })
+  @ApiQuery({ name: 'expectedSeriesVersion', required: false, description: '[C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE' })
+  @ApiOkResponse({ description: '{ id, deleted, removedIds: number[] }' })
+  @ApiOperation({ summary: '세션 삭제(반복 scope 지원) [로그인]' })
+  remove(
+    @Param('id', ParseIntPipe) id: number,
+    @Req() req: Request & { user?: JwtClaims },
+    @Query('scope') scope?: string,
+    @Query('expectedSeriesVersion') expectedSeriesVersion?: string,
+  ) {
+    if (scope != null && !['this', 'this_and_following', 'all'].includes(scope))
+      throw new BadRequestException('scope는 this|this_and_following|all 중 하나여야 합니다');
+    const expected = expectedSeriesVersion != null ? Number(expectedSeriesVersion) : undefined;
+    if (expected != null && (!Number.isInteger(expected) || expected < 1))
+      throw new BadRequestException('expectedSeriesVersion은 1 이상의 정수여야 합니다');
+    return this.schedule.remove(id, req.user?.sub, {
+      scope: (scope ?? 'this') as 'this' | 'this_and_following' | 'all',
+      expectedSeriesVersion: expected,
+    }); // actor → soft delete deletedBy + audit 스냅샷
   }
 }

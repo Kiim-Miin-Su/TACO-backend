@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { randomUUID } from 'crypto';
 import type { Conflict, CreateScheduleSeriesResult, ScheduleRow, ScheduleSeries } from '@kms545487/contracts';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { RoomsService } from '../rooms/rooms.service';
@@ -16,6 +17,7 @@ import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrol
 import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
 import { ClassSessionsStore } from './class-sessions.store';
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
+import { selectSeriesScope, type SeriesScope } from './series-scope.policy';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -601,23 +603,85 @@ export class ScheduleService implements OnModuleInit {
 
   // 세션 삭제 — [v9] soft delete(행 보존·deletedBy 기록) + audit before 스냅샷 + 동반 정리(출결·리포트) 단일 tx.
   //  [TBO-28C] 대상 세션 잠금 + 잠금 후 권위 재조회(동시 update/delete 경쟁 직렬화 — payout-lock 판정도 tx 안).
-  async remove(id: number, actorId?: number): Promise<{ id: number; deleted: boolean }> {
+  //  [TBO-29C C3] scope(this/this_and_following/all) 지원 — 대상 집합은 selectSeriesScope(순수),
+  //  payout lock·의존 cascade는 **삭제 전 전 회차 사전 검증**(하나라도 걸리면 아무것도 삭제하지 않음),
+  //  회차별 audit(before 스냅샷)+공통 correlation, series version CAS/endsOn 축소/전량 삭제 시 series soft delete.
+  async remove(
+    id: number,
+    actorId?: number,
+    opts?: { scope?: SeriesScope; expectedSeriesVersion?: number },
+  ): Promise<{ id: number; deleted: boolean; removedIds: number[] }> {
     await this.ensureReady();
+    const scope = opts?.scope ?? 'this';
+    const pre = this.db.findById<ClassSession>(SESSIONS, id);
+    if (!pre) throw new NotFoundException(`Session ${id} not found`);
     return this.unitOfWork.run(async () => {
-      await this.unitOfWork.lockTargets([{ kind: 'session', id }]);
+      await this.unitOfWork.lockTargets([
+        { kind: 'session', id },
+        ...(pre.seriesId != null ? [{ kind: 'series' as const, id: Number(pre.seriesId) }] : []),
+      ]);
       await this.refreshAfterLock();
       const before = this.db.findById<ClassSession>(SESSIONS, id);
       if (!before) throw new NotFoundException(`Session ${id} not found`);
-      if (isPayoutLocked(before))
-        throw new ConflictException(`정산서 ${payoutIdOf(before)}에 연결된 수업은 정산 회수 전 삭제할 수 없습니다`);
-      const snap = { ...before };
-      const deleted = await this.sessions.remove(id, actorId);
-      // 동반 soft delete(무결성·캐스케이드 — dbml v9 §33): 이 세션의 출결·리포트
-      await this.attendance.removeBySession(id, actorId);
-      await this.reports.removeBySession(id, actorId);
-      if (actorId != null)
-        await this.audit.log({ entity: SESSIONS, entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf(snap) as never });
-      return { id, deleted };
+      const seriesRow = before.seriesId != null ? this.db.findById<ScheduleSeriesRow>(CLASS_SESSION_SERIES, before.seriesId) : undefined;
+      if (opts?.expectedSeriesVersion != null && seriesRow && opts.expectedSeriesVersion !== seriesRow.version) {
+        throw new ConflictException({
+          code: 'SERIES_VERSION_STALE',
+          message: `시리즈가 다른 변경으로 갱신됐습니다(현재 v${seriesRow.version}). 새로고침 후 다시 시도하세요.`,
+          currentVersion: seriesRow.version,
+        });
+      }
+      let companions: ClassSession[] = [];
+      if (scope !== 'this' && before.seriesId != null) {
+        companions = selectSeriesScope(this.db.findBy<ClassSession>(SESSIONS, (s) => s.seriesId === before.seriesId), before, scope);
+        if (companions.length) {
+          await this.unitOfWork.lockTargets(this.calendarLockKeys({ sessionIds: companions.map((m) => m.id) }));
+          await this.refreshAfterLock();
+          companions = selectSeriesScope(this.db.findBy<ClassSession>(SESSIONS, (s) => s.seriesId === before.seriesId), before, scope);
+        }
+      }
+      const targets = [before, ...companions];
+      // [C3] 전 회차 사전 검증 — 정산 연결이 하나라도 있으면 전체 불변(부분 삭제 금지).
+      const locked = targets.filter((t) => isPayoutLocked(t));
+      if (locked.length) {
+        throw new ConflictException({
+          code: 'PAYOUT_REVERSAL_REQUIRED',
+          message: `정산서에 연결된 수업(${locked.map((t) => `${t.id}(정산 ${payoutIdOf(t)})`).join(', ')})은 정산 회수 전 삭제할 수 없습니다`,
+          sessionIds: locked.map((t) => t.id),
+        });
+      }
+      const correlation = before.seriesId != null ? `series=${before.seriesId} scope=${scope} corr=${randomUUID()}` : undefined;
+      const removedIds: number[] = [];
+      for (const t of targets) {
+        const snap = { ...t };
+        const deleted = await this.sessions.remove(t.id, actorId);
+        // 동반 soft delete(무결성·캐스케이드 — dbml v9 §33): 이 세션의 출결·리포트
+        await this.attendance.removeBySession(t.id, actorId);
+        await this.reports.removeBySession(t.id, actorId);
+        if (deleted) removedIds.push(t.id);
+        if (deleted && actorId != null)
+          await this.audit.log({ entity: SESSIONS, entityId: t.id, action: 'delete', actorId, changes: this.audit.snapshotOf(snap) as never, reason: correlation });
+      }
+      // [C3] series 정리: 남은 회차 0 → series soft delete · scope 삭제 → version 전진(+endsOn 축소)
+      if (seriesRow) {
+        const remaining = this.db.findBy<ClassSession>(SESSIONS, (s) => s.seriesId === seriesRow.id);
+        const beforeSeries = { ...seriesRow };
+        if (!remaining.length) {
+          await this.collections.remove(CLASS_SESSION_SERIES_SPEC, seriesRow.id, actorId);
+          if (actorId != null)
+            await this.audit.log({ entity: CLASS_SESSION_SERIES, entityId: seriesRow.id, action: 'delete', actorId, changes: this.audit.snapshotOf(beforeSeries) as never, reason: correlation });
+        } else if (scope !== 'this') {
+          const lastDate = remaining.map((r) => r.sessionDate).sort()[remaining.length - 1];
+          const bumped = await this.collections.update<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC, seriesRow.id, {
+            version: seriesRow.version + 1,
+            updatedBy: actorId ?? null,
+            endsOn: scope === 'this_and_following' && lastDate < seriesRow.endsOn ? lastDate : seriesRow.endsOn,
+          } as Partial<Omit<ScheduleSeriesRow, keyof BaseRow>>);
+          if (actorId != null && bumped)
+            await this.audit.log({ entity: CLASS_SESSION_SERIES, entityId: seriesRow.id, action: 'update', actorId, changes: this.audit.diffOf(beforeSeries, bumped) as never, reason: correlation });
+        }
+      }
+      return { id, deleted: removedIds.includes(id), removedIds };
     });
   }
 
@@ -651,12 +715,18 @@ export class ScheduleService implements OnModuleInit {
     const pre = this.db.findById<ClassSession>(SESSIONS, id);
     if (!pre) throw new NotFoundException(`Session ${id} not found`);
     return this.unitOfWork.run(async () => {
-    await this.unitOfWork.lockTargets(this.calendarLockKeys({
-      instructorIds: [pre.instructorId, dto.instructorId],
-      roomIds: [pre.roomId, dto.roomId],
-      studentIds: [...new Set([...(pre.studentIds ?? []), ...(dto.studentIds ?? [])])],
-      sessionIds: [id],
-    }));
+    // [TBO-29C C3] 1단계 잠금: **series 키(있으면) 우선 포함** + 대상 세션 + primary 현재/목표 자원.
+    //  series advisory lock이 같은 시리즈를 만지는 모든 명령(scope 편집·삭제·단건 member 편집)의 단일
+    //  choke point — 구 구현은 primary session만 잠가 서로 다른 회차의 동시 scope 편집이 교차했다.
+    await this.unitOfWork.lockTargets([
+      ...this.calendarLockKeys({
+        instructorIds: [pre.instructorId, dto.instructorId],
+        roomIds: [pre.roomId, dto.roomId],
+        studentIds: [...new Set([...(pre.studentIds ?? []), ...(dto.studentIds ?? [])])],
+        sessionIds: [id],
+      }),
+      ...(pre.seriesId != null ? [{ kind: 'series' as const, id: Number(pre.seriesId) }] : []),
+    ]);
     await this.refreshAfterLock();
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
@@ -664,6 +734,16 @@ export class ScheduleService implements OnModuleInit {
     if (dto.courseId != null && !this.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
     if (dto.instructorId != null && !this.isInstructor(dto.instructorId)) throw new BadRequestException(`instructorId ${dto.instructorId} 없음`);
     if (dto.roomId != null && !this.rooms.findAll().some((r) => r.id === dto.roomId)) throw new BadRequestException(`roomId ${dto.roomId} 없음`);
+
+    // [TBO-29C C3] series 권위 확인 + version CAS — 잠금 후 판정이 권위. stale 클라이언트 명령은 409.
+    const seriesRow = cur.seriesId != null ? this.db.findById<ScheduleSeriesRow>(CLASS_SESSION_SERIES, cur.seriesId) : undefined;
+    if (dto.expectedSeriesVersion != null && seriesRow && dto.expectedSeriesVersion !== seriesRow.version) {
+      throw new ConflictException({
+        code: 'SERIES_VERSION_STALE',
+        message: `시리즈가 다른 변경으로 갱신됐습니다(현재 v${seriesRow.version}). 새로고침 후 다시 시도하세요.`,
+        currentVersion: seriesRow.version,
+      });
+    }
 
     // 1) 대상(primary) 세션의 새 필드 계산
     const primary = this.mergeFields(cur, dto);
@@ -679,37 +759,49 @@ export class ScheduleService implements OnModuleInit {
     const accountingLocked: ClassSession[] = isPayoutLocked(cur) ? [cur] : [];
 
     // 2) 시리즈 동반 편집 대상 산출(this=대상만, this_and_following=대상 이후, all=시리즈 전체)
+    //    [TBO-29C C3] 대상 집합은 selectSeriesScope 순수 함수(같은 날짜의 늦은 회차도 시간·id로 판정).
     //    공통 델타: 날짜(일수)·시작시각(분). 강의실/강사/상태/시수는 절대값으로 동일 적용.
-    const scope = dto.scope ?? 'this';
+    const scope = (dto.scope ?? 'this') as SeriesScope;
     const dayDelta = dayDiff(primary.sessionDate, cur.sessionDate);
     const startDelta = toMin(primary.startTime) - toMin(cur.startTime ?? primary.startTime);
-    const seriesPatches: { id: number; fields: MergedFields }[] = [];
+    let scopeMembers: ClassSession[] = [];
     if (scope !== 'this' && cur.seriesId != null) {
-      const members = this.db.findBy<ClassSession>(SESSIONS, (s) =>
-        s.id !== id && s.seriesId === cur.seriesId &&
-        (scope === 'all' || s.sessionDate > cur.sessionDate),
-      );
-      for (const m of members) {
-        const mStart = addMinutes(m.startTime ?? '00:00', startDelta);
-        seriesPatches.push({
-          id: m.id,
-          fields: {
-            sessionDate: addDaysISO(m.sessionDate, dayDelta),
-            startTime: mStart,
-            endTime: endTimeOf(mStart, primary.durationMinutes), // [R-9] 크로스면 undefined(파생 저장)
-            durationMinutes: primary.durationMinutes,
-            courseId: primary.courseId,
-            instructorId: primary.instructorId,
-            roomId: primary.roomId,
-            status: primary.status,
-            topic: m.topic ?? primary.topic,
-          },
-        });
+      scopeMembers = selectSeriesScope(this.db.findBy<ClassSession>(SESSIONS, (s) => s.seriesId === cur.seriesId), cur, scope);
+      if (scopeMembers.length) {
+        // [C3] 2단계 잠금: 모든 member 세션 + member의 현재 자원 + 목표 자원(primary 필드).
+        //  series lock을 보유한 상태라 같은 시리즈 명령끼리는 이 단계에서 경쟁하지 않는다(교착 없음).
+        await this.unitOfWork.lockTargets(this.calendarLockKeys({
+          instructorIds: [...scopeMembers.map((m) => m.instructorId), primary.instructorId],
+          roomIds: [...scopeMembers.map((m) => m.roomId), primary.roomId],
+          studentIds: [...new Set(scopeMembers.flatMap((m) => m.studentIds ?? []))],
+          sessionIds: scopeMembers.map((m) => m.id),
+        }));
+        await this.refreshAfterLock();
+        // 잠금 후 재조회·재산출 — 판정에 쓰는 member 집합/필드가 권위 상태.
+        scopeMembers = selectSeriesScope(this.db.findBy<ClassSession>(SESSIONS, (s) => s.seriesId === cur.seriesId), cur, scope);
       }
     }
+    const seriesPatches: { id: number; before: ClassSession; fields: MergedFields }[] = [];
+    for (const m of scopeMembers) {
+      const mStart = addMinutes(m.startTime ?? '00:00', startDelta);
+      seriesPatches.push({
+        id: m.id,
+        before: { ...m }, // [C3] 회차별 audit before 스냅샷(잠금 후 권위 상태)
+        fields: {
+          sessionDate: addDaysISO(m.sessionDate, dayDelta),
+          startTime: mStart,
+          endTime: endTimeOf(mStart, primary.durationMinutes), // [R-9] 크로스면 undefined(파생 저장)
+          durationMinutes: primary.durationMinutes,
+          courseId: primary.courseId,
+          instructorId: primary.instructorId,
+          roomId: primary.roomId,
+          status: primary.status,
+          topic: m.topic ?? primary.topic,
+        },
+      });
+    }
     for (const patch of seriesPatches) {
-      const member = this.db.findById<ClassSession>(SESSIONS, patch.id);
-      if (!member) continue;
+      const member = patch.before;
       if (isPayoutLocked(member)) accountingLocked.push(member);
       this.assertDependentsCompatible(member.id, member, patch.fields);
       const memberApproved = this.reports.approvedSessionIds().has(member.id);
@@ -721,7 +813,7 @@ export class ScheduleService implements OnModuleInit {
       }));
     }
     const impact = combineAccountingImpacts(accountingImpacts);
-    const requiresAccountingAck = impact.changed && ([cur, ...seriesPatches.map((patch) => this.db.findById<ClassSession>(SESSIONS, patch.id))]
+    const requiresAccountingAck = impact.changed && ([cur, ...seriesPatches.map((patch) => patch.before)]
       .some((session) => session?.status === 'held' || (session ? isPayoutLocked(session) : false)));
     if (accountingLocked.length) {
       throw new ConflictException({
@@ -759,13 +851,36 @@ export class ScheduleService implements OnModuleInit {
     }
 
     // 4) 일괄 적용(대상 먼저, 그 뒤 시리즈)
+    // [TBO-29C C3] 구 구현은 대표 세션 1건만 audit — 이제 바뀐 **모든 회차**가 개별 before/after를 남기고
+    //  공통 correlation(reason: series=<id> scope=<scope> corr=<uuid>)으로 한 명령임을 추적한다.
+    const correlation = cur.seriesId != null ? `series=${cur.seriesId} scope=${scope} corr=${randomUUID()}` : undefined;
     const beforeSnap = { ...cur }; // audit diff용(적용 전 상태 — cur는 라이브 행이라 사본 필수)
     const updated = (await this.sessions.update(id, primary as never))!;
-    for (const p of seriesPatches) await this.sessions.update(p.id, p.fields as never);
+    const memberAfters: Array<{ before: ClassSession; after: ClassSession | undefined }> = [];
+    for (const p of seriesPatches) {
+      const after = await this.sessions.update(p.id, p.fields as never);
+      memberAfters.push({ before: p.before, after });
+    }
     if (actorId != null) {
       const diff = this.audit.diffOf(beforeSnap, updated);
       if (Object.keys(diff).length)
-        await this.audit.log({ entity: SESSIONS, entityId: id, action: 'update', actorId, changes: diff }); // 시리즈 동반은 대상 1건으로 대표(scope는 diff에 미포함)
+        await this.audit.log({ entity: SESSIONS, entityId: id, action: 'update', actorId, changes: diff, reason: correlation });
+      for (const { before, after } of memberAfters) {
+        if (!after) continue;
+        const mdiff = this.audit.diffOf(before, after);
+        if (Object.keys(mdiff).length)
+          await this.audit.log({ entity: SESSIONS, entityId: after.id, action: 'update', actorId, changes: mdiff, reason: correlation });
+      }
+    }
+    // [C3] scope 편집이 시리즈에 반영되면 version CAS 전진(+audit) — 이후 stale 클라이언트는 409.
+    if (seriesRow && scope !== 'this') {
+      const beforeSeries = { ...seriesRow };
+      const bumped = await this.collections.update<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC, seriesRow.id, {
+        version: seriesRow.version + 1, updatedBy: actorId ?? null,
+      } as Partial<Omit<ScheduleSeriesRow, keyof BaseRow>>);
+      if (actorId != null && bumped) {
+        await this.audit.log({ entity: CLASS_SESSION_SERIES, entityId: seriesRow.id, action: 'update', actorId, changes: this.audit.diffOf(beforeSeries, bumped) as never, reason: correlation });
+      }
     }
 
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
@@ -847,6 +962,8 @@ export class ScheduleService implements OnModuleInit {
       color: s.color ?? c?.color ?? (c ? SUBJECT_FALLBACK_COLOR[c.subjectId] : undefined), // 세션 → 코스 → 과목 폴백
       studentIds,
       studentNames: studentIds.map((sid) => this.studentOf(sid)?.name ?? `학생 ${sid}`),
+      // [TBO-29C C3] series edit CAS — 클라이언트가 scope 편집/삭제 시 expectedSeriesVersion으로 회신
+      seriesVersion: s.seriesId != null ? this.db.findById<ScheduleSeriesRow>(CLASS_SESSION_SERIES, s.seriesId)?.version : undefined,
     };
   }
 }

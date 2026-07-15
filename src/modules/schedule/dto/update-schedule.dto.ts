@@ -73,6 +73,10 @@ export class UpdateScheduleDto implements UpdateClassSessionInput {
   @IsOptional() @IsIn(SCOPES)
   scope?: RecurrenceScope;
 
+  @ApiPropertyOptional({ example: 1, description: '[TBO-29C C3] series edit CAS — 클라이언트가 본 seriesVersion. 불일치 시 409 SERIES_VERSION_STALE' })
+  @IsOptional() @IsInt() @Min(1)
+  expectedSeriesVersion?: number;
+
   @ApiPropertyOptional({ example: false, description: '충돌이 있어도 강제 적용(기본 false → 충돌 시 409)' })
   @IsOptional() @IsBoolean()
   force?: boolean;
