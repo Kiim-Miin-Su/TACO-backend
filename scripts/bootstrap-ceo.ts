@@ -17,7 +17,12 @@ if (!url) throw new Error('DATABASE_URL_UNPOOLED 또는 DATABASE_URL이 필요�
 if (!password) throw new Error('CEO_TEMP_PASSWORD가 필요합니다.');
 if (Buffer.byteLength(password, 'utf8') > 72) throw new Error('CEO_TEMP_PASSWORD는 72바이트 이하여야 합니다.');
 if (!apply) {
-  console.log(JSON.stringify({ ok: false, dryRun: true, targetWebId: 'admin', action: 'set temporary CEO credential and require change' }, null, 2));
+  console.log(JSON.stringify({
+    ok: false, dryRun: true, targetWebId: 'admin',
+    action: 'set temporary CEO credential and require change',
+    // [대표 지시 2026-07-16] super_admin 단일 계정 불변식 — 대상 외 super_admin은 soft delete+세션 revoke.
+    alsoEnforces: 'singleton super_admin (other super_admins are soft-deleted and revoked)',
+  }, null, 2));
   process.exit(0);
 }
 
@@ -68,6 +73,18 @@ async function main(): Promise<void> {
       );
       id = Number(inserted[0].id);
     }
+    // [대표 지시 2026-07-16] **super_admin 단일 계정 불변식** — 리셋 대상 외의 super_admin은
+    //  같은 tx에서 soft delete(deleted_at/by) + auth_version+1(발급된 토큰 즉시 무효 = revoke).
+    //  role 강등이 아니라 삭제인 이유: 대표 지시 원문("삭제 및 revoke"). 복구는 대표가 DB에서만.
+    // [함정] TypeORM manager.query의 UPDATE…RETURNING은 [rows, affectedCount] 튜플 — rows만 취한다.
+    const [demoted] = (await manager.query(
+      `UPDATE users
+          SET deleted_at = now(), deleted_by = $1,
+              auth_version = COALESCE(auth_version, 1) + 1, updated_at = now()
+        WHERE deleted_at IS NULL AND role = 'super_admin' AND id <> $1
+        RETURNING id, web_id`,
+      [id],
+    )) as [Array<{ id: number; web_id: string }>, number];
     const auditTable = await manager.query(`SELECT to_regclass('public.audit_log') AS table_name`);
     if (auditTable[0]?.table_name) {
       await manager.query(
@@ -75,15 +92,29 @@ async function main(): Promise<void> {
          VALUES ('users', $1, 'update', $1, now(), $2, 'CEO temporary credential bootstrap')`,
         [id, JSON.stringify({ password: { after: '[temporary]' }, mustChangePassword: { after: true } })],
       );
+      for (const gone of demoted) {
+        await manager.query(
+          `INSERT INTO audit_log (entity, entity_id, action, actor_id, at, changes, reason)
+           VALUES ('users', $1, 'remove', $2, now(), $3, 'super_admin 단일 계정 불변식 — CEO 리셋이 잉여 super_admin 삭제·revoke')`,
+          [gone.id, id, JSON.stringify({ deletedAt: { after: '[now]' }, authVersion: { after: '[+1 revoke]' } })],
+        );
+      }
     }
-    return { id };
+    return { id, removedSuperAdmins: demoted.map((row) => `${row.web_id}(#${row.id})`) };
   });
   const [verified] = await dataSource.query(
     `SELECT id, web_id, role, status, email_verified, must_change_password, auth_version
        FROM users WHERE id = $1`,
     [result.id],
   );
-  console.log(JSON.stringify({ ok: true, account: verified }, null, 2));
+  const [remaining] = await dataSource.query(
+    `SELECT COUNT(*)::int AS n FROM users WHERE deleted_at IS NULL AND role = 'super_admin'`,
+  );
+  console.log(JSON.stringify({
+    ok: true, account: verified,
+    removedSuperAdmins: result.removedSuperAdmins, // 삭제·revoke된 잉여 super_admin(단일 불변식)
+    activeSuperAdmins: remaining.n, // 항상 1이어야 정상
+  }, null, 2));
 }
 
 main()

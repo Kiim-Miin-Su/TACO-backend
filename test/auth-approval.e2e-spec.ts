@@ -109,6 +109,15 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     expect(auditOf(id)).toHaveLength(0);
   });
 
+  // [대표 지시 2026-07-16] super_admin 단일 계정 불변식 — 승인으로 super_admin 부여 불가(명시 400).
+  it('T5b: 승인 role=super_admin → 400 (단일 계정 불변식 — 부여 경로는 bootstrap뿐)', async () => {
+    const id = await signupVerified('t5b_inst');
+    const admin = await login('admin');
+    await http.post(`/api/auth/approve/${id}`).set('Authorization', `Bearer ${admin}`)
+      .send({ role: 'super_admin' }).expect(400);
+    expect(userOf(id).status).toBe('pending'); // 변경 없음
+  });
+
   it('T6: 이메일 미인증 계정 승인 → 403 (CAS 안에서 판정)', async () => {
     const signup = (await http.post('/api/auth/signup')
       .send({ webId: 't6_inst', name: '미인증', email: 't6@t.test', password: 'password123' })

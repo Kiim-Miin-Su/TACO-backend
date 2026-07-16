@@ -410,6 +410,9 @@ export class UsersService implements OnModuleInit {
 
   async approve(id: number, actorId: number, role?: string, reason?: string): Promise<SafeAccount> {
     await this.refreshFromDb(); // [28F] 사전 조회(authVersion 등) 정합 — 최종 판정은 CAS가 권위
+    // [대표 지시 2026-07-16] super_admin 단일 계정 불변식 — 승인으로 super_admin을 만들 수 없다
+    //  (종전엔 조용히 기존 role로 폴백 — 명시 400으로 교체. 유일한 super_admin 경로는 bootstrap-ceo).
+    if (role === 'super_admin') throw new BadRequestException('super_admin은 단일 계정입니다 — 승인으로 부여할 수 없습니다.');
     return this.uow.run(async () => {
       const before = this.findById(id);
       if (!before) throw new NotFoundException(`계정 ${id} 없음`);
