@@ -262,6 +262,30 @@ export const AUTH_EVENTS_SPEC: PostgresCollectionSpec = {
 //  회전(rotation) 체인: 사용된 토큰은 revoked_at+replaced_by_id로 폐기 표시, 폐기 토큰 재사용은
 //  유출 신호로 보고 사용자 전 토큰 무효화(auth_events 'refresh_reuse_blocked').
 //  auth_version을 발급 시점에 동결 저장 — 비밀번호/아이디 변경(버전 증가) 시 기존 refresh도 즉시 무효.
+// [B3 2026-07-16 대표 결정 ①] 알림 뱃지 읽음 — 사용자×탭별 마지막 열람 시각(서버 영속).
+//  탭 진입 = 열람 마킹, 뱃지는 "마지막 열람 이후 새 활동"이 있을 때만 표시된다.
+//  감사 제외: 이 행 자체가 열람 이력(고빈도 UI 상태 — audit_log 원칙의 명시 예외, dbml Note).
+export const NAV_SEEN_SPEC: PostgresCollectionSpec = {
+  table: 'nav_seen_states',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS nav_seen_states (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL,
+      nav_key varchar(40) NOT NULL,
+      last_seen_at timestamptz NOT NULL DEFAULT now(),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
+    )
+  `,
+  indexes: [
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_nav_seen_user_key ON nav_seen_states (user_id, nav_key) WHERE deleted_at IS NULL`,
+  ],
+  timestampFields: ['lastSeenAt'],
+  skipMemoryWhenDurable: false, // 조회 빈도 높고 행 수 = 사용자×7 — 메모리 read model 유지
+};
+
 export const AUTH_REFRESH_TOKENS_SPEC: PostgresCollectionSpec = {
   table: 'auth_refresh_tokens',
   createSql: `

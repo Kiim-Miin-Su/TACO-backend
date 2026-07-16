@@ -34,6 +34,7 @@ import { ProfileChangeRequestsModule } from './modules/profile-change-requests/p
 import { ProfileVerificationsModule } from './modules/profile-verifications/profile-verifications.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { CredentialsModule } from './modules/credentials/credentials.module';
+import { NavSeenModule } from './modules/nav-seen/nav-seen.module'; // [B3] 알림 뱃지 읽음
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { CredentialsModule } from './modules/credentials/credentials.module';
     RoadmapsModule,
     ParentsModule,
     RegistrationsModule,
+    NavSeenModule, // [B3 2026-07-16] 알림 뱃지 읽음(last-seen)
   ],
 })
 export class AppModule {}
