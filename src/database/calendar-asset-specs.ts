@@ -258,6 +258,36 @@ export const AUTH_EVENTS_SPEC: PostgresCollectionSpec = {
   skipMemoryWhenDurable: true, // [EP4] append-only 로그 — durable 모드에서 메모리 상주 금지
 };
 
+// [대표 지시 ④ 2026-07-16] refresh token 저장 — **원문은 저장하지 않는다(sha256 hash만)**.
+//  회전(rotation) 체인: 사용된 토큰은 revoked_at+replaced_by_id로 폐기 표시, 폐기 토큰 재사용은
+//  유출 신호로 보고 사용자 전 토큰 무효화(auth_events 'refresh_reuse_blocked').
+//  auth_version을 발급 시점에 동결 저장 — 비밀번호/아이디 변경(버전 증가) 시 기존 refresh도 즉시 무효.
+export const AUTH_REFRESH_TOKENS_SPEC: PostgresCollectionSpec = {
+  table: 'auth_refresh_tokens',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS auth_refresh_tokens (
+      id serial PRIMARY KEY,
+      user_id integer NOT NULL,
+      token_hash varchar(64) NOT NULL,
+      auth_version integer NOT NULL DEFAULT 1,
+      expires_at timestamptz NOT NULL,
+      revoked_at timestamptz,
+      replaced_by_id integer,
+      user_agent varchar(300),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer
+    )
+  `,
+  indexes: [
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_auth_refresh_tokens_hash ON auth_refresh_tokens (token_hash)`,
+    `CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user ON auth_refresh_tokens (user_id)`,
+  ],
+  timestampFields: ['expiresAt', 'revokedAt'],
+  skipMemoryWhenDurable: true, // 조회는 PG 직행(findActive) — 메모리 사본 불요(EP4와 동일 근거)
+};
+
 export const STUDENTS_SPEC: PostgresCollectionSpec = {
   table: 'students',
   createSql: `

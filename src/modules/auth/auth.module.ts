@@ -6,6 +6,7 @@ import { SuperAdminGuard } from './super-admin.guard';
 import { RolesGuard } from './roles.guard';
 import { LoginThrottlerGuard } from './login-throttler.guard';
 import { AuthEventsService } from './auth-events.service';
+import { RefreshTokensService } from './refresh-tokens.service';
 import { UsersModule } from '../users/users.module';
 import { MailModule } from '../mail/mail.module';
 import { APP_GUARD } from '@nestjs/core';
@@ -29,6 +30,7 @@ import { APP_GUARD } from '@nestjs/core';
     { provide: APP_GUARD, useExisting: RolesGuard },
     LoginThrottlerGuard,
     AuthEventsService,
+    RefreshTokensService, // [대표 지시 ④] refresh 회전·폐기 — 쿠키 셋팅은 controller가 담당
   ],
   exports: [AuthService, RolesGuard, AuthEventsService],
 })

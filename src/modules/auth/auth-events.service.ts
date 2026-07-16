@@ -15,7 +15,9 @@ export const AUTH_EVENTS = 'auth_events';
 export type AuthEventType =
   | 'login_success' | 'login_failure' | 'logout'
   // [TBO-29C C5] 비로그인 복구 흐름 — 계정 열거 방지를 위해 결과와 무관하게 요청 자체를 기록.
-  | 'recover_id_requested' | 'password_reset_requested' | 'password_reset_completed';
+  | 'recover_id_requested' | 'password_reset_requested' | 'password_reset_completed'
+  // [대표 지시 ④ 2026-07-16] 폐기된 refresh token 재사용(유출 신호) — 전 토큰 무효화와 함께 기록.
+  | 'refresh_reuse_blocked';
 
 export type AuthEvent = {
   eventType: AuthEventType;

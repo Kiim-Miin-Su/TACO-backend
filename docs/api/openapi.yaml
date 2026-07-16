@@ -51,6 +51,16 @@ paths:
       summary: 로그인(비밀번호 해시 검증 + 상태 게이트 + rate limit). 성공/실패는 auth_events 기록.
       tags:
       - auth
+  /api/auth/refresh:
+    post:
+      operationId: AuthController_refresh
+      parameters: []
+      responses:
+        '201':
+          description: ''
+      summary: access token 갱신 — refresh 쿠키 회전(재사용 감지 시 전 세션 무효). [쿠키]
+      tags:
+      - auth
   /api/auth/recover-id:
     post:
       operationId: AuthController_recoverId
@@ -106,9 +116,7 @@ paths:
       responses:
         '201':
           description: ''
-      security:
-      - bearer: []
-      summary: 로그아웃 — auth_events 기록(토큰은 클라이언트가 폐기).
+      summary: 로그아웃 — refresh token 폐기(쿠키)·클리어 + auth_events 기록(access token은 클라이언트가 폐기).
       tags:
       - auth
   /api/auth/pending:
