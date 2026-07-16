@@ -255,6 +255,7 @@ export const AUTH_EVENTS_SPEC: PostgresCollectionSpec = {
     `CREATE INDEX IF NOT EXISTS idx_auth_events_type_at ON auth_events (event_type, at)`,
   ],
   timestampFields: ['at'],
+  skipMemoryWhenDurable: true, // [EP4] append-only 로그 — durable 모드에서 메모리 상주 금지
 };
 
 export const STUDENTS_SPEC: PostgresCollectionSpec = {
@@ -521,6 +522,7 @@ export const AUDIT_LOG_SPEC: PostgresCollectionSpec = {
     activeIndex('audit_log', 'idx_audit_entity_id_desc', 'entity, entity_id, id DESC'),
     activeIndex('audit_log', 'idx_audit_actor_id_desc', 'actor_id, id DESC'),
   ],
+  skipMemoryWhenDurable: true, // [EP4] append-only 이력 — durable 모드에서 메모리 상주 금지(조회는 PG 직행)
 };
 
 export const ATTENDANCE_SPEC: PostgresCollectionSpec = {

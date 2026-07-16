@@ -7,7 +7,7 @@ import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { STUDENTS } from '../students/student.entity';
 import { COURSES } from '../courses/course.entity';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
-import { studentBelongsToSession } from '../schedule/session-participant.policy';
+import { buildCohortIndex, studentBelongsToSessionIndexed } from '../schedule/session-participant.policy';
 
 @Injectable()
 export class EnrollmentsService implements OnModuleInit {
@@ -30,17 +30,18 @@ export class EnrollmentsService implements OnModuleInit {
   }
 
   findAll(): Enrollment[] {
-    return this.db.findAll<Enrollment>(ENROLLMENTS).map((row) => this.withDerivedCompletedSessions(row));
+    return this.withDerivedCompletedSessions(this.db.findAll<Enrollment>(ENROLLMENTS));
   }
 
   findByStudent(studentId: number): Enrollment[] {
-    return this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === studentId).map((row) => this.withDerivedCompletedSessions(row));
+    // [EP1] 인덱스 조회(studentId) — 종전 findBy 전체 스캔.
+    return this.withDerivedCompletedSessions(this.db.findByField<Enrollment>(ENROLLMENTS, 'studentId', studentId));
   }
 
   findOne(id: number): Enrollment {
     const row = this.db.findById<Enrollment>(ENROLLMENTS, id);
     if (!row) throw new NotFoundException(`Enrollment ${id} not found`);
-    return this.withDerivedCompletedSessions(row);
+    return this.withDerivedCompletedSessions([row])[0];
   }
 
   // 결제 없이도 등록 가능 (status=active)
@@ -62,13 +63,24 @@ export class EnrollmentsService implements OnModuleInit {
     });
   }
 
-  private withDerivedCompletedSessions(row: Enrollment): Enrollment {
-    const enrollments = this.db.findAll<Enrollment>(ENROLLMENTS);
-    const completedSessions = this.db.findBy<ClassSession>(SESSIONS, (session) =>
-      session.courseId === row.courseId &&
-      session.status === 'held' &&
-      studentBelongsToSession(session, row.studentId, enrollments),
-    ).length;
-    return { ...row, completedSessions };
+  // [EP1 2026-07-16] 파생 N² 제거 — 종전엔 **행마다** enrollments findAll + 세션 전체 스캔
+  //  (O(수강×(수강+세션)), useAppData가 구독하는 핫패스). 지금은 호출당 1회:
+  //  ① 활성 수강 코호트 인덱스(courseId→studentId Set — 정책은 session-participant.policy 단일 소스)
+  //  ② held 세션을 courseId로 그룹핑(status 세컨더리 인덱스 조회 1회)
+  //  → 행별 판정은 자기 코스의 held 세션만 O(1) 멤버십 체크. 의미(명시 코호트 우선)는 동일.
+  private withDerivedCompletedSessions(rows: Enrollment[]): Enrollment[] {
+    if (!rows.length) return rows;
+    const cohortIndex = buildCohortIndex(this.db.findAll<Enrollment>(ENROLLMENTS));
+    const heldByCourse = new Map<number, ClassSession[]>();
+    for (const session of this.db.findByField<ClassSession>(SESSIONS, 'status', 'held')) {
+      if (!heldByCourse.has(session.courseId)) heldByCourse.set(session.courseId, []);
+      heldByCourse.get(session.courseId)!.push(session);
+    }
+    return rows.map((row) => ({
+      ...row,
+      completedSessions: (heldByCourse.get(row.courseId) ?? []).filter((session) =>
+        studentBelongsToSessionIndexed(session, row.studentId, cohortIndex),
+      ).length,
+    }));
   }
 }

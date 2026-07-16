@@ -181,6 +181,20 @@ export class ScheduleService implements OnModuleInit {
     await this.sessions.seed(hist);
   }
 
+  // [EP2 2026-07-16] 읽기 경로 hydrate 게이트 — 종전엔 캘린더 진입 시 읽기 라우트 **각각**이
+  //  4테이블(class_sessions·availability·users·series) SELECT * 전량 재적재(Neon WAN 왕복 합산).
+  //  ① in-flight 공유: 동시 읽기(캘린더 병렬 요청 버스트)는 진행 중인 hydrate 1회를 공유.
+  //  ② TTL: 직전 hydrate가 TTL 이내면 스킵(교차 인스턴스 staleness ≤ TTL — 같은 인스턴스의
+  //     쓰기는 write-through로 메모리에 즉시 반영되므로 read-after-write는 영향 없음).
+  //  안전 경계: pg tx 안(refreshAfterLock — 명령의 권위 재조회)은 게이트 비대상(항상 전량, 순차).
+  //  기본 TTL: test=0(교차 인스턴스 즉시 가시성 시맨틱 보존 — TBO-28F e2e), 그 외 2000ms.
+  //  env SCHEDULE_READ_HYDRATE_TTL_MS로 재정의(0=끔).
+  private hydratedAt = 0;
+  private hydrateInFlight: Promise<void> | null = null;
+  private readonly hydrateTtlMs = process.env.SCHEDULE_READ_HYDRATE_TTL_MS != null
+    ? Math.max(0, Number(process.env.SCHEDULE_READ_HYDRATE_TTL_MS) || 0)
+    : process.env.NODE_ENV === 'test' ? 0 : 2000;
+
   async ensureReady(): Promise<void> {
     // [TBO-28F] users도 재조회 — 다른 인스턴스에서 승인/등록된 계정이 리소스·검증에 즉시 반영.
     // [TBO-29C C2→C5 성능 수정] pg tx **안**(refreshAfterLock)에서는 단일 커넥션이라 순차 실행,
@@ -194,9 +208,15 @@ export class ScheduleService implements OnModuleInit {
     ];
     if (this.unitOfWork.inPgTransaction) {
       for (const task of tasks) await task();
-    } else {
-      await Promise.all(tasks.map((task) => task()));
+      this.hydratedAt = Date.now();
+      return;
     }
+    if (this.hydrateTtlMs > 0 && Date.now() - this.hydratedAt < this.hydrateTtlMs) return;
+    if (this.hydrateInFlight) return this.hydrateInFlight;
+    this.hydrateInFlight = Promise.all(tasks.map((task) => task()))
+      .then(() => { this.hydratedAt = Date.now(); })
+      .finally(() => { this.hydrateInFlight = null; });
+    return this.hydrateInFlight;
   }
 
   // [TBO-28C] 캘린더 명령의 advisory lock 키 — 대상 강사·강의실·학생·세션. UoW.lockTargets가 정렬·중복 제거.
@@ -268,8 +288,15 @@ export class ScheduleService implements OnModuleInit {
             .map((e) => e.courseId),
         )
       : null;
-    return this.db
-      .findBy<ClassSession>(SESSIONS, (s) =>
+    // [EP3 2026-07-16] 인덱스 진입 — instructorId(강사 캘린더 핫패스)·roomId 지정 시 세컨더리
+    //  인덱스(findByField)로 후보를 좁힌 뒤 잔여 필터. 종전엔 인덱스가 있는데도 findBy 전량 스캔.
+    const base = opts.instructorId
+      ? this.db.findByField<ClassSession>(SESSIONS, 'instructorId', opts.instructorId)
+      : opts.roomId
+        ? this.db.findByField<ClassSession>(SESSIONS, 'roomId', opts.roomId)
+        : this.db.findAll<ClassSession>(SESSIONS);
+    return base
+      .filter((s) =>
         (opts.from ? s.sessionDate >= opts.from : true) &&
         (opts.to ? s.sessionDate <= opts.to : true) &&
         (opts.instructorId ? s.instructorId === opts.instructorId : true) &&

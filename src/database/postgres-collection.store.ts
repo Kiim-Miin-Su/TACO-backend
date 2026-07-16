@@ -24,6 +24,10 @@ export type PostgresCollectionSpec = {
   jsonFields?: string[];
   dateFields?: string[];
   timestampFields?: string[];
+  /** [EP4 2026-07-16] append-only 로그 컬렉션(audit_log·auth_events): PG durable일 때 insert의
+   *  메모리 write-through를 생략한다. 조회(findActive)가 PG 직행이라 메모리 사본은 읽히지 않는데
+   *  축출 없이 쌓여 RAM이 선형 증가했다. PG 불가(순수 메모리 모드)에서는 메모리가 곧 저장소라 유지. */
+  skipMemoryWhenDurable?: boolean;
 };
 
 export type ActiveFindOptions<T extends BaseRow> = {
@@ -122,7 +126,11 @@ export class PostgresCollectionStore {
     if (!(await this.ensureReady(spec))) return this.memory.insert<T>(spec.table, data);
     const [saved] = await this.insertDb<T>(spec, data as Record<string, unknown>, false);
     if (!saved) throw new Error(`${spec.table} insert did not return a row`);
-    this.memory.seedExact<T>(spec.table, [saved]);
+    // [EP4] append-only 로그는 durable 모드에서 메모리 미적재(조회는 PG 직행 — 사본은 죽은 무게).
+    //  예외: NODE_ENV=test — PG-mode e2e가 db.findAll('audit_log'/'auth_events')로 기록을 검증하므로
+    //  테스트에서는 write-through를 유지한다(프로세스 수명이 짧아 RAM 영향 없음).
+    const skipMemory = spec.skipMemoryWhenDurable && process.env.NODE_ENV !== 'test';
+    if (!skipMemory) this.memory.seedExact<T>(spec.table, [saved]);
     return saved;
   }
 
