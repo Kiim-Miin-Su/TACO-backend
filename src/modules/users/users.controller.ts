@@ -8,6 +8,7 @@ import { SuperAdminGuard } from '../auth/super-admin.guard';
 import { CreateInstructorDto } from './dto/create-instructor.dto';
 import type { JwtClaims } from '../auth/auth.service';
 import { ProfileResponseDto } from './dto/profile-response.dto';
+import { smsChallengeAvailable } from '../profile-verifications/sms-availability';
 import { profileVersionOf } from './user.entity';
 
 @UseGuards(RolesGuard)
@@ -37,6 +38,8 @@ export class UsersController {
       role: account.role,
       status: account.status,
       profileVersion: profileVersionOf(account),
+      // [2026-07-16] SENS env 투입 시 FE phone 인증 스테퍼 자동 활성(단일 판정 소스 공유)
+      smsVerificationAvailable: smsChallengeAvailable(),
     };
   }
 

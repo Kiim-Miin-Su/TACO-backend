@@ -74,6 +74,19 @@ describe('Availability API (e2e)', () => {
       .expect(201);
   });
 
+  // [2026-07-16, TBO-29D §5.4 해소] 드라이런에도 mode 노출 — online이면 online_only와 비충돌.
+  it('충돌 드라이런이 mode를 해석한다 — online_only 블록에서 online은 통과', async () => {
+    const thu = weekdayDateThisWeek(4); // 시드 105: student 1 online_only 목 20:00~21:00
+    const base = { sessionDate: thu, startTime: '20:30', durationMinutes: 20, studentIds: [1] };
+    const inPerson = await http.post('/api/schedule/conflicts').set(TH()).send(base).expect(201);
+    expect(inPerson.body).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'unavailable', resource: 'student', resourceId: 1 }),
+    ]));
+    const online = await http.post('/api/schedule/conflicts').set(TH()).send({ ...base, mode: 'online' }).expect(201);
+    expect(online.body.filter((c: { type: string; resource: string; resourceId: number }) =>
+      c.type === 'unavailable' && c.resource === 'student' && c.resourceId === 1)).toHaveLength(0);
+  });
+
   it('학생 가용 블록 훼손도 기존 수업 영향을 계산해 승인 요청에 보존한다', async () => {
     const update = await http.post('/api/availability/impact').set(TH())
       .send({ id: 103, ownerType: 'student', ownerId: 1, kind: 'unavailable', weekday: 1, startTime: '14:00', endTime: '20:00' })

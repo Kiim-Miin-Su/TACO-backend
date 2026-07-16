@@ -16,6 +16,7 @@ import { USERS, authVersionOf, profileVersionOf, type StaffAccount } from '../us
 import { UsersService, identityLockId } from '../users/users.service';
 import { ProfileVerificationsService } from '../profile-verifications/profile-verifications.service';
 import { maskTarget } from '../profile-verifications/profile-verification.entity';
+import { smsChallengeAvailable } from '../profile-verifications/sms-availability';
 import { CountriesService } from '../catalog/countries.service';
 import { CreateProfileChangeRequestDto } from './dto/create-profile-change-request.dto';
 import {
@@ -333,13 +334,10 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     )[0];
   }
 
-  /** SMS 인증 가능 여부 — provider(NCP SENS 4종 또는 Twilio 3종) env가 완비된 경우만 true.
+  /** SMS 인증 가능 여부 — 공용 판정으로 이동(sms-availability.ts — 프로필 응답 노출과 단일 소스).
    *  미설정이면 phone 변경은 challenge 없이 접수(중복 연락처 검사·형식 정규화·승인 경로는 유지). */
   private smsChallengeAvailable(): boolean {
-    const sens = process.env.NCP_SENS_ACCESS_KEY && process.env.NCP_SENS_SECRET_KEY
-      && process.env.NCP_SENS_SERVICE_ID && process.env.NCP_SENS_FROM;
-    const twilio = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_VERIFY_SERVICE_SID;
-    return Boolean(sens || twilio);
+    return smsChallengeAvailable();
   }
 
   /** [TBO-29B-4] 인증 필요 연락처 변경(값 설정) 추출 — email·phone 동시 변경은 400(채널당 challenge 1건). */
