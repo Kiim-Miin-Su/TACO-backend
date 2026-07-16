@@ -250,6 +250,14 @@ export const AUTH_EVENTS_SPEC: PostgresCollectionSpec = {
       updated_at timestamptz NOT NULL DEFAULT now()
     )
   `,
+  // [B10 E6 2026-07-16] Neon 정합 — 초기 owner-paste(20260714_01)의 inline CHECK가 3종
+  //  (login_success/failure/logout)만 허용해, 이후 추가된 복구 3종(29C C5)·refresh_reuse_blocked
+  //  (2026-07-16)이 Neon에서 CHECK 위반으로 실패할 잠재 결함(로컬 스펙 DDL엔 CHECK가 없어 e2e로
+  //  못 잡음 — DATA_DICTIONARY 부록 A ⑦ 실측 발견). 이벤트 유형은 기능 추가마다 늘어나므로
+  //  transactions.category와 동일하게 앱 계층 관리로 통일(CHECK 제거, 멱등).
+  migrations: [
+    `ALTER TABLE auth_events DROP CONSTRAINT IF EXISTS auth_events_event_type_check`,
+  ],
   indexes: [
     `CREATE INDEX IF NOT EXISTS idx_auth_events_user_at ON auth_events (user_id, at)`,
     `CREATE INDEX IF NOT EXISTS idx_auth_events_type_at ON auth_events (event_type, at)`,
