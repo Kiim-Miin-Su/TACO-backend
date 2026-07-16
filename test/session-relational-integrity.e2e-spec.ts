@@ -141,4 +141,36 @@ describe('session joined-table expected/after integrity (e2e)', () => {
       .map(({ id, sessionDate, durationMinutes, topic, payoutId }) => ({ id, sessionDate, durationMinutes, topic, payoutId }));
     assertExpectedAfter('반복 시리즈 정산 잠금 불변', before, after);
   });
+
+  // [대표 지시 ⑭ 2026-07-16] 보강 세션 → 원본(결강) 링크 — 참조 무결성 + FE 해소 판정 근거.
+  it('보강 링크: 원본 실존 검증(없으면 400)·보강 체이닝 금지·정상 링크는 저장된다', async () => {
+    // 원본(결강) 세션 — 과거 날짜 + canceled 로 생성(과거 생성 허용은 대표 요구 ⑪).
+    //  ⚠ POST /schedule 응답은 { row, conflicts } 래핑 — row를 꺼내 쓴다(id undefined 함정).
+    const original = (await http.post('/api/schedule').set(auth()).send({
+      courseId: 10, instructorId: 1, sessionDate: '2026-06-02', startTime: '07:00', durationMinutes: 60,
+      status: 'canceled', topic: '결강 원본', force: true,
+    }).expect(201)).body.row;
+    expect(original.id).toBeGreaterThan(0);
+
+    // 존재하지 않는 원본 → 400
+    await http.post('/api/schedule').set(auth()).send({
+      courseId: 10, instructorId: 1, sessionDate: '2026-06-09', startTime: '07:00', durationMinutes: 60,
+      status: 'makeup', makeupForSessionId: 999999, force: true,
+    }).expect(400);
+
+    // 정상 보강 링크 → 저장 + 응답/DB에 반영
+    const makeup = (await http.post('/api/schedule').set(auth()).send({
+      courseId: 10, instructorId: 1, sessionDate: '2026-06-09', startTime: '07:00', durationMinutes: 60,
+      status: 'makeup', makeupForSessionId: original.id, topic: '보강', force: true,
+    }).expect(201)).body.row;
+    expect(makeup.id).toBeGreaterThan(0);
+    const db = app.get(InMemoryDatabase);
+    expect(db.findById<ClassSession>(SESSIONS, makeup.id)!.makeupForSessionId).toBe(original.id);
+
+    // 보강 세션을 다시 원본으로 지정(체이닝) → 400 (원본↔보강 1단 링크만)
+    await http.post('/api/schedule').set(auth()).send({
+      courseId: 10, instructorId: 1, sessionDate: '2026-06-16', startTime: '07:00', durationMinutes: 60,
+      status: 'makeup', makeupForSessionId: makeup.id, force: true,
+    }).expect(400);
+  });
 });

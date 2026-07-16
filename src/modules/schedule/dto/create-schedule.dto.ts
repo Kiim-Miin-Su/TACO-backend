@@ -78,4 +78,8 @@ export class CreateScheduleDto implements CreateClassSessionInput {
   @ApiPropertyOptional({ enum: SESSION_MODES, example: 'in_person', description: '[v0.1.16] 수업방식(기본 in_person) — 대면/비대면. 강의실 유무와 독립' })
   @IsOptional() @IsIn(SESSION_MODES)
   mode?: SessionMode;
+
+  @ApiPropertyOptional({ example: 24, description: '[대표 지시 ⑭ 2026-07-16] 보강 세션이 가리키는 원본(결강) 세션 id — 지정 시 원본 실존 검증, 보강 미해소 뱃지가 해소로 판정' })
+  @IsOptional() @IsInt() @Min(1)
+  makeupForSessionId?: number;
 }

@@ -435,6 +435,7 @@ export class ScheduleService implements OnModuleInit {
     seriesId?: number; status?: ClassSession['status']; force?: boolean;
     kind?: ClassSession['kind']; price?: number; // [v0.1.14] 종류·세션 단건 가격
     mode?: ClassSession['mode']; // [v0.1.16] 수업방식(기본 in_person)
+    makeupForSessionId?: number; // [대표 지시 ⑭ 2026-07-16] 보강 세션 → 원본(결강) 세션 링크
   }, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[] }> {
     await this.ensureReady();
     const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
@@ -455,6 +456,14 @@ export class ScheduleService implements OnModuleInit {
       // [TBO-29C C2] seriesId는 서버 발급 자산만 허용 — 유령 시리즈 참조 차단(PG FK와 동일 규칙을 메모리에도).
       if (dto.seriesId != null && !this.db.findById<ScheduleSeriesRow>(CLASS_SESSION_SERIES, dto.seriesId))
         throw new BadRequestException(`seriesId ${dto.seriesId} 없음 — 반복 생성은 POST /schedule/series를 사용하세요`);
+      // [대표 지시 ⑭] 보강 링크 참조 무결성 — 원본 세션이 실존(미삭제)해야 하고, 보강 세션을 다시
+      //  원본으로 가리키는 체이닝은 금지(해소 판정 그래프 단순화 — 원본↔보강 1단 링크만).
+      if (dto.makeupForSessionId != null) {
+        const original = this.db.findById<ClassSession>(SESSIONS, dto.makeupForSessionId);
+        if (!original) throw new BadRequestException(`보강 원본 세션 ${dto.makeupForSessionId} 없음`);
+        if (original.makeupForSessionId != null)
+          throw new BadRequestException('보강 세션을 원본으로 지정할 수 없습니다. 결강된 원 수업을 지정해 주세요.');
+      }
       const conflicts = detectConflicts(
         { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
         this.db.findAll<ClassSession>(SESSIONS),
@@ -481,6 +490,7 @@ export class ScheduleService implements OnModuleInit {
         status: dto.status ?? SESSION_DEFAULTS.status,
         kind: dto.kind ?? SESSION_DEFAULTS.kind, // [v0.1.14] 기본 class(하위호환)
         mode: dto.mode ?? SESSION_DEFAULTS.mode, // [v0.1.16] 기본 대면(하위호환)
+        makeupForSessionId: dto.makeupForSessionId, // [대표 지시 ⑭] 보강→원본 링크(해소 판정 근거)
         price: dto.price,
         topic: dto.topic ?? course.name,
         memo: dto.memo,
