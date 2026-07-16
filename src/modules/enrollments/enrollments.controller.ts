@@ -6,12 +6,15 @@ import {
   ParseIntPipe,
   Post,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { EnrollmentsService } from './enrollments.service';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import type { JwtClaims } from '../auth/auth.service';
 
 @UseGuards(RolesGuard)
 @Controller('enrollments')
@@ -33,7 +36,7 @@ export class EnrollmentsController {
 
   @Post()
   @Roles(...ADMIN_ROLES)
-  create(@Body() dto: CreateEnrollmentDto) {
-    return this.enrollments.create(dto);
+  create(@Body() dto: CreateEnrollmentDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.enrollments.create(dto, req.user?.sub);
   }
 }

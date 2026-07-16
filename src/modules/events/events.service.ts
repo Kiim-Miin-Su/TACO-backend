@@ -66,8 +66,9 @@ export class EventsService implements OnModuleInit {
   // 부분 수정 — 병합 후 구간 재검증(부분 패치로 end<start 역전 방지). diff audit 포함 한 tx.
   async update(id: number, dto: UpdateEventDto, actorId: number): Promise<AcademyEvent> {
     return this.uow.run(async () => {
-      const before = this.db.findById<AcademyEvent>(ACADEMY_EVENTS, id);
-      if (!before) throw new NotFoundException(`이벤트 ${id} 없음`);
+      const found = this.db.findById<AcademyEvent>(ACADEMY_EVENTS, id);
+      if (!found) throw new NotFoundException(`이벤트 ${id} 없음`);
+      const before = { ...found }; // [감사 전수 2026-07-16] live-reference 함정 — diff 공백 방지 클론
       const merged = { startDate: dto.startDate ?? before.startDate, endDate: dto.endDate ?? before.endDate };
       if (merged.endDate < merged.startDate) {
         throw new BadRequestException('endDate must be on or after startDate');

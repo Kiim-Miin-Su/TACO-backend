@@ -2,6 +2,8 @@ import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { COURSES_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
+import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { AuditService } from '../audit/audit.service';
 import { Course, COURSES } from './course.entity';
 import { CreateCourseDto } from './dto/create-course.dto';
 
@@ -10,6 +12,8 @@ export class CoursesService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
+    private readonly uow: CalendarUnitOfWork,
+    private readonly audit: AuditService,
   ) {}
 
   // 데모 코스 시드 — 스케줄 모듈 COURSES(10,11,12)와 id·강사·과목·색 정렬.
@@ -36,14 +40,20 @@ export class CoursesService implements OnModuleInit {
     return row;
   }
 
-  create(dto: CreateCourseDto): Promise<Course> {
-    return this.store.insert<Course>(COURSES_SPEC, {
-      name: dto.name,
-      subjectId: dto.subjectId,
-      instructorId: dto.instructorId,
-      price: dto.price,
-      hourlyRate: dto.hourlyRate,
-      color: dto.color,
+  // actorId 없으면(시드·내부 경로) audit 생략. 쓰기+audit 한 tx(uow).
+  async create(dto: CreateCourseDto, actorId?: number): Promise<Course> {
+    return this.uow.run(async () => {
+      const row = await this.store.insert<Course>(COURSES_SPEC, {
+        name: dto.name,
+        subjectId: dto.subjectId,
+        instructorId: dto.instructorId,
+        price: dto.price,
+        hourlyRate: dto.hourlyRate,
+        color: dto.color,
+      });
+      // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
+      if (actorId != null) await this.audit.log({ entity: 'courses', entityId: row.id, action: 'create', actorId });
+      return row;
     });
   }
 }

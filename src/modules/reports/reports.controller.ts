@@ -60,8 +60,8 @@ export class ReportsController {
   @ApiOperation({ summary: '관리자 승인(submitted → approved) — 시수 적격 편입 [관리자]' })
   @ApiCreatedResponse({ description: 'SessionReport(approvalStatus=approved, approvedAt·approvedBy)' })
   @ApiForbiddenResponse({ description: '권한 없음(관리자 전용)' })
-  approve(@Param('id', ParseIntPipe) id: number, @Body() body?: ApproveReportDto) {
-    return this.reports.approve(id, body?.approvedBy);
+  approve(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }, @Body() body?: ApproveReportDto) {
+    return this.reports.approve(id, req.user?.sub ?? body?.approvedBy); // [감사 전수] actor는 토큰 권위
   }
 
   @Post(':id/reject')
@@ -69,7 +69,7 @@ export class ReportsController {
   @ApiParam({ name: 'id', description: '보고서 id' })
   @ApiOperation({ summary: '관리자 반려(→ rejected, 사유 보존) [관리자]' })
   @ApiCreatedResponse({ description: 'SessionReport(approvalStatus=rejected, rejectedReason)' })
-  reject(@Param('id', ParseIntPipe) id: number, @Body() body?: RejectReportDto) {
-    return this.reports.reject(id, body?.reason);
+  reject(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }, @Body() body?: RejectReportDto) {
+    return this.reports.reject(id, body?.reason, req.user?.sub); // [감사 전수 2026-07-16]
   }
 }

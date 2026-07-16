@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { SubjectsService } from './subjects.service';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import type { JwtClaims } from '../auth/auth.service';
 
 @ApiTags('subjects')
 @UseGuards(RolesGuard)
@@ -25,7 +27,7 @@ export class SubjectsController {
 
   @Post()
   @Roles(...ADMIN_ROLES)
-  create(@Body() dto: CreateSubjectDto) {
-    return this.subjects.create(dto);
+  create(@Body() dto: CreateSubjectDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.subjects.create(dto, req.user?.sub);
   }
 }

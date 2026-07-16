@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { RoomsService } from './rooms.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import type { JwtClaims } from '../auth/auth.service';
 
 @ApiTags('rooms')
 @UseGuards(RolesGuard)
@@ -25,7 +27,7 @@ export class RoomsController {
 
   @Post()
   @Roles(...ADMIN_ROLES)
-  create(@Body() dto: CreateRoomDto) {
-    return this.rooms.create(dto);
+  create(@Body() dto: CreateRoomDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.rooms.create(dto, req.user?.sub);
   }
 }

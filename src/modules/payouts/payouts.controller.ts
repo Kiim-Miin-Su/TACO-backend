@@ -70,8 +70,8 @@ export class PayoutsController {
   @ApiBadRequestResponse({ description: '적격 세션 0(이미 연결/기간 오류)' })
   @ApiUnauthorizedResponse({ description: '토큰 없음' })
   @ApiForbiddenResponse({ description: '권한 없음(대표 전용)' })
-  generate(@Body() body: GeneratePayoutDto) {
-    return this.payouts.generate(body.instructorId, body.from, body.to);
+  generate(@Body() body: GeneratePayoutDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.payouts.generate(body.instructorId, body.from, body.to, req.user?.sub);
   }
 
   // 대표 액션 — TBO-21: 강사 페이 확정/조정/반려/지급은 super_admin 전용.
@@ -80,8 +80,8 @@ export class PayoutsController {
   @ApiParam({ name: 'id', description: '정산서 id' })
   @ApiOperation({ summary: '대표 확정(pending → confirmed) [대표]' })
   @ApiCreatedResponse({ description: '정산서(status=confirmed)' })
-  confirm(@Param('id', ParseIntPipe) id: number) {
-    return this.payouts.confirm(id);
+  confirm(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.payouts.confirm(id, req.user?.sub);
   }
 
   @Post(':id/adjust')
@@ -89,8 +89,8 @@ export class PayoutsController {
   @ApiParam({ name: 'id', description: '정산서 id' })
   @ApiOperation({ summary: '대표 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존) [대표]' })
   @ApiCreatedResponse({ description: '정산서(computedAmount 보존, adjustedAmount·amount 갱신)' })
-  adjust(@Param('id', ParseIntPipe) id: number, @Body() body: AdjustPayoutDto) {
-    return this.payouts.adjust(id, body.amount, body.reason);
+  adjust(@Param('id', ParseIntPipe) id: number, @Body() body: AdjustPayoutDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.payouts.adjust(id, body.amount, body.reason, req.user?.sub);
   }
 
   @Post(':id/reject')
@@ -98,8 +98,8 @@ export class PayoutsController {
   @ApiParam({ name: 'id', description: '정산서 id' })
   @ApiOperation({ summary: '대표 반려(→ rejected) + 연결 세션 회수(재산정 가능) [대표]' })
   @ApiCreatedResponse({ description: '정산서(status=rejected, rejectedReason)' })
-  reject(@Param('id', ParseIntPipe) id: number, @Body() body?: RejectPayoutDto) {
-    return this.payouts.reject(id, body?.reason);
+  reject(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }, @Body() body?: RejectPayoutDto) {
+    return this.payouts.reject(id, body?.reason, req.user?.sub);
   }
 
   @Post(':id/pay')
@@ -108,7 +108,7 @@ export class PayoutsController {
   @ApiOperation({ summary: '지급 완료(confirmed → paid) + 통합 원장 출금 기록 [대표]' })
   @ApiCreatedResponse({ description: '{ payout: status=paid, transaction: 원장 출금 1건 }' })
   @ApiBadRequestResponse({ description: 'confirmed 상태가 아님' })
-  pay(@Param('id', ParseIntPipe) id: number) {
-    return this.payouts.pay(id);
+  pay(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.payouts.pay(id, req.user?.sub);
   }
 }

@@ -1,9 +1,11 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import type { JwtClaims } from '../auth/auth.service';
 
 @ApiTags('courses')
 @UseGuards(RolesGuard)
@@ -25,7 +27,7 @@ export class CoursesController {
 
   @Post()
   @Roles(...ADMIN_ROLES)
-  create(@Body() dto: CreateCourseDto) {
-    return this.courses.create(dto);
+  create(@Body() dto: CreateCourseDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.courses.create(dto, req.user?.sub);
   }
 }

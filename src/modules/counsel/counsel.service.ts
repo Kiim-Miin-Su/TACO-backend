@@ -1,5 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { AuditService } from '../audit/audit.service';
 import { Course, COURSES } from '../courses/course.entity';
 import { Subject, SUBJECTS } from '../subjects/subject.entity';
 import { CounselForm, CounselRound, COUNSEL_FORMS, COUNSEL_ROUNDS } from './counsel.entity';
@@ -9,7 +11,11 @@ import { CreateCounselRoundDto } from './dto/create-round.dto';
 
 @Injectable()
 export class CounselService implements OnModuleInit {
-  constructor(private readonly db: InMemoryDatabase) {}
+  constructor(
+    private readonly db: InMemoryDatabase,
+    private readonly uow: CalendarUnitOfWork,
+    private readonly audit: AuditService,
+  ) {}
 
   // 관심 과목/코스 FK 존재 검증(있을 때만) — 참조 무결성.
   private assertRefs(dto: { interestSubjectId?: number; interestCourseId?: number }): void {
@@ -25,23 +31,39 @@ export class CounselService implements OnModuleInit {
     return row;
   }
 
-  // 상담 접수 생성 — 최초 status='requested'(미지정 시).
-  createForm(dto: CreateCounselDto): CounselForm {
+  // 상담 접수 생성 — 최초 status='requested'(미지정 시). actorId 없으면(시드·내부 경로) audit 생략.
+  async createForm(dto: CreateCounselDto, actorId?: number): Promise<CounselForm> {
     this.assertRefs(dto);
-    return this.db.insert<CounselForm>(COUNSEL_FORMS, { ...dto, status: 'requested' } as Omit<CounselForm, 'id' | 'createdAt' | 'updatedAt'>);
+    return this.uow.run(async () => {
+      const row = this.db.insert<CounselForm>(COUNSEL_FORMS, { ...dto, status: 'requested' } as Omit<CounselForm, 'id' | 'createdAt' | 'updatedAt'>);
+      // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
+      if (actorId != null) await this.audit.log({ entity: 'counsel_forms', entityId: row.id, action: 'create', actorId });
+      return row;
+    });
   }
 
   // 상담 폼 수정(상태 전환·담당자·관심사). 존재 검증 + 관심 FK 검증.
-  updateForm(id: number, dto: UpdateCounselDto): CounselForm {
-    this.findForm(id);
+  async updateForm(id: number, dto: UpdateCounselDto, actorId?: number): Promise<CounselForm> {
+    const before = { ...this.findForm(id) };
     this.assertRefs(dto);
-    return this.db.update<CounselForm>(COUNSEL_FORMS, id, dto) as CounselForm;
+    return this.uow.run(async () => {
+      const after = this.db.update<CounselForm>(COUNSEL_FORMS, id, dto) as CounselForm;
+      // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
+      // PII 마스킹: applicantPhone 등 연락처 키는 diff에 원문 금지 — users.service maskTarget 규약과 동일 원칙.
+      if (actorId != null) {
+        await this.audit.log({
+          entity: 'counsel_forms', entityId: id, action: 'update', actorId,
+          changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
+        });
+      }
+      return after;
+    });
   }
 
   // 회차 추가 — roundNo 자동 증가, 부모 폼 FK 검증 + nextContactAt 동기화(배지 단일 소스).
-  async createRound(formId: number, dto: CreateCounselRoundDto): Promise<CounselRound> {
+  async createRound(formId: number, dto: CreateCounselRoundDto, actorId?: number): Promise<CounselRound> {
     // [원자성] 회차 기록 + 폼 nextContactAt 동기화가 함께(다음 일정 불일치 방지)
-    return this.db.transaction(() => {
+    return this.db.transaction(async () => {
     this.findForm(formId);
     const existing = this.db.findBy<CounselRound>(COUNSEL_ROUNDS, (r) => r.counselFormId === formId);
     const roundNo = existing.reduce((max, r) => Math.max(max, r.roundNo), -1) + 1;
@@ -53,8 +75,10 @@ export class CounselService implements OnModuleInit {
     } as Omit<CounselRound, 'id' | 'createdAt' | 'updatedAt'>);
     // 폼의 다음 상담일을 최신 회차 기준으로 동기화(상담 배지 = nextContactAt 미정).
     if (dto.nextContactAt !== undefined) this.db.update<CounselForm>(COUNSEL_FORMS, formId, { nextContactAt: dto.nextContactAt });
+    // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — 기존 db.transaction 안에 audit만 추가.
+    if (actorId != null) await this.audit.log({ entity: 'counsel_rounds', entityId: round.id, action: 'create', actorId });
     return round;
-  
+
     });
   }
 

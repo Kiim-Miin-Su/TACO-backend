@@ -7,8 +7,11 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import type { JwtClaims } from '../auth/auth.service';
 import { StudentsService } from './students.service';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
@@ -34,19 +37,19 @@ export class StudentsController {
 
   @Post()
   @Roles(...ADMIN_ROLES)
-  create(@Body() dto: CreateStudentDto) {
-    return this.students.create(dto);
+  create(@Body() dto: CreateStudentDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.students.create(dto, req.user?.sub);
   }
 
   @Patch(':id')
   @Roles(...ADMIN_ROLES)
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateStudentDto) {
-    return this.students.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateStudentDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.students.update(id, dto, req.user?.sub);
   }
 
   @Delete(':id')
   @Roles(...ADMIN_ROLES)
-  remove(@Param('id', ParseIntPipe) id: number) {
-    return this.students.remove(id);
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.students.remove(id, req.user?.sub);
   }
 }

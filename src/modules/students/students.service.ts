@@ -3,6 +3,7 @@ import { InMemoryDatabase } from '../../database/in-memory.database';
 import { ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { AuditService } from '../audit/audit.service';
 import { Student, STUDENTS } from './student.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { CreateStudentDto } from './dto/create-student.dto';
@@ -14,6 +15,7 @@ export class StudentsService implements OnModuleInit {
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
     private readonly uow: CalendarUnitOfWork,
+    private readonly audit: AuditService, // [감사 전수 2026-07-16] 직접 CRUD 이력(집계 경로는 registrations가 기록)
   ) {}
 
   // 데모 학생 시드 — 프론트 목데이터를 백엔드로 이관(고정 id로 관계 정합 유지).
@@ -39,29 +41,47 @@ export class StudentsService implements OnModuleInit {
     return student;
   }
 
-  create(dto: CreateStudentDto): Promise<Student> {
-    return this.store.insert<Student>(STUDENTS_SPEC, {
-      name: dto.name,
-      englishName: dto.englishName,
-      phone: dto.phone,
-      grade: dto.grade,
-      schoolName: dto.schoolName,
-      residenceType: dto.residenceType ?? 'domestic',
-      status: dto.status ?? 'lead',
-      country: dto.country,
-      memo: dto.memo,
+  async create(dto: CreateStudentDto, actorId?: number): Promise<Student> {
+    return this.uow.run(async () => {
+      const row = await this.store.insert<Student>(STUDENTS_SPEC, {
+        name: dto.name,
+        englishName: dto.englishName,
+        phone: dto.phone,
+        grade: dto.grade,
+        schoolName: dto.schoolName,
+        residenceType: dto.residenceType ?? 'domestic',
+        status: dto.status ?? 'lead',
+        country: dto.country,
+        memo: dto.memo,
+      });
+      // [감사 전수 2026-07-16] 직접 생성 이력 — 연락처(PII) 원문은 기록하지 않음.
+      if (actorId != null) {
+        await this.audit.log({ entity: 'students', entityId: row.id, action: 'create', actorId });
+      }
+      return row;
     });
   }
 
   // 소프트 삭제: 학생 상태를 canceled로, 해당 학생의 active 수강도 canceled로 정리(무결성).
   // [피드백 2026-07-03] 부분 수정 — 캘린더 우측 패널의 학생 정보 편집(국가·거주·상태·연락처 등).
   //  존재 검증 후 전달된 필드만 갱신(빈 body는 no-op). 퇴원(수강 동반 정리)은 remove가 담당.
-  update(id: number, dto: UpdateStudentDto): Promise<Student> {
-    this.findOne(id);
-    return this.store.update<Student>(STUDENTS_SPEC, id, { ...dto }) as Promise<Student>;
+  async update(id: number, dto: UpdateStudentDto, actorId?: number): Promise<Student> {
+    // ⚠ live-reference 함정: findOne은 메모리 행 참조를 그대로 주므로 update가 before까지 바꾼다 — 클론 필수.
+    const before = { ...this.findOne(id) };
+    return this.uow.run(async () => {
+      const after = await this.store.update<Student>(STUDENTS_SPEC, id, { ...dto }) as Student;
+      // [감사 전수 2026-07-16] 수정 diff — phone 등 연락처 키는 마스킹(maskContactPii).
+      if (actorId != null) {
+        await this.audit.log({
+          entity: 'students', entityId: id, action: 'update', actorId,
+          changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
+        });
+      }
+      return after;
+    });
   }
 
-  async remove(id: number): Promise<Student> {
+  async remove(id: number, actorId?: number): Promise<Student> {
     // [원자성] 학생 소프트삭제 + 활성 수강 일괄 canceled(부분 정리 잔존 금지).
     //  [TBO-29D D0 버그수정 2026-07-15] 수강 취소가 db.update(메모리 전용)로만 쓰여 PG에 미영속 —
     //  재기동/재수화 시 취소가 되살아나는 실버그(메모리 read model만 읽는 e2e는 통과해 왔다).
@@ -71,11 +91,20 @@ export class StudentsService implements OnModuleInit {
       await this.uow.lockTargets([{ kind: 'student', id }]);
       const student = this.db.findById<Student>(STUDENTS, id);
       if (!student) throw new NotFoundException(`Student ${id} not found`);
+      const beforeStatus = student.status; // live-reference — update 전에 캡처
       const enrollments = this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === id && e.status !== 'canceled');
       for (const e of enrollments) {
         await this.store.update<Enrollment>(ENROLLMENTS_SPEC, e.id, { status: 'canceled' });
       }
-      return (await this.store.update<Student>(STUDENTS_SPEC, id, { status: 'canceled' })) as Student;
+      const after = (await this.store.update<Student>(STUDENTS_SPEC, id, { status: 'canceled' })) as Student;
+      // [감사 전수 2026-07-16] 퇴원(소프트삭제) + 동반 수강 취소를 한 이력으로.
+      if (actorId != null) {
+        await this.audit.log({
+          entity: 'students', entityId: id, action: 'status_change', actorId,
+          changes: { status: { before: beforeStatus, after: 'canceled' }, canceledEnrollmentIds: { after: enrollments.map((e) => e.id) } },
+        });
+      }
+      return after;
     });
   }
 }

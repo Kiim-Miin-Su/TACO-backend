@@ -40,7 +40,9 @@ export class RegistrationsService {
       if (phoneDigits) await this.uow.lockTargets([{ kind: 'parentIntake', id: phoneLockIdOf(phoneDigits) }]);
 
       const student = await this.students.create(dto.student);
-      const guardian = dto.guardian ? await this.parents.attachGuardianInTx(student.id, dto.guardian) : null;
+      // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — actorId 스레딩:
+      //  attachGuardianInTx가 같은 tx 안에서 parents create + parent_student_relations create audit을 남긴다.
+      const guardian = dto.guardian ? await this.parents.attachGuardianInTx(student.id, dto.guardian, actorId) : null;
       const enrollment = dto.courseId != null
         ? await this.enrollments.create({ studentId: student.id, courseId: dto.courseId })
         : null;

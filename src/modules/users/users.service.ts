@@ -165,6 +165,7 @@ export class UsersService implements OnModuleInit {
     if (this.db.findBy<StaffAccount>(USERS, (a) => !!a.email && a.email.toLowerCase() === email).length)
       throw new BadRequestException('이미 사용 중인 이메일입니다.');
     const verifyToken = randomBytes(24).toString('hex');
+    return this.uow.run(async () => {
     const acc = await this.store.insert<StaffAccount>(USERS_SPEC, {
       webId, name: input.name.trim(), email, role,
       status: 'pending', passwordHash, emailVerified: false,
@@ -179,7 +180,14 @@ export class UsersService implements OnModuleInit {
       major: input.major?.trim() || null,
       birthYear: input.birthYear ?? null,
     });
+    // [감사 전수 2026-07-16] 자기 가입 생성 이력 — actor=생성된 본인(추적 기점). PII는 기록 안 함.
+    await this.audit.log({
+      entity: 'users', entityId: acc.id, action: 'create', actorId: acc.id,
+      changes: { webId: { after: acc.webId }, role: { after: acc.role }, status: { after: 'pending' } },
+      reason: '자기 가입 신청',
+    });
     return { account: toSafe(acc), verifyToken };
+    });
   }
 
   async verifyEmail(token: string): Promise<SafeAccount> {
@@ -193,9 +201,17 @@ export class UsersService implements OnModuleInit {
     if (acc.emailVerifyExpiresAt && Date.parse(acc.emailVerifyExpiresAt) < Date.now())
       throw new BadRequestException('유효하지 않거나 만료된 인증 링크입니다.');
     // [TBO-28B §4-e] 명시 null — undefined는 toDbPayload가 skip해 Postgres에 토큰이 잔존했다(T12).
-    const updated = await this.store.update<StaffAccount>(USERS_SPEC, acc.id, {
-      emailVerified: true, emailVerifyTokenHash: null, emailVerifyExpiresAt: null,
-    }) as StaffAccount;
+    const updated = await this.uow.run(async () => {
+      const row = await this.store.update<StaffAccount>(USERS_SPEC, acc.id, {
+        emailVerified: true, emailVerifyTokenHash: null, emailVerifyExpiresAt: null,
+      }) as StaffAccount;
+      // [감사 전수 2026-07-16] 이메일 인증 완료 이력(⚠ 누락 경로였음 — actor=본인).
+      await this.audit.log({
+        entity: 'users', entityId: acc.id, action: 'update', actorId: acc.id,
+        changes: { emailVerified: { before: false, after: true } }, reason: '이메일 인증 완료',
+      });
+      return row;
+    });
     return toSafe(updated);
   }
 

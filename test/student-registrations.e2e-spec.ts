@@ -52,7 +52,8 @@ describe('[TBO-29D D2] POST /students/registrations (atomic aggregate)', () => {
       parents: before.parents + 1,
       relations: before.relations + 1,
       enrollments: before.enrollments + 1,
-      audit: before.audit + 1,
+      // [감사 전수 2026-07-16] students 집계 1건 + parents create + relation create = +3
+      audit: before.audit + 3,
     });
     expect(res.body.guardian.linkedExisting).toBe(false);
     expect(res.body.guardian.relation).toMatchObject({ studentId: res.body.student.id, isPrimary: true, isPayer: true });

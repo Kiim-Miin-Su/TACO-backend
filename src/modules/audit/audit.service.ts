@@ -60,6 +60,31 @@ export class AuditService implements OnModuleInit {
     return { __row: { before: { ...row } } };
   }
 
+  /** [감사 전수 2026-07-16] PII 마스킹 — audit changes(diff/snapshot)에 연락처 원문 금지.
+   *  키 이름에 phone/email이 포함된 항목(phone·email·parentPhone·applicantPhone 등)은 값 대신
+   *  '[masked]'로 치환한다(중첩 객체 재귀 — snapshotOf의 __row.before 내부 포함).
+   *  근거: users.service의 maskTarget 규약(연락처는 마스킹된 형태로만 이력에 남긴다)과 동일 원칙. */
+  maskContactPii<T>(changes: T): T {
+    const isContactKey = (key: string): boolean => /phone|email/i.test(key);
+    const walk = (value: unknown): unknown => {
+      if (!value || typeof value !== 'object') return value;
+      if (Array.isArray(value)) return value.map(walk);
+      const out: Record<string, unknown> = {};
+      for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+        if (isContactKey(k)) {
+          // diff 항목({before,after})은 구조를 보존하고 값만 마스킹, 그 외는 값 전체 치환.
+          out[k] = v && typeof v === 'object' && !Array.isArray(v)
+            ? Object.fromEntries(Object.keys(v as object).map((kk) => [kk, '[masked]']))
+            : '[masked]';
+        } else {
+          out[k] = walk(v);
+        }
+      }
+      return out;
+    };
+    return walk(changes) as T;
+  }
+
   /** 이력 조회(최신순) — ADMIN 전용(컨트롤러에서 게이트). entity/entityId/actorId 필터. */
   async list(q: { entity?: string; entityId?: number; actorId?: number; limit?: number }): Promise<AuditRow[]> {
     return this.store.findActive<AuditRow>(AUDIT_LOG_SPEC, {

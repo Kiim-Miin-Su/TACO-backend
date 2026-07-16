@@ -36,8 +36,11 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     return signup.account.id as number;
   }
 
+  // [감사 전수 2026-07-16] signup(create)·verifyEmail(update) 이력이 추가됨 — 이 스위트의 단정은
+  //  '승인/반려 결정' 이력에 대한 것이므로 결정 액션만 카운트한다.
   const auditOf = (id: number): Row[] =>
-    db.findAll<Row & { id: number }>('audit_log').filter((r) => r.entity === 'users' && r.entityId === id);
+    db.findAll<Row & { id: number; action?: string }>('audit_log')
+      .filter((r) => r.entity === 'users' && r.entityId === id && (r.action === 'approve' || r.action === 'reject'));
   const profileOf = (id: number): Row | undefined =>
     db.findAll<Row & { id: number }>('instructor_profiles').find((r) => r.userId === id);
   const userOf = (id: number): Row => db.findAll<Row & { id: number }>('users').find((r) => r.id === id)!;
@@ -254,7 +257,9 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     expect(created).toMatchObject({ status: 'active', role: 'instructor', name: '김직접', approvedBy: 3 });
     const profile = profileOf(created.id);
     expect(profile).toMatchObject({ active: true, university: '한국대학교', major: '수학교육', birthYear: 1998 });
-    expect(auditOf(created.id)).toHaveLength(1);
+    // 직접 등록은 결정(approve/reject)이 아니라 create 이력 — auditOf(결정 전용 필터) 대신 직접 조회.
+    expect(db.findAll<Row & { id: number; action?: string }>('audit_log')
+      .filter((r) => r.entity === 'users' && r.entityId === created.id && r.action === 'create')).toHaveLength(1);
     // 리소스 노출 + 즉시 로그인
     const found = (await http.get('/api/schedule/resources').set('Authorization', `Bearer ${admin}`).expect(200))
       .body.instructors.filter((i: { id: number }) => i.id === created.id);

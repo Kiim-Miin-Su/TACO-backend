@@ -119,6 +119,14 @@ export class AttendanceService implements OnModuleInit {
   }
 
   async removeBySession(sessionId: number, deletedBy?: number): Promise<number> {
-    return this.store.removeByField(ATTENDANCE_SPEC, 'sessionId', sessionId, deletedBy);
+    // [감사 전수 2026-07-16] cascade 삭제도 행별 delete 이력(⚠ 누락 경로였음 — 호출부 tx 안).
+    const rows = this.db.findByField<Attendance>(ATTENDANCE, 'sessionId', sessionId);
+    const count = await this.store.removeByField(ATTENDANCE_SPEC, 'sessionId', sessionId, deletedBy);
+    if (deletedBy != null && deletedBy > 0) {
+      for (const r of rows) {
+        await this.audit.log({ entity: ATTENDANCE, entityId: r.id, action: 'delete', actorId: deletedBy });
+      }
+    }
+    return count;
   }
 }

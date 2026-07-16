@@ -1,11 +1,13 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiOkResponse, ApiCreatedResponse, ApiBearerAuth } from '@nestjs/swagger';
+import type { Request } from 'express';
 import { CounselService } from './counsel.service';
 import { CreateCounselDto } from './dto/create-counsel.dto';
 import { UpdateCounselDto } from './dto/update-counsel.dto';
 import { CreateCounselRoundDto } from './dto/create-round.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
+import type { JwtClaims } from '../auth/auth.service';
 
 // [참조/처리] /api/counsel — 읽기는 공개, 쓰기(@Roles STAFF)는 로그인 필수(상담 담당자).
 //  폼 생성/수정 + 회차 추가. 관심 과목/코스 FK·부모 폼 FK를 서비스가 검증.
@@ -37,23 +39,23 @@ export class CounselController {
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '상담 접수 생성 — status=requested' })
   @ApiCreatedResponse({ description: '생성된 CounselForm' })
-  createForm(@Body() dto: CreateCounselDto) {
-    return this.counsel.createForm(dto);
+  createForm(@Body() dto: CreateCounselDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.counsel.createForm(dto, req.user?.sub);
   }
 
   @Patch(':id')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '상담 폼 수정(상태 전환·담당자·관심사)' })
   @ApiOkResponse({ description: '수정된 CounselForm' })
-  updateForm(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCounselDto) {
-    return this.counsel.updateForm(id, dto);
+  updateForm(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCounselDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.counsel.updateForm(id, dto, req.user?.sub);
   }
 
   @Post(':id/rounds')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '상담 회차 추가 — roundNo 자동, 폼 nextContactAt 동기화' })
   @ApiCreatedResponse({ description: '생성된 CounselRound' })
-  createRound(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateCounselRoundDto) {
-    return this.counsel.createRound(id, dto);
+  createRound(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateCounselRoundDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.counsel.createRound(id, dto, req.user?.sub);
   }
 }

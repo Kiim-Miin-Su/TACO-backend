@@ -6,8 +6,11 @@ import {
   ParseIntPipe,
   Patch,
   Post,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import type { JwtClaims } from '../auth/auth.service';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
@@ -40,28 +43,28 @@ export class PaymentsController {
   @Post()
   @Roles('super_admin')
   @ApiOperation({ summary: '신규 청구 생성 [대표]' })
-  create(@Body() dto: CreatePaymentDto) {
-    return this.payments.create(dto);
+  create(@Body() dto: CreatePaymentDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.payments.create(dto, req.user?.sub);
   }
 
   @Patch(':id')
   @Roles('super_admin')
   @ApiOperation({ summary: '청구 금액·수단·기한 정정 [대표]' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePaymentDto) {
-    return this.payments.update(id, dto);
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePaymentDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.payments.update(id, dto, req.user?.sub);
   }
 
   @Post(':id/refund')
   @Roles('super_admin')
   @ApiOperation({ summary: '수납 환불 + 원장 역방향 출금 기록 [대표]' })
-  refund(@Param('id', ParseIntPipe) id: number) {
-    return this.payments.refund(id);
+  refund(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.payments.refund(id, req.user?.sub);
   }
 
   @Post(':id/pay')
   @Roles('super_admin')
   @ApiOperation({ summary: '수납 완료 처리 + 통합 원장 입금 기록 [대표]' })
-  markPaid(@Param('id', ParseIntPipe) id: number) {
-    return this.payments.markPaid(id);
+  markPaid(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.payments.markPaid(id, req.user?.sub);
   }
 }

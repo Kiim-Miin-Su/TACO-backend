@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { AuditService } from '../audit/audit.service';
 import { Course, COURSES } from '../courses/course.entity';
 import { Roadmap, RoadmapCourse, ROADMAPS, ROADMAP_COURSES } from './roadmap.entity';
 import { CreateRoadmapDto } from './dto/create-roadmap.dto';
@@ -12,7 +13,10 @@ import { CreateRoadmapDto } from './dto/create-roadmap.dto';
  */
 @Injectable()
 export class RoadmapsService implements OnModuleInit {
-  constructor(private readonly db: InMemoryDatabase) {}
+  constructor(
+    private readonly db: InMemoryDatabase,
+    private readonly audit: AuditService,
+  ) {}
 
   onModuleInit(): void {
     this.db.seed<Roadmap>(ROADMAPS, [
@@ -32,7 +36,8 @@ export class RoadmapsService implements OnModuleInit {
     return this.db.findAll<RoadmapCourse>(ROADMAP_COURSES);
   }
 
-  async create(dto: CreateRoadmapDto): Promise<Roadmap> {
+  // actorId 없으면(시드·내부 경로) audit 생략.
+  async create(dto: CreateRoadmapDto, actorId?: number): Promise<Roadmap> {
     const courseIds = dto.courseIds ?? [];
     // 코스 FK 검증 — 하나라도 없으면 링크를 만들지 않고 400(부분 생성 방지).
     for (const courseId of courseIds) {
@@ -41,16 +46,20 @@ export class RoadmapsService implements OnModuleInit {
     }
     // [무결성 2026-07-07] 로드맵 + 코스 링크 다중 insert 원자성 — 중간 실패 시 roadmap만 남아 링크 누락되던
     //  부분 생성 위험 제거(db write-path 감사 지적). 단일 tx로 함께 반영/롤백.
-    return this.db.transaction(() => {
+    return this.db.transaction(async () => {
       const roadmap = this.db.insert<Roadmap>(ROADMAPS, {
         title: dto.title,
         description: dto.description,
         targetGrade: dto.targetGrade,
         isActive: true,
       });
-      courseIds.forEach((courseId, i) => {
-        this.db.insert<RoadmapCourse>(ROADMAP_COURSES, { roadmapId: roadmap.id, courseId, sortOrder: i });
-      });
+      // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — 기존 db.transaction 안에 audit만 추가.
+      if (actorId != null) await this.audit.log({ entity: 'roadmaps', entityId: roadmap.id, action: 'create', actorId });
+      for (const [i, courseId] of courseIds.entries()) {
+        const link = this.db.insert<RoadmapCourse>(ROADMAP_COURSES, { roadmapId: roadmap.id, courseId, sortOrder: i });
+        // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — 링크 행별 audit(두 테이블 각각).
+        if (actorId != null) await this.audit.log({ entity: 'roadmap_courses', entityId: link.id, action: 'create', actorId });
+      }
       return roadmap;
     });
   }

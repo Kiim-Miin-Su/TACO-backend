@@ -2,6 +2,8 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { SESSION_REPORTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
+import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { AuditService } from '../audit/audit.service';
 import { ADMIN_ROLES } from '../auth/roles.decorator';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Course, COURSES } from '../courses/course.entity';
@@ -25,6 +27,8 @@ export class ReportsService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
+    private readonly uow: CalendarUnitOfWork,
+    private readonly audit: AuditService, // [감사 전수 2026-07-16] 정산 적격 근거(보고서 상태) 이력
   ) {}
 
   // 데모 보고서 시드 — 과거 held 세션(schedule 히스토리 20~28)의 일부만 제출(submitted).
@@ -93,16 +97,26 @@ export class ReportsService implements OnModuleInit {
     // 4) 과목 스냅샷(코스 조인) — 코스가 있으면 subjectId 보존
     const course = this.db.findById<Course>(COURSES, session.courseId);
     const status = dto.status ?? 'submitted';
-    return this.store.insert<SessionReportRow>(SESSION_REPORTS_SPEC, {
-      sessionId: dto.sessionId,
-      studentId: dto.studentId,
-      instructorId,
-      subjectId: course?.subjectId,
-      content: dto.content,
-      homework: dto.homework,
-      status,
-      approvalStatus: status === 'submitted' ? 'submitted' : 'draft',
-      submittedAt: status === 'submitted' ? new Date().toISOString() : undefined,
+    return this.uow.run(async () => {
+      const row = await this.store.insert<SessionReportRow>(SESSION_REPORTS_SPEC, {
+        sessionId: dto.sessionId,
+        studentId: dto.studentId,
+        instructorId,
+        subjectId: course?.subjectId,
+        content: dto.content,
+        homework: dto.homework,
+        status,
+        approvalStatus: status === 'submitted' ? 'submitted' : 'draft',
+        submittedAt: status === 'submitted' ? new Date().toISOString() : undefined,
+      });
+      // [감사 전수 2026-07-16] 보고서 생성 이력(본문 원문은 기록하지 않음 — 메타만).
+      if (actor?.id != null && actor.id > 0) {
+        await this.audit.log({
+          entity: 'session_reports', entityId: row.id, action: 'create', actorId: actor.id,
+          changes: { sessionId: { after: row.sessionId }, approvalStatus: { after: row.approvalStatus } },
+        });
+      }
+      return row;
     });
   }
 
@@ -120,15 +134,25 @@ export class ReportsService implements OnModuleInit {
     if (r.approvalStatus === 'approved') throw new BadRequestException('이미 승인된 보고서는 수정할 수 없습니다.');
     if (dto.content === undefined && dto.homework === undefined)
       throw new BadRequestException('수정할 내용(content/homework)이 필요합니다.');
-    return await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
-      ...(dto.content !== undefined ? { content: dto.content } : {}),
-      // 빈 문자열 = 숙제 비움(명시 null 저장 — undefined는 skip되는 UPDATE 함정 방지).
-      //  contracts SessionReport.homework가 optional(string)뿐이라 null 캐스팅 — DB 컬럼은 nullable
-      //  (contracts nullable 확장은 다음 계약 버전에서).
-      ...(dto.homework !== undefined
-        ? { homework: (dto.homework.trim() ? dto.homework : null) as unknown as string }
-        : {}),
-    }) as SessionReportRow;
+    return this.uow.run(async () => {
+      const after = await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+        ...(dto.content !== undefined ? { content: dto.content } : {}),
+        // 빈 문자열 = 숙제 비움(명시 null 저장 — undefined는 skip되는 UPDATE 함정 방지).
+        //  contracts SessionReport.homework가 optional(string)뿐이라 null 캐스팅 — DB 컬럼은 nullable
+        //  (contracts nullable 확장은 다음 계약 버전에서).
+        ...(dto.homework !== undefined
+          ? { homework: (dto.homework.trim() ? dto.homework : null) as unknown as string }
+          : {}),
+      }) as SessionReportRow;
+      // [감사 전수 2026-07-16] 본문 수정 이력 — 원문 대신 수정 필드명만(내용 프라이버시).
+      if (actor?.id != null && actor.id > 0) {
+        await this.audit.log({
+          entity: 'session_reports', entityId: id, action: 'update', actorId: actor.id,
+          changes: { editedFields: { after: Object.keys(dto) } },
+        });
+      }
+      return after;
+    });
   }
 
   // 강사: 작성완료 제출(draft → submitted)
@@ -138,12 +162,23 @@ export class ReportsService implements OnModuleInit {
     if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
       throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 제출할 수 있습니다.');
     if (r.approvalStatus === 'approved') throw new BadRequestException('이미 승인된 보고서');
-    return await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
-      status: 'submitted',
-      approvalStatus: 'submitted',
-      submittedAt: new Date().toISOString(),
-      rejectedReason: undefined,
-    }) as SessionReportRow;
+    const beforeStatus = r.approvalStatus ?? r.status; // live-reference — update 전에 캡처
+    return this.uow.run(async () => {
+      const after = await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+        status: 'submitted',
+        approvalStatus: 'submitted',
+        submittedAt: new Date().toISOString(),
+        rejectedReason: undefined,
+      }) as SessionReportRow;
+      // [감사 전수 2026-07-16] 제출 이력.
+      if (actor?.id != null && actor.id > 0) {
+        await this.audit.log({
+          entity: 'session_reports', entityId: id, action: 'status_change', actorId: actor.id,
+          changes: { approvalStatus: { before: beforeStatus, after: 'submitted' } },
+        });
+      }
+      return after;
+    });
   }
 
   // 관리자 승인(submitted → approved) — 승인 시 시수 적격 세션으로 편입
@@ -151,25 +186,56 @@ export class ReportsService implements OnModuleInit {
     const r = this.findOne(id);
     if (r.approvalStatus !== 'submitted')
       throw new BadRequestException(`승인 불가 상태(${r.approvalStatus ?? r.status}) — submitted만 승인 가능`);
-    return await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
-      approvalStatus: 'approved',
-      approvedAt: new Date().toISOString(),
-      approvedBy,
-    }) as SessionReportRow;
+    return this.uow.run(async () => {
+      const after = await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+        approvalStatus: 'approved',
+        approvedAt: new Date().toISOString(),
+        approvedBy,
+      }) as SessionReportRow;
+      // [감사 전수 2026-07-16] 승인 = 시수 적격 편입 근거(0=시스템 시드는 생략).
+      if (approvedBy != null && approvedBy > 0) {
+        await this.audit.log({
+          entity: 'session_reports', entityId: id, action: 'approve', actorId: approvedBy,
+          changes: { approvalStatus: { before: 'submitted', after: 'approved' } },
+        });
+      }
+      return after;
+    });
   }
 
   // 관리자 반려(→ rejected, 사유 보존). 재제출 가능.
-  async reject(id: number, reason?: string): Promise<SessionReportRow> {
+  async reject(id: number, reason?: string, actorId?: number): Promise<SessionReportRow> {
     const r = this.findOne(id);
     if (r.approvalStatus === 'approved')
       throw new BadRequestException('이미 승인됨 — 반려하려면 정산 회수 후 처리 필요');
-    return await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
-      approvalStatus: 'rejected',
-      rejectedReason: reason ?? '사유 미기재',
-    }) as SessionReportRow;
+    const beforeStatus = r.approvalStatus ?? r.status; // live-reference — update 전에 캡처
+    return this.uow.run(async () => {
+      const after = await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+        approvalStatus: 'rejected',
+        rejectedReason: reason ?? '사유 미기재',
+      }) as SessionReportRow;
+      // [감사 전수 2026-07-16] 반려 이력(사유 포함).
+      if (actorId != null && actorId > 0) {
+        await this.audit.log({
+          entity: 'session_reports', entityId: id, action: 'reject', actorId,
+          changes: { approvalStatus: { before: beforeStatus, after: 'rejected' } },
+          reason: reason ?? '사유 미기재',
+        });
+      }
+      return after;
+    });
   }
 
   async removeBySession(sessionId: number, deletedBy?: number): Promise<number> {
-    return this.store.removeByField(SESSION_REPORTS_SPEC, 'sessionId', sessionId, deletedBy);
+    // [감사 전수 2026-07-16] cascade 삭제도 행별 이력(⚠ 누락 경로였음). 호출부(schedule.remove)가
+    //  이미 자체 tx 안이므로 여기서는 removeByField 후 행별 log만 추가(중첩 uow는 passthrough).
+    const rows = this.db.findByField<SessionReportRow>(SESSION_REPORTS, 'sessionId', sessionId);
+    const count = await this.store.removeByField(SESSION_REPORTS_SPEC, 'sessionId', sessionId, deletedBy);
+    if (deletedBy != null && deletedBy > 0) {
+      for (const r of rows) {
+        await this.audit.log({ entity: 'session_reports', entityId: r.id, action: 'delete', actorId: deletedBy });
+      }
+    }
+    return count;
   }
 }
