@@ -5,7 +5,7 @@ import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiOkResponse
 import { PayoutsService } from './payouts.service';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-import { GeneratePayoutDto, AdjustPayoutDto, RejectPayoutDto } from './dto/payout.dto';
+import { GeneratePayoutDto, AdjustPayoutDto, RejectPayoutDto, ReversePayoutDto } from './dto/payout.dto';
 
 @ApiTags('payouts')
 @ApiBearerAuth()
@@ -100,6 +100,17 @@ export class PayoutsController {
   @ApiCreatedResponse({ description: '정산서(status=rejected, rejectedReason)' })
   reject(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }, @Body() body?: RejectPayoutDto) {
     return this.payouts.reject(id, body?.reason, req.user?.sub);
+  }
+
+  // [B9 E5 2026-07-16] 지급 회수(보상 command) — paid 정산의 유일한 되돌림 경로.
+  @Post(':id/reverse')
+  @Roles('super_admin')
+  @ApiParam({ name: 'id', description: '정산서 id' })
+  @ApiOperation({ summary: '지급 회수(paid → rejected+reversedAt) — 보상 원장 입금 1건 + 연결 세션 전량 회수(재산정 가능) [대표]' })
+  @ApiCreatedResponse({ description: '{ payout: rejected+reversedAt, transaction: 원장 입금(payout_reversal) 1건 }' })
+  @ApiBadRequestResponse({ description: 'paid 상태가 아님(지급 전 취소는 반려 사용) 또는 사유 누락' })
+  reverse(@Param('id', ParseIntPipe) id: number, @Body() body: ReversePayoutDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.payouts.reverse(id, body.reason, req.user?.sub);
   }
 
   @Post(':id/pay')

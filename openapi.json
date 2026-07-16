@@ -3255,6 +3255,49 @@
         ]
       }
     },
+    "/api/payouts/{id}/reverse": {
+      "post": {
+        "operationId": "PayoutsController_reverse",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "정산서 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReversePayoutDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ payout: rejected+reversedAt, transaction: 원장 입금(payout_reversal) 1건 }"
+          },
+          "400": {
+            "description": "paid 상태가 아님(지급 전 취소는 반려 사용) 또는 사유 누락"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "지급 회수(paid → rejected+reversedAt) — 보상 원장 입금 1건 + 연결 세션 전량 회수(재산정 가능) [대표]",
+        "tags": [
+          "payouts"
+        ]
+      }
+    },
     "/api/payouts/{id}/pay": {
       "post": {
         "operationId": "PayoutsController_pay",
@@ -6178,6 +6221,21 @@
             "description": "반려 사유(강사에게 표시)"
           }
         }
+      },
+      "ReversePayoutDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 500,
+            "example": "보고서 반려로 시수 재산정 필요",
+            "description": "회수 사유(감사 이력·강사 표시)"
+          }
+        },
+        "required": [
+          "reason"
+        ]
       },
       "CreateCounselDto": {
         "type": "object",

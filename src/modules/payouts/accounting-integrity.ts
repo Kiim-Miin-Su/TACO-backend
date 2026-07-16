@@ -10,6 +10,7 @@ type PayoutLineRef = { sessionId: number; durationMinutes: number; amount: numbe
 type PayoutRef = {
   id: number; status: string; sessionCount: number; totalMinutes: number;
   computedAmount: number; amount: number; adjustedAmount?: number | null; lines: PayoutLineRef[];
+  reversedAt?: string | null; // [B9 E5] 지급 회수 판별(status는 rejected 재사용)
 };
 type TransactionRef = { id: number; direction: string; category: string; amount: number; payoutId?: number | null };
 
@@ -93,6 +94,18 @@ export function checkAccountingIntegrity(snapshot: AccountingIntegritySnapshot):
       const tx = snapshot.transactions.filter((row) => row.payoutId === payout.id && row.direction === 'out' && row.category === 'instructor_payout');
       if (tx.length !== 1 || tx[0]?.amount !== payout.amount)
         issues.push(issue('PAYOUT_TX_MISMATCH', 'instructor_payouts', payout.id, '지급 원장 1건 또는 금액 불일치'));
+    }
+    // [B9 E5] 지급 회수 정합 — reversedAt 있으면: 상태는 rejected(재사용 규약), 원장은 출금(지급) 1건 +
+    //  입금(payout_reversal) 1건이 같은 금액으로 대사되어야 한다. 회수 안 된 정산에 보상 거래가 있으면 역방향 위반.
+    const reversalTx = snapshot.transactions.filter((row) => row.payoutId === payout.id && row.direction === 'in' && row.category === 'payout_reversal');
+    if (payout.reversedAt != null) {
+      if (payout.status !== 'rejected')
+        issues.push(issue('REVERSED_PAYOUT_BAD_STATUS', 'instructor_payouts', payout.id, `reversedAt인데 status=${payout.status}`));
+      const paidTx = snapshot.transactions.filter((row) => row.payoutId === payout.id && row.direction === 'out' && row.category === 'instructor_payout');
+      if (paidTx.length !== 1 || reversalTx.length !== 1 || paidTx[0]?.amount !== reversalTx[0]?.amount)
+        issues.push(issue('PAYOUT_REVERSAL_TX_MISMATCH', 'instructor_payouts', payout.id, `출금 ${paidTx.length}건/입금 ${reversalTx.length}건 또는 금액 불일치`));
+    } else if (reversalTx.length) {
+      issues.push(issue('PAYOUT_STRAY_REVERSAL_TX', 'instructor_payouts', payout.id, `회수 아님인데 보상 거래 ${reversalTx.length}건`));
     }
   }
 

@@ -769,6 +769,7 @@ export const INSTRUCTOR_PAYOUTS_SPEC: PostgresCollectionSpec = {
       rejected_reason varchar(200),
       confirmed_at timestamptz,
       paid_at timestamptz,
+      reversed_at timestamptz,
       payment_method varchar(32),
       bank_account varchar(80),
       memo text,
@@ -780,7 +781,9 @@ export const INSTRUCTOR_PAYOUTS_SPEC: PostgresCollectionSpec = {
   `,
   jsonFields: ['lines'],
   dateFields: ['periodStart', 'periodEnd'],
-  timestampFields: ['confirmedAt', 'paidAt'],
+  timestampFields: ['confirmedAt', 'paidAt', 'reversedAt'],
+  // [B9 E5] 기존 DB 승격 — 지급 회수 시각(additive, 멱등)
+  migrations: ['ALTER TABLE instructor_payouts ADD COLUMN IF NOT EXISTS reversed_at timestamptz'],
   indexes: [
     activeIndex('instructor_payouts', 'idx_payouts_instructor_period', 'instructor_id, period_start, period_end'),
     activeIndex('instructor_payouts', 'idx_payouts_status', 'status'),

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, Matches, Min, Max, MaxLength } from 'class-validator';
+import { IsInt, IsOptional, IsString, Matches, Min, MinLength, Max, MaxLength } from 'class-validator';
 import { TEXT, MAX_AMOUNT } from '../../../common/validation-limits'; // [보안] 상한 단일 소스
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -36,6 +36,15 @@ export class AdjustPayoutDto {
 }
 
 // POST /payouts/:id/reject — 대표 반려(+연결 세션 회수)
+// [B9 E5] 지급 회수 — 금전 보상 command라 사유 필수(반려와 달리 선택 아님).
+export class ReversePayoutDto {
+  @ApiProperty({ example: '보고서 반려로 시수 재산정 필요', description: '회수 사유(감사 이력·강사 표시)' })
+  @IsString()
+  @MinLength(5)
+  @MaxLength(TEXT.memo)
+  reason!: string;
+}
+
 export class RejectPayoutDto {
   @ApiPropertyOptional({ example: '근태 확인 필요', description: '반려 사유(강사에게 표시)' })
   @IsOptional()

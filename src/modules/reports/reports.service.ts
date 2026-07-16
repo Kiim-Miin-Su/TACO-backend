@@ -210,8 +210,14 @@ export class ReportsService implements OnModuleInit {
   // 관리자 반려(→ rejected, 사유 보존). 재제출 가능.
   async reject(id: number, reason?: string, actorId?: number): Promise<SessionReportRow> {
     const r = this.findOne(id);
-    if (r.approvalStatus === 'approved')
-      throw new BadRequestException('이미 승인됨 — 반려하려면 정산 회수 후 처리 필요');
+    // [B9 E5 2026-07-16] 종전엔 승인 보고서를 무조건 400("정산 회수 후 처리 필요")으로 막았지만
+    //  회수 자체가 미구현이라 사실상 영구 잠금이었다. 이제 payout reversal이 있으므로 게이트를
+    //  실제 조건으로 정정: **세션이 정산에 연결돼 있을 때만** 차단(회수하면 연결이 풀려 반려 가능).
+    if (r.approvalStatus === 'approved') {
+      const session = this.db.findById<ClassSession>(SESSIONS, r.sessionId) as (ClassSession & { payoutId?: number | null }) | undefined;
+      if (session?.payoutId != null)
+        throw new BadRequestException('이미 승인됨 + 정산 연결 — 반려하려면 지급 회수(reverse) 후 처리하세요');
+    }
     const beforeStatus = r.approvalStatus ?? r.status; // live-reference — update 전에 캡처
     return this.uow.run(async () => {
       const after = await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {

@@ -295,6 +295,60 @@ export class PayoutsService implements OnModuleInit {
     });
   }
 
+  // [B9 E5 2026-07-16] 지급 회수(보상 command) — FEATURE-GAP P1 "실서비스 금전 흐름의 마지막 구멍".
+  //  지급(paid) 이후 되돌리는 유일 경로. 관례(payments.refund)를 따른다: 원 행·원 거래는 수정하지
+  //  않고 **반대 direction(in)의 보상 거래를 append**(원장 append-only). 상태는 rejected 재사용 +
+  //  reversedAt(계약 PayoutStatus 확장 불가 — B9 문서 §1). 효과: 세션 잠금 해제 → 수업 수정/삭제의
+  //  PAYOUT_REVERSAL_REQUIRED 409와 승인 보고서 반려("정산 회수 후") 400이 실제로 열린다.
+  async reverse(id: number, reason: string, actorId?: number): Promise<{ payout: InstructorPayoutRow; transaction: TransactionRow }> {
+    // [원자성] 상태 전환 + 보상 원장 + 세션 전량 회수 + 감사 — 한 tx(부분 회수 잔존 금지)
+    return this.unitOfWork.run(async () => {
+      const p = this.findOne(id);
+      if (p.status !== 'paid')
+        throw new BadRequestException(`회수 불가 상태(${p.status}) — 지급 완료(paid) 정산만 회수합니다. 지급 전 취소는 반려(reject)를 사용하세요.`);
+      const now = new Date().toISOString();
+      const payout = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, { status: 'paid' }, {
+        status: 'rejected',
+        reversedAt: now,
+        rejectedReason: reason,
+      });
+      if (!payout) throw new ConflictException('정산 상태가 다른 요청에서 먼저 변경되었습니다');
+      const transaction = await this.store.insert<TransactionRow>(TRANSACTIONS_SPEC, {
+        direction: 'in',
+        category: 'payout_reversal',
+        label: `강사 ${p.instructorId} 페이 회수(${p.periodStart}~${p.periodEnd})`,
+        amount: p.amount, // 전액 보상(부분 회수는 비범위 — B9 §3)
+        occurredAt: now,
+        payoutId: id,
+      });
+      for (const l of p.lines) {
+        const s = this.db.findById<SessionWithPayout>(SESSIONS, l.sessionId);
+        if (s && s.payoutId === id) {
+          await this.sessionsStore.update(l.sessionId, {
+            payoutId: null,
+            instructorPayAmount: null,
+          } as never);
+        }
+      }
+      if (actorId != null) {
+        await this.audit.log({
+          entity: 'instructor_payouts', entityId: id, action: 'status_change', actorId,
+          changes: {
+            status: { before: 'paid', after: 'rejected' },
+            reversedAt: { after: now },
+            releasedSessionIds: { after: p.lines.map((l) => l.sessionId) },
+          },
+          reason,
+        });
+        await this.audit.log({
+          entity: 'transactions', entityId: transaction.id, action: 'create', actorId,
+          changes: { direction: { after: 'in' }, category: { after: 'payout_reversal' }, amount: { after: transaction.amount } },
+        });
+      }
+      return { payout, transaction };
+    });
+  }
+
   // 지급 완료(confirmed → paid) + 통합 원장 출금 1줄 기록.
   async pay(id: number, actorId?: number): Promise<{ payout: InstructorPayoutRow; transaction: TransactionRow }> {
     // [원자성] 지급 상태 + 통합 원장 출금 1줄이 함께 기록(원장 누락/유령 지급 방지)
