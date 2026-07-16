@@ -286,7 +286,8 @@ run_gates() {
     local e2e_log="$ROOT/_logs/e2e-$(date +%Y%m%d-%H%M%S).log"
     mkdir -p "$ROOT/_logs"
     log "backend: npm run test:e2e (log: $e2e_log)"
-    if ! ( setopt pipe_fail; cd "$ROOT/backend" && npm run test:e2e -- --silent 2>&1 | tee "$e2e_log" ); then
+    # [2026-07-16] maxWorkers 50% — Mac 병렬 포화에서 소켓 플레이크(Parse Error/경로 404) 실측 완화.
+    if ! ( setopt pipe_fail; cd "$ROOT/backend" && npm run test:e2e -- --silent --maxWorkers=50% 2>&1 | tee "$e2e_log" ); then
       warn "backend e2e FAILED — 실패 상세: $e2e_log (FAIL/✕ 블록 확인)"
       grep -E "^FAIL|✕" "$e2e_log" | head -20 || true
       return 1
