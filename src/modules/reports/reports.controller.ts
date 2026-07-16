@@ -26,8 +26,9 @@ export class ReportsController {
 
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.reports.findOne(id);
+  @ApiOperation({ summary: '보고서 단건 — 강사는 본인 보고서만(404→403 표준). [B7 E3 스코프 갭 수정]' })
+  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.reports.findOne(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }
 
   @Post()

@@ -48,9 +48,13 @@ export class ReportsService implements OnModuleInit {
     return this.db.findAll<SessionReportRow>(SESSION_REPORTS);
   }
 
-  findOne(id: number): SessionReportRow {
+  // [B7 E3 2026-07-16] 단건 GET 스코프 갭 수정 — 종전엔 오너 체크가 쓰기(create/update/submit)에만
+  //  있어 강사가 타인 보고서 id를 조회할 수 있었다(IDOR). 단건 GET 표준(404→403, B7 문서 §1b) 적용.
+  findOne(id: number, actor?: ReportActor): SessionReportRow {
     const row = this.db.findById<SessionReportRow>(SESSION_REPORTS, id);
     if (!row) throw new NotFoundException(`Report ${id} not found`);
+    if (actor && !actorIsAdmin(actor) && row.instructorId !== actor.id)
+      throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
     return row;
   }
 

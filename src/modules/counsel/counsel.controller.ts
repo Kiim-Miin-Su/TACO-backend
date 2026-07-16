@@ -35,6 +35,16 @@ export class CounselController {
     return this.counsel.findAllRounds(counselFormId ? Number(counselFormId) : undefined);
   }
 
+  // [B7 E3 2026-07-16] GET /api/counsel/:id — 상담 폼 단건(상세 화면 전량 로드 후 find 제거).
+  //  없는 id=404(서비스 findForm). 정적 GET('rounds')보다 뒤에 선언(':id' 가로채기 방지).
+  @Get(':id')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '상담 폼 단건(CounselForm) — 상세 화면용. 없는 id=404.' })
+  @ApiOkResponse({ description: 'CounselForm' })
+  findForm(@Param('id', ParseIntPipe) id: number) {
+    return this.counsel.findForm(id);
+  }
+
   @Post()
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '상담 접수 생성 — status=requested' })

@@ -70,6 +70,22 @@ export class ScheduleController {
     });
   }
 
+  // [B7 E3 2026-07-16] GET /api/schedule/:id — 상세 화면 단건 조회(전량 로드 후 find 제거, EP11).
+  //  스코프 표준(B7 문서 §1b): 없는 id=404 → 존재하나 강사 본인 세션 아님=403.
+  //  ⚠ 라우트 선언 순서: 정적 GET('resources'·'instructor-attendance-summary')보다 뒤에 두어야 ':id'가 가로채지 않음.
+  @Get(':id')
+  @Roles(...STAFF_ROLES)
+  @ApiParam({ name: 'id', description: '세션 id' })
+  @ApiOperation({ summary: '세션 단건(enriched ScheduleRow — 목록과 동일 형상). 강사는 본인 세션만(404→403).' })
+  @ApiOkResponse({ description: 'ScheduleRow — 강사·과목·강의실명·코호트 포함' })
+  async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    await this.schedule.ensureReady();
+    const row = this.schedule.findOneEnriched(id);
+    if (isInstructorOnly(req.user?.roles) && row.instructorId !== req.user?.sub)
+      throw new ForbiddenException('본인 수업만 조회할 수 있습니다.');
+    return row;
+  }
+
   // 충돌 드라이런(생성·이동 전 검사)
   @Post('conflicts')
   @Roles(...STAFF_ROLES) // [코드리뷰 2026-07-03 H1] @Roles 누락 → 무인증 접근 가능했음. 강사·강의실 가용성 탐지 차단

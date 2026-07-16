@@ -276,6 +276,15 @@ export class ScheduleService implements OnModuleInit {
       .filter((sid) => this.studentOf(sid)?.status !== 'canceled');
   }
 
+  // [B7 E3 2026-07-16] 단건 조회 — list와 동일 enrich(발행된 ScheduleRow 계약 재사용, 계약 무변경).
+  //  없는 id=404. 강사 스코프(존재하나 본인 세션 아님=403)는 컨트롤러가 판정(404→403 표준 — B7 문서 §1b).
+  findOneEnriched(id: number): ScheduleRow {
+    const row = this.db.findById<ClassSession>(SESSIONS, id);
+    if (!row) throw new NotFoundException(`Session ${id} not found`);
+    const rooms = new Map(this.rooms.findAll().map((r) => [r.id, r]));
+    return this.enrich(row, rooms);
+  }
+
   // 기간/필터 조회 → enriched 읽기모델(주간 표/캘린더용)
   // studentId 필터: 해당 학생이 활성 수강 중인 코스의 세션만(enrollments 역추적 — 단일 소스).
   list(opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number }): ScheduleRow[] {

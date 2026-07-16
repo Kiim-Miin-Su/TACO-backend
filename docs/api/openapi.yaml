@@ -1317,47 +1317,24 @@ paths:
       summary: 강사 출결 현황 집계(기간·강사 필터) — 출/지/결/보강 카운트·출석률·인정 시수·총계
       tags:
       - scheduling
-  /api/schedule/conflicts:
-    post:
-      operationId: ScheduleController_conflicts
-      parameters: []
-      requestBody:
+  /api/schedule/{id}:
+    get:
+      operationId: ScheduleController_findOne
+      parameters:
+      - name: id
         required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ConflictCheckDto'
+        in: path
+        description: 세션 id
+        schema:
+          type: number
       responses:
         '200':
-          description: Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }
+          description: ScheduleRow — 강사·과목·강의실명·코호트 포함
       security:
       - bearer: []
-      summary: 충돌 드라이런 — 강사는 JWT 본인 수업 범위, 생성·이동 전 이중예약/불가시간 겹침 검사
+      summary: 세션 단건(enriched ScheduleRow — 목록과 동일 형상). 강사는 본인 세션만(404→403).
       tags:
       - scheduling
-  /api/schedule/series:
-    post:
-      operationId: ScheduleController_createSeries
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateScheduleSeriesDto'
-      responses:
-        '201':
-          description: '{ series: ScheduleSeries, rows: ScheduleRow[], conflicts: Conflict[] }'
-        '401':
-          description: 토큰 없음(로그인 필요)
-        '409':
-          description: '{ message, conflicts: Conflict[] } — force=false에서 전체 충돌 목록'
-      security:
-      - bearer: []
-      summary: 반복 세션 bulk 생성 — 서버 발급 series ID + 규칙 자산화 + 원자 커밋. [로그인]
-      tags:
-      - scheduling
-  /api/schedule/{id}:
     patch:
       operationId: ScheduleController_update
       parameters:
@@ -1414,6 +1391,46 @@ paths:
       security:
       - bearer: []
       summary: 세션 삭제(반복 scope 지원) [로그인]
+      tags:
+      - scheduling
+  /api/schedule/conflicts:
+    post:
+      operationId: ScheduleController_conflicts
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ConflictCheckDto'
+      responses:
+        '200':
+          description: Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }
+      security:
+      - bearer: []
+      summary: 충돌 드라이런 — 강사는 JWT 본인 수업 범위, 생성·이동 전 이중예약/불가시간 겹침 검사
+      tags:
+      - scheduling
+  /api/schedule/series:
+    post:
+      operationId: ScheduleController_createSeries
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateScheduleSeriesDto'
+      responses:
+        '201':
+          description: '{ series: ScheduleSeries, rows: ScheduleRow[], conflicts: Conflict[] }'
+        '401':
+          description: 토큰 없음(로그인 필요)
+        '409':
+          description: '{ message, conflicts: Conflict[] } — force=false에서 전체 충돌 목록'
+      security:
+      - bearer: []
+      summary: 반복 세션 bulk 생성 — 서버 발급 series ID + 규칙 자산화 + 원자 커밋. [로그인]
       tags:
       - scheduling
   /api/attendance:
@@ -1512,6 +1529,7 @@ paths:
                 type: object
       security:
       - bearer: []
+      summary: 보고서 단건 — 강사는 본인 보고서만(404→403 표준). [B7 E3 스코프 갭 수정]
       tags:
       - reports
     patch:
@@ -2017,6 +2035,22 @@ paths:
       tags:
       - counsel
   /api/counsel/{id}:
+    get:
+      operationId: CounselController_findForm
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: CounselForm
+      security:
+      - bearer: []
+      summary: 상담 폼 단건(CounselForm) — 상세 화면용. 없는 id=404.
+      tags:
+      - counsel
     patch:
       operationId: CounselController_updateForm
       parameters:
