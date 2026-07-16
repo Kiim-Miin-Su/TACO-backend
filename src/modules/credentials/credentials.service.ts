@@ -39,11 +39,21 @@ export class CredentialsService {
           throw new BadRequestException('비밀번호 변경에는 본인 이메일 인증(verificationChallengeId)이 필요합니다.');
         }
       }
+      // [대표 추가요청 2026-07-16] 첫 로그인 통합 설정도 **설정할 이메일**의 OTP 인증 필수 —
+      //  종전 "부트스트랩 예외(무인증 + emailVerified=true 부여)"를 폐지한다. 인증 없이 오타 이메일이
+      //  verified로 박히면 비밀번호 찾기·알림이 전부 죽은 주소로 가는 위험이 있었다.
+      const rotationEmail = before.mustChangePassword ? dto.email?.trim().toLowerCase() ?? '' : '';
+      if (rotationEmail && dto.verificationChallengeId == null) {
+        throw new BadRequestException('설정할 이메일의 인증(verificationChallengeId)이 필요합니다. 인증 코드 발송 → 코드 확인 후 제출해 주세요.');
+      }
       const account = await this.users.changeCredentials(id, dto);
       // OTP 소비는 변경 성공 **후** 같은 tx — 잘못된 현재 비밀번호 등으로 실패하면 챌린지가 타지 않고,
       //  소비가 실패하면(만료/불일치/이중 소비) 비밀번호 변경까지 함께 롤백된다(부분 상태 없음).
       if (otpRequired) {
         await this.verifications.consumeForCredentialChange(dto.verificationChallengeId!, id, email);
+      } else if (rotationEmail) {
+        // 강제 변경: challenge 대상 = **새로 설정하는 이메일**(본인 소유 실증) — 같은 tx 소비.
+        await this.verifications.consumeForCredentialChange(dto.verificationChallengeId!, id, rotationEmail);
       }
       return account;
     });

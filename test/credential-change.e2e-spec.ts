@@ -40,6 +40,19 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
 
     await http.get('/api/students').set('Authorization', `Bearer ${initial.accessToken}`).expect(403);
     await http.get('/api/auth/pending').set('Authorization', `Bearer ${initial.accessToken}`).expect(403);
+    // [대표 추가요청 2026-07-16] 임시 비밀번호 상태에서도 통합 설정에 필요한 최소 경로는 허용 —
+    //  이메일 인증 3종 + 국가/시간대 카탈로그(가드 allowlist). 업무 API는 위처럼 여전히 403.
+    //  발송 자체는 SMTP 유무에 따라 201/503(이 스위트는 실 provider) — 403이 아니면 가드 통과가 증명된다.
+    await http.get('/api/catalog/countries').set('Authorization', `Bearer ${initial.accessToken}`).expect(200);
+    const allowedRes = await http.post('/api/profile-verifications').set('Authorization', `Bearer ${initial.accessToken}`)
+      .send({ currentPassword: 'demo1234', channel: 'email', target: 'rotate@tnacademy.test' });
+    expect([201, 503]).toContain(allowedRes.status);
+    if (allowedRes.status === 201) {
+      // 활성 챌린지 (requester,channel) partial unique — 이후 테스트의 위조 헬퍼와 충돌하지 않게 만료.
+      const { PROFILE_VERIFICATION_CHALLENGES_SPEC } = await import('../src/database/calendar-asset-specs');
+      const { PostgresCollectionStore } = await import('../src/database/postgres-collection.store');
+      await app.get(PostgresCollectionStore).update(PROFILE_VERIFICATION_CHALLENGES_SPEC, allowedRes.body.id, { status: 'expired' });
+    }
     await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${initial.accessToken}`)
       .send({ currentPassword: 'demo1234', newPassword: 'SecurePass123!' }).expect(400);
     await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${initial.accessToken}`)
@@ -89,16 +102,45 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
         name: '김민선', email: 'ceo@tnacademy.test', phone: '0101234567',
       }).expect(400);
 
-    const changed = await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${ceo.accessToken}`)
+    // [대표 추가요청 2026-07-16] 이메일 포함 rotation인데 인증 챌린지 없음 → 400 (무인증 예외 폐지)
+    await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${ceo.accessToken}`)
       .send({
         currentPassword: 'SecurePass123!', newWebId: 'ceo_minsun', newPassword: 'MinsunSecure1!',
         name: '김민선', email: 'CEO@tnacademy.test', phone: '010-5555-6666',
+      }).expect(400);
+    // 다른 이메일로 verified된 챌린지 → 400 (설정할 이메일과 대상 일치 필수) — 변경도 롤백
+    const mismatch = await forgeVerifiedEmailChallenge(3, 'other@tnacademy.test');
+    await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${ceo.accessToken}`)
+      .send({
+        currentPassword: 'SecurePass123!', newWebId: 'ceo_minsun', newPassword: 'MinsunSecure1!',
+        name: '김민선', email: 'CEO@tnacademy.test', phone: '010-5555-6666', verificationChallengeId: mismatch.id,
+      }).expect(400);
+    await login('ceo_owner', 'SecurePass123!'); // 롤백 확인 — 구 자격증명 그대로
+    {
+      const { PROFILE_VERIFICATION_CHALLENGES_SPEC } = await import('../src/database/calendar-asset-specs');
+      const { PostgresCollectionStore } = await import('../src/database/postgres-collection.store');
+      await app.get(PostgresCollectionStore).update(PROFILE_VERIFICATION_CHALLENGES_SPEC, mismatch.id, { status: 'expired' });
+    }
+
+    // 설정할 새 이메일(canonical)로 verified 챌린지 → 200 + 같은 tx에서 consumed
+    const rotation = await forgeVerifiedEmailChallenge(3, 'ceo@tnacademy.test');
+    const changed = await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${ceo.accessToken}`)
+      .send({
+        currentPassword: 'SecurePass123!', newWebId: 'ceo_minsun', newPassword: 'MinsunSecure1!',
+        name: '김민선', email: 'CEO@tnacademy.test', phone: '010-5555-6666', verificationChallengeId: rotation.id,
+        // [2026-07-16 확장] users 수정 가능 컬럼 전부 — 국가/시간대/출신교/전공/출생연도
+        countryCode: 'KR', timeZone: 'Asia/Seoul', university: '한국대학교', major: '수학교육', birthYear: 1985,
       }).expect(200);
     expect(changed.body).toMatchObject({ id: 3, webId: 'ceo_minsun', name: '김민선', mustChangePassword: false });
+    expect(db.findById<Record<string, unknown>>('profile_verification_challenges', rotation.id)).toMatchObject({ status: 'consumed' });
 
-    // DB 반영: 이름/이메일(canonical lowercase)/전화 + emailVerified 유지(로그인·복구 게이트 잠금 방지)
-    const row = db.findById<UserRow & { name?: string; email?: string; phone?: string; emailVerified?: boolean }>('users', 3)!;
-    expect(row).toMatchObject({ name: '김민선', email: 'ceo@tnacademy.test', phone: '010-5555-6666', emailVerified: true });
+    // DB 반영: 이름/이메일(canonical lowercase)/전화/확장 컬럼 + emailVerified(이번엔 실제 인증 결과)
+    const row = db.findById<UserRow & { name?: string; email?: string; phone?: string; emailVerified?: boolean;
+      countryCode?: string; timeZone?: string; university?: string; major?: string; birthYear?: number }>('users', 3)!;
+    expect(row).toMatchObject({
+      name: '김민선', email: 'ceo@tnacademy.test', phone: '010-5555-6666', emailVerified: true,
+      countryCode: 'KR', timeZone: 'Asia/Seoul', university: '한국대학교', major: '수학교육', birthYear: 1985,
+    });
 
     // audit: 이메일/전화는 masked만 — 원문 미노출
     const audits = db.findAll<Record<string, unknown> & { id: number }>('audit_log')

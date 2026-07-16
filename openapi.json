@@ -4288,6 +4288,35 @@
             "type": "string",
             "pattern": "^\\d{2,3}-\\d{3,4}-\\d{4}$",
             "example": "010-1234-5678"
+          },
+          "countryCode": {
+            "type": "string",
+            "pattern": "^[A-Z][A-Z0-9-]{1,7}$",
+            "example": "KR",
+            "description": "국가 코드(catalog/countries)"
+          },
+          "timeZone": {
+            "type": "string",
+            "maxLength": 50,
+            "example": "Asia/Seoul",
+            "description": "IANA 시간대(catalog/countries)"
+          },
+          "university": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "출신 대학"
+          },
+          "major": {
+            "type": "string",
+            "maxLength": 100,
+            "description": "전공"
+          },
+          "birthYear": {
+            "type": "number",
+            "minimum": 1900,
+            "maximum": 2100,
+            "example": 1990,
+            "description": "출생연도"
           }
         },
         "required": [

@@ -1,4 +1,4 @@
-import { IsEmail, IsInt, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class ChangeCredentialsDto {
@@ -48,4 +48,36 @@ export class ChangeCredentialsDto {
   @IsOptional()
   @Matches(/^\d{2,3}-\d{3,4}-\d{4}$/, { message: '전화번호는 010-1234-5678 형식으로 입력해 주세요.' })
   phone?: string;
+
+  // [대표 추가요청 2026-07-16] 첫 로그인 통합 설정 — users 테이블의 **수정 가능 컬럼 전부** 수집.
+  //  (직책=role은 자기 결정 금지 — 화면에 읽기 전용 표시만.) 강제 변경 흐름에서만 허용(서비스 400).
+  @ApiPropertyOptional({ example: 'KR', description: '국가 코드(catalog/countries)' })
+  @IsOptional()
+  @Matches(/^[A-Z][A-Z0-9-]{1,7}$/, { message: '국가 코드는 KR, US-W처럼 2~8자입니다.' })
+  countryCode?: string;
+
+  @ApiPropertyOptional({ example: 'Asia/Seoul', description: 'IANA 시간대(catalog/countries)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(50)
+  timeZone?: string;
+
+  @ApiPropertyOptional({ maxLength: 100, description: '출신 대학' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  university?: string;
+
+  @ApiPropertyOptional({ maxLength: 100, description: '전공' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  major?: string;
+
+  @ApiPropertyOptional({ example: 1990, description: '출생연도' })
+  @IsOptional()
+  @IsInt()
+  @Min(1900)
+  @Max(2100)
+  birthYear?: number;
 }

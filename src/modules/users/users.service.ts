@@ -218,7 +218,9 @@ export class UsersService implements OnModuleInit {
     input: {
       currentPassword: string; newWebId?: string; newPassword?: string;
       // [E0.5 ⑥] 첫 로그인 강제 변경에서만 허용되는 프로필 동시 설정(가입 폼 재사용 — 대표 지시 2026-07-15).
+      // [대표 추가요청 2026-07-16] 수정 가능 컬럼 전부로 확장 — 국가/시간대/출신교/전공/출생연도.
       name?: string; email?: string; phone?: string;
+      countryCode?: string; timeZone?: string; university?: string; major?: string; birthYear?: number;
     },
   ): Promise<SafeAccount> {
     const newWebId = input.newWebId?.trim();
@@ -226,6 +228,11 @@ export class UsersService implements OnModuleInit {
     const newName = input.name?.trim();
     const newEmail = input.email?.trim().toLowerCase();
     const newPhone = input.phone?.trim();
+    const newCountryCode = input.countryCode?.trim().toUpperCase();
+    const newTimeZone = input.timeZone?.trim();
+    const newUniversity = input.university?.trim();
+    const newMajor = input.major?.trim();
+    const newBirthYear = input.birthYear;
     if (!newWebId && !newPassword) throw new BadRequestException('새 아이디 또는 새 비밀번호 중 하나는 필수입니다.');
     if (newWebId && newWebId.length < 3) throw new BadRequestException('아이디는 3자 이상이어야 합니다.');
     const passwordBytes = newPassword ? Buffer.byteLength(newPassword, 'utf8') : 0;
@@ -247,9 +254,11 @@ export class UsersService implements OnModuleInit {
       }
       // [E0.5 ⑥] 프로필 동시 설정은 강제 변경(부트스트랩/리셋 직후) 컨텍스트에서만 — 평시 이메일/전화
       //  변경은 29B-4 인증(challenge)·승인 경로를 우회할 수 없다(마이 페이지로 안내).
-      const wantsProfile = newName !== undefined || newEmail !== undefined || newPhone !== undefined;
+      const wantsProfile = newName !== undefined || newEmail !== undefined || newPhone !== undefined
+        || newCountryCode !== undefined || newTimeZone !== undefined
+        || newUniversity !== undefined || newMajor !== undefined || newBirthYear !== undefined;
       if (wantsProfile && !before.mustChangePassword) {
-        throw new BadRequestException('이름·이메일·전화 변경은 마이 페이지(프로필 변경)에서 해주세요.');
+        throw new BadRequestException('이름·이메일·전화 등 프로필 변경은 마이 페이지(프로필 변경)에서 해주세요.');
       }
       // [E0 2026-07-15] 아이디(webId) 즉시 변경 폐지 — 승인제(프로필 변경 요청) 경유.
       //  예외: 첫 로그인 강제 변경(rotation)은 부트스트랩 컨텍스트라 직접 변경 유지.
@@ -288,8 +297,15 @@ export class UsersService implements OnModuleInit {
             //  컨텍스트 + 미검증이면 로그인 게이트(email_unverified)와 복구 흐름이 잠긴다). 오타 리스크는
             //  마이 페이지 재변경(인증 경로)으로 정정 가능.
             ...(newName ? { name: newName } : {}),
+            // [대표 추가요청 2026-07-16] 이메일은 통합 설정에서 OTP 인증을 통과한 값만 도달
+            //  (CredentialsService가 같은 tx에서 challenge 소비) — verified는 실제 인증 결과.
             ...(newEmail ? { email: newEmail, emailVerified: true } : {}),
             ...(newPhone ? { phone: newPhone } : {}),
+            ...(newCountryCode ? { countryCode: newCountryCode } : {}),
+            ...(newTimeZone ? { timeZone: newTimeZone } : {}),
+            ...(newUniversity ? { university: newUniversity } : {}),
+            ...(newMajor ? { major: newMajor } : {}),
+            ...(newBirthYear ? { birthYear: newBirthYear } : {}),
             authVersion: authVersionOf(before) + 1,
             mustChangePassword: false,
           },
@@ -313,6 +329,11 @@ export class UsersService implements OnModuleInit {
           ...(newName && newName !== before.name ? { name: { before: before.name, after: newName } } : {}),
           ...(newEmail && newEmail !== (before.email ?? '') ? { email: { before: before.email ? maskTarget('email', before.email) : null, after: maskTarget('email', newEmail) } } : {}),
           ...(newPhone && newPhone !== (before.phone ?? '') ? { phone: { before: before.phone ? maskTarget('sms', before.phone) : null, after: maskTarget('sms', newPhone) } } : {}),
+          ...(newCountryCode && newCountryCode !== (before.countryCode ?? '') ? { countryCode: { before: before.countryCode ?? null, after: newCountryCode } } : {}),
+          ...(newTimeZone && newTimeZone !== (before.timeZone ?? '') ? { timeZone: { before: before.timeZone ?? null, after: newTimeZone } } : {}),
+          ...(newUniversity && newUniversity !== (before.university ?? '') ? { university: { before: before.university ?? null, after: newUniversity } } : {}),
+          ...(newMajor && newMajor !== (before.major ?? '') ? { major: { before: before.major ?? null, after: newMajor } } : {}),
+          ...(newBirthYear && newBirthYear !== before.birthYear ? { birthYear: { before: before.birthYear ?? null, after: newBirthYear } } : {}),
           ...(before.mustChangePassword ? { mustChangePassword: { before: true, after: false } } : {}),
           authVersion: { before: authVersionOf(before), after: authVersionOf(before) + 1 },
         },

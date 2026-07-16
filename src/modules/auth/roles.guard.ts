@@ -17,11 +17,17 @@ import { ROLES_KEY, type AppRole } from './roles.decorator';
 import { AccountStateService } from '../../database/account-state.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
 
-/** 임시 비밀번호 상태에서 허용하는 최소 복구 경로. 프론트 숨김과 무관하게 서버가 강제한다. */
+/** 임시 비밀번호 상태에서 허용하는 최소 복구 경로. 프론트 숨김과 무관하게 서버가 강제한다.
+ *  [대표 추가요청 2026-07-16] 첫 로그인 통합 설정에 **이메일 인증(OTP)**·국가/시간대 카탈로그가
+ *  필요해져 profile-verifications 3종·catalog/countries(읽기 전용)를 허용 목록에 편입.
+ *  여전히 업무 API(스케줄·결제 등)는 전부 차단된다. */
 export function isCredentialRecoveryRoute(method: string, path: string): boolean {
   const normalized = path.replace(/^\/api/, '');
   const key = `${method.toUpperCase()} ${normalized}`;
-  return key === 'PATCH /users/me/credentials' || key === 'GET /auth/me' || key === 'POST /auth/logout';
+  return key === 'PATCH /users/me/credentials' || key === 'GET /auth/me' || key === 'POST /auth/logout'
+    || key === 'POST /profile-verifications'
+    || /^POST \/profile-verifications\/\d+\/(confirm|resend)$/.test(key)
+    || key === 'GET /catalog/countries';
 }
 
 // 기본은 로그인 필수이며 @Roles(...)가 있으면 역할도 검사한다.
