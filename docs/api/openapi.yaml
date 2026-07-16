@@ -1094,6 +1094,46 @@ paths:
                 type: object
       tags:
       - rooms
+    patch:
+      operationId: RoomsController_update
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateRoomDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - rooms
+    delete:
+      operationId: RoomsController_remove
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - rooms
   /api/availability:
     get:
       operationId: AvailabilityController_list
@@ -2362,6 +2402,39 @@ paths:
       summary: 학생 원자 등록 — student+guardian(선택)+enrollment(선택)+audit 단일 tx. 중간 실패 시 전부 +0.
       tags:
       - students
+  /api/nav-seen:
+    get:
+      operationId: NavSeenController_listMine
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: '내 탭별 마지막 열람 시각 — { navKey: lastSeenAtIso } [로그인]'
+      tags:
+      - nav-seen
+    put:
+      operationId: NavSeenController_mark
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkNavSeenDto'
+      responses:
+        '200':
+          description: ''
+      security:
+      - bearer: []
+      summary: 탭 진입 열람 마킹(upsert) — 뱃지는 이후 새 활동에만 다시 표시 [로그인]
+      tags:
+      - nav-seen
 info:
   title: TACO ERP API
   description: TnAcademy 백오피스 API (in-memory). 빌드 타임 생성 스펙.
@@ -3157,6 +3230,24 @@ components:
           type: boolean
       required:
       - name
+    UpdateRoomDto:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 50
+        capacity:
+          type: number
+          minimum: 1
+          maximum: 200
+          example: 1
+          description: 정원(수용 학생 수) — 기본 1명
+        color:
+          type: string
+          maxLength: 20
+          example: '#0969da'
+        isActive:
+          type: boolean
     UpsertAvailabilityDto:
       type: object
       properties:
@@ -4377,3 +4468,20 @@ components:
           description: 수강 코스 — 있으면 enrollment를 같은 tx로 생성
       required:
       - student
+    MarkNavSeenDto:
+      type: object
+      properties:
+        navKey:
+          type: string
+          enum:
+          - calendar
+          - counsel
+          - payments
+          - payouts
+          - expenses
+          - reports
+          - admin
+          example: admin
+          description: 열람 처리할 탭 키
+      required:
+      - navKey

@@ -39,6 +39,8 @@ export function detectConflicts(
   // [TBO-28C] 학생 세션 간 중복 검사용 — 기존 세션의 유효 코호트(명시 studentIds ?? 코스 활성 수강생).
   //  미전달 시 세션의 명시 studentIds만 본다(순수 함수 유지 — 호출자가 리졸버 주입).
   studentIdsOf?: (s: ClassSession) => number[],
+  // [B4 2026-07-16 대표 결정 ②] 강의실 정원 리졸버 — 배정 코호트가 정원을 넘으면 충돌(기본 정원 1).
+  roomCapacityOf?: (roomId: number) => number | undefined,
 ): Conflict[] {
   const out: Conflict[] = [];
   const cS = toMin(cand.startTime);
@@ -94,6 +96,16 @@ export function detectConflicts(
         out.push({ type: 'unavailable', resource: 'room', resourceId: b.ownerId, detail: blockDetail });
       if (b.ownerType === 'student' && cand.studentIds?.includes(Number(b.ownerId)))
         out.push({ type: 'unavailable', resource: 'student', resourceId: b.ownerId, detail: blockDetail });
+    }
+  }
+  // 3) [B4] 강의실 정원 — 명시/코스 코호트 인원 > 정원이면 room_capacity 충돌(서버 강제).
+  if (cand.roomId != null && roomCapacityOf && candStudents.length) {
+    const capacity = roomCapacityOf(cand.roomId);
+    if (capacity != null && candStudents.length > capacity) {
+      out.push({
+        type: 'room_capacity', resource: 'room', resourceId: cand.roomId,
+        detail: `정원 초과 — 정원 ${capacity}명, 배정 ${candStudents.length}명`,
+      });
     }
   }
   return out;

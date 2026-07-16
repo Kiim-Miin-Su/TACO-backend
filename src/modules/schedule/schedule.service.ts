@@ -469,6 +469,7 @@ export class ScheduleService implements OnModuleInit {
         this.db.findAll<ClassSession>(SESSIONS),
         this.availability.list(),
         this.effectiveStudentIds,
+        (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제
       );
       // 디버깅: 생성 요청 + 충돌 현황 로깅
       if (conflicts.length && !dto.force) {
@@ -554,6 +555,7 @@ export class ScheduleService implements OnModuleInit {
           existing,
           this.availability.list(),
           this.effectiveStudentIds,
+        (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제
         ));
       }
       if (allConflicts.length && !dto.force) {
@@ -715,7 +717,8 @@ export class ScheduleService implements OnModuleInit {
       { sessionDate: input.sessionDate, startTime: input.startTime, endTime: input.endTime, durationMinutes: input.durationMinutes, instructorId: input.instructorId, roomId: input.roomId, studentIds: input.studentIds, ignoreSessionId: input.ignoreSessionId, mode: input.mode },
       this.db.findAll<ClassSession>(SESSIONS),
       this.availability.list(),
-      this.effectiveStudentIds, // [TBO-28C] 학생 세션 간 중복 포함
+      this.effectiveStudentIds,
+        (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제 // [TBO-28C] 학생 세션 간 중복 포함
     );
   }
 
@@ -860,7 +863,8 @@ export class ScheduleService implements OnModuleInit {
         // [R-9→C4] 크로스 세션은 endTime이 null(명시) — durationMinutes로 이틀(±1일) 겹침 검사
         { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime ?? undefined, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, studentIds: f.studentIds ?? this.activeStudentIds(f.courseId), mode: f.mode },
         others, blocks,
-        this.effectiveStudentIds, // [TBO-28C] 학생 세션 간 중복 포함
+        this.effectiveStudentIds,
+        (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제 // [TBO-28C] 학생 세션 간 중복 포함
       ));
     }
     // 결강·취소(canceled/no_show)로 바꾸는 변경은 시간 점유가 사라지므로 충돌 검사와 무관 — 항상 허용.
