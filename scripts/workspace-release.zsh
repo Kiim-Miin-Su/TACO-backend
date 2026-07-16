@@ -281,7 +281,16 @@ run_gates() {
   if is_true "${SKIP_E2E:-0}"; then
     warn "SKIP_E2E=1 - backend e2e skipped"
   else
-    run_in backend npm run test:e2e -- --silent
+    # [2026-07-16] e2e 출력을 로그 파일로 보존 — 실패 시 어느 스위트/테스트인지 사후 추적 가능
+    #  (2026-07-16 새벽 실패가 스크롤백 유실로 재현 불가였던 문제의 재발 방지). tee라 화면 출력 동일.
+    local e2e_log="$ROOT/_logs/e2e-$(date +%Y%m%d-%H%M%S).log"
+    mkdir -p "$ROOT/_logs"
+    log "backend: npm run test:e2e (log: $e2e_log)"
+    if ! ( setopt pipe_fail; cd "$ROOT/backend" && npm run test:e2e -- --silent 2>&1 | tee "$e2e_log" ); then
+      warn "backend e2e FAILED — 실패 상세: $e2e_log (FAIL/✕ 블록 확인)"
+      grep -E "^FAIL|✕" "$e2e_log" | head -20 || true
+      return 1
+    fi
   fi
 
   if is_true "$RUN_SCHEMA_GATES"; then
