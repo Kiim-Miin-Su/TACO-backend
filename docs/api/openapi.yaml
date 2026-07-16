@@ -2569,6 +2569,10 @@ components:
           type: number
           example: 1
           minimum: 1
+        smsVerificationAvailable:
+          type: boolean
+          example: false
+          description: SMS 인증 가용(provider env 완비) — phone 변경 스테퍼 동적 활성
       required:
       - id
       - webId
@@ -2576,6 +2580,7 @@ components:
       - role
       - status
       - profileVersion
+      - smsVerificationAvailable
     CreateInstructorDto:
       type: object
       properties:
@@ -3214,6 +3219,12 @@ components:
           type: number
           example: 5
           description: 검사에서 제외할 세션 id(자기 자신 이동 시)
+        mode:
+          enum:
+          - in_person
+          - online
+          type: string
+          description: 수업 방식 — online이면 online_only 불가시간과 충돌하지 않음
       required:
       - sessionDate
       - startTime
