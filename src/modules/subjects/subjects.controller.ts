@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { SubjectsService } from './subjects.service';
 import { CreateSubjectDto } from './dto/create-subject.dto';
+import { UpdateSubjectDto } from './dto/update-subject.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
@@ -29,5 +30,17 @@ export class SubjectsController {
   @Roles(...ADMIN_ROLES)
   create(@Body() dto: CreateSubjectDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.subjects.create(dto, req.user?.sub);
+  }
+
+  @Patch(':id')
+  @Roles(...ADMIN_ROLES)
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSubjectDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.subjects.update(id, dto, req.user?.sub);
+  }
+
+  @Delete(':id')
+  @Roles(...ADMIN_ROLES)
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.subjects.remove(id, req.user?.sub);
   }
 }

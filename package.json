@@ -38,6 +38,7 @@
     "db:migrate:profile-self-decision": "ts-node scripts/migrate-profile-self-decision.ts",
     "db:migrate:webid-approval": "ts-node scripts/migrate-webid-approval.ts",
     "db:migrate:credential-otp": "ts-node scripts/migrate-credential-otp.ts",
+    "db:migrate:counsel-persistence": "ts-node scripts/migrate-counsel-persistence.ts",
     "db:cleanup:demo-data": "ts-node scripts/cleanup-demo-data.ts",
     "route-coverage": "node dist/scripts/e2e-route-coverage.js",
     "e2e:coverage": "E2E_ROUTE_LOG=/tmp/e2e-routes.log jest --config test/jest-e2e.json --runInBand && npm run route-coverage -- /tmp/e2e-routes.log",

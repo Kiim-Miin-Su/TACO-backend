@@ -22,6 +22,9 @@ export const LOCK_KIND = {
   series: 9, // [TBO-29C C3] 반복 시리즈 명령(scope 편집/삭제/멤버 터치)의 단일 choke point
   parentIntake: 10, // [TBO-29D D2] 보호자 전화 기준 등록 직렬화(같은 번호 동시 등록 → 보호자 1행 보장)
   signupChallenge: 11, // [TBO-31 C1 D1] 가입 전 이메일 OTP 확인/소비 직렬화(공개 흐름 — 이중 소비 차단)
+  counselForm: 12, // [TBO-33 C1] 상담 회차 번호 발급·폼 삭제 직렬화
+  course: 13, // [TBO-33 C2] 코스 수정·참조 검사·삭제 직렬화
+  subject: 14, // [TBO-33 C2] 과목 수정·참조 검사·삭제 직렬화
 } as const;
 
 export type CalendarLockKey = { kind: keyof typeof LOCK_KIND; id: number };

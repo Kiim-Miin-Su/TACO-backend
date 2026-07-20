@@ -9,6 +9,11 @@ import {
 } from './migrations/parents.migration';
 import { ACADEMY_EVENTS_TABLE_SQL, ACADEMY_EVENTS_INDEX_SQL } from './migrations/academy-events.migration';
 import { COUNTRIES_TABLE_SQL } from './migrations/countries.migration';
+import {
+  COUNSEL_FORMS_TABLE_SQL,
+  COUNSEL_ROUNDS_TABLE_SQL,
+  COUNSEL_PERSISTENCE_INDEX_SQL,
+} from './migrations/counsel-persistence.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -507,6 +512,22 @@ export const COURSES_SPEC: PostgresCollectionSpec = {
     activeIndex('courses', 'idx_courses_subject', 'subject_id'),
     activeIndex('courses', 'idx_courses_instructor', 'instructor_id'),
   ],
+};
+
+// [TBO-33 C1] 상담은 서비스 MVP에서 재기동 유실이 허용되지 않는 운영 자산이다.
+//  기존 contract의 상태값을 보존한 채 forms → rounds 순으로 hydrate/write-through한다.
+export const COUNSEL_FORMS_SPEC: PostgresCollectionSpec = {
+  table: 'counsel_forms',
+  createSql: COUNSEL_FORMS_TABLE_SQL,
+  indexes: COUNSEL_PERSISTENCE_INDEX_SQL.slice(0, 4),
+  dateFields: ['nextContactAt'],
+};
+
+export const COUNSEL_ROUNDS_SPEC: PostgresCollectionSpec = {
+  table: 'counsel_rounds',
+  createSql: COUNSEL_ROUNDS_TABLE_SQL,
+  indexes: COUNSEL_PERSISTENCE_INDEX_SQL.slice(4),
+  dateFields: ['scheduledAt', 'completedAt', 'nextContactAt'],
 };
 
 export const ROOMS_SPEC: PostgresCollectionSpec = {

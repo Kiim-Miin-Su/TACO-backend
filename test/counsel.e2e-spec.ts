@@ -59,6 +59,13 @@ describe('Counsel API (e2e)', () => {
       .send({ applicantName: 'x', source: 'manual', interestCourseId: 99999 }).expect(400);
   });
 
+  it('POST/PATCH/round — 존재하지 않는 담당 직원 FK는 400', async () => {
+    await http.post('/api/counsel').set(asAdmin())
+      .send({ applicantName: 'x', source: 'manual', assignedStaffId: 99999 }).expect(400);
+    await http.patch('/api/counsel/1').set(asAdmin()).send({ assignedStaffId: 99999 }).expect(400);
+    await http.post('/api/counsel/1/rounds').set(asAdmin()).send({ counselorId: 99999, summary: 'x' }).expect(400);
+  });
+
   it('PATCH /counsel/:id — 상태 전환(pending→registered)', async () => {
     const token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     const r = (await http.patch('/api/counsel/1').set({ Authorization: `Bearer ${token}` }).send({ status: 'registered' }).expect(200)).body;
@@ -80,6 +87,20 @@ describe('Counsel API (e2e)', () => {
   it('POST /counsel/:id/rounds — 없는 폼 → 404', async () => {
     const token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     await http.post('/api/counsel/99999/rounds').set({ Authorization: `Bearer ${token}` }).send({ summary: 'x' }).expect(404);
+  });
+
+  it('DELETE /counsel/:id — 폼과 연결 회차를 함께 soft delete한다', async () => {
+    const token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
+    const created = (await http.post('/api/counsel').set({ Authorization: `Bearer ${token}` })
+      .send({ applicantName: '삭제 검증', source: 'manual' }).expect(201)).body;
+    await http.post(`/api/counsel/${created.id}/rounds`).set({ Authorization: `Bearer ${token}` })
+      .send({ summary: '삭제될 회차' }).expect(201);
+
+    await http.delete(`/api/counsel/${created.id}`).expect(401);
+    await http.delete(`/api/counsel/${created.id}`).set({ Authorization: `Bearer ${token}` }).expect(200);
+    await http.get(`/api/counsel/${created.id}`).set({ Authorization: `Bearer ${token}` }).expect(404);
+    const rounds = (await http.get(`/api/counsel/rounds?counselFormId=${created.id}`).set(asAdmin()).expect(200)).body;
+    expect(rounds).toEqual([]);
   });
 
   // ── [2026-07-07] 취약점·엣지 케이스 보강 ──

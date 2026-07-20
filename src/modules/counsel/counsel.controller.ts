@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiQuery, ApiOkResponse, ApiCreatedResponse, ApiBearerAuth } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CounselService } from './counsel.service';
@@ -9,7 +9,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 
-// [참조/처리] /api/counsel — 읽기는 공개, 쓰기(@Roles STAFF)는 로그인 필수(상담 담당자).
+// [참조/처리] /api/counsel — 읽기·쓰기는 모두 로그인 직원 전용.
 //  폼 생성/수정 + 회차 추가. 관심 과목/코스 FK·부모 폼 FK를 서비스가 검증.
 @ApiTags('counsel')
 @ApiBearerAuth()
@@ -59,6 +59,13 @@ export class CounselController {
   @ApiOkResponse({ description: '수정된 CounselForm' })
   updateForm(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCounselDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.counsel.updateForm(id, dto, req.user?.sub);
+  }
+
+  @Delete(':id')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '상담 폼과 회차 soft delete — 감사 스냅샷 포함' })
+  removeForm(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.counsel.removeForm(id, req.user!.sub);
   }
 
   @Post(':id/rounds')

@@ -122,6 +122,19 @@ export class ClassSessionsStore implements OnModuleInit {
     return this.memory.remove(TABLE, id, deletedBy);
   }
 
+  /** 카탈로그 삭제 무결성용 — 다른 인스턴스가 만든 활성 세션도 PostgreSQL에서 직접 확인한다. */
+  async existsForCourse(courseId: number): Promise<boolean> {
+    await this.ensureReady();
+    if (!this.durable) {
+      return this.memory.findByField<ClassSession>(TABLE, 'courseId', courseId).length > 0;
+    }
+    const rows = await this.query(
+      `SELECT id FROM ${TABLE} WHERE course_id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [courseId],
+    );
+    return rows.length > 0;
+  }
+
   private async insertDb(data: Record<string, unknown>, withId = false): Promise<ClassSession[]> {
     const payload = this.toDbPayload(data);
     if (!withId) delete payload.id;

@@ -1,11 +1,18 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { COURSES_SPEC } from '../../database/calendar-asset-specs';
+import { COUNSEL_FORMS_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { AuditService } from '../audit/audit.service';
+import { Subject, SUBJECTS } from '../subjects/subject.entity';
+import { StaffAccount, USERS, isActiveInstructor } from '../users/user.entity';
+import { Enrollment } from '../enrollments/enrollment.entity';
+import { CounselForm } from '../counsel/counsel.entity';
+import { ROADMAP_COURSES, RoadmapCourse } from '../roadmaps/roadmap.entity';
 import { Course, COURSES } from './course.entity';
 import { CreateCourseDto } from './dto/create-course.dto';
+import { UpdateCourseDto } from './dto/update-course.dto';
 
 @Injectable()
 export class CoursesService implements OnModuleInit {
@@ -13,6 +20,7 @@ export class CoursesService implements OnModuleInit {
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
     private readonly uow: CalendarUnitOfWork,
+    private readonly sessions: ClassSessionsStore,
     private readonly audit: AuditService,
   ) {}
 
@@ -42,6 +50,7 @@ export class CoursesService implements OnModuleInit {
 
   // actorId 없으면(시드·내부 경로) audit 생략. 쓰기+audit 한 tx(uow).
   async create(dto: CreateCourseDto, actorId?: number): Promise<Course> {
+    this.assertRefs(dto);
     return this.uow.run(async () => {
       const row = await this.store.insert<Course>(COURSES_SPEC, {
         name: dto.name,
@@ -55,5 +64,48 @@ export class CoursesService implements OnModuleInit {
       if (actorId != null) await this.audit.log({ entity: 'courses', entityId: row.id, action: 'create', actorId });
       return row;
     });
+  }
+
+  async update(id: number, dto: UpdateCourseDto, actorId?: number): Promise<Course> {
+    const before = { ...this.findOne(id) };
+    this.assertRefs(dto);
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'course', id }]);
+      const after = await this.store.update<Course>(COURSES_SPEC, id, dto) as Course;
+      if (actorId != null) {
+        await this.audit.log({ entity: 'courses', entityId: id, action: 'update', actorId, changes: this.audit.diffOf(before, after) });
+      }
+      return after;
+    });
+  }
+
+  async remove(id: number, actorId?: number): Promise<Course> {
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'course', id }]);
+      const before = { ...this.findOne(id) };
+      const [enrollment, counsel] = await Promise.all([
+        this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, { where: { courseId: id }, limit: 1 }),
+        this.store.findActive<CounselForm>(COUNSEL_FORMS_SPEC, { where: { interestCourseId: id }, limit: 1 }),
+      ]);
+      const hasSession = await this.sessions.existsForCourse(id);
+      const roadmap = this.db.findBy<RoadmapCourse>(ROADMAP_COURSES, (row) => row.courseId === id)[0];
+      const blockers = [enrollment.length && '수강', hasSession && '수업', counsel.length && '상담', roadmap && '로드맵'].filter(Boolean);
+      if (blockers.length) throw new ConflictException(`참조 중인 코스는 삭제할 수 없습니다: ${blockers.join('·')}`);
+      await this.store.remove(COURSES_SPEC, id, actorId);
+      if (actorId != null) {
+        await this.audit.log({ entity: 'courses', entityId: id, action: 'delete', actorId, changes: this.audit.snapshotOf(before) });
+      }
+      return before;
+    });
+  }
+
+  private assertRefs(dto: { subjectId?: number; instructorId?: number }): void {
+    if (dto.subjectId != null && !this.db.findById<Subject>(SUBJECTS, dto.subjectId)) {
+      throw new BadRequestException(`subjectId ${dto.subjectId} 없음`);
+    }
+    if (dto.instructorId != null) {
+      const account = this.db.findById<StaffAccount>(USERS, dto.instructorId);
+      if (!isActiveInstructor(account)) throw new BadRequestException(`instructorId ${dto.instructorId}는 활성 강사가 아닙니다`);
+    }
   }
 }

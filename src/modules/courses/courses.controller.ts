@@ -1,8 +1,9 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './dto/create-course.dto';
+import { UpdateCourseDto } from './dto/update-course.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
@@ -29,5 +30,17 @@ export class CoursesController {
   @Roles(...ADMIN_ROLES)
   create(@Body() dto: CreateCourseDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.courses.create(dto, req.user?.sub);
+  }
+
+  @Patch(':id')
+  @Roles(...ADMIN_ROLES)
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCourseDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.courses.update(id, dto, req.user?.sub);
+  }
+
+  @Delete(':id')
+  @Roles(...ADMIN_ROLES)
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.courses.remove(id, req.user?.sub);
   }
 }
