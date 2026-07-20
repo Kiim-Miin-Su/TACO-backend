@@ -20,7 +20,6 @@ import { smsChallengeAvailable } from '../profile-verifications/sms-availability
 import { CountriesService } from '../catalog/countries.service';
 import { CreateProfileChangeRequestDto } from './dto/create-profile-change-request.dto';
 import {
-  CONTACT_CHANGE_FIELDS,
   PROFILE_CHANGE_REQUESTS,
   type ProfileChangeRequest,
   type ProfileChanges,

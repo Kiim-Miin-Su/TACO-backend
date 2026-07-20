@@ -64,17 +64,6 @@ export class InMemoryDatabase {
     }
   }
 
-  private indexRemove(name: string, row: BaseRow): void {
-    this.ids(name).delete(row.id);
-    const fields = this.fieldIndex.get(name);
-    if (!fields) return;
-    for (const [field, buckets] of fields) {
-      const v = (row as Record<string, unknown>)[field];
-      const set = buckets.get(v);
-      if (set) { set.delete(row); if (set.size === 0) buckets.delete(v); } // [L4] 빈 버킷 정리
-    }
-  }
-
   /** update로 인덱스 대상 필드가 바뀔 때 버킷 이동(값 변화 전 호출 → patch 적용 → 재등록). */
   private reindexForPatch(name: string, row: BaseRow, patch: object): void {
     const fields = this.fieldIndex.get(name);

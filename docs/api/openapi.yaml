@@ -1118,6 +1118,46 @@ paths:
                 type: object
       tags:
       - subjects
+    patch:
+      operationId: SubjectsController_update
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSubjectDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - subjects
+    delete:
+      operationId: SubjectsController_remove
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - subjects
   /api/courses:
     get:
       operationId: CoursesController_findAll
@@ -1154,6 +1194,46 @@ paths:
   /api/courses/{id}:
     get:
       operationId: CoursesController_findOne
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - courses
+    patch:
+      operationId: CoursesController_update
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCourseDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - courses
+    delete:
+      operationId: CoursesController_remove
       parameters:
       - name: id
         required: true
@@ -2367,6 +2447,26 @@ paths:
       security:
       - bearer: []
       summary: 상담 폼 수정(상태 전환·담당자·관심사)
+      tags:
+      - counsel
+    delete:
+      operationId: CounselController_removeForm
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: 상담 폼과 회차 soft delete — 감사 스냅샷 포함
       tags:
       - counsel
   /api/counsel/{id}/rounds:
@@ -3591,6 +3691,15 @@ components:
       required:
       - code
       - name
+    UpdateSubjectDto:
+      type: object
+      properties:
+        code:
+          type: string
+          maxLength: 50
+        name:
+          type: string
+          maxLength: 50
     CreateCourseDto:
       type: object
       properties:
@@ -3618,6 +3727,27 @@ components:
       - instructorId
       - price
       - hourlyRate
+    UpdateCourseDto:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        color:
+          type: string
+          maxLength: 20
+        subjectId:
+          type: number
+        instructorId:
+          type: number
+        price:
+          type: number
+          minimum: 0
+          maximum: 100000000
+        hourlyRate:
+          type: number
+          minimum: 0
+          maximum: 100000000
     CreateExpenseDto:
       type: object
       properties:

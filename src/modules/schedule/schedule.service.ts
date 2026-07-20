@@ -18,7 +18,7 @@ import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.enti
 import { ClassSessionsStore } from './class-sessions.store';
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
 import { selectSeriesScope, type SeriesScope } from './series-scope.policy';
-import { addMinutesGuarded, assertSessionDuration, normalizeSessionTime, storedEndTimeOf, SESSION_TIME_DEFAULTS } from './session-time.policy';
+import { addMinutesGuarded, normalizeSessionTime, storedEndTimeOf, SESSION_TIME_DEFAULTS } from './session-time.policy';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -27,7 +27,7 @@ import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, i
 import { studentBelongsToSession } from './session-participant.policy';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
-import { hhmmToMin as toMin, minToHhmm, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff, durationMinutesBetween } from '../../common/time.util';
+import { hhmmToMin as toMin, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff } from '../../common/time.util';
 import { demoSeedEnabled } from '../../config/demo-seed';
 
 // [감사 A, 2026-07-02] 하드코딩 상수(STUDENTS_LBL/COURSE_STUDENTS/COURSES/SUBJECTS) 제거 —
@@ -53,7 +53,6 @@ const SESSION_DEFAULTS = {
 //  (undefined는 PG UPDATE payload에서 skip돼 이전 end_time이 잔존 — 메모리/PG 투영 편차의 근본 원인).
 const addMinutes = addMinutesGuarded;
 const endTimeOf = storedEndTimeOf;
-const assertDuration = assertSessionDuration;
 function mondayOfThisWeekUTC(): Date {
   const now = new Date();
   const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));

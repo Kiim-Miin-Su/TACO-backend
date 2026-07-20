@@ -114,10 +114,6 @@ export class PayoutsService implements OnModuleInit {
     await this.pay(paid.id);
   }
 
-  private round(n: number): number {
-    return Math.round(n);
-  }
-
   // 시수 측정(순수 계산) — preview/generate 공통.
   measure(instructorId: number, from: string, to: string): MeasureResult {
     if (!from || !to) throw new BadRequestException('정산 기간(from/to)이 필요합니다');

@@ -34,7 +34,7 @@ export function storedEndTimeOf(startTime: string, durationMinutes: number): str
 }
 
 /** duration 검증 — 0 이하/10분 미만/480분 초과 = 400(자정 크로스 포함 공통 상한). */
-export function assertSessionDuration(startTime: string, durationMinutes: number): void {
+export function assertSessionDuration(_startTime: string, durationMinutes: number): void {
   if (durationMinutes <= 0) throw new BadRequestException('종료 시각이 시작과 같을 수 없습니다');
   if (durationMinutes < SESSION_MIN_MIN || durationMinutes > SESSION_MAX_MIN)
     throw new BadRequestException(`수업 진행시간은 ${SESSION_MIN_MIN}분 이상 ${SESSION_MAX_MIN}분 이하여야 합니다.`);

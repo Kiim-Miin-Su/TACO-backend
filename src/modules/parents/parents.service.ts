@@ -28,9 +28,9 @@ export class ParentsService implements OnModuleInit {
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
     private readonly uow: CalendarUnitOfWork,
-    private readonly students: StudentsService,
+    students: StudentsService,
     private readonly audit: AuditService,
-  ) {}
+  ) { void students; }
 
   async onModuleInit(): Promise<void> {
     const parents = await this.store.hydrate<Parent>(PARENTS_SPEC);

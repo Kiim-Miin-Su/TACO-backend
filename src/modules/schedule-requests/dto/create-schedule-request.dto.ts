@@ -1,5 +1,5 @@
 import { IsDefined, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, MinLength, Max, IsArray, ArrayMaxSize, ValidateIf } from 'class-validator';
-import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiPropertyOptional } from '@nestjs/swagger';
 import type { AvailabilityKind, AvailabilityOwner, RecurrenceScope, SessionKind, SessionMode, CreateScheduleRequestInput } from '@kms545487/contracts';
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
 
