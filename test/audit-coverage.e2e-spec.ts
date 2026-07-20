@@ -1,10 +1,13 @@
 // [감사 전수 2026-07-16 — 대표 지시] 전 테이블 CRUD 감사 이력 커버리지 e2e.
 //  대표 결정: 캘린더 뷰 프리셋·원장(transactions)도 감사 필수. 각 대표 액션이 audit_log에
 //  entity/action/actor를 남기는지, PII(연락처)가 마스킹되는지 검증한다.
+import { createHash } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
+import { PostgresConnectionService } from '../src/database/postgres-connection.service';
+import { signupWithOtp } from './signup-helper';
 
 type Audit = { id: number; entity: string; entityId: number; action: string; actorId: number; changes?: Record<string, { before?: unknown; after?: unknown }>; reason?: string };
 
@@ -118,18 +121,36 @@ describe('Audit coverage — 전 테이블 CRUD 이력 (e2e)', () => {
     expect(audits('calendar_view_presets', preset.id).map((a) => a.action)).toEqual(['create', 'update', 'delete']);
   });
 
-  it('users: 자기 가입(create, actor=본인)·이메일 인증(update) 이력', async () => {
+  it('users: 자기 가입(create, actor=본인)·[잔존 호환] 이메일 링크 인증(update) 이력', async () => {
     const stamp = Date.now();
-    const res = await http.post('/api/auth/signup').send({
-      webId: `audit_user_${stamp}`, name: '감사가입', email: `audit_${stamp}@t.test`, password: 'AuditPass1!', role: 'instructor',
-    }).expect(201);
-    const uid = res.body.account.id;
+    const rrn = '930715-1234567';
+    // [TBO-31 C1] OTP 인증 가입(emailVerified=true 생성) — signup-helper 재사용
+    const res = await signupWithOtp(http, {
+      webId: `audit_user_${stamp}`, name: '감사가입', email: `audit_${stamp}@t.test`, password: 'AuditPass1!',
+      role: 'instructor', rrn,
+    });
+    const uid = res.account.id;
     const createRow = audits('users', uid).find((a) => a.action === 'create');
     expect(createRow?.actorId).toBe(uid); // 자기 가입 — actor=본인
     expect(JSON.stringify(createRow)).not.toContain('@t.test'); // 이메일 원문 미기록
+    // [TBO-31 D2] RRN은 audit에 **일절 미기록**(마스킹조차 없음 — 기록 자체 생략)
+    const allUserAudits = JSON.stringify(audits('users', uid));
+    expect(allUserAudits).not.toContain('930715');
+    expect(allUserAudits).not.toContain('rrn');
 
-    const token = new URL(res.body.devVerifyLink).searchParams.get('token');
-    await http.get(`/api/auth/verify-email?token=${token}`).expect(200);
+    // 잔존(구 링크 흐름) 미인증 계정의 링크 인증 — update 이력이 계속 남는지(호환 경로 회귀)
+    const rawToken = `audit-legacy-token-${stamp}`;
+    const hash = createHash('sha256').update(rawToken).digest('hex');
+    const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    const pg = app.get(PostgresConnectionService);
+    if (pg.ready) {
+      await pg.query(
+        'UPDATE users SET email_verified = false, email_verify_token_hash = $1, email_verify_expires_at = $2 WHERE id = $3',
+        [hash, expires, uid],
+      );
+    }
+    db.update('users', uid, { emailVerified: false, emailVerifyTokenHash: hash, emailVerifyExpiresAt: expires } as never);
+    await http.get(`/api/auth/verify-email?token=${rawToken}`).expect(200);
     expect(audits('users', uid).some((a) => a.action === 'update' && a.changes?.emailVerified?.after === true)).toBe(true);
   });
 

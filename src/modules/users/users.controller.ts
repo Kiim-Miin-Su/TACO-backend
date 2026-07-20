@@ -37,6 +37,8 @@ export class UsersController {
       timeZone: account.timeZone,
       role: account.role,
       status: account.status,
+      // [TBO-31 C1 D5] 이메일 인증 상태 노출 — 마이페이지 배지·미인증 안내(RRN은 어떤 형태로도 미노출)
+      emailVerified: account.emailVerified === true,
       profileVersion: profileVersionOf(account),
       // [2026-07-16] SENS env 투입 시 FE phone 인증 스테퍼 자동 활성(단일 판정 소스 공유)
       smsVerificationAvailable: smsChallengeAvailable(),

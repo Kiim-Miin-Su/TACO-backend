@@ -4,6 +4,7 @@ import { createTestApp } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { AuditService } from '../src/modules/audit/audit.service';
+import { signupWithOtp } from './signup-helper'; // [TBO-31 C1] OTP 가입 헬퍼
 
 type UserRow = {
   id: number;
@@ -219,75 +220,87 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
     await login('manager', 'ManagerPass123!');
   });
 
-  // [E0] 아이디(webId) 즉시 변경 폐지 — 승인제(프로필 변경 요청) 경유. 강제 변경 흐름만 예외.
-  it('webId change moves to the approval path: instant change 400, approve applies with auth_version bump', async () => {
+  // [E0] 아이디(webId) 즉시 변경 폐지 — 승인제 경유. [TBO-31 C1 D3] 요청 자체도 **대표만** 가능
+  //  (매니저·강사·admin은 400) — 대표 요청은 즉시 적용 경로(같은 tx)에서 auth_version+1로 반영된다.
+  it('webId change: instant change 400, non-super request 400, super applies with auth_version bump', async () => {
     const inst = await login('park_inst', 'demo1234');
-    // 평시 즉시 변경 시도 → 400 (승인제 안내)
+    // 평시 즉시 변경 시도 → 400 (승인제 안내 — 첫 로그인 rotation만 예외)
     await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${inst.accessToken}`)
       .send({ currentPassword: 'demo1234', newWebId: 'park_renamed' }).expect(400);
-    // 중복 webId 요청 → 409 (생성 선검사, case-insensitive)
+    // [D3] 강사 webId 변경 요청 → 400 (역할 게이트 — 대표만)
     await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${inst.accessToken}`)
-      .send({ currentPassword: 'demo1234', webId: 'MANAGER', reason: '다른 계정 아이디로 변경 시도.' }).expect(409);
-    // 정상 요청 → pending → 관리자 승인 → users 반영 + auth_version+1(기존 토큰 즉시 무효)
-    const created = await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${inst.accessToken}`)
-      .send({ currentPassword: 'demo1234', webId: 'park_renamed', reason: '아이디 표기 정비를 요청합니다.' }).expect(201);
-    expect(created.body).toMatchObject({ status: 'pending', requestedChanges: { webId: 'park_renamed' } });
-    const before = { ...db.findById<UserRow>('users', 1)! };
-    const admin = await login('prof_admin', 'demo1234');
-    await http.post(`/api/profile-change-requests/${created.body.id}/approve`)
-      .set('Authorization', `Bearer ${admin.accessToken}`).expect(201);
-    const after = db.findById<UserRow>('users', 1)!;
-    expect(after.webId).toBe('park_renamed');
+      .send({ currentPassword: 'demo1234', webId: 'park_renamed', reason: '아이디 표기 정비를 요청합니다.' }).expect(400);
+    expect(db.findById<UserRow>('users', 1)!.webId).toBe('park_inst'); // 변경 없음
+
+    // 대표(user 3 — 앞 테스트 rotation으로 ceo_minsun) 요청은 허용: [D4] 본인 이메일 OTP 소비 필수.
+    const superLogin = await login('ceo_minsun', 'MinsunSecure1!');
+    const challenge = await forgeVerifiedEmailChallenge(3, 'ceo@tnacademy.test');
+    // 중복 webId(case-insensitive) → 409 (생성 선검사 — challenge는 소비되지 않고 남는다)
+    await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${superLogin.accessToken}`)
+      .send({ currentPassword: 'MinsunSecure1!', webId: 'MANAGER', verificationChallengeId: challenge.id, reason: '다른 계정 아이디로 변경 시도.' }).expect(409);
+    // 정상 요청 → 즉시 적용(같은 tx) → users 반영 + auth_version+1(기존 토큰 즉시 무효)
+    const before = { ...db.findById<UserRow>('users', 3)! };
+    const created = await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${superLogin.accessToken}`)
+      .send({ currentPassword: 'MinsunSecure1!', webId: 'ceo_rebrand', verificationChallengeId: challenge.id, reason: '대표 아이디 표기 정비를 요청합니다.' }).expect(201);
+    expect(created.body).toMatchObject({ status: 'approved', requestedChanges: { webId: 'ceo_rebrand' } });
+    const after = db.findById<UserRow>('users', 3)!;
+    expect(after.webId).toBe('ceo_rebrand');
     expect(after.authVersion ?? 1).toBe((before.authVersion ?? 1) + 1);
-    await http.get('/api/auth/me').set('Authorization', `Bearer ${inst.accessToken}`).expect(401); // 세션 무효
-    await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(401);
-    await login('park_renamed', 'demo1234');
+    await http.get('/api/auth/me').set('Authorization', `Bearer ${superLogin.accessToken}`).expect(401); // 세션 무효
+    await http.post('/api/auth/login').send({ webId: 'ceo_minsun', password: 'MinsunSecure1!' }).expect(401);
+    await login('ceo_rebrand', 'MinsunSecure1!');
   });
 
-  it('case-insensitive concurrent webId approvals commit exactly once', async () => {
+  // [TBO-31 C1 D3] 매니저·admin의 webId 변경 요청 금지(서버 강제) — 종전의 "동시 승인 경쟁" 시나리오는
+  //  요청 주체가 대표(즉시 적용) 하나뿐이라 더 이상 구성 불가. case-insensitive 선점 검사는 위
+  //  테스트(대표 409)와 changeCredentials rotation 경로가 계속 검증한다.
+  it('non-super webId change requests are rejected by the role gate', async () => {
     const manager = await login('manager', 'ManagerPass123!');
     const profAdmin = await login('prof_admin', 'demo1234');
-    const left = await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${manager.accessToken}`)
-      .send({ currentPassword: 'ManagerPass123!', webId: 'SharedOps', reason: '운영 계정 아이디로 변경 요청.' }).expect(201);
-    const right = await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${profAdmin.accessToken}`)
-      .send({ currentPassword: 'demo1234', webId: 'sharedops', reason: '운영 계정 아이디로 변경 요청.' }).expect(201);
-    // user 3은 앞 테스트(⑥ 통합 rotation)에서 ceo_minsun으로 회전됨.
-    const superToken = (await login('ceo_minsun', 'MinsunSecure1!')).accessToken;
-    const [a, b] = await Promise.all([
-      http.post(`/api/profile-change-requests/${left.body.id}/approve`).set('Authorization', `Bearer ${superToken}`),
-      http.post(`/api/profile-change-requests/${right.body.id}/approve`).set('Authorization', `Bearer ${superToken}`),
-    ]);
-    expect([a.status, b.status].sort()).toEqual([201, 409]); // identity lock + 재검사 — 한쪽만 선점
+    await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${manager.accessToken}`)
+      .send({ currentPassword: 'ManagerPass123!', webId: 'SharedOps', reason: '운영 계정 아이디로 변경 요청.' }).expect(400);
+    await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${profAdmin.accessToken}`)
+      .send({ currentPassword: 'demo1234', webId: 'sharedops', reason: '운영 계정 아이디로 변경 요청.' }).expect(400);
+    // 어떤 계정도 해당 아이디를 얻지 못했고 요청 행도 남지 않는다.
     const owners = db.findAll<UserRow>('users').filter((user) => user.webId.toLowerCase() === 'sharedops');
-    expect(owners).toHaveLength(1);
+    expect(owners).toHaveLength(0);
   });
 
-  it('verification token is single-use and expired tokens are rejected', async () => {
+  // [TBO-31 C1] 신규 가입은 OTP로 emailVerified=true 생성 — 링크 인증은 잔존(구 흐름) 계정 호환.
+  //  잔존 상태를 DB 강제 세팅으로 재현해 단일 사용·만료 거부 규약을 계속 검증한다(약화 없음).
+  it('legacy verification token is single-use and expired tokens are rejected', async () => {
     const stamp = Date.now();
-    const signup = async (suffix: string) => {
+    const { createHash } = await import('crypto');
+    const forgeLegacy = async (suffix: string) => {
       const webId = `verify_${suffix}_${stamp}`;
-      const response = await http.post('/api/auth/signup').send({
-        webId,
-        name: `인증 ${suffix}`,
-        email: `${webId}@example.test`,
-        password: 'VerifyPass123!',
-        role: 'instructor',
-      }).expect(201);
-      const token = new URL(response.body.devVerifyLink).searchParams.get('token');
-      if (!token) throw new Error('dev verification token missing in test mode');
-      return { webId, token };
+      const body = await signupWithOtp(http, {
+        webId, name: `인증 ${suffix}`, email: `${webId}@example.test`, password: 'VerifyPass123!', role: 'instructor',
+      });
+      const token = `legacy-token-${suffix}-${stamp}`;
+      const hash = createHash('sha256').update(token).digest('hex');
+      const expires = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+      const pg = app.get(PostgresConnectionService);
+      if (pg.ready) {
+        await pg.query(
+          'UPDATE users SET email_verified = false, email_verify_token_hash = $1, email_verify_expires_at = $2 WHERE id = $3',
+          [hash, expires, body.account.id],
+        );
+      }
+      db.update('users', body.account.id, {
+        emailVerified: false, emailVerifyTokenHash: hash, emailVerifyExpiresAt: expires,
+      } as never);
+      return { id: body.account.id, token };
     };
 
-    const reusable = await signup('once');
+    const reusable = await forgeLegacy('once');
     await http.get(`/api/auth/verify-email?token=${reusable.token}`).expect(200);
     await http.get(`/api/auth/verify-email?token=${reusable.token}`).expect(400);
 
-    const expired = await signup('expired');
-    const expiredAccount = db.findAll<UserRow>('users').find((user) => user.webId === expired.webId)!;
+    const expired = await forgeLegacy('expired');
     // [E0.5 검증 보강] PG 모드 권위 소스에도 만료 기록(메모리만 갱신 시 refreshFromDb가 되돌림).
     const pg = app.get(PostgresConnectionService);
-    if (pg.ready) await pg.query(`UPDATE users SET email_verify_expires_at = '2000-01-01T00:00:00Z' WHERE id = ${expiredAccount.id}`);
-    db.update<UserRow>('users', expiredAccount.id, { emailVerifyExpiresAt: '2000-01-01T00:00:00.000Z' });
+    if (pg.ready) await pg.query(`UPDATE users SET email_verify_expires_at = '2000-01-01T00:00:00Z' WHERE id = ${expired.id}`);
+    db.update<UserRow>('users', expired.id, { emailVerifyExpiresAt: '2000-01-01T00:00:00.000Z' });
     await http.get(`/api/auth/verify-email?token=${expired.token}`).expect(400);
   });
 });

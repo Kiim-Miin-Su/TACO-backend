@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
+import { signupWithOtp } from './signup-helper';
 
 // ─────────────────────────────────────────────────────────────
 // [자산화 점검 2026-07-02] 전 도메인 "쓰기 → in-memory 저장" 전수 검증.
@@ -25,15 +26,17 @@ describe('Asset persistence sweep (e2e)', () => {
 
   it('users: 가입 신청이 컬렉션에 저장되고(pending) 승인 상태 변화도 기록된다', async () => {
     const before = await listLen('/api/users');
-    const res = await http.post('/api/auth/signup')
-      .send({ webId: 'asset_tester', name: '자산테스터', email: 'asset@tnacademy.test', password: 'password12', role: 'instructor' })
-      .expect(201);
-    const id = res.body.account?.id ?? res.body.id;
+    // [TBO-31 C1] 가입 = 이메일 OTP 소비 → emailVerified=true 생성(signup-helper)
+    const res = await signupWithOtp(http, {
+      webId: 'asset_tester', name: '자산테스터', email: 'asset@tnacademy.test', password: 'password12', role: 'instructor',
+    });
+    const id = res.account.id;
     expect(await listLen('/api/users')).toBe(before + 1);
     const all = (await http.get('/api/users').set(asAdmin()).expect(200)).body;
     const saved = all.find((a: { webId: string }) => a.webId === 'asset_tester');
-    expect(saved).toMatchObject({ status: 'pending', emailVerified: false, role: 'instructor' });
+    expect(saved).toMatchObject({ status: 'pending', emailVerified: true, role: 'instructor' });
     expect(saved.passwordHash).toBeUndefined(); // 안전 필드만 노출
+    expect(saved.rrnEncrypted).toBeUndefined(); // [TBO-31 D2] RRN 암호문도 응답 미노출
     expect(saved.id).toBe(id);
   });
 

@@ -1,6 +1,96 @@
 {
   "openapi": "3.0.0",
   "paths": {
+    "/api/auth/signup-email-challenge": {
+      "post": {
+        "operationId": "AuthController_createSignupEmailChallenge",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSignupEmailChallengeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "가입 전 이메일 OTP 발송(공개) — 5회/분. 가입 여부와 무관하게 동일 응답(열거 방지).",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/signup-email-challenge/{id}/confirm": {
+      "post": {
+        "operationId": "AuthController_confirmSignupEmailChallenge",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmSignupEmailChallengeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "가입 전 이메일 OTP 확인(공개) — 10회/분, 실패 5회 잠금, 성공 시 verified.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
+    "/api/auth/web-id-available": {
+      "get": {
+        "operationId": "AuthController_webIdAvailable",
+        "parameters": [
+          {
+            "name": "webId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "아이디 사용 가능 여부(공개) — {available}만 반환(이름·역할 미노출), 10회/분.",
+        "tags": [
+          "auth"
+        ]
+      }
+    },
     "/api/auth/signup": {
       "post": {
         "operationId": "AuthController_signup",
@@ -20,7 +110,7 @@
             "description": ""
           }
         },
-        "summary": "가입 신청(대표 승인 대기). 인증 메일 발송.",
+        "summary": "가입 신청(대표 승인 대기) — 이메일 OTP 소비, emailVerified=true 생성.",
         "tags": [
           "auth"
         ]
@@ -44,7 +134,7 @@
             "description": ""
           }
         },
-        "summary": "이메일 인증(token) — hash 대조·48h 만료.",
+        "summary": "이메일 인증(token) — hash 대조·48h 만료. [잔존 계정 호환]",
         "tags": [
           "auth"
         ]
@@ -4134,6 +4224,44 @@
       }
     },
     "schemas": {
+      "CreateSignupEmailChallengeDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "format": "email",
+            "example": "applicant@example.com",
+            "description": "가입에 사용할 이메일(소유 인증 대상)"
+          }
+        },
+        "required": [
+          "email"
+        ]
+      },
+      "ConfirmSignupEmailChallengeDto": {
+        "type": "object",
+        "properties": {
+          "email": {
+            "type": "string",
+            "maxLength": 320,
+            "format": "email",
+            "example": "applicant@example.com",
+            "description": "발송을 요청한 이메일(일치 필수)"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 10,
+            "pattern": "^\\d+$",
+            "description": "수신한 인증 코드(6자리 숫자)"
+          }
+        },
+        "required": [
+          "email",
+          "code"
+        ]
+      },
       "SignupDto": {
         "type": "object",
         "properties": {
@@ -4156,6 +4284,12 @@
             "minLength": 8,
             "maxLength": 100
           },
+          "rrn": {
+            "type": "string"
+          },
+          "emailChallengeId": {
+            "type": "number"
+          },
           "role": {
             "type": "string",
             "enum": [
@@ -4175,18 +4309,15 @@
           "major": {
             "type": "string",
             "maxLength": 100
-          },
-          "birthYear": {
-            "type": "number",
-            "minimum": 1940,
-            "maximum": 2020
           }
         },
         "required": [
           "webId",
           "name",
           "email",
-          "password"
+          "password",
+          "rrn",
+          "emailChallengeId"
         ]
       },
       "LoginDto": {
@@ -4396,6 +4527,11 @@
               "rejected"
             ]
           },
+          "emailVerified": {
+            "type": "boolean",
+            "example": true,
+            "description": "이메일 인증 완료 여부(가입 OTP 또는 잔존 링크 인증)"
+          },
           "profileVersion": {
             "type": "number",
             "example": 1,
@@ -4413,6 +4549,7 @@
           "name",
           "role",
           "status",
+          "emailVerified",
           "profileVersion",
           "smsVerificationAvailable"
         ]

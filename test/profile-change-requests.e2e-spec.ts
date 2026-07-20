@@ -4,6 +4,8 @@ import { AuditService } from '../src/modules/audit/audit.service';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { createTestApp } from './setup-app';
+// [TBO-31 C1 D4] 프로필 변경 = 비밀번호 + 본인 이메일 OTP 상시 — 각 생성 전에 verified challenge 위조.
+import { forgeVerifiedEmailChallenge } from './profile-challenge-helper';
 
 type UserRow = { id: number; name: string; phone?: string | null; profileVersion: number };
 type RequestRow = { id: number; requesterId: number; status: string; rejectionReason?: string | null };
@@ -59,14 +61,19 @@ describe('Profile change requests (e2e)', () => {
     // 연락처(email/phone) 변경은 인증 challenge 없이는 400 — 상세 흐름은 profile-verification.e2e-spec
     await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
       .send({ currentPassword: 'demo1234', email: 'owned@example.test', reason: '이메일까지 바꾸려는 요청입니다.' }).expect(400);
+    // [TBO-31 C1 D4] 비연락처 변경도 본인 이메일 OTP 상시 필수 — challenge 없이 400(전 역할)
+    await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
+      .send({ currentPassword: 'demo1234', name: '박지훈 변경', reason: '본인 인증 없이 이름 변경 시도.' }).expect(400);
     // role 등 비허용 key는 whitelist가 차단(mass assignment)
     await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
       .send({ currentPassword: 'demo1234', name: '박지훈 변경', role: 'super_admin', reason: '권한 상승을 시도합니다.' }).expect(400);
   });
 
   it('creates one pending request and enforces list/detail ownership', async () => {
+    // [TBO-31 C1 D4] 본인(현재) 이메일로 verified된 challenge 소비 — 같은 tx 일회 소비.
+    const challengeId = await forgeVerifiedEmailChallenge(app, 1, 'park@tnacademy.test');
     const created = await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
-      .send({ currentPassword: 'demo1234', name: '박지훈 변경', countryCode: 'us', timeZone: 'America/New_York', reason: '해외 근무지 정보가 변경되었습니다.' })
+      .send({ currentPassword: 'demo1234', name: '박지훈 변경', countryCode: 'us', timeZone: 'America/New_York', verificationChallengeId: challengeId, reason: '해외 근무지 정보가 변경되었습니다.' })
       .expect(201);
     mainRequestId = created.body.id;
     expect(created.body).toMatchObject({ requesterId: 1, baseProfileVersion: 1, status: 'pending' });
@@ -85,8 +92,9 @@ describe('Profile change requests (e2e)', () => {
   });
 
   it('requires rejection reason and disallows self decision', async () => {
+    const challengeId = await forgeVerifiedEmailChallenge(app, 4, 'manager@tnacademy.test');
     const own = await http.post('/api/profile-change-requests').set(bearer(tokens.manager))
-      .send({ currentPassword: 'demo1234', countryCode: 'JP', reason: '관리자 본인 근무지 변경 요청입니다.' }).expect(201);
+      .send({ currentPassword: 'demo1234', countryCode: 'JP', verificationChallengeId: challengeId, reason: '관리자 본인 근무지 변경 요청입니다.' }).expect(201);
     await http.post(`/api/profile-change-requests/${own.body.id}/approve`).set(bearer(tokens.manager)).expect(403);
     await http.post(`/api/profile-change-requests/${own.body.id}/reject`).set(bearer(tokens.admin))
       .send({ reason: '짧음' }).expect(400);
@@ -96,8 +104,9 @@ describe('Profile change requests (e2e)', () => {
   });
 
   it('returns 409 for a stale base profile version', async () => {
+    const challengeId = await forgeVerifiedEmailChallenge(app, 2, 'jung@tnacademy.test');
     const stale = await http.post('/api/profile-change-requests').set(bearer(tokens.foreign))
-      .send({ currentPassword: 'demo1234', timeZone: 'Europe/Paris', reason: '현지 시간대 변경 요청입니다.' }).expect(201);
+      .send({ currentPassword: 'demo1234', timeZone: 'Europe/Paris', verificationChallengeId: challengeId, reason: '현지 시간대 변경 요청입니다.' }).expect(201);
     const pg = app.get(PostgresConnectionService);
     if (pg.ready) await pg.query('UPDATE users SET profile_version = 2 WHERE id = 2');
     db.update<UserRow>('users', 2, { profileVersion: 2 });
@@ -123,8 +132,9 @@ describe('Profile change requests (e2e)', () => {
   });
 
   it('rolls back request and user when audit persistence fails', async () => {
+    const challengeId = await forgeVerifiedEmailChallenge(app, 5, 'prof.admin@tnacademy.test');
     const created = await http.post('/api/profile-change-requests').set(bearer(tokens.admin))
-      .send({ currentPassword: 'demo1234', name: '한서윤 변경', reason: '관리자 표시명 변경을 요청합니다.' }).expect(201);
+      .send({ currentPassword: 'demo1234', name: '한서윤 변경', verificationChallengeId: challengeId, reason: '관리자 표시명 변경을 요청합니다.' }).expect(201);
     const before = { ...db.findById<UserRow>('users', 5)! };
     const audit = app.get(AuditService);
     const spy = jest.spyOn(audit, 'log').mockRejectedValueOnce(new Error('injected audit failure'));
@@ -141,8 +151,12 @@ describe('Profile change requests (e2e)', () => {
   it('applies super_admin changes instantly in the same tx with full audit', async () => {
     const me = await http.get('/api/users/me/profile').set(bearer(tokens.super)).expect(200);
     const version = me.body.profileVersion as number;
+    // [TBO-31 C1 D4] super_admin 즉시 적용도 본인 이메일 OTP 동일 적용(대표도 예외 없음 — 지시 6)
+    await http.post('/api/profile-change-requests').set(bearer(tokens.super))
+      .send({ currentPassword: 'demo1234', name: '김민선', reason: '본인 인증 없는 대표 즉시 적용 시도.' }).expect(400);
+    const challengeId = await forgeVerifiedEmailChallenge(app, 3, 'admin@tnacademy.test');
     const created = await http.post('/api/profile-change-requests').set(bearer(tokens.super))
-      .send({ currentPassword: 'demo1234', name: '김민선', reason: '대표 표시 이름을 실명으로 변경합니다.' })
+      .send({ currentPassword: 'demo1234', name: '김민선', verificationChallengeId: challengeId, reason: '대표 표시 이름을 실명으로 변경합니다.' })
       .expect(201);
     expect(created.body).toMatchObject({
       requesterId: me.body.id,
@@ -163,9 +177,10 @@ describe('Profile change requests (e2e)', () => {
       .filter((row) => row.entity === 'users' && row.entityId === me.body.id && row.action === 'update');
     expect(userAudits.length).toBeGreaterThanOrEqual(1);
 
-    // 즉시 적용이라 pending이 남지 않는다 — 연속 변경이 409 없이 가능.
+    // 즉시 적용이라 pending이 남지 않는다 — 연속 변경이 409 없이 가능(새 challenge로 재인증).
+    const secondChallengeId = await forgeVerifiedEmailChallenge(app, 3, 'admin@tnacademy.test');
     const second = await http.post('/api/profile-change-requests').set(bearer(tokens.super))
-      .send({ currentPassword: 'demo1234', timeZone: 'Asia/Seoul', countryCode: 'KR', reason: '대표 근무지 정보를 정리합니다.' })
+      .send({ currentPassword: 'demo1234', timeZone: 'Asia/Seoul', countryCode: 'KR', verificationChallengeId: secondChallengeId, reason: '대표 근무지 정보를 정리합니다.' })
       .expect(201);
     expect(second.body.status).toBe('approved');
     // 일반 역할(강사·매니저·admin)은 종전대로 승인제 — 위 테스트들이 pending 경로를 계속 검증한다.

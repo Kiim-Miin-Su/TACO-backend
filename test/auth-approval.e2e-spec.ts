@@ -1,11 +1,16 @@
 // [TBO-28B] 승인 원자 tx + 인증 운영 경계 e2e — TBO-28A-BASELINE §2 테스트 표(T1~T12) 구현.
 //  in-memory 모드에서 상시 실행(CI). Postgres 모드 증명은 28F(로컬 PG/Neon)에서 동일 스펙 재실행.
+//  [TBO-31 C1] 가입은 이메일 OTP 소비 → emailVerified=true 생성으로 전환(signup-helper 재사용).
+//  잔존 미인증 계정(구 링크 흐름) 시나리오는 DB 강제 세팅으로 재현한다(T6·T12).
+import { createHash } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
+import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { InstructorProfilesStore } from '../src/modules/users/instructor-profiles.store';
+import { signupWithOtp } from './signup-helper';
 
 type Row = Record<string, unknown>;
 
@@ -26,14 +31,24 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     return res.body.accessToken;
   }
 
-  /** 가입+이메일인증까지 마친 pending 계정 생성 → id 반환 */
+  /** [TBO-31 C1] OTP 인증까지 마친 pending 계정 생성(emailVerified=true) → id 반환 */
   async function signupVerified(webId: string, role = 'instructor'): Promise<number> {
-    const signup = (await http.post('/api/auth/signup')
-      .send({ webId, name: `계정${webId}`, email: `${webId}@t.test`, password: 'password123', role })
-      .expect(201)).body;
-    const token = new URL(signup.devVerifyLink).searchParams.get('token')!;
-    await http.get(`/api/auth/verify-email?token=${token}`).expect(200);
-    return signup.account.id as number;
+    const signup = await signupWithOtp(http, { webId, role });
+    return signup.account.id;
+  }
+
+  /** 잔존(구 링크 흐름) 미인증 계정 상태 재현 — 양 모드 권위 소스에 기록(§13.83 이중 모드 규약). */
+  async function forceLegacyUnverified(id: number, rawToken?: string, expiresAtIso?: string): Promise<void> {
+    const hash = rawToken ? createHash('sha256').update(rawToken).digest('hex') : null;
+    const expires = rawToken ? expiresAtIso ?? new Date(Date.now() + 60 * 60 * 1000).toISOString() : null;
+    const pg = app.get(PostgresConnectionService);
+    if (pg.ready) {
+      await pg.query(
+        'UPDATE users SET email_verified = false, email_verify_token_hash = $1, email_verify_expires_at = $2 WHERE id = $3',
+        [hash, expires, id],
+      );
+    }
+    db.update('users', id, { emailVerified: false, emailVerifyTokenHash: hash, emailVerifyExpiresAt: expires } as never);
   }
 
   // [감사 전수 2026-07-16] signup(create)·verifyEmail(update) 이력이 추가됨 — 이 스위트의 단정은
@@ -121,13 +136,13 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     expect(userOf(id).status).toBe('pending'); // 변경 없음
   });
 
-  it('T6: 이메일 미인증 계정 승인 → 403 (CAS 안에서 판정)', async () => {
-    const signup = (await http.post('/api/auth/signup')
-      .send({ webId: 't6_inst', name: '미인증', email: 't6@t.test', password: 'password123' })
-      .expect(201)).body;
+  it('T6: 이메일 미인증(잔존 구 흐름) 계정 승인 → 403 (CAS 안에서 판정)', async () => {
+    // [TBO-31 C1] 신규 가입은 항상 emailVerified=true — 잔존 미인증 계정은 DB 강제 세팅으로 재현.
+    const id = await signupVerified('t6_inst');
+    await forceLegacyUnverified(id);
     const admin = await login('admin');
-    await http.post(`/api/auth/approve/${signup.account.id}`).set('Authorization', `Bearer ${admin}`).send({}).expect(403);
-    expect(userOf(signup.account.id).status).toBe('pending');
+    await http.post(`/api/auth/approve/${id}`).set('Authorization', `Bearer ${admin}`).send({}).expect(403);
+    expect(userOf(id).status).toBe('pending');
   });
 
   it('T7: 반려 — 사유 필수(400) · 사유 포함 시 audit 기록 · 반려 계정 로그인 403', async () => {
@@ -192,8 +207,13 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     expect(userOf(4).lastLoginAt).toBeTruthy();
   });
 
-  it('T12: 인증 성공 시 토큰 컬럼 명시 클리어(hash·expires·legacy 전부 null/부재)', async () => {
+  it('T12: [잔존 계정 호환] 링크 인증 성공 시 토큰 컬럼 명시 클리어(hash·expires·legacy 전부 null)', async () => {
+    // [TBO-31 C1] GET /auth/verify-email은 구 링크 흐름의 잔존 pending 계정 호환으로만 유지 —
+    //  그 경로가 여전히 hash 대조·성공 시 명시 NULL 클리어를 지키는지 재현 검증한다.
     const id = await signupVerified('t12_inst');
+    const rawToken = 'legacy-verify-token-t12-fixture';
+    await forceLegacyUnverified(id, rawToken);
+    await http.get(`/api/auth/verify-email?token=${rawToken}`).expect(200);
     const row = userOf(id);
     expect(row.emailVerified).toBe(true);
     expect(row.emailVerifyTokenHash ?? null).toBeNull();
@@ -201,41 +221,41 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     expect(row.emailVerifyToken ?? null).toBeNull();
   });
 
-  it('가입 직후에는 평문 토큰이 저장되지 않는다(hash+expiry만)', async () => {
-    const signup = (await http.post('/api/auth/signup')
-      .send({ webId: 'hash_only', name: '해시', email: 'hash@t.test', password: 'password123' })
-      .expect(201)).body;
+  it('가입 직후 인증 링크 토큰이 아예 없다 — OTP 인증 가입은 emailVerified=true·토큰 컬럼 null', async () => {
+    const signup = await signupWithOtp(http, { webId: 'hash_only', email: 'hash@t.test' });
     const row = userOf(signup.account.id);
-    const rawToken = new URL(signup.devVerifyLink).searchParams.get('token')!;
-    expect(row.emailVerifyToken ?? null).toBeNull(); // 평문 쓰기 중단
-    expect(String(row.emailVerifyTokenHash)).toMatch(/^[0-9a-f]{64}$/);
-    expect(row.emailVerifyTokenHash).not.toBe(rawToken);
-    expect(Date.parse(String(row.emailVerifyExpiresAt))).toBeGreaterThan(Date.now());
+    expect(row.emailVerified).toBe(true); // [TBO-31 C1 D1] 48h 링크 단계 소멸
+    expect(row.emailVerifyToken ?? null).toBeNull();
+    expect(row.emailVerifyTokenHash ?? null).toBeNull();
+    expect(row.emailVerifyExpiresAt ?? null).toBeNull();
   });
 
-  // [E0.5 ④b] 가입 폼 확장 — 전화·대학·전공·출생연도가 pending 목록에 노출되고 승인 tx에서 프로필로 승계.
-  it('가입 폼 확장 필드 — 형식 검증·pending 노출·승인 시 instructor_profiles 승계', async () => {
+  // [E0.5 ④b + TBO-31 C1 D2] 가입 폼 확장 — 전화·대학·전공 + RRN 파생 birthYear가 pending 목록에
+  //  노출(rrnMasked 포함)되고 승인 tx에서 프로필로 승계.
+  it('가입 폼 확장 필드 — 형식 검증·pending 노출(rrnMasked)·승인 시 instructor_profiles 승계', async () => {
     // 전화 형식 위반 → 400 (SignupDto @Matches — SMS 유예 규약과 동일 정규식)
     await http.post('/api/auth/signup')
-      .send({ webId: 'e05_badphone', name: '형식오류', email: 'e05bad@t.test', password: 'password123', phone: '01012345678' })
-      .expect(400);
-    // 정상 가입(확장 필드 포함) → 인증 → pending 목록에 상세 노출
-    const signup = (await http.post('/api/auth/signup')
       .send({
-        webId: 'e05_inst', name: '확장필드', email: 'e05@t.test', password: 'password123',
-        phone: '010-9876-5432', university: '연세대학교', major: '영어영문학', birthYear: 1997,
+        webId: 'e05_badphone', name: '형식오류', email: 'e05bad@t.test', password: 'password123',
+        phone: '01012345678', rrn: '950101-1234567', emailChallengeId: 1,
       })
-      .expect(201)).body;
-    const token = new URL(signup.devVerifyLink).searchParams.get('token')!;
-    await http.get(`/api/auth/verify-email?token=${token}`).expect(200);
+      .expect(400);
+    // 정상 가입(확장 필드 포함 — birthYear는 RRN '970315-2...'에서 1997 파생) → pending 상세 노출
+    const signup = await signupWithOtp(http, {
+      webId: 'e05_inst', name: '확장필드', email: 'e05@t.test',
+      phone: '010-9876-5432', university: '연세대학교', major: '영어영문학', rrn: '970315-2345678',
+    });
     const admin = await login('admin');
     const pending = (await http.get('/api/auth/pending').set('Authorization', `Bearer ${admin}`).expect(200)).body;
     const mine = pending.find((row: { webId: string }) => row.webId === 'e05_inst');
     expect(mine).toMatchObject({
       phone: '010-9876-5432', university: '연세대학교', major: '영어영문학', birthYear: 1997,
+      rrnMasked: '970315-2******', // [D2] 승인 판단 근거 — 마스킹만
     });
     expect(mine.passwordHash).toBeUndefined();
-    // 승인 — 같은 tx에서 프로필로 승계(COALESCE upsert)
+    expect(mine.rrnEncrypted).toBeUndefined(); // 암호문도 응답 미노출(SafeAccount 제외)
+    expect(JSON.stringify(mine)).not.toContain('970315-2345678'); // 평문 미노출
+    // 승인 — 같은 tx에서 프로필로 승계(COALESCE upsert — birthYear는 RRN 파생값)
     await http.post(`/api/auth/approve/${signup.account.id}`).set('Authorization', `Bearer ${admin}`)
       .send({ reason: '지원 정보 확인 완료' }).expect(201);
     expect(profileOf(signup.account.id)).toMatchObject({

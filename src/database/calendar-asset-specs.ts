@@ -41,6 +41,7 @@ export const USERS_SPEC: PostgresCollectionSpec = {
       university varchar(100),
       major varchar(100),
       birth_year integer,
+      rrn_encrypted text,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now(),
       deleted_at timestamptz,
@@ -63,6 +64,9 @@ export const USERS_SPEC: PostgresCollectionSpec = {
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS university varchar(100)`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS major varchar(100)`,
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS birth_year integer`,
+    // [TBO-31 C1 D2] 주민등록번호 — AES-256-GCM 암호문만 저장(평문·마스킹 저장 금지).
+    //  birth_year는 RRN 앞자리 파생값으로 계속 채운다(승인센터·instructor_profiles 승계 무파괴).
+    `ALTER TABLE users ADD COLUMN IF NOT EXISTS rrn_encrypted text`,
   ],
   indexes: [
     activeIndex('users', 'idx_users_role', 'role'),
@@ -226,6 +230,45 @@ export const PROFILE_VERIFICATION_CHALLENGES_SPEC: PostgresCollectionSpec = {
      END $$`,
   ],
   timestampFields: ['resendAvailableAt', 'expiresAt', 'verifiedAt', 'consumedAt'],
+};
+
+// [TBO-31 C1 D1] 가입 전 이메일 OTP challenge — **공개(비로그인) 흐름 전용** 신규 테이블.
+//  profile_verification_challenges의 requester_id NOT NULL FK를 nullable로 깨지 않기 위해 분리한다
+//  (스펙 §2 D1). 상수(TTL 10분·쿨다운 60초·시도/재전송 5회)는 profile-verification.entity와 공유.
+//  평문 코드는 저장·로그 금지 — salted sha256 hash만. 소비(consumed)는 가입 tx 안에서만 일어난다.
+export const SIGNUP_EMAIL_CHALLENGES_SPEC: PostgresCollectionSpec = {
+  table: 'signup_email_challenges',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS signup_email_challenges (
+      id serial PRIMARY KEY,
+      email_normalized varchar(320) NOT NULL,
+      code_hash varchar(64) NOT NULL,
+      status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','expired','locked','consumed')),
+      attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 5),
+      resend_count integer NOT NULL DEFAULT 0 CHECK (resend_count BETWEEN 0 AND 5),
+      expires_at timestamptz NOT NULL,
+      resend_available_at timestamptz NOT NULL,
+      verified_at timestamptz,
+      consumed_at timestamptz,
+      consumed_by_user_id integer,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer,
+      CONSTRAINT signup_email_challenge_expiry_check CHECK (expires_at > created_at),
+      CONSTRAINT signup_email_challenge_state_check CHECK (
+        (status = 'pending' AND verified_at IS NULL AND consumed_at IS NULL AND consumed_by_user_id IS NULL)
+        OR (status = 'verified' AND verified_at IS NOT NULL AND consumed_at IS NULL AND consumed_by_user_id IS NULL)
+        OR (status = 'consumed' AND verified_at IS NOT NULL AND consumed_at IS NOT NULL AND consumed_by_user_id IS NOT NULL)
+        OR (status IN ('expired','locked'))
+      )
+    )
+  `,
+  indexes: [
+    activeIndex('signup_email_challenges', 'idx_signup_email_challenges_email_status', 'email_normalized, status'),
+    activeIndex('signup_email_challenges', 'idx_signup_email_challenges_expires_at', 'expires_at'),
+  ],
+  timestampFields: ['expiresAt', 'resendAvailableAt', 'verifiedAt', 'consumedAt'],
 };
 
 // [TBO-28B] 인증 보안 이벤트(append-only) — 업무 audit_log와 분리(erd.dbml auth_events).

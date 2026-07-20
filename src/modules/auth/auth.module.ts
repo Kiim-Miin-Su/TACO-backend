@@ -7,6 +7,7 @@ import { RolesGuard } from './roles.guard';
 import { LoginThrottlerGuard } from './login-throttler.guard';
 import { AuthEventsService } from './auth-events.service';
 import { RefreshTokensService } from './refresh-tokens.service';
+import { SignupEmailChallengesService } from './signup-email-challenges.service';
 import { UsersModule } from '../users/users.module';
 import { MailModule } from '../mail/mail.module';
 import { APP_GUARD } from '@nestjs/core';
@@ -31,7 +32,10 @@ import { APP_GUARD } from '@nestjs/core';
     LoginThrottlerGuard,
     AuthEventsService,
     RefreshTokensService, // [대표 지시 ④] refresh 회전·폐기 — 쿠키 셋팅은 controller가 담당
+    SignupEmailChallengesService, // [TBO-31 C1 D1] 가입 전 이메일 OTP(공개 흐름)
   ],
-  exports: [AuthService, RolesGuard, AuthEventsService],
+  // SignupEmailChallengesService export: UsersService.signup이 가입 tx에서 consumeForSignup을 호출
+  //  (UsersModule ↔ AuthModule 기존 forwardRef 순환 위에 얹힘 — 주입부는 @Inject(forwardRef)).
+  exports: [AuthService, RolesGuard, AuthEventsService, SignupEmailChallengesService],
 })
 export class AuthModule {}

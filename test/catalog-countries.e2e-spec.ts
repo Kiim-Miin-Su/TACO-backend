@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
+import { forgeVerifiedEmailChallenge } from './profile-challenge-helper'; // [TBO-31 C1 D4] 상시 OTP
 
 // [E0.5 ④] 국가·시간대 카탈로그 — 참조 데이터 조회 + profile 변경의 카탈로그 검증(자유 입력 폐지).
 describe('Catalog countries (e2e)', () => {
@@ -46,16 +47,19 @@ describe('Catalog countries (e2e)', () => {
       .send({ currentPassword: 'demo1234', timeZone: 'Pacific/Chatham', reason: '카탈로그에 없는 시간대 요청입니다.' })
       .expect(400);
     // 카탈로그 값(VN + 대표 tz)은 정상 접수(강사는 승인제 pending 유지 — E0.5 ①의 즉시 적용은 super_admin만).
+    //  [TBO-31 C1 D4] 비연락처 변경도 본인 이메일 OTP 상시 — verified challenge를 같은 tx에서 소비.
+    const challengeId = await forgeVerifiedEmailChallenge(app, 1, 'park@tnacademy.test');
     const created = await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
-      .send({ currentPassword: 'demo1234', countryCode: 'vn', timeZone: 'Asia/Ho_Chi_Minh', reason: '베트남 원격 근무지로 변경합니다.' })
+      .send({ currentPassword: 'demo1234', countryCode: 'vn', timeZone: 'Asia/Ho_Chi_Minh', verificationChallengeId: challengeId, reason: '베트남 원격 근무지로 변경합니다.' })
       .expect(201);
     expect(created.body).toMatchObject({
       status: 'pending',
       requestedChanges: { countryCode: 'VN', timeZone: 'Asia/Ho_Chi_Minh' },
     });
     // 비움(null)은 카탈로그 검증 대상 아님 — 접수 규칙 유지(GB 시드 계정이 값을 비우는 시나리오).
+    const foreignChallengeId = await forgeVerifiedEmailChallenge(app, 2, 'jung@tnacademy.test');
     await http.post('/api/profile-change-requests').set(bearer(tokens.foreign))
-      .send({ currentPassword: 'demo1234', countryCode: null, timeZone: null, reason: '국가·시간대 정보를 비웁니다.' })
+      .send({ currentPassword: 'demo1234', countryCode: null, timeZone: null, verificationChallengeId: foreignChallengeId, reason: '국가·시간대 정보를 비웁니다.' })
       .expect(201);
   });
 });

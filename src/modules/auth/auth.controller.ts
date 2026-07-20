@@ -1,6 +1,7 @@
 import {
   Req,
   Res,
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -23,6 +24,8 @@ import { RecoverIdDto, RecoverPasswordDto, ResetPasswordDto } from './dto/recove
 import { AuthService, JwtClaims } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
+import { ConfirmSignupEmailChallengeDto, CreateSignupEmailChallengeDto } from './dto/signup-email-challenge.dto';
+import { SignupEmailChallengesService } from './signup-email-challenges.service';
 import { ApproveDto } from './dto/approve.dto';
 import { RejectDto } from './dto/reject.dto';
 import { SuperAdminGuard } from './super-admin.guard';
@@ -51,6 +54,7 @@ export class AuthController {
     private readonly mail: MailService,
     private readonly events: AuthEventsService,
     private readonly refreshTokens: RefreshTokensService,
+    private readonly signupChallenges: SignupEmailChallengesService,
   ) {}
 
   // [대표 지시 ④] refresh 쿠키 셋/클리어 — 만료(Max-Age)는 토큰 행의 expiresAt과 동기.
@@ -69,31 +73,64 @@ export class AuthController {
     });
   }
 
-  // ── 가입 신청 → 이메일 인증 → 대표 승인 → 로그인 ──
+  // ── 가입 전 이메일 OTP → 가입 신청 → 대표 승인 → 로그인 ──
 
-  // 1) 가입 신청. 계정은 status=pending·이메일 미인증으로 생성되고 인증 메일을 발송.
+  // 0-a) [TBO-31 C1 D1] 가입 전 이메일 OTP 발송 — 공개(비로그인). 이미 가입된 이메일도 **응답 동일**
+  //  (실제 발송만 생략 — 계정 열거 방지, H2 재발 방지 규약). devOtpCode는 비production+SMTP 부재에서만.
+  @Post('signup-email-challenge')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: '가입 전 이메일 OTP 발송(공개) — 5회/분. 가입 여부와 무관하게 동일 응답(열거 방지).' })
+  createSignupEmailChallenge(@Body() dto: CreateSignupEmailChallengeDto) {
+    return this.signupChallenges.create(dto.email);
+  }
+
+  // 0-b) OTP 확인 — 실패 5회 잠금·만료 10분. 실패는 GENERIC 400(존재 은닉 — 스펙 §2 D1).
+  @Post('signup-email-challenge/:id/confirm')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '가입 전 이메일 OTP 확인(공개) — 10회/분, 실패 5회 잠금, 성공 시 verified.' })
+  confirmSignupEmailChallenge(@Param('id', ParseIntPipe) id: number, @Body() dto: ConfirmSignupEmailChallengeDto) {
+    return this.signupChallenges.confirm(id, dto.email, dto.code);
+  }
+
+  // 0-c) [TBO-31 C1 D3] 아이디 가용성 공개 체크 — 응답은 {available: boolean} **만**.
+  //  이름·역할은 절대 노출하지 않는다: 과거 무인증 /users/exists가 name/role을 노출해 계정 열거
+  //  취약(H2)이 됐던 전례 — 그 API는 STAFF 전용으로 잠갔고, 공개 체크는 boolean 단일 필드로 신설.
+  @Get('web-id-available')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '아이디 사용 가능 여부(공개) — {available}만 반환(이름·역할 미노출), 10회/분.' })
+  async webIdAvailable(@Query('webId') webId?: string): Promise<{ available: boolean }> {
+    const trimmed = webId?.trim() ?? '';
+    if (trimmed.length < 3) throw new BadRequestException('아이디는 3자 이상이어야 합니다.');
+    await this.users.refreshFromDb(); // [28F] 교차 인스턴스 정합 — 방금 가입한 아이디도 즉시 반영
+    return { available: !this.users.findByWebId(trimmed) };
+  }
+
+  // 1) 가입 신청 — [TBO-31 C1 D1] verified 이메일 OTP(emailChallengeId)를 가입 tx에서 일회 소비하고
+  //  계정을 **emailVerified=true로 생성**한다(48h 인증 링크 단계 소멸 — sendVerifyEmail·devVerifyLink 제거).
   @Post('signup')
   @Public()
-  @ApiOperation({ summary: '가입 신청(대표 승인 대기). 인증 메일 발송.' })
+  @ApiOperation({ summary: '가입 신청(대표 승인 대기) — 이메일 OTP 소비, emailVerified=true 생성.' })
   async signup(@Body() dto: SignupDto) {
-    const { account, verifyToken } = await this.users.signup(dto);
-    const base = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
-    const link = `${base}/verify-email?token=${verifyToken}`;
-    const mailRes = await this.mail.sendVerifyEmail(account.email as string /* SignupDto가 email 필수 보장 */, link);
+    const { account } = await this.users.signup(dto);
     return {
       ok: true,
-      message: '가입 신청이 접수되었습니다. 이메일 인증 후 대표 승인을 기다려 주세요.',
+      message: '가입 신청이 접수되었습니다. 대표 승인 후 로그인할 수 있습니다.',
       account: { id: account.id, webId: account.webId, name: account.name, role: account.role, status: account.status },
-      // [TBO-28B §4-c] devVerifyLink는 비-production + SMTP 미설정에서만 존재(MailService가 이중 차단).
-      //  production은 부팅 fail-fast(SMTP 필수)로 이 분기 자체가 없다.
-      ...(mailRes.devLink && !isProduction() ? { devVerifyLink: mailRes.devLink } : {}),
     };
   }
 
   // 2) 이메일 인증(메일 링크의 token). [TBO-28B] 토큰=sha256 hash 대조 + 48h 만료, 성공 시 명시 NULL 클리어.
+  //  [TBO-31 C1] 신규 가입은 OTP로 verified 생성이라 이 링크를 만들지 않는다 — **잔존 pending 계정
+  //  (구 가입 흐름의 미인증 계정) 호환용으로만 유지**한다.
   @Get('verify-email')
   @Public()
-  @ApiOperation({ summary: '이메일 인증(token) — hash 대조·48h 만료.' })
+  @ApiOperation({ summary: '이메일 인증(token) — hash 대조·48h 만료. [잔존 계정 호환]' })
   async verifyEmail(@Query('token') token?: string) {
     if (!token) throw new UnauthorizedException('인증 토큰이 없습니다.');
     const acc = await this.users.verifyEmail(token);

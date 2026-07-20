@@ -1,8 +1,9 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
+import { signupWithOtp } from './signup-helper';
 
-// 인증 e2e — 가입신청 → 이메일 인증 → 대표 승인 → 로그인 게이트, super_admin 가드.
+// 인증 e2e — [TBO-31 C1] 가입 전 이메일 OTP → 가입신청(emailVerified=true) → 대표 승인 → 로그인 게이트.
 describe('Auth API (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
@@ -29,28 +30,21 @@ describe('Auth API (e2e)', () => {
     await http.post('/api/auth/login').send({ webId: 'admin', password: 'wrong' }).expect(401);
   });
 
-  it('가입 신청 → pending + devVerifyLink(SMTP 미설정)', async () => {
-    const res = await http.post('/api/auth/signup')
-      .send({ webId: 'newinst', name: '새강사', email: 'new@tnacademy.test', password: 'password123', role: 'instructor' })
-      .expect(201);
-    expect(res.body.account.status).toBe('pending');
-    expect(res.body.devVerifyLink).toContain('token=');
+  it('가입 신청(OTP 인증 소비) → pending — 인증 링크·devVerifyLink는 더 이상 없다', async () => {
+    const res = await signupWithOtp(http, { webId: 'newinst', name: '새강사', email: 'new@tnacademy.test', role: 'instructor' });
+    expect(res.account.status).toBe('pending');
+    // [TBO-31 C1 D1] 48h 링크 단계 소멸 — 응답에 devVerifyLink 없음
+    expect((res as Record<string, unknown>).devVerifyLink).toBeUndefined();
   });
 
-  it('미인증·미승인 상태 로그인 차단(403)', async () => {
-    await http.post('/api/auth/signup').send({ webId: 'pend1', name: '대기', email: 'pend1@t.test', password: 'password123' }).expect(201);
-    await http.post('/api/auth/login').send({ webId: 'pend1', password: 'password123' }).expect(403); // 이메일 미인증
+  it('미승인(pending) 상태 로그인 차단(403) — 가입 즉시 emailVerified=true라도 승인 전엔 불가', async () => {
+    await signupWithOtp(http, { webId: 'pend1', name: '대기', email: 'pend1@t.test' });
+    await http.post('/api/auth/login').send({ webId: 'pend1', password: 'password123' }).expect(403); // 대표 승인 대기
   });
 
-  it('전체 흐름: 신청 → 이메일 인증 → 승인 → 로그인 성공', async () => {
-    const signup = (await http.post('/api/auth/signup')
-      .send({ webId: 'flow1', name: '흐름', email: 'flow1@t.test', password: 'password123', role: 'manager' })
-      .expect(201)).body;
-    const token = new URL(signup.devVerifyLink).searchParams.get('token')!;
-
-    // 이메일 인증
-    await http.get(`/api/auth/verify-email?token=${token}`).expect(200);
-    // 인증했지만 아직 미승인 → 403
+  it('전체 흐름: OTP 인증 → 신청 → 승인 → 로그인 성공', async () => {
+    await signupWithOtp(http, { webId: 'flow1', name: '흐름', email: 'flow1@t.test', role: 'manager' });
+    // 가입 즉시 emailVerified=true — 그러나 아직 미승인 → 403
     await http.post('/api/auth/login').send({ webId: 'flow1', password: 'password123' }).expect(403);
 
     // 대표 승인

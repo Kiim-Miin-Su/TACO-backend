@@ -66,6 +66,13 @@ export class ProfileChangeRequestsService implements OnModuleInit {
       }
       if (this.pendingFor(requesterId)) throw new ConflictException('이미 처리 중인 프로필 변경 요청이 있습니다.');
 
+      // [TBO-31 C1 D3] 아이디(webId) 변경 요청은 **대표(super_admin)만** — 매니저·강사·admin 불가
+      //  (대표 지시 #2). 서버 강제 게이트(normalizeChanges 앞) — FE 조건부 렌더는 C3 몫.
+      //  첫 로그인 rotation(changeCredentials의 newWebId)은 부트스트랩 예외로 불변.
+      if (dto.webId !== undefined && requester.role !== 'super_admin') {
+        throw new BadRequestException('아이디 변경은 대표만 가능합니다(매니저·강사 아이디 변경 불가 정책).');
+      }
+
       const requestedChanges = this.normalizeChanges(dto);
       const actualChanges = this.changedOnly(requester, requestedChanges);
       if (!Object.keys(actualChanges).length) throw new BadRequestException('현재 프로필과 다른 변경 항목이 필요합니다.');
@@ -74,6 +81,19 @@ export class ProfileChangeRequestsService implements OnModuleInit {
       //  값 설정은 verified challenge 필수 + canonical 값 일치 + 발송 전/승인 시 중복 재검사.
       const contact = this.contactChangeOf(actualChanges);
       if (contact) this.verifications.assertTargetAvailable(contact.channel, contact.target, requesterId);
+      // [TBO-31 C1 D4] 프로필 업데이트 = 비밀번호 + 이메일 OTP **상시**(대표 지시 #6) —
+      //  연락처 변경(위 기존 경로)이 아닌 경우에도 verificationChallengeId 필수.
+      //  대상 = **요청자의 현재 등록 이메일**(같은 tx에서 일회 소비 — 아래 insert 후 consumeForRequest).
+      //  super_admin 즉시 적용 경로도 동일 적용(대표도 예외 없음 — create() 공통 게이트).
+      const ownEmail = requester.email?.trim().toLowerCase() ?? '';
+      if (!contact) {
+        if (dto.verificationChallengeId == null) {
+          throw new BadRequestException('프로필 변경에는 본인 이메일 인증(verificationChallengeId)이 필요합니다.');
+        }
+        if (!ownEmail) {
+          throw new BadRequestException('등록된 본인 이메일이 없어 프로필 변경 인증을 진행할 수 없습니다.');
+        }
+      }
       // [E0] webId 중복 선검사(case-insensitive, 본인 제외) — 최종 권위는 승인 tx의 재검사+DB unique.
       if (actualChanges.webId) this.assertWebIdAvailable(actualChanges.webId, requesterId);
 
@@ -93,7 +113,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
           decidedAt: null,
           rejectionReason: null,
           appliedProfileVersion: null,
-          verificationChallengeId: contact ? dto.verificationChallengeId ?? null : null,
+          verificationChallengeId: dto.verificationChallengeId ?? null,
         });
         // challenge 소비는 요청 생성과 **같은 tx** — 소비 실패(만료/불일치/이중 소비) 시 요청까지 롤백(§5).
         //  [2026-07-15 SMS 추후 구현] 휴대전화 인증은 SMS provider(NCP SENS/Twilio) 설정이 있을 때만
@@ -107,6 +127,13 @@ export class ProfileChangeRequestsService implements OnModuleInit {
           if (dto.verificationChallengeId != null) {
             await this.verifications.consumeForRequest(dto.verificationChallengeId, requesterId, row.id, contact);
           }
+        } else {
+          // [TBO-31 C1 D4] 비연락처 변경 — 본인 현재 이메일로 verified된 challenge를 같은 tx에서 소비.
+          //  (verificationChallengeId·ownEmail 존재는 insert 전 게이트가 이미 보장)
+          await this.verifications.consumeForRequest(dto.verificationChallengeId!, requesterId, row.id, {
+            channel: 'email',
+            target: ownEmail,
+          });
         }
         await this.audit.log({
           entity: PROFILE_CHANGE_REQUESTS,

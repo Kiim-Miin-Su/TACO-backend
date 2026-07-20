@@ -50,14 +50,18 @@ export type StaffAccount = {
   university?: string | null; // 대학교(출신교)
   major?: string | null; // 전공
   birthYear?: number | null; // 출생연도(나이는 가변이라 연도로 보관 — instructor_profiles와 동일 규약)
+  // [TBO-31 C1 D2] 주민등록번호 — AES-256-GCM 암호문만(rrn-crypto.util). 평문은 어떤 컬럼·로그·
+  //  audit·응답에도 존재하지 않는다. birthYear는 이 값의 앞자리에서 파생 저장(기존 소비처 무파괴).
+  //  외부 노출은 SafeAccount에서 제외 — 승인센터는 listPending의 rrnMasked(마스킹)만 본다.
+  rrnEncrypted?: string | null;
   // [강사 식별자 통일 2026-07-07] 강사의 도메인 식별자 = users.id 자체(별도 instructorId 브리지 폐기).
   //  courses/class_sessions 등의 instructorId가 이 users.id를 직접 참조한다.
 } & BaseRow;
 
-// 외부 노출용(안전) 계정 뷰 — 해시·토큰(평문/해시/만료) 제외.
-export type SafeAccount = Omit<StaffAccount, 'passwordHash' | 'emailVerifyTokenHash' | 'emailVerifyExpiresAt' | 'passwordResetTokenHash' | 'passwordResetExpiresAt'>;
+// 외부 노출용(안전) 계정 뷰 — 해시·토큰(평문/해시/만료)·RRN 암호문 제외.
+export type SafeAccount = Omit<StaffAccount, 'passwordHash' | 'emailVerifyTokenHash' | 'emailVerifyExpiresAt' | 'passwordResetTokenHash' | 'passwordResetExpiresAt' | 'rrnEncrypted'>;
 export const toSafe = (a: StaffAccount): SafeAccount => {
-  const { passwordHash: _ph, emailVerifyTokenHash: _th, emailVerifyExpiresAt: _te, passwordResetTokenHash: _rt, passwordResetExpiresAt: _re, ...safe } = a;
+  const { passwordHash: _ph, emailVerifyTokenHash: _th, emailVerifyExpiresAt: _te, passwordResetTokenHash: _rt, passwordResetExpiresAt: _re, rrnEncrypted: _rrn, ...safe } = a;
   void _ph; void _th; void _te;
   return safe;
 };

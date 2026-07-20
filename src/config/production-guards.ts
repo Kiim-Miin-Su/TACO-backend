@@ -12,6 +12,13 @@ export function assertProductionBootSafety(): void {
   if (!process.env.JWT_SECRET) missing.push('JWT_SECRET');
   // (c) 인증 메일 전달 수단 없음 → devLink 노출 경로뿐 — 부팅 차단.
   if (!process.env.SMTP_HOST) missing.push('SMTP_HOST(+SMTP_PORT/USER/PASS)');
+  // (d) [TBO-31 C1 D2] 주민등록번호 암호화 키 — 미설정이면 개발용 파생 키 폴백뿐이라 부팅 차단
+  //  (rrn-crypto.util은 throw하지 않는다 — 부팅 관문이 유일한 차단 지점). base64 32B 형식까지 검사.
+  if (!process.env.RRN_ENC_KEY) {
+    missing.push('RRN_ENC_KEY(base64 32B)');
+  } else if (Buffer.from(process.env.RRN_ENC_KEY, 'base64').length !== 32) {
+    missing.push('RRN_ENC_KEY(형식 오류 — base64 인코딩 32바이트 필요)');
+  }
   if (missing.length) {
     throw new Error(
       `[boot] production 필수 환경변수 누락 — ${missing.join(', ')}. ` +

@@ -3,7 +3,7 @@
 //  [자산화 점검 2026-07-02] 서비스 로컬 배열(this.accounts) → db.seed/insert/update 이관.
 //  [TBO-28B 2026-07-14] 승인 = **단일 트랜잭션**(users CAS + instructor_profiles + audit_log),
 //   verification token = sha256 hash + 48h 만료(성공 시 명시 NULL), demo seed = production 전면 금지.
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import type { WebIdCheckResult } from '@kms545487/contracts';
@@ -13,6 +13,10 @@ import { PostgresCollectionStore } from '../../database/postgres-collection.stor
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
 import { maskTarget } from '../profile-verifications/profile-verification.entity'; // [E0.5 ⑥] audit 마스킹
+import {
+  RRN_FORMAT_MESSAGE, birthYearFromRrn, decryptRrn, encryptRrn, maskRrn, normalizeRrn, validateRrnFormat,
+} from '../../common/rrn-crypto.util'; // [TBO-31 C1 D2]
+import { SignupEmailChallengesService } from '../auth/signup-email-challenges.service'; // [TBO-31 C1 D1]
 import { InstructorProfilesStore } from './instructor-profiles.store';
 import {
   USERS, authVersionOf, isStaffRole, toSafe,
@@ -33,7 +37,6 @@ const sha256 = (value: string): string => createHash('sha256').update(value).dig
 // [E0] export — 프로필 변경 요청(webId 승인제)의 잠금이 즉시 변경 경로와 같은 lock id를 쓴다
 //  (case-insensitive 동시 선점을 한 직렬화 지점에서 판정 — TBO-29B 규약 유지).
 export const identityLockId = (webId: string): number => Number.parseInt(sha256(webId.trim().toLowerCase()).slice(0, 7), 16);
-const VERIFY_TOKEN_TTL_MS = 48 * 60 * 60 * 1000; // 48h
 
 const isProduction = (): boolean => process.env.NODE_ENV === 'production';
 
@@ -47,6 +50,9 @@ export class UsersService implements OnModuleInit {
     private readonly uow: CalendarUnitOfWork,
     private readonly audit: AuditService,
     private readonly profiles: InstructorProfilesStore,
+    // [TBO-31 C1 D1] 가입 tx에서 이메일 OTP challenge를 일회 소비 — Users↔Auth 기존 forwardRef 순환 위.
+    @Inject(forwardRef(() => SignupEmailChallengesService))
+    private readonly signupChallenges: SignupEmailChallengesService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -142,19 +148,29 @@ export class UsersService implements OnModuleInit {
     return this.db.findById<StaffAccount>(USERS, id);
   }
 
-  // 가입 신청 — 직원 역할만 요청 가능(super_admin 자가신청 불가). 상태=pending, 이메일 미인증.
-  //  [TBO-28B] 토큰은 sha256 hash + 48h 만료로만 저장(평문 emailVerifyToken 쓰기 중단).
+  // 가입 신청 — 직원 역할만 요청 가능(super_admin 자가신청 불가). 상태=pending.
+  //  [TBO-31 C1 D1] 가입 전 이메일 OTP(emailChallengeId)를 **같은 uow tx에서 일회 소비**하고
+  //  계정을 emailVerified=true로 생성한다(48h 링크 토큰 발급·메일 경로는 신규 가입에서 제거 —
+  //  GET /auth/verify-email은 잔존 pending 계정 호환으로만 남는다). 소비 실패 시 계정 insert까지 롤백.
+  //  [TBO-31 C1 D2] rrn 필수 — 암호문(rrn_encrypted)만 저장, birthYear는 파생 저장. 평문은
+  //  응답·로그·audit 어디에도 기록하지 않는다.
   async signup(input: {
     webId: string; name: string; email: string; password: string; role?: string;
+    rrn: string; emailChallengeId: number;
     // [E0.5 ④b] 대표 기대 필드 — 승인 판단 근거(승인센터 상세 표시 → 승인 tx에서 프로필 승계).
-    phone?: string; university?: string; major?: string; birthYear?: number;
-  }): Promise<{ account: SafeAccount; verifyToken: string }> {
+    phone?: string; university?: string; major?: string;
+  }): Promise<{ account: SafeAccount }> {
     await this.refreshFromDb(); // [28F] 교차 인스턴스 중복 검사 정합
     const webId = input.webId.trim();
     const email = input.email.trim().toLowerCase();
     const role: StaffRole = input.role && isStaffRole(input.role) && input.role !== 'super_admin' ? input.role : 'instructor';
     if (webId.length < 3) throw new BadRequestException('아이디는 3자 이상이어야 합니다.');
     if (input.password.length < 8) throw new BadRequestException('비밀번호는 8자 이상이어야 합니다.');
+    // [D2] 형식(정규식+MMDD)만 검증 — 체크섬 검증은 하지 않는다(2020-10 폐지, rrn-crypto.util 주석).
+    if (!validateRrnFormat(input.rrn)) throw new BadRequestException(RRN_FORMAT_MESSAGE);
+    const rrnCanonical = normalizeRrn(input.rrn); // 하이픈 포함 형태로 통일 저장
+    const rrnEncrypted = encryptRrn(rrnCanonical);
+    const birthYear = birthYearFromRrn(rrnCanonical); // 파생 저장 — 기존 승계·표시 소비처 무파괴
     if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.');
     if (this.db.findBy<StaffAccount>(USERS, (a) => !!a.email && a.email.toLowerCase() === email).length)
       throw new BadRequestException('이미 사용 중인 이메일입니다.');
@@ -164,13 +180,14 @@ export class UsersService implements OnModuleInit {
     if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.');
     if (this.db.findBy<StaffAccount>(USERS, (a) => !!a.email && a.email.toLowerCase() === email).length)
       throw new BadRequestException('이미 사용 중인 이메일입니다.');
-    const verifyToken = randomBytes(24).toString('hex');
     return this.uow.run(async () => {
     const acc = await this.store.insert<StaffAccount>(USERS_SPEC, {
       webId, name: input.name.trim(), email, role,
-      status: 'pending', passwordHash, emailVerified: false,
-      emailVerifyTokenHash: sha256(verifyToken),
-      emailVerifyExpiresAt: new Date(Date.now() + VERIFY_TOKEN_TTL_MS).toISOString(),
+      status: 'pending', passwordHash,
+      // [D1] 가입 전 OTP로 이메일 소유 실증 완료 — verified 생성, 링크 토큰 컬럼은 처음부터 null.
+      emailVerified: true,
+      emailVerifyTokenHash: null,
+      emailVerifyExpiresAt: null,
       authVersion: 1,
       profileVersion: 1,
       mustChangePassword: false,
@@ -178,15 +195,19 @@ export class UsersService implements OnModuleInit {
       phone: input.phone?.trim() || null,
       university: input.university?.trim() || null,
       major: input.major?.trim() || null,
-      birthYear: input.birthYear ?? null,
+      birthYear,
+      rrnEncrypted,
     });
-    // [감사 전수 2026-07-16] 자기 가입 생성 이력 — actor=생성된 본인(추적 기점). PII는 기록 안 함.
+    // [D1] challenge 소비 — verified·이메일 일치·미소비 검증. 실패 예외 → 계정 insert까지 롤백.
+    await this.signupChallenges.consumeForSignup(input.emailChallengeId, email, acc.id);
+    // [감사 전수 2026-07-16] 자기 가입 생성 이력 — actor=생성된 본인(추적 기점). PII·RRN은 기록 안 함
+    //  (D2: rrn은 마스킹조차 남기지 않는다 — 기록 자체 생략).
     await this.audit.log({
       entity: 'users', entityId: acc.id, action: 'create', actorId: acc.id,
       changes: { webId: { after: acc.webId }, role: { after: acc.role }, status: { after: 'pending' } },
       reason: '자기 가입 신청',
     });
-    return { account: toSafe(acc), verifyToken };
+    return { account: toSafe(acc) };
     });
   }
 
@@ -434,9 +455,24 @@ export class UsersService implements OnModuleInit {
     });
   }
 
-  async listPending(): Promise<SafeAccount[]> {
+  async listPending(): Promise<Array<SafeAccount & { rrnMasked: string | null }>> {
     await this.refreshFromDb(); // [28F] 다른 인스턴스의 신규 가입이 대표 대기목록에 즉시 반영
-    return this.db.findBy<StaffAccount>(USERS, (a) => a.status === 'pending').map(toSafe);
+    // [TBO-31 C1 D2] 승인 판단 근거로 rrnMasked('950101-1******')만 노출 — 평문·암호문은 응답에 없다.
+    //  birthYear(파생값)는 SafeAccount에 그대로 유지(기존 승인센터 표시 소비처).
+    return this.db.findBy<StaffAccount>(USERS, (a) => a.status === 'pending').map((a) => ({
+      ...toSafe(a),
+      rrnMasked: this.rrnMaskedOf(a),
+    }));
+  }
+
+  /** 마스킹 산출(서버 내부 복호화) — 복호 실패(키 교체·구 데이터)는 노출 대신 null(fail-closed). */
+  private rrnMaskedOf(account: StaffAccount): string | null {
+    if (!account.rrnEncrypted) return null;
+    try {
+      return maskRrn(decryptRrn(account.rrnEncrypted));
+    } catch {
+      return null;
+    }
   }
 
   // ── [TBO-28B] 승인/반려 — 원자적 승인 command ────────────────────────────────

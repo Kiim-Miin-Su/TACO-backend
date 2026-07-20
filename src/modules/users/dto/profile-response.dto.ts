@@ -28,6 +28,10 @@ export class ProfileResponseDto {
   @ApiProperty({ enum: ['pending', 'active', 'rejected'] })
   status!: string;
 
+  // [TBO-31 C1 D5] 마이페이지 이메일 인증 상태 배지 — 미인증이면 계정 보안 이동 안내(FE C3).
+  @ApiProperty({ example: true, description: '이메일 인증 완료 여부(가입 OTP 또는 잔존 링크 인증)' })
+  emailVerified!: boolean;
+
   @ApiProperty({ example: 1, minimum: 1 })
   profileVersion!: number;
 
