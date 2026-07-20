@@ -7,6 +7,7 @@ import { AllExceptionsFilter } from "../src/common/all-exceptions.filter";
 import { webCorsOrigins } from "../src/common/cors-origin";
 import { LoggingInterceptor } from "../src/common/logging.interceptor";
 import { assertProductionBootSafety } from "../src/config/production-guards";
+import { configureTrustProxy } from "../src/common/trust-proxy";
 
 // 서버리스(@vercel/node)는 런타임 컴파일에서 데코레이터 메타데이터/Swagger 플러그인이
 // 소실돼 request body·parameter 스키마가 비어 보일 수 있다. → 빌드 타임에 생성해 커밋한
@@ -30,6 +31,7 @@ let cachedServer: ((req: unknown, res: unknown) => void) | undefined;
 async function bootstrapServer() {
   assertProductionBootSafety(); // [TBO-28B] production 필수 env fail-fast(§4 — DB·JWT·SMTP)
   const app = await NestFactory.create(AppModule);
+  configureTrustProxy(app);
 
   // 로컬은 QA 포트가 바뀔 수 있어 전체 origin 허용(origin=true), production은 WEB_ORIGIN/Vercel allowlist.
   app.enableCors({
@@ -46,6 +48,7 @@ async function bootstrapServer() {
     .setDescription("TnAcademy 백오피스 API (in-memory, serverless). 설계 스펙: docs/api/openapi.yaml")
     .setVersion("0.1.0")
     .addBearerAuth()
+    .addCookieAuth("access_token")
     .build();
   // 빌드 타임 스펙 우선(파라미터·스키마 정확). 없으면 런타임 생성으로 폴백.
   const document = staticOpenapi ?? SwaggerModule.createDocument(app, config);

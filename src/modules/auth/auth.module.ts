@@ -11,22 +11,34 @@ import { SignupEmailChallengesService } from './signup-email-challenges.service'
 import { UsersModule } from '../users/users.module';
 import { MailModule } from '../mail/mail.module';
 import { APP_GUARD } from '@nestjs/core';
+import { BrowserOriginGuard } from './browser-origin.guard';
+import { DatabaseModule } from '../../database/database.module';
+import { PostgresConnectionService } from '../../database/postgres-connection.service';
+import { PostgresThrottleStorage } from './postgres-throttle.storage';
 
 @Module({
   imports: [
     forwardRef(() => UsersModule),
     MailModule,
+    DatabaseModule,
     // [TBO-28B] /auth/login 전용 rate limit 설정(가드는 login 핸들러에만 적용 — 전역 아님).
     //  NODE_ENV=test 기본 skip(전 e2e가 로그인 다회) — THROTTLE_E2E=1로 명시 활성(스로틀 전용 스펙).
-    ThrottlerModule.forRoot({
-      throttlers: [{ name: 'default', ttl: 60_000, limit: 10 }],
-      skipIf: () => process.env.NODE_ENV === 'test' && process.env.THROTTLE_E2E !== '1',
+    ThrottlerModule.forRootAsync({
+      imports: [DatabaseModule],
+      inject: [PostgresConnectionService],
+      useFactory: (pg: PostgresConnectionService) => ({
+        throttlers: [{ name: 'default', ttl: 60_000, limit: 10 }],
+        skipIf: () => process.env.NODE_ENV === 'test' && process.env.THROTTLE_E2E !== '1',
+        storage: new PostgresThrottleStorage(pg),
+      }),
     }),
   ],
   controllers: [AuthController],
   providers: [
     AuthService,
     SuperAdminGuard,
+    BrowserOriginGuard,
+    { provide: APP_GUARD, useExisting: BrowserOriginGuard },
     RolesGuard,
     { provide: APP_GUARD, useExisting: RolesGuard },
     LoginThrottlerGuard,

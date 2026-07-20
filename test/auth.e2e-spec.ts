@@ -59,6 +59,25 @@ describe('Auth API (e2e)', () => {
     expect(login.account.role).toBe('manager');
   });
 
+  it('production login 응답은 access token을 노출하지 않고 Secure HttpOnly cookie만 발급한다', async () => {
+    const previousEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    try {
+      const response = await http.post('/api/auth/login')
+        .set('Origin', 'https://taco-frontend-tau.vercel.app')
+        .send({ webId: 'flow1', password: 'password123' })
+        .expect(201);
+      expect(response.body.accessToken).toBeUndefined();
+      const cookies = ([] as string[]).concat(response.headers['set-cookie'] ?? []);
+      const access = cookies.find((line) => line.startsWith('access_token='));
+      expect(access).toContain('HttpOnly');
+      expect(access).toContain('Secure');
+      expect(access).toContain('SameSite=Lax');
+    } finally {
+      process.env.NODE_ENV = previousEnv;
+    }
+  });
+
   it('super_admin 가드: 토큰 없이 승인목록 → 401', async () => {
     await http.get('/api/auth/pending').expect(401);
   });
@@ -75,7 +94,10 @@ describe('Auth API (e2e)', () => {
     const prevEnv = process.env.NODE_ENV;
     process.env.NODE_ENV = 'production';
     try {
-      await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(401);
+      await http.post('/api/auth/login')
+        .set('Origin', 'https://taco-frontend-tau.vercel.app')
+        .send({ webId: 'admin', password: 'demo1234' })
+        .expect(401);
       const db = app.get((await import('../src/database/in-memory.database')).InMemoryDatabase);
       const blocked = db.findAll<{ eventType: string; failureCode?: string }>('auth_events')
         .filter((e) => e.eventType === 'login_failure' && e.failureCode === 'demo_credential_blocked');

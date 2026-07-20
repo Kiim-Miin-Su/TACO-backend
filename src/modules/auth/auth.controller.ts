@@ -37,14 +37,16 @@ import { authVersionOf, isStaffRole, type StaffAccount } from '../users/user.ent
 import { MailService } from '../mail/mail.service';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { Public } from './public.decorator';
+import {
+  ACCESS_COOKIE,
+  REFRESH_COOKIE,
+  clearBrowserSession,
+  readCookie,
+  setAccessCookie,
+  setRefreshCookie,
+} from './browser-session';
 
 const isProduction = (): boolean => process.env.NODE_ENV === 'production';
-
-// [대표 지시 ④ 2026-07-16] refresh token 쿠키 — httpOnly(JS 접근 불가)·path=/api/auth(갱신/로그아웃만 운반).
-//  production은 FE(Vercel)↔BE 교차 출처 XHR이므로 SameSite=None; Secure, 로컬은 Lax.
-const REFRESH_COOKIE = 'refresh_token';
-const readCookie = (req: Request, name: string): string | undefined =>
-  req.headers.cookie?.split(';').map((s) => s.trim()).find((s) => s.startsWith(`${name}=`))?.slice(name.length + 1);
 
 @ApiTags('auth')
 @Controller('auth')
@@ -57,22 +59,6 @@ export class AuthController {
     private readonly refreshTokens: RefreshTokensService,
     private readonly signupChallenges: SignupEmailChallengesService,
   ) {}
-
-  // [대표 지시 ④] refresh 쿠키 셋/클리어 — 만료(Max-Age)는 토큰 행의 expiresAt과 동기.
-  private setRefreshCookie(res: Response, raw: string, expiresAtIso: string): void {
-    res.cookie(REFRESH_COOKIE, raw, {
-      httpOnly: true,
-      secure: isProduction(),
-      sameSite: isProduction() ? 'none' : 'lax',
-      path: '/api/auth',
-      maxAge: Math.max(0, Date.parse(expiresAtIso) - Date.now()),
-    });
-  }
-  private clearRefreshCookie(res: Response): void {
-    res.cookie(REFRESH_COOKIE, '', {
-      httpOnly: true, secure: isProduction(), sameSite: isProduction() ? 'none' : 'lax', path: '/api/auth', maxAge: 0,
-    });
-  }
 
   // ── 가입 전 이메일 OTP → 가입 신청 → 대표 승인 → 로그인 ──
 
@@ -151,7 +137,7 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ accessToken: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } }> {
+  ): Promise<{ accessToken?: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } }> {
     await this.users.refreshFromDb(); // [28F] 다른 인스턴스에서 승인/등록된 계정도 즉시 로그인 가능
     const acc = this.users.findByWebId(dto.webId);
     const deny = async (failureCode: string, err: Error): Promise<never> => {
@@ -181,9 +167,12 @@ export class AuthController {
     await this.events.record({ type: 'login_success', userId: account.id, req });
     // [대표 지시 ④] refresh token 발급(httpOnly 쿠키) — access token 만료 후 무중단 갱신 기반.
     const issued = await this.refreshTokens.issue(account.id, authVersionOf(account), String(req.headers['user-agent'] ?? '') || null);
-    this.setRefreshCookie(res, issued.raw, issued.row.expiresAt);
+    setRefreshCookie(res, issued.raw, issued.row.expiresAt);
+    const accessToken = this.auth.sign(claims);
+    const accessClaims = this.auth.verify(accessToken);
+    setAccessCookie(res, accessToken, (accessClaims.exp ?? Math.floor(Date.now() / 1000) + 3600) * 1000);
     return {
-      accessToken: this.auth.sign(claims),
+      ...(!isProduction() ? { accessToken } : {}),
       account: { id: account.id, name: account.name, role: account.role, mustChangePassword: account.mustChangePassword === true },
     };
   }
@@ -199,9 +188,14 @@ export class AuthController {
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ accessToken: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } }> {
+  ): Promise<{ accessToken?: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } }> {
     const raw = readCookie(req, REFRESH_COOKIE);
-    if (!raw) throw new UnauthorizedException('세션 갱신 정보가 없습니다. 다시 로그인해 주세요.');
+    if (!raw) {
+      // HttpOnly access cookie는 frontend JavaScript가 지울 수 없다. refresh가 없으면 여기서 함께
+      // 만료시켜 Next middleware의 stale-cookie login redirect loop를 막는다.
+      clearBrowserSession(res);
+      throw new UnauthorizedException('세션 갱신 정보가 없습니다. 다시 로그인해 주세요.');
+    }
     let row;
     try {
       row = await this.refreshTokens.assertRotatable(raw);
@@ -211,21 +205,21 @@ export class AuthController {
       if (rowForEvent?.revokedAt != null) {
         await this.events.record({ type: 'refresh_reuse_blocked', userId: rowForEvent.userId, failureCode: 'revoked_reuse', req });
       }
-      this.clearRefreshCookie(res);
+      clearBrowserSession(res);
       throw err;
     }
     await this.users.refreshFromDb();
     const account = this.users.findById(row.userId);
     const invalidate = async (): Promise<never> => {
       await this.refreshTokens.revokeAllForUser(row.userId);
-      this.clearRefreshCookie(res);
+      clearBrowserSession(res);
       throw new UnauthorizedException('세션이 더 이상 유효하지 않습니다. 다시 로그인해 주세요.');
     };
     if (!account || account.deletedAt != null || account.status !== 'active' || !isStaffRole(account.role)) return invalidate();
     if (authVersionOf(account) !== row.authVersion) return invalidate(); // 자격증명/역할 변경 후의 구 refresh
     const next = await this.refreshTokens.issue(account.id, authVersionOf(account), String(req.headers['user-agent'] ?? '') || null);
     await this.refreshTokens.markRotated(row.id, next.row.id);
-    this.setRefreshCookie(res, next.raw, next.row.expiresAt);
+    setRefreshCookie(res, next.raw, next.row.expiresAt);
     const claims: JwtClaims = {
       sub: account.id,
       name: account.name,
@@ -233,8 +227,11 @@ export class AuthController {
       authVersion: authVersionOf(account),
       mustChangePassword: account.mustChangePassword === true,
     };
+    const accessToken = this.auth.sign(claims);
+    const accessClaims = this.auth.verify(accessToken);
+    setAccessCookie(res, accessToken, (accessClaims.exp ?? Math.floor(Date.now() / 1000) + 3600) * 1000);
     return {
-      accessToken: this.auth.sign(claims),
+      ...(!isProduction() ? { accessToken } : {}),
       account: { id: account.id, name: account.name, role: account.role, mustChangePassword: account.mustChangePassword === true },
     };
   }
@@ -339,12 +336,12 @@ export class AuthController {
   //  access token 만료 후에도 refresh 폐기가 가능해야 하므로 @Public(bearer는 있으면 이벤트 귀속용).
   @Post('logout')
   @Public()
-  @ApiOperation({ summary: '로그아웃 — refresh token 폐기(쿠키)·클리어 + auth_events 기록(access token은 클라이언트가 폐기).' })
+  @ApiOperation({ summary: '로그아웃 — access/refresh cookie 폐기·refresh row revoke + auth_events 기록.' })
   async logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
     let userId: number | undefined;
-    const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '');
-    if (bearer) {
-      try { userId = this.auth.verify(bearer).sub; } catch { /* 만료/무효 토큰 — 귀속 없이 진행 */ }
+    const access = req.headers.authorization?.replace(/^Bearer\s+/i, '') || readCookie(req, ACCESS_COOKIE);
+    if (access) {
+      try { userId = this.auth.verify(access).sub; } catch { /* 만료/무효 토큰 — 귀속 없이 진행 */ }
     }
     const raw = readCookie(req, REFRESH_COOKIE);
     if (raw) {
@@ -352,7 +349,7 @@ export class AuthController {
       userId = userId ?? row?.userId;
       await this.refreshTokens.revokeByRaw(raw);
     }
-    this.clearRefreshCookie(res);
+    clearBrowserSession(res);
     await this.events.record({ type: 'logout', userId, req });
     return { ok: true };
   }

@@ -387,7 +387,7 @@
             "description": ""
           }
         },
-        "summary": "로그아웃 — refresh token 폐기(쿠키)·클리어 + auth_events 기록(access token은 클라이언트가 폐기).",
+        "summary": "로그아웃 — access/refresh cookie 폐기·refresh row revoke + auth_events 기록.",
         "tags": [
           "auth"
         ]
@@ -4893,14 +4893,13 @@
         "properties": {
           "accessToken": {
             "type": "string",
-            "description": "Bearer access token"
+            "description": "Bearer access token. test/non-production 호환 응답이며 production에서는 HttpOnly cookie만 사용."
           },
           "account": {
             "$ref": "#/components/schemas/LoginAccountResponseDto"
           }
         },
         "required": [
-          "accessToken",
           "account"
         ]
       },

@@ -12,6 +12,8 @@ export function assertProductionBootSafety(): void {
   if (!process.env.JWT_SECRET) missing.push('JWT_SECRET');
   // (c) 인증 메일 전달 수단 없음 → devLink 노출 경로뿐 — 부팅 차단.
   if (!process.env.SMTP_HOST) missing.push('SMTP_HOST(+SMTP_PORT/USER/PASS)');
+  // (c-2) client IP 기반 보안 이벤트/공유 throttle은 proxy 신뢰 경계가 명시돼야 한다.
+  if (!process.env.TRUST_PROXY) missing.push('TRUST_PROXY(hop 수 또는 CIDR)');
   // (d) [TBO-31 C1 D2] 주민등록번호 암호화 키 — 미설정이면 개발용 파생 키 폴백뿐이라 부팅 차단
   //  (rrn-crypto.util은 throw하지 않는다 — 부팅 관문이 유일한 차단 지점). base64 32B 형식까지 검사.
   if (!process.env.RRN_ENC_KEY) {

@@ -15,8 +15,8 @@ export class LoginAccountResponseDto {
 }
 
 export class LoginResponseDto {
-  @ApiProperty({ description: 'Bearer access token' })
-  accessToken!: string;
+  @ApiProperty({ description: 'Bearer access token. test/non-production 호환 응답이며 production에서는 HttpOnly cookie만 사용.', required: false })
+  accessToken?: string;
 
   @ApiProperty({ type: LoginAccountResponseDto })
   account!: LoginAccountResponseDto;

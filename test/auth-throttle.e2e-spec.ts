@@ -10,11 +10,13 @@ describe('Auth login throttling (e2e, TBO-28B)', () => {
 
   beforeAll(async () => {
     process.env.THROTTLE_E2E = '1';
+    process.env.TRUST_PROXY = '1';
     app = await createTestApp();
     http = request(app.getHttpServer());
   });
   afterAll(async () => {
     delete process.env.THROTTLE_E2E;
+    delete process.env.TRUST_PROXY;
     await app.close();
   });
 

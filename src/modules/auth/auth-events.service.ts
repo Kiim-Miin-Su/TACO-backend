@@ -17,7 +17,9 @@ export type AuthEventType =
   // [TBO-29C C5] 비로그인 복구 흐름 — 계정 열거 방지를 위해 결과와 무관하게 요청 자체를 기록.
   | 'recover_id_requested' | 'recover_id_completed' | 'password_reset_requested' | 'password_reset_completed' // [TBO-31 C5] OTP판 아이디 찾기 완료
   // [대표 지시 ④ 2026-07-16] 폐기된 refresh token 재사용(유출 신호) — 전 토큰 무효화와 함께 기록.
-  | 'refresh_reuse_blocked';
+  | 'refresh_reuse_blocked'
+  // [TBO-34 C1] HttpOnly cookie 상태 변경의 Origin/Referer 검증 실패 — raw origin/IP 미저장.
+  | 'csrf_origin_blocked';
 
 export type AuthEvent = {
   eventType: AuthEventType;
@@ -49,11 +51,11 @@ export class AuthEventsService implements OnModuleInit {
     userId?: number;
     attemptedWebId?: string; // 원문은 저장하지 않고 sha256만
     failureCode?: string;
-    req?: Pick<Request, 'headers'>;
+    req?: Pick<Request, 'headers' | 'ip'>;
   }): Promise<void> {
     try {
       const headers = input.req?.headers ?? {};
-      const forwarded = String(headers['x-forwarded-for'] ?? '').split(',')[0]?.trim();
+      const clientIp = input.req?.ip?.trim();
       const requestId = String(headers['x-request-id'] ?? headers['x-vercel-id'] ?? '').slice(0, 64) || null;
       const userAgent = String(headers['user-agent'] ?? '').slice(0, 300) || null;
       await this.store.insert<AuthEvent>(AUTH_EVENTS_SPEC, {
@@ -61,9 +63,10 @@ export class AuthEventsService implements OnModuleInit {
         userId: input.userId ?? null,
         attemptedWebIdHash: input.attemptedWebId ? sha256(input.attemptedWebId.trim().toLowerCase()) : null,
         requestId,
-        ipHash: forwarded ? sha256(forwarded) : null,
+        ipHash: clientIp ? sha256(clientIp) : null,
         userAgent,
-        success: input.type === 'login_success' || input.type === 'logout' || input.type === 'password_reset_completed',
+        success: input.type === 'login_success' || input.type === 'logout'
+          || input.type === 'recover_id_completed' || input.type === 'password_reset_completed',
         failureCode: input.failureCode ?? null,
         at: new Date().toISOString(),
       } as Omit<AuthEvent, keyof BaseRow>);

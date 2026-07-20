@@ -10,13 +10,13 @@ npm run dev        # http://localhost:3001/api (watch)
 npm run build && npm start
 ```
 
-- 환경변수: `PORT`(기본 3001), `WEB_ORIGIN`(CORS 추가 허용 origin, 로컬 기본 `http://localhost:3000`, 운영 기본 `https://taco-frontend-tau.vercel.app`도 항상 포함), `JWT_SECRET`, `JWT_EXPIRES_IN` — `.env.example` 참고
+- 환경변수: `PORT`, `WEB_ORIGIN`, `TRUST_PROXY`(production 필수 hop/CIDR), `JWT_SECRET`, `JWT_EXPIRES_IN` — `.env.example` 참고
 - **API 문서(Swagger): http://localhost:3001/docs** (스펙 JSON: `/docs-json`)
 
 ## Docker (로컬 테스트 → AWS 배포)
 
-로컬은 Docker로 백엔드를 띄우고, 프론트는 `NEXT_PUBLIC_API_URL` 로 그 주소를 가리킵니다.
-추후 AWS 배포 시 **같은 이미지**를 ECR push 후 ECS/EC2에서 실행하고, 프론트 env만 공개 IP/도메인으로 바꿉니다.
+브라우저는 frontend same-origin `/api`만 호출하고 Next rewrite가 backend로 전달합니다. backend origin은
+frontend의 server-only `API_URL`로 설정합니다.
 
 ```bash
 cp .env.example .env            # 필요 시 값 수정
@@ -28,10 +28,9 @@ docker compose down             # 중지
 프론트 연결(BASE_URL):
 
 ```bash
-# frontend/.env.local
-NEXT_PUBLIC_API_URL=http://localhost:3001     # 로컬 Docker
-# NEXT_PUBLIC_API_URL=http://<EC2-공개IP>:3001 # AWS 배포 후 이 값만 교체
-# NEXT_PUBLIC_API_URL=https://api.your-domain
+# frontend/.env.local (server-only; 브라우저 번들에 backend origin 미노출)
+API_URL=http://localhost:3001
+# API_URL=https://api.your-domain
 ```
 
 > AWS 단계: ① `docker build` → ECR push ② ECS Fargate(또는 EC2+compose) 실행
