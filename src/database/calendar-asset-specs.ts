@@ -14,6 +14,11 @@ import {
   COUNSEL_ROUNDS_TABLE_SQL,
   COUNSEL_PERSISTENCE_INDEX_SQL,
 } from './migrations/counsel-persistence.migration';
+import {
+  ROADMAPS_TABLE_SQL,
+  ROADMAP_COURSES_TABLE_SQL,
+  REPORT_TEMPLATES_TABLE_SQL,
+} from './migrations/remaining-persistence.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -511,6 +516,31 @@ export const COURSES_SPEC: PostgresCollectionSpec = {
   indexes: [
     activeIndex('courses', 'idx_courses_subject', 'subject_id'),
     activeIndex('courses', 'idx_courses_instructor', 'instructor_id'),
+  ],
+};
+
+export const ROADMAPS_SPEC: PostgresCollectionSpec = {
+  table: 'roadmaps',
+  createSql: ROADMAPS_TABLE_SQL,
+  indexes: [activeIndex('roadmaps', 'idx_roadmaps_active', 'is_active')],
+};
+
+export const ROADMAP_COURSES_SPEC: PostgresCollectionSpec = {
+  table: 'roadmap_courses',
+  createSql: ROADMAP_COURSES_TABLE_SQL,
+  indexes: [
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_roadmap_courses_active
+       ON roadmap_courses (roadmap_id, course_id) WHERE deleted_at IS NULL`,
+    activeIndex('roadmap_courses', 'idx_roadmap_courses_roadmap', 'roadmap_id, sort_order'),
+  ],
+};
+
+export const REPORT_TEMPLATES_SPEC: PostgresCollectionSpec = {
+  table: 'report_templates',
+  createSql: REPORT_TEMPLATES_TABLE_SQL,
+  indexes: [
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_report_templates_active_name
+       ON report_templates (name) WHERE deleted_at IS NULL`,
   ],
 };
 

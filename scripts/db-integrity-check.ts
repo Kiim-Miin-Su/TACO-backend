@@ -13,6 +13,7 @@ import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { checkAccountingIntegrity, type AccountingIntegritySnapshot } from '../src/modules/payouts/accounting-integrity';
 import type { BaseRow } from '../src/common/types/base';
+import { loadLocalEnv } from '../src/config/load-env';
 
 type Issue = { code: string; entity: string; entityId?: number; message: string };
 
@@ -27,14 +28,16 @@ const APP_FK: Array<{ child: string; field: string; parent: string }> = [
   { child: 'enrollments', field: 'courseId', parent: 'courses' },
   { child: 'payments', field: 'studentId', parent: 'students' },
   { child: 'payments', field: 'enrollmentId', parent: 'enrollments' },
-  { child: 'parent_relations', field: 'parentId', parent: 'parents' },
-  { child: 'parent_relations', field: 'studentId', parent: 'students' },
+  { child: 'parent_student_relations', field: 'parentId', parent: 'parents' },
+  { child: 'parent_student_relations', field: 'studentId', parent: 'students' },
   { child: 'counsel_forms', field: 'interestSubjectId', parent: 'subjects' },
   { child: 'counsel_forms', field: 'interestCourseId', parent: 'courses' },
   { child: 'counsel_rounds', field: 'counselFormId', parent: 'counsel_forms' },
   { child: 'session_reports', field: 'subjectId', parent: 'subjects' },
   { child: 'courses', field: 'subjectId', parent: 'subjects' },
   { child: 'instructor_payouts', field: 'instructorId', parent: 'users' },
+  { child: 'roadmap_courses', field: 'roadmapId', parent: 'roadmaps' },
+  { child: 'roadmap_courses', field: 'courseId', parent: 'courses' },
 ];
 
 // 활성 중복 검사(partial unique 실측) — DB 인덱스가 있는 것도 실측(인덱스 누락 배포 감시 겸용).
@@ -45,6 +48,8 @@ const ACTIVE_UNIQUE: Array<{ table: string; keys: string[]; ci?: boolean }> = [
   { table: 'calendar_view_presets', keys: ['name'] },
   { table: 'users', keys: ['webId'], ci: true },
   { table: 'users', keys: ['email'], ci: true },
+  { table: 'roadmap_courses', keys: ['roadmapId', 'courseId'] },
+  { table: 'report_templates', keys: ['name'] },
 ];
 
 // 감사 원칙 대상에서 제외되는 테이블(erd.dbml audit_log Note 단일 소스와 동일).
@@ -54,6 +59,9 @@ const AUDIT_EXCLUDED = new Set([
 ]);
 
 async function main() {
+  loadLocalEnv();
+  // Integrity readback must never bootstrap demo business rows into the target DB.
+  process.env.SEED_DEMO = '0';
   const app: INestApplication = await createTestApp();
   const db = app.get(InMemoryDatabase);
   const pg = app.get(PostgresConnectionService);

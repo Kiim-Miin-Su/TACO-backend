@@ -4,6 +4,9 @@ import { AuditService } from '../audit/audit.service';
 import { Course, COURSES } from '../courses/course.entity';
 import { Roadmap, RoadmapCourse, ROADMAPS, ROADMAP_COURSES } from './roadmap.entity';
 import { CreateRoadmapDto } from './dto/create-roadmap.dto';
+import { PostgresCollectionStore } from '../../database/postgres-collection.store';
+import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { ROADMAPS_SPEC, ROADMAP_COURSES_SPEC } from '../../database/calendar-asset-specs';
 
 /**
  * [참조/처리] 로드맵(코스 묶음) + roadmap↔course M:N 조인.
@@ -15,14 +18,19 @@ import { CreateRoadmapDto } from './dto/create-roadmap.dto';
 export class RoadmapsService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
+    private readonly store: PostgresCollectionStore,
+    private readonly uow: CalendarUnitOfWork,
     private readonly audit: AuditService,
   ) {}
 
-  onModuleInit(): void {
-    this.db.seed<Roadmap>(ROADMAPS, [
+  async onModuleInit(): Promise<void> {
+    await this.store.hydrate<Roadmap>(ROADMAPS_SPEC);
+    await this.store.hydrate<RoadmapCourse>(ROADMAP_COURSES_SPEC);
+    if (!this.db.findById<Course>(COURSES, 10) || !this.db.findById<Course>(COURSES, 12)) return;
+    await this.store.seed<Roadmap>(ROADMAPS_SPEC, [
       { id: 1, title: 'SAT 종합 로드맵', description: 'Reading→TOEFL 병행 코스 묶음', targetGrade: 11, durationWeeks: 24, isActive: true },
     ]);
-    this.db.seed<RoadmapCourse>(ROADMAP_COURSES, [
+    await this.store.seed<RoadmapCourse>(ROADMAP_COURSES_SPEC, [
       { id: 1, roadmapId: 1, courseId: 10, sortOrder: 0 },
       { id: 2, roadmapId: 1, courseId: 12, sortOrder: 1 },
     ]);
@@ -46,8 +54,8 @@ export class RoadmapsService implements OnModuleInit {
     }
     // [무결성 2026-07-07] 로드맵 + 코스 링크 다중 insert 원자성 — 중간 실패 시 roadmap만 남아 링크 누락되던
     //  부분 생성 위험 제거(db write-path 감사 지적). 단일 tx로 함께 반영/롤백.
-    return this.db.transaction(async () => {
-      const roadmap = this.db.insert<Roadmap>(ROADMAPS, {
+    return this.uow.run(async () => {
+      const roadmap = await this.store.insert<Roadmap>(ROADMAPS_SPEC, {
         title: dto.title,
         description: dto.description,
         targetGrade: dto.targetGrade,
@@ -56,7 +64,7 @@ export class RoadmapsService implements OnModuleInit {
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — 기존 db.transaction 안에 audit만 추가.
       if (actorId != null) await this.audit.log({ entity: 'roadmaps', entityId: roadmap.id, action: 'create', actorId });
       for (const [i, courseId] of courseIds.entries()) {
-        const link = this.db.insert<RoadmapCourse>(ROADMAP_COURSES, { roadmapId: roadmap.id, courseId, sortOrder: i });
+        const link = await this.store.insert<RoadmapCourse>(ROADMAP_COURSES_SPEC, { roadmapId: roadmap.id, courseId, sortOrder: i });
         // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — 링크 행별 audit(두 테이블 각각).
         if (actorId != null) await this.audit.log({ entity: 'roadmap_courses', entityId: link.id, action: 'create', actorId });
       }
