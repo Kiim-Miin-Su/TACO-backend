@@ -48,3 +48,10 @@ export class ResetPasswordOtpDto {
   @IsString() @MinLength(8) @MaxLength(72)
   newPassword!: string;
 }
+
+// [유저 관리 2026-07-20] 재인증 게이트 DTO — 민감 화면(유저 상세) 진입 전 비밀번호 재확인.
+export class ReauthDto {
+  @ApiProperty({ writeOnly: true, description: '현재 비밀번호' })
+  @IsString() @MinLength(1) @MaxLength(72)
+  currentPassword!: string;
+}

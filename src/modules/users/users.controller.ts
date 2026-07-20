@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { UsersService } from './users.service';
@@ -6,6 +6,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { ADMIN_ROLES, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
 import { CreateInstructorDto } from './dto/create-instructor.dto';
+import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import type { JwtClaims } from '../auth/auth.service';
 import { ProfileResponseDto } from './dto/profile-response.dto';
 import { smsChallengeAvailable } from '../profile-verifications/sms-availability';
@@ -73,5 +74,26 @@ export class UsersController {
   async list() {
     await this.users.refreshFromDb(); // [28F]
     return this.users.findAll();
+  }
+
+  // ── [유저 관리 2026-07-20 대표 지시] 상세 단건 + 대표 직접 수정 ──
+  //  ⚠ 'exists'보다 뒤·숫자 경로 — ParseIntPipe가 비숫자를 400으로 거른다.
+  @Get(':id')
+  @Roles(...ADMIN_ROLES)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '계정 상세(관리자) — super_admin에게만 rrnMasked 동봉.' })
+  async detail(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    const roles = req.user?.roles ?? [];
+    return this.users.getUserDetail(id, roles.includes('super_admin') ? 'super_admin' : 'admin');
+  }
+
+  @Patch(':id')
+  @UseGuards(SuperAdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '대표 직접 수정 — name/phone/email/role. role·email 변경 시 대상 세션 전부 무효. super_admin 대상 400.' })
+  async adminUpdate(@Param('id', ParseIntPipe) id: number, @Body() dto: AdminUpdateUserDto, @Req() req: Request & { user?: JwtClaims }) {
+    const sub = req.user?.sub;
+    if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
+    return this.users.adminUpdateUser(id, sub, dto);
   }
 }

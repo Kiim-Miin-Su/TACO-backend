@@ -25,7 +25,7 @@ import { RecoverIdDto, RecoverPasswordDto, ResetPasswordDto } from './dto/recove
 import { AuthService, JwtClaims } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
-import { CompleteRecoverIdDto, ConfirmSignupEmailChallengeDto, CreateSignupEmailChallengeDto, ResetPasswordOtpDto } from './dto/signup-email-challenge.dto';
+import { CompleteRecoverIdDto, ConfirmSignupEmailChallengeDto, CreateSignupEmailChallengeDto, ReauthDto, ResetPasswordOtpDto } from './dto/signup-email-challenge.dto';
 import { SignupEmailChallengesService } from './signup-email-challenges.service';
 import { ApproveDto } from './dto/approve.dto';
 import { RejectDto } from './dto/reject.dto';
@@ -354,6 +354,25 @@ export class AuthController {
     }
     this.clearRefreshCookie(res);
     await this.events.record({ type: 'logout', userId, req });
+    return { ok: true };
+  }
+
+  // [유저 관리 2026-07-20 대표 지시] 재인증 게이트 — 민감 화면(유저 상세) 진입 전 비밀번호 재확인.
+  //  검증만 하고 토큰을 새로 발급하지 않는다(세션 부작용 0). 오답은 로그인과 동일 문구·스로틀.
+  @Post('reauth')
+  @UseGuards(RolesGuard, LoginThrottlerGuard)
+  @Roles(...STAFF_ROLES)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '비밀번호 재확인(로그인 상태) — 민감 화면 진입 게이트. 5회/분.' })
+  async reauth(@Body() dto: ReauthDto, @Req() req: Request & { user?: JwtClaims }): Promise<{ ok: true }> {
+    const sub = req.user?.sub;
+    if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
+    await this.users.refreshFromDb();
+    const account = this.users.findById(sub);
+    if (!account || !(await this.users.validatePassword(account, dto.currentPassword))) {
+      throw new BadRequestException('비밀번호가 올바르지 않습니다.');
+    }
     return { ok: true };
   }
 

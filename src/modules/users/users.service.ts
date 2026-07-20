@@ -546,6 +546,74 @@ export class UsersService implements OnModuleInit {
     });
   }
 
+  // ── [유저 관리 2026-07-20 대표 지시] 상세 단건 + 대표 직접 수정 ────────────────
+
+  /** 단건 상세 — super_admin에게만 rrnMasked 동봉(관리자는 기본 정보만). */
+  async getUserDetail(id: number, requesterRole: string): Promise<SafeAccount & { rrnMasked?: string | null }> {
+    await this.refreshFromDb();
+    const acc = this.findById(id);
+    if (!acc) throw new NotFoundException(`계정 ${id} 없음`);
+    const safe = toSafe(acc);
+    return requesterRole === 'super_admin' ? { ...safe, rrnMasked: this.rrnMaskedOf(acc) } : safe;
+  }
+
+  /**
+   * 대표 직접 수정 — name/phone/email/role만(webId=profile-change 경로·학력=강사 프로필 권위).
+   * 대상이 super_admin이면 400(단일 불변식 — 대표 본인은 마이페이지). role/email 변경은
+   * auth_version+1(기존 세션 전멸 — 권한·수신처 변화). 전 변경 audit(before/after).
+   */
+  async adminUpdateUser(
+    id: number,
+    actorId: number,
+    patch: { name?: string; phone?: string; email?: string; role?: 'instructor' | 'manager' | 'admin' },
+  ): Promise<SafeAccount> {
+    await this.refreshFromDb();
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'user', id }]);
+      await this.refreshFromDb();
+      const before = this.findById(id);
+      if (!before) throw new NotFoundException(`계정 ${id} 없음`);
+      if (before.role === 'super_admin') throw new BadRequestException('대표(super_admin) 계정은 여기서 수정할 수 없습니다(마이페이지 사용).');
+      const changes: Record<string, { before: unknown; after: unknown }> = {};
+      const next: Partial<StaffAccount> = {};
+      if (patch.name != null && patch.name.trim() && patch.name.trim() !== before.name) {
+        next.name = patch.name.trim();
+        changes.name = { before: before.name, after: next.name };
+      }
+      if (patch.phone != null && patch.phone.trim() !== (before.phone ?? '')) {
+        next.phone = patch.phone.trim() || null as never;
+        changes.phone = { before: before.phone ?? null, after: next.phone };
+      }
+      let bumpAuth = false;
+      if (patch.email != null) {
+        const email = patch.email.trim().toLowerCase();
+        if (email !== (before.email ?? '').trim().toLowerCase()) {
+          const taken = this.db.findBy<StaffAccount>(USERS, (a) => a.id !== id && !!a.email && a.email.toLowerCase() === email).length > 0;
+          if (taken) throw new BadRequestException('이미 사용 중인 이메일입니다.');
+          next.email = email;
+          // 대표 직접 변경 = 신원 확인 전제(직접 등록 관례) — verified 유지. 링크/OTP 재인증 불요.
+          changes.email = { before: '[redacted]', after: '[changed]' }; // PII — audit에 원문 미기록
+          bumpAuth = true;
+        }
+      }
+      if (patch.role != null && patch.role !== before.role) {
+        next.role = patch.role;
+        changes.role = { before: before.role, after: patch.role };
+        bumpAuth = true; // 권한 변화 — 세션 재발급 강제
+      }
+      if (!Object.keys(next).length) return toSafe(before);
+      if (bumpAuth) next.authVersion = authVersionOf(before) + 1;
+      const updated = await this.store.update<StaffAccount>(USERS_SPEC, id, next as never);
+      if (!updated) throw new NotFoundException(`계정 ${id} 없음`);
+      await this.audit.log({
+        entity: 'users', entityId: id, action: 'update', actorId,
+        changes: { ...changes, ...(bumpAuth ? { authVersion: { before: authVersionOf(before), after: authVersionOf(before) + 1 } } : {}) },
+        reason: '대표 직접 수정(유저 관리)',
+      });
+      return toSafe(updated);
+    });
+  }
+
   // [핫픽스 2026-07-20 대표 보고] 가입 신청 삭제 — pending/rejected 계정을 정리한다.
   //  users.web_id/email은 하드 UNIQUE(부분 인덱스 아님)라 반려·soft delete만으로는 같은 아이디/이메일
   //  재가입이 영구히 막힌다("삭제가 안 된다"의 실체). 삭제 = 식별자 tombstone 해제 + RRN 즉시 파기
@@ -658,6 +726,7 @@ export class UsersService implements OnModuleInit {
       webId: string; name: string; password: string;
       email?: string; phone?: string; university?: string; major?: string; birthYear?: number;
       countryCode?: string; timeZone?: string;
+      role?: 'instructor' | 'manager' | 'admin'; // [유저 관리 07-20] 역할 확장(기본 instructor)
     },
     actorId: number,
   ): Promise<SafeAccount> {
@@ -671,25 +740,29 @@ export class UsersService implements OnModuleInit {
       throw new BadRequestException('이미 사용 중인 이메일입니다.');
     const passwordHash = await bcrypt.hash(input.password, 12);
     if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.'); // [M1] TOCTOU 재검증
+    const role: 'instructor' | 'manager' | 'admin' = input.role ?? 'instructor';
     return this.uow.run(async () => {
       const approvedAt = new Date().toISOString();
       const acc = await this.store.insert<StaffAccount>(USERS_SPEC, {
         webId, name: input.name.trim(), email, phone: input.phone?.trim() || null,
-        role: 'instructor', status: 'active', passwordHash,
+        role, status: 'active', passwordHash,
         emailVerified: true, // 직접 등록 — 인증 게이트 생략(로그인 게이트 통과용)
         approvedBy: actorId, approvedAt, authVersion: 1,
         profileVersion: 1,
         countryCode: input.countryCode, timeZone: input.timeZone,
       });
-      await this.profiles.upsertActive(acc.id, actorId, approvedAt, {
-        university: input.university?.trim() || null,
-        major: input.major?.trim() || null,
-        birthYear: input.birthYear ?? null,
-      });
+      if (role === 'instructor') {
+        // 강사 프로필은 강사 역할만(E0.5 ④b 승계 규약과 동일 기계).
+        await this.profiles.upsertActive(acc.id, actorId, approvedAt, {
+          university: input.university?.trim() || null,
+          major: input.major?.trim() || null,
+          birthYear: input.birthYear ?? null,
+        });
+      }
       await this.audit.log({
         entity: 'users', entityId: acc.id, action: 'create', actorId,
-        changes: { status: { after: 'active' }, role: { after: 'instructor' } },
-        reason: '대표 직접 등록(강사)',
+        changes: { status: { after: 'active' }, role: { after: role } },
+        reason: '대표 직접 등록',
       });
       return toSafe(acc);
     });

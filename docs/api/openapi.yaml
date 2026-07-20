@@ -248,6 +248,24 @@ paths:
       summary: 로그아웃 — refresh token 폐기(쿠키)·클리어 + auth_events 기록(access token은 클라이언트가 폐기).
       tags:
       - auth
+  /api/auth/reauth:
+    post:
+      operationId: AuthController_reauth
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReauthDto'
+      responses:
+        '201':
+          description: ''
+      security:
+      - bearer: []
+      summary: 비밀번호 재확인(로그인 상태) — 민감 화면 진입 게이트. 5회/분.
+      tags:
+      - auth
   /api/auth/pending:
     get:
       operationId: AuthController_pending
@@ -439,6 +457,53 @@ paths:
                 type: array
                 items:
                   type: object
+      tags:
+      - Users
+  /api/users/{id}:
+    get:
+      operationId: UsersController_detail
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: 계정 상세(관리자) — super_admin에게만 rrnMasked 동봉.
+      tags:
+      - Users
+    patch:
+      operationId: UsersController_adminUpdate
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdminUpdateUserDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: 대표 직접 수정 — name/phone/email/role. role·email 변경 시 대상 세션 전부 무효. super_admin 대상 400.
       tags:
       - Users
   /api/audit:
@@ -2924,6 +2989,17 @@ components:
       - webId
       - email
       - newPassword
+    ReauthDto:
+      type: object
+      properties:
+        currentPassword:
+          type: string
+          minLength: 1
+          maxLength: 72
+          writeOnly: true
+          description: 현재 비밀번호
+      required:
+      - currentPassword
     ApproveDto:
       type: object
       properties:
@@ -3012,6 +3088,13 @@ components:
     CreateInstructorDto:
       type: object
       properties:
+        role:
+          enum:
+          - instructor
+          - manager
+          - admin
+          type: string
+          description: 역할(기본 instructor)
         webId:
           type: string
           minLength: 3
@@ -3060,6 +3143,30 @@ components:
       - webId
       - name
       - password
+    AdminUpdateUserDto:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 50
+          description: 이름
+        phone:
+          type: string
+          pattern: ^01[016789]-?\d{3,4}-?\d{4}$
+          description: 전화번호(010-1234-5678)
+        email:
+          type: string
+          maxLength: 255
+          format: email
+          description: 이메일 — 변경 시 기존 세션 전부 무효(auth_version+1)
+        role:
+          enum:
+          - instructor
+          - manager
+          - admin
+          type: string
+          description: 역할 — 변경 시 기존 세션 전부 무효
     ChangeCredentialsDto:
       type: object
       properties:

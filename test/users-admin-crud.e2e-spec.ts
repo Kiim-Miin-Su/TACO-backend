@@ -1,0 +1,94 @@
+// [유저 관리 2026-07-20 대표 지시] 유저 탭 CRUD e2e — 재인증 게이트·상세 단건·대표 직접 수정·
+//  직접 등록 역할 확장. 규약: 대상 super_admin 수정 400(단일 불변식)·role/email 변경=대상 세션
+//  전멸(auth_version+1)·rrnMasked는 super_admin 응답에만·email 원문은 audit에 미기록.
+import { INestApplication } from '@nestjs/common';
+import request from 'supertest';
+import { createTestApp } from './setup-app';
+import { InMemoryDatabase } from '../src/database/in-memory.database';
+import { verifiedSignupChallenge } from './signup-helper';
+
+describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
+  let app: INestApplication;
+  let http: ReturnType<typeof request>;
+  let db: InMemoryDatabase;
+  let admin = '';
+  let manager = '';
+  let inst = '';
+  const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+  const login = async (webId: string, password = 'demo1234') =>
+    (await http.post('/api/auth/login').send({ webId, password }).expect(201)).body.accessToken as string;
+
+  beforeAll(async () => {
+    app = await createTestApp();
+    http = request(app.getHttpServer());
+    db = app.get(InMemoryDatabase);
+    admin = await login('admin');
+    manager = await login('manager');
+    inst = await login('park_inst');
+  });
+  afterAll(async () => { await app.close(); });
+
+  it('① reauth: 정답 201 {ok} · 오답 400(일반화 문구) · 강사도 본인 비밀번호로 가능', async () => {
+    expect((await http.post('/api/auth/reauth').set(auth(admin)).send({ currentPassword: 'demo1234' }).expect(201)).body).toEqual({ ok: true });
+    await http.post('/api/auth/reauth').set(auth(admin)).send({ currentPassword: 'wrong-pass' }).expect(400);
+    await http.post('/api/auth/reauth').set(auth(inst)).send({ currentPassword: 'demo1234' }).expect(201);
+  });
+
+  it('② 상세 단건: super_admin=rrnMasked 동봉 · 매니저=기본만 · 강사 403 · 미존재 404', async () => {
+    // OTP 가입 계정(rrn 보유)으로 rrnMasked 검증
+    const challengeId = await verifiedSignupChallenge(http, 'crud-detail@t32.test');
+    const created = (await http.post('/api/auth/signup').send({
+      webId: 'crud_detail', name: '상세검증', email: 'crud-detail@t32.test', password: 'password123',
+      rrn: '950101-1234567', emailChallengeId: challengeId, role: 'instructor',
+    }).expect(201)).body.account;
+
+    const superView = (await http.get(`/api/users/${created.id}`).set(auth(admin)).expect(200)).body;
+    expect(superView.rrnMasked).toBe('950101-1******');
+    expect(superView.rrnEncrypted).toBeUndefined(); // 암호문은 어떤 응답에도 없다
+    const managerView = (await http.get(`/api/users/${created.id}`).set(auth(manager)).expect(200)).body;
+    expect(managerView.rrnMasked).toBeUndefined(); // 주민번호 마스킹도 대표 전용
+    await http.get(`/api/users/${created.id}`).set(auth(inst)).expect(403);
+    await http.get('/api/users/99999').set(auth(admin)).expect(404);
+  });
+
+  it('③ 직접 등록 역할 확장: manager 생성 → 즉시 active·로그인 가능 (Create 버튼 경로)', async () => {
+    const created = (await http.post('/api/users/instructors').set(auth(admin)).send({
+      webId: 'crud_mgr', name: '직접매니저', password: 'password123', role: 'manager', email: 'crud-mgr@t32.test',
+    }).expect(201)).body;
+    expect(created).toMatchObject({ role: 'manager', status: 'active', emailVerified: true });
+    await login('crud_mgr', 'password123');
+    // 강사 프로필은 강사 역할만 생성된다
+    expect(db.findBy<{ userId: number }>('instructor_profiles', (p) => p.userId === created.id)).toHaveLength(0);
+    await http.post('/api/users/instructors').set(auth(manager)).send({
+      webId: 'crud_x', name: 'x', password: 'password123',
+    }).expect(403); // 대표 전용
+  });
+
+  it('④ 대표 직접 수정: name/phone 즉시 · role 변경=대상 구 토큰 401 · 이메일 중복 400', async () => {
+    const targetToken = await login('crud_mgr', 'password123');
+    const target = db.findBy<{ id: number; webId: string }>('users', (u) => (u as { webId?: string }).webId === 'crud_mgr')[0];
+
+    const renamed = (await http.patch(`/api/users/${target.id}`).set(auth(admin))
+      .send({ name: '직접매니저 개명', phone: '010-9999-8888' }).expect(200)).body;
+    expect(renamed).toMatchObject({ name: '직접매니저 개명', phone: '010-9999-8888' });
+    await http.get('/api/auth/me').set(auth(targetToken)).expect(200); // name/phone만 — 세션 유지
+
+    // 이메일 중복 → 400
+    await http.patch(`/api/users/${target.id}`).set(auth(admin))
+      .send({ email: 'admin@tnacademy.test' }).expect(400);
+
+    // role 변경 → 대상 세션 전멸(auth_version+1)
+    const promoted = (await http.patch(`/api/users/${target.id}`).set(auth(admin))
+      .send({ role: 'admin' }).expect(200)).body;
+    expect(promoted.role).toBe('admin');
+    await http.get('/api/auth/me').set(auth(targetToken)).expect(401);
+    await login('crud_mgr', 'password123'); // 재로그인은 정상
+  });
+
+  it('⑤ 가드: super_admin 대상 수정 400 · 매니저 수정 403 · 전화 형식 400', async () => {
+    await http.patch('/api/users/3').set(auth(admin)).send({ name: '대표 개명 시도' }).expect(400); // admin=super_admin id 3
+    const target = db.findBy<{ id: number }>('users', (u) => (u as { webId?: string }).webId === 'crud_mgr')[0];
+    await http.patch(`/api/users/${target.id}`).set(auth(manager)).send({ name: 'x' }).expect(403);
+    await http.patch(`/api/users/${target.id}`).set(auth(admin)).send({ phone: '02-123' }).expect(400);
+  });
+});
