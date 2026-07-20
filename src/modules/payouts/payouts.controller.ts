@@ -5,7 +5,7 @@ import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiOkResponse
 import { PayoutsService } from './payouts.service';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-import { GeneratePayoutDto, AdjustPayoutDto, RejectPayoutDto, ReversePayoutDto } from './dto/payout.dto';
+import { GeneratePayoutDto, GenerateBulkPayoutDto, AdjustPayoutDto, RejectPayoutDto, ReversePayoutDto } from './dto/payout.dto';
 
 @ApiTags('payouts')
 @ApiBearerAuth()
@@ -56,6 +56,16 @@ export class PayoutsController {
     return this.payouts.preview(req.user!.sub, from, to);
   }
 
+  // [TBO-32 C1 2026-07-20] 미정산 감지 — 최근 N개월 중 적격 세션이 남아 있는 (강사×월) 목록.
+  //  ⚠ 라우트 순서: ':id' 앞에 두어야 'uncovered'가 숫자 파싱에 잡히지 않는다.
+  @Get('uncovered')
+  @Roles('super_admin')
+  @ApiOperation({ summary: '미정산 감지 — 적격 세션이 정산서에 미연결인 (강사×월) 목록(당월 포함 N개월). [대표]' })
+  @ApiQuery({ name: 'months', required: false, description: '조회 개월 수(1~12, 기본 3)' })
+  uncovered(@Query('months') months?: string) {
+    return this.payouts.uncovered(months ? Number(months) : undefined);
+  }
+
   @Get(':id')
   @Roles('super_admin')
   findOne(@Param('id', ParseIntPipe) id: number) {
@@ -72,6 +82,15 @@ export class PayoutsController {
   @ApiForbiddenResponse({ description: '권한 없음(대표 전용)' })
   generate(@Body() body: GeneratePayoutDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.payouts.generate(body.instructorId, body.from, body.to, req.user?.sub);
+  }
+
+  // [TBO-32 C1 2026-07-20] 일괄 산정 — 강사별 독립 tx(부분 실패 요약: generated/skipped/failed).
+  @Post('generate-bulk')
+  @Roles('super_admin')
+  @ApiOperation({ summary: '일괄 정산 산정 — 기간 내 전(또는 지정) 강사, 강사별 독립 tx·부분 실패 요약. [대표]' })
+  generateBulk(@Body() dto: GenerateBulkPayoutDto, @Req() req: Request) {
+    const actor = (req as Request & { user?: JwtClaims }).user;
+    return this.payouts.generateBulk(dto.periodStart, dto.periodEnd, dto.instructorIds, actor?.sub);
   }
 
   // 대표 액션 — TBO-21: 강사 페이 확정/조정/반려/지급은 super_admin 전용.

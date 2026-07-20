@@ -8,6 +8,7 @@ import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { countsForTeachingHours, payoutAmountOf } from '../schedule/session-accounting.policy';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { Course, COURSES } from '../courses/course.entity';
+import { USERS, type StaffAccount } from '../users/user.entity'; // [TBO-32 C1] 일괄 산정 대상 강사 열거
 import { ReportsService } from '../reports/reports.service';
 import { AuditService } from '../audit/audit.service';
 import { demoSeedEnabled } from '../../config/demo-seed';
@@ -19,7 +20,12 @@ import {
 } from './payout.entity';
 
 // 세션 행은 정산 연결 후 payoutId/페이 스냅샷을 갖는다(ERD class_sessions).
-type SessionWithPayout = ClassSession & { payoutId?: number; instructorPayAmount?: number };
+type SessionWithPayout = ClassSession & {
+  payoutId?: number; instructorPayAmount?: number;
+  // [TBO-32 C1 2026-07-20] 지급 이력·무결성 — is_paid(지급 완료 플래그·회수 시에만 false 복귀),
+  //  paid_payout_id(마지막 지급 정산서 — 회수로 payoutId가 끊겨도 이력 잔존).
+  isPaid?: boolean; paidPayoutId?: number | null;
+};
 
 export type MeasureResult = {
   instructorId: number;
@@ -124,9 +130,12 @@ export class PayoutsService implements OnModuleInit {
         s.instructorId === instructorId &&
         s.sessionDate >= from &&
         s.sessionDate <= to &&
-        countsForTeachingHours(s) && // (1, 1-b) 진행 완료 + 강사 결석 제외(공통 정책)
+        countsForTeachingHours(s) && // (1, 1-b) **진행 완료(held)만** + 강사 결석 제외(공통 정책 —
+        //  scheduled/canceled/no_show/makeup(진행 전 보강)은 여기서 전부 탈락. 대표 지시 2026-07-20 재확인)
         approved.has(s.id) && // (2) 승인 보고서 존재
-        s.payoutId == null, // (4) 미연결(이중 계상 방지)
+        s.payoutId == null && // (4) 미연결(이중 계상 방지)
+        s.isPaid !== true, // (5) [TBO-32 C1] 지급 완료 플래그 fail-safe — 정상 흐름에선 payoutId가
+        //  먼저 막지만, 드리프트(is_paid=true인데 payout_id NULL)가 생겨도 재계상만은 차단한다
     );
 
     const lines: PayoutLine[] = [];
@@ -200,6 +209,89 @@ export class PayoutsService implements OnModuleInit {
       }
       return payout;
     });
+  }
+
+  // ── [TBO-32 C1 2026-07-20] 일괄 산정 + 미정산 감지 ─────────────────────────
+
+  /** 활성 강사 id 목록(일괄 산정 기본 대상). */
+  private activeInstructorIds(): number[] {
+    return this.db
+      .findBy<StaffAccount>(USERS, (a) => a.role === 'instructor' && a.status === 'active')
+      .map((a) => a.id);
+  }
+
+  /**
+   * 일괄 산정 — 강사별 **독립 tx**(generate 재사용: 한 강사의 실패가 다른 강사의 생성을 막지 않는다).
+   * 적격 0은 skipped(정상), 그 외 예외는 failed(요약 보고 — 조용한 누락 금지). 이중 계상은
+   * generate 내부의 payoutId CAS 선점(claimPayout)이 그대로 방어한다.
+   */
+  async generateBulk(
+    periodStart: string,
+    periodEnd: string,
+    instructorIds: number[] | undefined,
+    actorId?: number,
+  ): Promise<{
+    generated: Array<{ instructorId: number; payoutId: number; amount: number; sessionCount: number }>;
+    skipped: Array<{ instructorId: number; reason: string }>;
+    failed: Array<{ instructorId: number; error: string }>;
+  }> {
+    const targets = instructorIds?.length ? instructorIds : this.activeInstructorIds();
+    const generated: Array<{ instructorId: number; payoutId: number; amount: number; sessionCount: number }> = [];
+    const skipped: Array<{ instructorId: number; reason: string }> = [];
+    const failed: Array<{ instructorId: number; error: string }> = [];
+    for (const instructorId of targets) {
+      try {
+        const payout = await this.generate(instructorId, periodStart, periodEnd, actorId);
+        generated.push({ instructorId, payoutId: payout.id, amount: payout.amount, sessionCount: payout.sessionCount });
+      } catch (caught) {
+        const message = caught instanceof Error ? caught.message : String(caught);
+        if (caught instanceof BadRequestException && message.includes('정산 대상 세션이 없습니다')) {
+          skipped.push({ instructorId, reason: 'no_eligible_sessions' });
+        } else {
+          failed.push({ instructorId, error: message });
+        }
+      }
+    }
+    return { generated, skipped, failed };
+  }
+
+  /**
+   * 미정산 감지 — 최근 N개월(당월 포함) 중 "적격 세션이 있는데 정산서에 미연결"인 (강사×월) 목록.
+   * measure()와 같은 규칙(진행 완료+승인 보고서+미연결+미지급)이라 여기 잡힌 것은 곧 일괄 산정
+   * 대상이다. 읽기 전용 — 정산서 존재 여부와 무관하게 잔여 적격만 본다(부분 산정 월도 잡힘).
+   */
+  uncovered(months = 3): Array<{
+    instructorId: number; instructorName: string; month: string;
+    periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
+  }> {
+    const boundedMonths = Math.min(Math.max(Math.trunc(months) || 3, 1), 12);
+    const instructors = this.db.findBy<StaffAccount>(USERS, (a) => a.role === 'instructor' && a.status === 'active');
+    const now = new Date();
+    const entries: Array<{
+      instructorId: number; instructorName: string; month: string;
+      periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
+    }> = [];
+    for (let back = 0; back < boundedMonths; back += 1) {
+      const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+      const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0));
+      const periodStart = first.toISOString().slice(0, 10);
+      const periodEnd = last.toISOString().slice(0, 10);
+      for (const instructor of instructors) {
+        const m = this.measure(instructor.id, periodStart, periodEnd);
+        if (m.sessionCount === 0) continue;
+        entries.push({
+          instructorId: instructor.id,
+          instructorName: instructor.name,
+          month: periodStart.slice(0, 7),
+          periodStart,
+          periodEnd,
+          sessionCount: m.sessionCount,
+          totalMinutes: m.totalMinutes,
+          computedAmount: m.computedAmount,
+        });
+      }
+    }
+    return entries.sort((a, b) => a.month.localeCompare(b.month) || a.instructorId - b.instructorId);
   }
 
   findAll(): InstructorPayoutRow[] {
@@ -324,9 +416,12 @@ export class PayoutsService implements OnModuleInit {
       for (const l of p.lines) {
         const s = this.db.findById<SessionWithPayout>(SESSIONS, l.sessionId);
         if (s && s.payoutId === id) {
+          // [TBO-32 C1] is_paid=false 복귀(재산정 가능). paid_payout_id는 **유지** — 지급됐다가
+          //  회수된 이력이 세션에 남는다(is_paid=false ∧ paid_payout_id≠NULL = 회수 이력 판별).
           await this.sessionsStore.update(l.sessionId, {
             payoutId: null,
             instructorPayAmount: null,
+            isPaid: false,
           } as never);
         }
       }
@@ -337,6 +432,7 @@ export class PayoutsService implements OnModuleInit {
             status: { before: 'paid', after: 'rejected' },
             reversedAt: { after: now },
             releasedSessionIds: { after: p.lines.map((l) => l.sessionId) },
+            sessionIsPaidCleared: { after: true }, // [TBO-32 C1] 세션 지급 플래그 회수 이력
           },
           reason,
         });
@@ -370,11 +466,19 @@ export class PayoutsService implements OnModuleInit {
         occurredAt: now,
         payoutId: id,
       });
+      // [TBO-32 C1 2026-07-20] 지급 이력 플래그 — 연결 세션 전량 is_paid=true + paid_payout_id 스탬프
+      //  (같은 tx — 원장·상태와 함께 성공/실패). 회수(reverse) 외에는 false로 돌아가지 않는다.
+      for (const l of p.lines) {
+        const sessionRow = this.db.findById<SessionWithPayout>(SESSIONS, l.sessionId);
+        if (sessionRow && sessionRow.payoutId === id) {
+          await this.sessionsStore.update(l.sessionId, { isPaid: true, paidPayoutId: id } as never);
+        }
+      }
       // [감사 전수 2026-07-16] 지급 전환 + 원장 출금 각 1건 — 대표 결정: 원장도 감사 대상.
       if (actorId != null) {
         await this.audit.log({
           entity: 'instructor_payouts', entityId: id, action: 'status_change', actorId,
-          changes: { status: { before: 'confirmed', after: 'paid' }, amount: { after: payout.amount } },
+          changes: { status: { before: 'confirmed', after: 'paid' }, amount: { after: payout.amount }, paidSessionIds: { after: p.lines.map((l) => l.sessionId) } }, // [TBO-32 C1] 세션 지급 플래그 이력
         });
         await this.audit.log({
           entity: 'transactions', entityId: transaction.id, action: 'create', actorId,

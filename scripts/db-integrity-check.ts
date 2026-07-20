@@ -133,6 +133,30 @@ async function main() {
       push(issues, 'EMAIL_VERIFIED_INVARIANT', 'users', account.id, `email_verified=${String(account.emailVerified)} (status=${account.status ?? '?'}) — 계정 레코드는 항상 true`);
   }
 
+  // ⑨(선행분) [TBO-32 C1 2026-07-20] 세션 지급 플래그 정합 — is_paid ⇔ 연결 정산서 paid.
+  //    is_paid=true인데 payout_id NULL/비paid = 드리프트(measure fail-safe가 재계상은 막지만 보고).
+  //    paid 정산서의 lines 세션인데 is_paid=false = 지급 플래그 누락. paid_payout_id는 이력 컬럼
+  //    (회수 후에도 잔존)이라 검사하지 않는다. 전체 ⑨ 검사군(명세 합계·원장 1:1 등)은 TBO-32 C3.
+  {
+    const payoutById = new Map(rows<BaseRow & { status?: string; lines?: Array<{ sessionId: number }> }>('instructor_payouts').map((row) => [row.id, row]));
+    const sessionsById = new Map(rows<BaseRow & { isPaid?: boolean; payoutId?: number | null }>('class_sessions').map((row) => [row.id, row]));
+    for (const session of sessionsById.values()) {
+      if (session.isPaid === true) {
+        const linked = session.payoutId != null ? payoutById.get(Number(session.payoutId)) : undefined;
+        if (!linked) push(issues, 'SESSION_PAID_FLAG_ORPHAN', 'class_sessions', session.id, `is_paid=true인데 payout_id=${session.payoutId ?? 'NULL'} — 연결 정산서 없음`);
+        else if (linked.status !== 'paid') push(issues, 'SESSION_PAID_FLAG_MISMATCH', 'class_sessions', session.id, `is_paid=true인데 정산서 ${linked.id} status=${linked.status}`);
+      }
+    }
+    for (const [payoutId, payout] of payoutById) {
+      if (payout.status !== 'paid') continue;
+      for (const line of payout.lines ?? []) {
+        const session = sessionsById.get(line.sessionId);
+        if (session && (session.isPaid !== true || Number(session.payoutId) !== payoutId))
+          push(issues, 'SESSION_PAID_FLAG_MISSING', 'class_sessions', line.sessionId, `paid 정산서 ${payoutId}의 세션인데 is_paid=${String(session.isPaid)}/payout_id=${session.payoutId ?? 'NULL'}`);
+      }
+    }
+  }
+
   // ⑦ 감사 신호(경고) — 감사 원칙 대상 테이블에 행이 있는데 audit_log 0건(역사적 데이터 허용 — 실패 아님)
   const auditEntities = new Set(rows<BaseRow & { entity: string }>('audit_log', true).map((a) => a.entity));
   for (const { table_name } of serials) {

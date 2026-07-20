@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsInt, IsOptional, IsString, Matches, Min, MinLength, Max, MaxLength } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsString, Matches, Min, MinLength, Max, MaxLength } from 'class-validator';
 import { TEXT, MAX_AMOUNT } from '../../../common/validation-limits'; // [보안] 상한 단일 소스
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
@@ -18,6 +18,25 @@ export class GeneratePayoutDto {
   @ApiProperty({ example: '2026-06-30', description: '정산 기간 종료(YYYY-MM-DD)' })
   @Matches(DATE, { message: 'to must be YYYY-MM-DD' })
   to!: string;
+}
+
+// [TBO-32 C1 2026-07-20] POST /payouts/generate-bulk — 기간 내 전(또는 지정) 강사 일괄 산정.
+//  강사별 독립 tx — 부분 실패 요약 응답(generated/skipped/failed). 대상 미지정 = 활성 강사 전원.
+export class GenerateBulkPayoutDto {
+  @ApiProperty({ example: '2026-06-01', description: '정산 기간 시작(YYYY-MM-DD)' })
+  @Matches(DATE, { message: 'periodStart must be YYYY-MM-DD' })
+  periodStart!: string;
+
+  @ApiProperty({ example: '2026-06-30', description: '정산 기간 종료(YYYY-MM-DD)' })
+  @Matches(DATE, { message: 'periodEnd must be YYYY-MM-DD' })
+  periodEnd!: string;
+
+  @ApiPropertyOptional({ type: [Number], description: '대상 강사 id 목록(미지정 = 활성 강사 전원)' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @IsInt({ each: true })
+  instructorIds?: number[];
 }
 
 // POST /payouts/:id/adjust — 대표 급여 수정(실효 지급액 덮어쓰기)

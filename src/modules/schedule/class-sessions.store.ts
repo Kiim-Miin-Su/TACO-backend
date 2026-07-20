@@ -166,6 +166,8 @@ export class ClassSessionsStore implements OnModuleInit {
         memo text,
         color varchar(32),
         instructor_pay_amount integer,
+        is_paid boolean NOT NULL DEFAULT false,
+        paid_payout_id integer,
         makeup_for_session_id integer,
         student_ids text NOT NULL DEFAULT '[]',
         created_at timestamptz NOT NULL DEFAULT now(),
@@ -173,6 +175,22 @@ export class ClassSessionsStore implements OnModuleInit {
         deleted_at timestamptz,
         deleted_by integer
       )
+    `);
+    // [TBO-32 C1 2026-07-20 대표 지시] 지급 이력·무결성 플래그 — is_paid(연결 정산서가 paid로
+    //  전이될 때 true, 회수(reverse) 시에만 false 복귀)·paid_payout_id(마지막 지급 정산서 — 회수로
+    //  payout_id가 끊겨도 지급 이력이 세션에 남는다). 기존 DB 멱등 추가 + paid 정산서 연결분 backfill.
+    await this.postgres.ddl(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS is_paid boolean NOT NULL DEFAULT false`);
+    await this.postgres.ddl(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS paid_payout_id integer`);
+    //  backfill은 instructor_payouts 존재 시에만(부팅 순서상 이 store가 먼저 뜰 수 있음 — fresh DB는
+    //  backfill 대상 자체가 없어 스킵이 정답).
+    await this.postgres.ddl(`
+      DO $$ BEGIN
+        IF EXISTS (SELECT 1 FROM information_schema.tables WHERE table_schema = 'public' AND table_name = 'instructor_payouts') THEN
+          UPDATE ${TABLE} s SET is_paid = true, paid_payout_id = s.payout_id
+            FROM instructor_payouts p
+           WHERE s.payout_id = p.id AND p.status = 'paid' AND s.is_paid = false;
+        END IF;
+      END $$
     `);
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_date ON ${TABLE} (session_date) WHERE deleted_at IS NULL`);
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_sessions_instructor_date ON ${TABLE} (instructor_id, session_date) WHERE deleted_at IS NULL`);

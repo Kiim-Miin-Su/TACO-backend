@@ -3,10 +3,14 @@ import { DataSource } from 'typeorm';
 import { loadLocalEnv } from '../src/config/load-env';
 import { directDatabaseUrl } from '../src/database/database-url';
 
-// [시범운영 2026-07-15] 데모/목 데이터 전면 정리 — 실계정만 남기고 도메인 데이터를 비운다.
-//  · 보존: schema_migrations(장부), users의 super_admin(대표 실계정 — 아이디를 바꿨어도 role로 식별).
+// [시범운영 2026-07-15 · 개정 2026-07-20] 데모/목 데이터 전면 정리 — 실계정을 남기고 도메인 데이터를 비운다.
+//  · 보존: schema_migrations(장부), countries(카탈로그), **super_admin + 실사용 계정 전원**
+//    (2026-07-20 개정 — 시범운영 실가입[김범준·김민수·강민지 등]이 시작돼 "super_admin 외 전부 삭제"는
+//    이제 위험. 삭제 계정은 데모 시드 webId 고정 목록만).
 //  · 삭제: 도메인 표 전체(수업/시리즈/가용/학생/보호자/수강/결제/지출/원장/정산/출결/보고서/계약/
-//    이벤트/과목/코스/강의실/요청/프리셋/인증 challenge) + super_admin 외 데모 계정과 그 강사 프로필.
+//    이벤트/과목/코스/강의실/요청/프리셋/인증 challenge/알림 읽음/refresh 토큰) + 데모 계정·그 강사 프로필.
+//  ⚠ 도메인 표는 **전량 삭제**다 — 시범운영에서 실제 학생/수업을 이미 입력했다면 APPLY 전에 중단할 것
+//    (dry-run 행 수를 먼저 확인).
 //  · KEEP_LOGS=1이면 audit_log/auth_events(이력)를 보존한다(기본은 함께 정리 — 새 출발).
 //  · dry-run 기본(행 수만 출력), APPLY=1일 때만 삭제. 전체가 한 트랜잭션(중간 실패 시 전무).
 loadLocalEnv();
@@ -28,7 +32,13 @@ const DOMAIN_TABLES = [
   'availability_blocks', 'enrollments', 'parent_student_relations', 'parents', 'students',
   'instructor_contracts', 'courses', 'subjects', 'rooms', 'academy_events',
   'profile_verification_challenges', 'profile_change_requests',
+  // [2026-07-20] 07-15 이후 신설·누락분 — 알림 읽음 상태·가입/복구 OTP challenge·refresh 토큰(전원
+  //  재로그인 — 대표 포함, 무해)까지 함께 비운다.
+  'nav_seen_states', 'signup_email_challenges', 'auth_refresh_tokens',
 ];
+
+// [2026-07-20] 데모 시드 계정 고정 webId — 이 목록만 삭제한다(실가입 계정 보존).
+const DEMO_WEB_IDS = ['park_inst', 'jung_inst', 'manager', 'prof_admin'];
 const LOG_TABLES = ['audit_log', 'auth_events'];
 
 async function main(): Promise<void> {
@@ -44,10 +54,12 @@ async function main(): Promise<void> {
   for (const t of targets) if (await exists(t)) { present.push(t); before[t] = await count(t); }
 
   const demoUsers = await dataSource.query(
-    `SELECT id, web_id, role FROM users WHERE role <> 'super_admin' ORDER BY id`,
+    `SELECT id, web_id, role FROM users WHERE role <> 'super_admin' AND web_id = ANY($1) ORDER BY id`,
+    [DEMO_WEB_IDS],
   );
   const keepUsers = await dataSource.query(
-    `SELECT id, web_id, role FROM users WHERE role = 'super_admin' ORDER BY id`,
+    `SELECT id, web_id, role FROM users WHERE role = 'super_admin' OR web_id <> ALL($1) ORDER BY id`,
+    [DEMO_WEB_IDS],
   );
 
   if (!apply) {
@@ -66,11 +78,14 @@ async function main(): Promise<void> {
   await dataSource.transaction(async (manager) => {
     await manager.query('SELECT pg_advisory_xact_lock($1, $2)', [29, 9]);
     for (const t of present) await manager.query(`DELETE FROM ${t}`);
-    // 데모 계정: instructor_profiles(FK) 먼저, users는 super_admin만 보존.
+    // 데모 계정: instructor_profiles(FK) 먼저 — 삭제 대상은 **데모 webId 고정 목록만**(실가입 보존).
     if (hasProfiles) {
-      await manager.query(`DELETE FROM instructor_profiles WHERE user_id IN (SELECT id FROM users WHERE role <> 'super_admin')`);
+      await manager.query(
+        `DELETE FROM instructor_profiles WHERE user_id IN (SELECT id FROM users WHERE role <> 'super_admin' AND web_id = ANY($1))`,
+        [DEMO_WEB_IDS],
+      );
     }
-    await manager.query(`DELETE FROM users WHERE role <> 'super_admin'`);
+    await manager.query(`DELETE FROM users WHERE role <> 'super_admin' AND web_id = ANY($1)`, [DEMO_WEB_IDS]);
   });
 
   const after: Record<string, number> = {};

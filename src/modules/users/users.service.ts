@@ -522,6 +522,63 @@ export class UsersService implements OnModuleInit {
     });
   }
 
+  // [핫픽스 2026-07-20 대표 보고] 레거시 잔존 pending 계정(구 링크 가입 — SMTP 부재기에 인증 메일
+  //  미발송) 구제 — 새 토큰 발급+재발송. 신규 가입은 OTP verified 생성이라 이 경로가 필요 없다.
+  async resendVerificationEmail(id: number, actorId: number): Promise<{ account: SafeAccount; verifyToken: string }> {
+    await this.refreshFromDb();
+    const acc = this.findById(id);
+    if (!acc || acc.status !== 'pending') throw new NotFoundException('승인 대기 계정이 아닙니다.');
+    if (acc.emailVerified === true) throw new BadRequestException('이미 이메일 인증이 완료된 계정입니다.');
+    if (!acc.email) throw new BadRequestException('계정에 이메일이 없습니다.');
+    const verifyToken = randomBytes(24).toString('hex');
+    return this.uow.run(async () => {
+      const updated = await this.store.update<StaffAccount>(USERS_SPEC, id, {
+        emailVerifyTokenHash: sha256(verifyToken),
+        emailVerifyExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(), // 48h(가입 링크 관례)
+      } as Partial<StaffAccount> as never);
+      if (!updated) throw new NotFoundException('승인 대기 계정이 아닙니다.');
+      await this.audit.log({
+        entity: 'users', entityId: id, action: 'update', actorId,
+        changes: { emailVerifyToken: { before: '[redacted]', after: '[reissued]' } },
+        reason: '이메일 인증 메일 재발송(대표 — 레거시 pending 구제)',
+      });
+      return { account: toSafe(updated), verifyToken };
+    });
+  }
+
+  // [핫픽스 2026-07-20 대표 보고] 가입 신청 삭제 — pending/rejected 계정을 정리한다.
+  //  users.web_id/email은 하드 UNIQUE(부분 인덱스 아님)라 반려·soft delete만으로는 같은 아이디/이메일
+  //  재가입이 영구히 막힌다("삭제가 안 된다"의 실체). 삭제 = 식별자 tombstone 해제 + RRN 즉시 파기
+  //  (개보법 수집 최소화 — 반려 계정 RRN 보존 기한 문제도 함께 해소) + soft delete + audit(사유 필수).
+  async deletePendingAccount(id: number, actorId: number, reason: string): Promise<{ ok: true }> {
+    await this.refreshFromDb();
+    return this.uow.run(async () => {
+      const before = this.findById(id);
+      if (!before) throw new NotFoundException(`계정 ${id} 없음`);
+      if (before.status !== 'pending' && before.status !== 'rejected')
+        throw new BadRequestException('가입 대기(pending)·반려(rejected) 계정만 삭제할 수 있습니다.');
+      const tombstone = `del_${id}_${Date.now().toString(36)}`.slice(0, 50); // UNIQUE 해제(50자 상한)
+      await this.store.update<StaffAccount>(USERS_SPEC, id, {
+        webId: tombstone,
+        email: null, // email UNIQUE는 NULL 다중 허용 — 원 이메일 즉시 재가입 가능
+        rrnEncrypted: null, // 개인정보 파기(마스킹 포함 일절 잔존 금지)
+        emailVerifyTokenHash: null,
+        emailVerifyExpiresAt: null,
+        passwordResetTokenHash: null,
+        passwordResetExpiresAt: null,
+        authVersion: authVersionOf(before) + 1,
+      } as Partial<StaffAccount> as never);
+      await this.store.remove(USERS_SPEC, id, actorId);
+      // audit — 원 식별자는 사유 추적을 위해 webId만 기록(email·RRN은 기록하지 않는다).
+      await this.audit.log({
+        entity: 'users', entityId: id, action: 'delete', actorId,
+        changes: { webId: { before: before.webId, after: tombstone }, status: { before: before.status, after: '[deleted]' } },
+        reason,
+      });
+      return { ok: true as const };
+    });
+  }
+
   async listPending(): Promise<Array<SafeAccount & { rrnMasked: string | null }>> {
     await this.refreshFromDb(); // [28F] 다른 인스턴스의 신규 가입이 대표 대기목록에 즉시 반영
     // [TBO-31 C1 D2] 승인 판단 근거로 rrnMasked('950101-1******')만 노출 — 평문·암호문은 응답에 없다.

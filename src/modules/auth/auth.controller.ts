@@ -4,6 +4,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   ForbiddenException,
   Get,
   Param,
@@ -376,12 +377,40 @@ export class AuthController {
     return this.users.approve(id, this.actorOf(req), dto.role, dto.reason);
   }
 
+  // [핫픽스 2026-07-20] 레거시 pending 계정 인증 메일 재발송 — 구 링크 가입자가 SMTP 부재기에
+  //  메일을 못 받아 인증 불가 → 승인 403에 갇힌 케이스 구제(대표 실사용 보고: 강사 승인 불가).
+  @Post('pending/:id/resend-verification')
+  @UseGuards(SuperAdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '승인 대기 계정 인증 메일 재발송(새 48h 토큰) — 대표 전용. 미인증 pending만.' })
+  async resendPendingVerification(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    const { account, verifyToken } = await this.users.resendVerificationEmail(id, this.actorOf(req));
+    const base = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
+    const link = `${base}/verify-email?token=${verifyToken}`;
+    const sent = await this.mail.sendVerifyEmail(account.email as string, link);
+    return {
+      ok: true as const,
+      message: '인증 메일을 다시 보냈습니다.',
+      ...(!isProduction() && sent.devLink ? { devVerifyLink: sent.devLink } : {}),
+    };
+  }
+
   @Post('reject/:id')
   @UseGuards(SuperAdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 반려(사유 필수, audit 기록) — 대표 전용. 동시 결정은 409.' })
   async reject(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.users.reject(id, this.actorOf(req), dto.reason);
+  }
+
+  // [핫픽스 2026-07-20] 가입 신청 삭제 — pending/rejected만. 식별자 해제(같은 아이디·이메일 재가입
+  //  허용)+RRN 파기+soft delete+audit. 하드 UNIQUE 때문에 반려만으론 재가입이 영구 차단되던 문제 해소.
+  @Delete('pending/:id')
+  @UseGuards(SuperAdminGuard)
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '가입 신청 삭제(pending·rejected만) — 식별자 해제·RRN 파기·audit. 대표 전용.' })
+  async deletePending(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.users.deletePendingAccount(id, this.actorOf(req), dto.reason);
   }
 
   /** 검증된 JWT의 sub만 actor로 쓴다(불변식 §5-4). SuperAdminGuard가 req.user를 부착한다. */
