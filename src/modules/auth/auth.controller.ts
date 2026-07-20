@@ -24,7 +24,7 @@ import { RecoverIdDto, RecoverPasswordDto, ResetPasswordDto } from './dto/recove
 import { AuthService, JwtClaims } from './auth.service';
 import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
-import { ConfirmSignupEmailChallengeDto, CreateSignupEmailChallengeDto } from './dto/signup-email-challenge.dto';
+import { CompleteRecoverIdDto, ConfirmSignupEmailChallengeDto, CreateSignupEmailChallengeDto, ResetPasswordOtpDto } from './dto/signup-email-challenge.dto';
 import { SignupEmailChallengesService } from './signup-email-challenges.service';
 import { ApproveDto } from './dto/approve.dto';
 import { RejectDto } from './dto/reject.dto';
@@ -283,6 +283,53 @@ export class AuthController {
   @ApiOperation({ summary: '비밀번호 재설정 확정 — 토큰 검증 후 변경. 성공 시 기존 세션 전부 무효(auth_version+1).' })
   async resetPassword(@Body() dto: ResetPasswordDto, @Req() req: Request): Promise<{ ok: true }> {
     const account = await this.users.resetPasswordWithToken(dto.token, dto.newPassword);
+    await this.events.record({ type: 'password_reset_completed', userId: account.id, req });
+    return { ok: true };
+  }
+
+  // ── [TBO-31 C5 D9] 비로그인 복구 — 인라인 OTP판(위 링크판과 병존: 마이페이지 메일 경로+폴백) ──
+  //  발송/확인은 가입 OTP와 동일 상수(TTL 10분·시도 5회·쿨다운 60초)·동일 스로틀 규약.
+  //  recovery는 가입 여부와 무관하게 항상 발송(D8) — 응답 동일·인증 후에만 결과 노출(열거 아님).
+  @Post('recovery-email-challenge')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: '복구용 이메일 OTP 발송(공개) — 5회/분. 가입 여부와 무관하게 동일 응답.' })
+  createRecoveryEmailChallenge(@Body() dto: CreateSignupEmailChallengeDto) {
+    return this.signupChallenges.create(dto.email, 'recovery');
+  }
+
+  @Post('recovery-email-challenge/:id/confirm')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '복구용 이메일 OTP 확인(공개) — 10회/분, 실패 5회 잠금, 성공 시 verified.' })
+  confirmRecoveryEmailChallenge(@Param('id', ParseIntPipe) id: number, @Body() dto: ConfirmSignupEmailChallengeDto) {
+    return this.signupChallenges.confirm(id, dto.email, dto.code, 'recovery');
+  }
+
+  //  아이디 찾기 완료 — OTP 인증한 이메일의 active 계정 webId를 화면에 즉시 표시(메일 왕복 제거).
+  //  challenge는 일회 소비(재호출 400). 계정이 없으면 webIds: [](이메일 소유 증명 후라 열거 아님).
+  @Post('recover-id/complete')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '아이디 찾기 완료(공개) — verified recovery OTP 일회 소비 후 webId 목록 반환.' })
+  async completeRecoverId(@Body() dto: CompleteRecoverIdDto, @Req() req: Request): Promise<{ webIds: string[] }> {
+    const { webIds, firstUserId } = await this.users.completeRecoverIdOtp(dto.challengeId, dto.email);
+    await this.events.record({ type: 'recover_id_completed', userId: firstUserId ?? undefined, attemptedWebId: dto.email, req });
+    return { webIds };
+  }
+
+  //  비밀번호 재설정(OTP판) — webId+이메일+verified challenge 3중 일치 시 즉시 변경(링크 왕복 제거).
+  //  성공 = auth_version+1(기존 세션 전멸) + 발급돼 있던 링크 토큰 동시 무효.
+  @Post('reset-password-otp')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '비밀번호 재설정 확정(OTP·공개) — 성공 시 기존 세션 전부 무효(auth_version+1).' })
+  async resetPasswordOtp(@Body() dto: ResetPasswordOtpDto, @Req() req: Request): Promise<{ ok: true }> {
+    const account = await this.users.resetPasswordWithOtp(dto.challengeId, dto.webId, dto.email, dto.newPassword);
     await this.events.record({ type: 'password_reset_completed', userId: account.id, req });
     return { ok: true };
   }

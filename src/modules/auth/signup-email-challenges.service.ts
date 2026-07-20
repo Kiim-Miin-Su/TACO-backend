@@ -24,9 +24,16 @@ export const SIGNUP_EMAIL_CHALLENGES = 'signup_email_challenges';
 
 export type SignupEmailChallengeStatus = 'pending' | 'verified' | 'expired' | 'locked' | 'consumed';
 
+// [TBO-31 C5 D7] 목적 태그 — signup(가입 전 인증) | recovery(비로그인 아이디·비밀번호 찾기).
+//  발송/확인/소비 전 단계가 purpose를 대조하므로 목적 간 challenge 교차 사용이 불가하고,
+//  코드 해시에도 purpose가 들어가 코드 자체의 교차 재생도 차단된다(D7).
+export type EmailChallengePurpose = 'signup' | 'recovery';
+
 export type SignupEmailChallenge = {
   /** email lowercase canonical — 응답에는 masked만 노출 */
   emailNormalized: string;
+  /** [TBO-31 C5] 발급 목적 — 확인·소비 시 반드시 일치해야 한다 */
+  purpose: EmailChallengePurpose;
   /** salted sha256(코드 평문 미저장 — profile-verifications와 동일 salt 규약) */
   codeHash: string;
   status: SignupEmailChallengeStatus;
@@ -53,7 +60,8 @@ export type SignupEmailChallengeResponse = {
 const hashSecret = (): string =>
   process.env.PROFILE_VERIFICATION_SALT || process.env.JWT_SECRET || 'dev-verification-salt';
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
-const codeHashOf = (email: string, code: string): string => sha256(`signup:${email}:${code}:${hashSecret()}`);
+const codeHashOf = (purpose: EmailChallengePurpose, email: string, code: string): string =>
+  sha256(`${purpose}:${email}:${code}:${hashSecret()}`);
 
 const isProduction = (): boolean => process.env.NODE_ENV === 'production';
 
@@ -82,14 +90,14 @@ export class SignupEmailChallengesService implements OnModuleInit {
    * · **이미 가입된 이메일도 응답은 동일하다(실제 메일 발송만 생략)** — 계정 열거 방지(H2 재발
    *   방지 규약). 이후 confirm→signup까지 가도 가입 시 이메일 중복 400으로 끝난다.
    */
-  async create(rawEmail: string): Promise<SignupEmailChallengeResponse> {
+  async create(rawEmail: string, purpose: EmailChallengePurpose = 'signup'): Promise<SignupEmailChallengeResponse> {
     const email = this.normalizeEmail(rawEmail);
     const result = await this.uow.run(async () => {
       await this.refresh();
       const now = Date.now();
       const actives = this.db.findBy<SignupEmailChallenge>(
         SIGNUP_EMAIL_CHALLENGES,
-        (c) => c.emailNormalized === email && c.status === 'pending',
+        (c) => c.emailNormalized === email && (c.purpose ?? 'signup') === purpose && c.status === 'pending',
       );
       const latest = actives[actives.length - 1];
       if (latest && Date.parse(latest.resendAvailableAt) > now) {
@@ -104,13 +112,17 @@ export class SignupEmailChallengesService implements OnModuleInit {
         (a) => !!a.email && a.email.trim().toLowerCase() === email,
       ).length > 0;
       const code = String(randomInt(100000, 1000000));
-      // 발송은 tx 안·insert 전 — 발송 실패(예외) 시 row +0. 가입된 이메일은 발송만 생략(열거 방지).
+      // 발송은 tx 안·insert 전 — 발송 실패(예외) 시 row +0. 발송 규약(D8):
+      //  · signup: 가입된 이메일이면 발송만 생략(열거 방지 — 응답 동일, confirm→signup 시 중복 400).
+      //  · recovery: 항상 발송 — 미가입 이메일도 코드는 가되 인증 후 '계정 없음'만 보게 된다
+      //    (이메일 소유를 증명한 본인에게만 노출되므로 열거 아님).
       //  MailService.sendOtpEmail은 SMTP 미설정 시 false(fail-closed) — 비production만 devOtpCode로
       //  대체(개발·e2e 편의), production은 부팅 가드(SMTP 필수)로 이 분기 자체가 없다.
-      const sent = registered ? false : await this.mail.sendOtpEmail(email, code);
+      const sent = purpose === 'signup' && registered ? false : await this.mail.sendOtpEmail(email, code);
       const row = await this.store.insert<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES_SPEC, {
         emailNormalized: email,
-        codeHash: codeHashOf(email, code),
+        purpose,
+        codeHash: codeHashOf(purpose, email, code),
         status: 'pending',
         attemptCount: 0,
         resendCount: 0,
@@ -127,20 +139,20 @@ export class SignupEmailChallengesService implements OnModuleInit {
 
   // ── 확인 ────────────────────────────────────────────────────────────────
   /** 코드 확인 — sha256 대조·시도 5회 잠금·만료 판정. 실패 카운터는 예외보다 먼저 커밋한다. */
-  async confirm(id: number, rawEmail: string, code: string): Promise<{ id: number; status: 'verified' }> {
+  async confirm(id: number, rawEmail: string, code: string, purpose: EmailChallengePurpose = 'signup'): Promise<{ id: number; status: 'verified' }> {
     const email = this.normalizeEmail(rawEmail);
     const outcome = await this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'signupChallenge', id }]);
       await this.refresh();
       const challenge = this.db.findById<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES, id);
-      // 이메일 불일치는 missing과 동일 취급 — challenge 존재 열거 방지(GENERIC).
-      if (!challenge || challenge.emailNormalized !== email) return { kind: 'missing' as const };
+      // 이메일·목적 불일치는 missing과 동일 취급 — challenge 존재 열거 방지(GENERIC).
+      if (!challenge || challenge.emailNormalized !== email || (challenge.purpose ?? 'signup') !== purpose) return { kind: 'missing' as const };
       if (challenge.status !== 'pending') return { kind: 'invalid_state' as const };
       if (this.isExpired(challenge)) {
         await this.store.update<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES_SPEC, id, { status: 'expired' });
         return { kind: 'expired' as const };
       }
-      if (challenge.codeHash !== codeHashOf(email, code)) {
+      if (challenge.codeHash !== codeHashOf(purpose, email, code)) {
         const attempts = challenge.attemptCount + 1;
         const locked = attempts >= MAX_ATTEMPTS;
         await this.store.update<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES_SPEC, id, {
@@ -179,7 +191,7 @@ export class SignupEmailChallengesService implements OnModuleInit {
     await this.uow.lockTargets([{ kind: 'signupChallenge', id }]);
     await this.store.hydrate<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES_SPEC);
     const challenge = this.db.findById<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES, id);
-    if (!challenge || challenge.emailNormalized !== email) {
+    if (!challenge || challenge.emailNormalized !== email || (challenge.purpose ?? 'signup') !== 'signup') {
       throw new BadRequestException('가입 이메일의 인증이 필요합니다. 이메일 인증을 먼저 완료해 주세요.');
     }
     if (challenge.status !== 'verified' || this.isExpired(challenge)) {
@@ -190,6 +202,34 @@ export class SignupEmailChallengesService implements OnModuleInit {
       id,
       { status: 'verified' },
       { status: 'consumed', consumedAt: new Date().toISOString(), consumedByUserId: createdUserId },
+    );
+    if (!consumed) throw new BadRequestException(GENERIC_INVALID); // 동시 소비 — 한쪽만 성공
+    return consumed;
+  }
+
+  // ── 소비(복구 tx 안에서만 호출) ─────────────────────────────────────────
+  /**
+   * [TBO-31 C5 D9] recovery verified challenge 일회 소비 — 아이디 찾기 complete·비밀번호
+   * OTP 재설정 tx 안에서 호출된다(중첩 run passthrough). matchedUserId는 대조된 계정이
+   * 있으면 그 id, 없으면 null(아이디 찾기 '계정 없음'도 소비는 성립 — state CHECK 완화 근거).
+   * 실패(미인증·목적/이메일 불일치·만료·이중 소비)는 전부 GENERIC 400(열거 방지).
+   */
+  async consumeForRecovery(id: number, rawEmail: string, matchedUserId: number | null): Promise<SignupEmailChallenge> {
+    const email = this.normalizeEmail(rawEmail);
+    await this.uow.lockTargets([{ kind: 'signupChallenge', id }]);
+    await this.store.hydrate<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES_SPEC);
+    const challenge = this.db.findById<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES, id);
+    if (!challenge || challenge.emailNormalized !== email || (challenge.purpose ?? 'signup') !== 'recovery') {
+      throw new BadRequestException(GENERIC_INVALID);
+    }
+    if (challenge.status !== 'verified' || this.isExpired(challenge)) {
+      throw new BadRequestException(GENERIC_INVALID);
+    }
+    const consumed = await this.store.updateIf<SignupEmailChallenge>(
+      SIGNUP_EMAIL_CHALLENGES_SPEC,
+      id,
+      { status: 'verified' },
+      { status: 'consumed', consumedAt: new Date().toISOString(), consumedByUserId: matchedUserId },
     );
     if (!consumed) throw new BadRequestException(GENERIC_INVALID); // 동시 소비 — 한쪽만 성공
     return consumed;

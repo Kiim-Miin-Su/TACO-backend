@@ -23,6 +23,11 @@ const PUBLIC_OPS = new Set([
   'POST /api/auth/recover-id',
   'POST /api/auth/recover-password',
   'POST /api/auth/reset-password', // 자격은 메일 토큰
+  // [TBO-31 C5] 비로그인 복구 OTP판 — 발송 5/분·확인/완료 10/분, 열거 방지 응답·일회 소비
+  'POST /api/auth/recovery-email-challenge',
+  'POST /api/auth/recovery-email-challenge/{id}/confirm',
+  'POST /api/auth/recover-id/complete',
+  'POST /api/auth/reset-password-otp',
   'GET /api/health',
   'GET /api/health/db',
 ]);

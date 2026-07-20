@@ -455,6 +455,73 @@ export class UsersService implements OnModuleInit {
     });
   }
 
+  // ── [TBO-31 C5 D9] 비로그인 복구 — 인라인 OTP판(링크판과 병존·마이페이지 메일 경로는 링크판 유지) ──
+
+  /**
+   * 아이디 찾기 완료 — verified recovery challenge를 일회 소비하고 해당 이메일의 active 계정
+   * webId 목록을 반환한다(이메일 소유를 OTP로 증명한 본인에게만 노출 — 열거 아님). 계정이
+   * 없어도 소비는 성립하고 빈 배열을 반환한다(호출부가 '계정 없음' 안내).
+   */
+  async completeRecoverIdOtp(challengeId: number, email: string): Promise<{ webIds: string[]; firstUserId: number | null }> {
+    const canonical = email.trim().toLowerCase();
+    return this.uow.run(async () => {
+      await this.refreshFromDb();
+      const accounts = this.db.findBy<StaffAccount>(USERS, (a) =>
+        (a.email ?? '').trim().toLowerCase() === canonical && a.status === 'active',
+      );
+      const firstUserId = accounts[0]?.id ?? null;
+      await this.signupChallenges.consumeForRecovery(challengeId, canonical, firstUserId);
+      return { webIds: accounts.map((a) => a.webId), firstUserId };
+    });
+  }
+
+  /**
+   * 비밀번호 재설정(OTP판) — webId+이메일+verified recovery challenge 3중 일치 시만 변경.
+   * 같은 tx에서 challenge 소비(updateIf CAS — 이중 소비 한쪽만 성공)·bcrypt 교체·
+   * auth_version+1(기존 세션 전멸)·audit. 불일치는 소비 없이 400(재시도 여지 — 이메일
+   * 소유 증명 후이므로 본인 계정 정보 이상의 노출이 없다).
+   */
+  async resetPasswordWithOtp(challengeId: number, webId: string, email: string, newPassword: string): Promise<SafeAccount> {
+    const bytes = Buffer.byteLength(newPassword, 'utf8');
+    if (bytes < 8) throw new BadRequestException('새 비밀번호는 8바이트 이상이어야 합니다.');
+    if (bytes > 72) throw new BadRequestException('새 비밀번호는 72바이트 이하여야 합니다.');
+    const canonical = email.trim().toLowerCase();
+    const nextPasswordHash = await bcrypt.hash(newPassword, 12);
+    return this.uow.run(async () => {
+      await this.refreshFromDb();
+      const acc = this.findByWebId(webId);
+      if (!acc || acc.status !== 'active' || (acc.email ?? '').trim().toLowerCase() !== canonical) {
+        throw new BadRequestException('아이디와 이메일이 일치하는 계정이 없습니다.');
+      }
+      await this.uow.lockTargets([{ kind: 'user', id: acc.id }]);
+      await this.refreshFromDb();
+      const before = this.findById(acc.id);
+      if (!before || before.status !== 'active') throw new BadRequestException('아이디와 이메일이 일치하는 계정이 없습니다.');
+      // challenge 소비를 같은 tx에 — 실패(미인증·만료·이중 소비) 시 비밀번호 변경까지 전체 롤백.
+      await this.signupChallenges.consumeForRecovery(challengeId, canonical, acc.id);
+      const updated = await this.store.update<StaffAccount>(USERS_SPEC, acc.id, {
+        passwordHash: nextPasswordHash,
+        passwordResetTokenHash: null, // 발급돼 있던 링크 토큰도 함께 무효(단일 경로 수렴)
+        passwordResetExpiresAt: null,
+        authVersion: authVersionOf(before) + 1, // 기존 JWT 전부 무효(탈취 세션 차단)
+        mustChangePassword: false,
+      } as Partial<StaffAccount> as never);
+      if (!updated) throw new BadRequestException('아이디와 이메일이 일치하는 계정이 없습니다.');
+      await this.audit.log({
+        entity: 'users',
+        entityId: acc.id,
+        action: 'update',
+        actorId: acc.id,
+        changes: {
+          password: { before: '[redacted]', after: '[changed]' },
+          authVersion: { before: authVersionOf(before), after: authVersionOf(before) + 1 },
+        },
+        reason: '비밀번호 재설정(이메일 OTP)',
+      });
+      return toSafe(updated);
+    });
+  }
+
   async listPending(): Promise<Array<SafeAccount & { rrnMasked: string | null }>> {
     await this.refreshFromDb(); // [28F] 다른 인스턴스의 신규 가입이 대표 대기목록에 즉시 반영
     // [TBO-31 C1 D2] 승인 판단 근거로 rrnMasked('950101-1******')만 노출 — 평문·암호문은 응답에 없다.

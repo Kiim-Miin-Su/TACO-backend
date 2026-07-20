@@ -242,6 +242,7 @@ export const SIGNUP_EMAIL_CHALLENGES_SPEC: PostgresCollectionSpec = {
     CREATE TABLE IF NOT EXISTS signup_email_challenges (
       id serial PRIMARY KEY,
       email_normalized varchar(320) NOT NULL,
+      purpose varchar(16) NOT NULL DEFAULT 'signup' CHECK (purpose IN ('signup','recovery')),
       code_hash varchar(64) NOT NULL,
       status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','expired','locked','consumed')),
       attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 5),
@@ -259,7 +260,7 @@ export const SIGNUP_EMAIL_CHALLENGES_SPEC: PostgresCollectionSpec = {
       CONSTRAINT signup_email_challenge_state_check CHECK (
         (status = 'pending' AND verified_at IS NULL AND consumed_at IS NULL AND consumed_by_user_id IS NULL)
         OR (status = 'verified' AND verified_at IS NOT NULL AND consumed_at IS NULL AND consumed_by_user_id IS NULL)
-        OR (status = 'consumed' AND verified_at IS NOT NULL AND consumed_at IS NOT NULL AND consumed_by_user_id IS NOT NULL)
+        OR (status = 'consumed' AND verified_at IS NOT NULL AND consumed_at IS NOT NULL)
         OR (status IN ('expired','locked'))
       )
     )
@@ -267,6 +268,39 @@ export const SIGNUP_EMAIL_CHALLENGES_SPEC: PostgresCollectionSpec = {
   indexes: [
     activeIndex('signup_email_challenges', 'idx_signup_email_challenges_email_status', 'email_normalized, status'),
     activeIndex('signup_email_challenges', 'idx_signup_email_challenges_expires_at', 'expires_at'),
+  ],
+  migrations: [
+    // [TBO-31 C5 2026-07-20 D7] 복구(아이디·비밀번호 찾기) OTP 일반화 — 목적 태그.
+    //  기본값 'signup'이라 기존 행 소급 무파괴. 코드 해시에 purpose 프리픽스가 들어가
+    //  목적 간 교차 재생은 해시 수준에서도 차단된다(서비스 codeHashOf).
+    `ALTER TABLE signup_email_challenges ADD COLUMN IF NOT EXISTS purpose varchar(16) NOT NULL DEFAULT 'signup'`,
+    `DO $$
+     BEGIN
+       IF NOT EXISTS (
+         SELECT 1 FROM pg_constraint WHERE conname = 'signup_email_challenge_purpose_check'
+       ) THEN
+         ALTER TABLE signup_email_challenges ADD CONSTRAINT signup_email_challenge_purpose_check
+           CHECK (purpose IN ('signup','recovery'));
+       END IF;
+     END $$`,
+    // [TBO-31 C5 D7] state CHECK 완화 — 복구 소비는 매칭 계정이 없어도 성립하므로 consumed에서
+    //  consumed_by_user_id NOT NULL 강제를 제거(profile_verification_state_check 완화 전례와 동일 패턴).
+    `DO $$
+     BEGIN
+       IF EXISTS (
+         SELECT 1 FROM pg_constraint
+         WHERE conname = 'signup_email_challenge_state_check'
+           AND pg_get_constraintdef(oid) LIKE '%consumed_by_user_id IS NOT NULL%'
+       ) THEN
+         ALTER TABLE signup_email_challenges DROP CONSTRAINT signup_email_challenge_state_check;
+         ALTER TABLE signup_email_challenges ADD CONSTRAINT signup_email_challenge_state_check CHECK (
+           (status = 'pending' AND verified_at IS NULL AND consumed_at IS NULL AND consumed_by_user_id IS NULL)
+           OR (status = 'verified' AND verified_at IS NOT NULL AND consumed_at IS NULL AND consumed_by_user_id IS NULL)
+           OR (status = 'consumed' AND verified_at IS NOT NULL AND consumed_at IS NOT NULL)
+           OR (status IN ('expired','locked'))
+         );
+       END IF;
+     END $$`,
   ],
   timestampFields: ['expiresAt', 'resendAvailableAt', 'verifiedAt', 'consumedAt'],
 };

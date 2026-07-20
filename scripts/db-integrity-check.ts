@@ -3,7 +3,8 @@
 //  하므로, 그 앱단 규칙을 실 DB에서 실측하는 게 이 스크립트의 존재 이유다.
 //  검사군: ① 회계 정합(checkAccountingIntegrity 재사용 — reversal 규칙 포함) ② 앱단 FK 고아
 //  ③ soft delete 정합(삭제된 부모를 활성 자식이 참조) ④ partial unique 실측(활성 중복)
-//  ⑤ 시퀀스 드리프트(information_schema 자동 탐색) ⑥ 재무 역참조 배타 ⑦ 감사 신호(경고 — 실패 아님).
+//  ⑤ 시퀀스 드리프트(information_schema 자동 탐색) ⑥ 재무 역참조 배타 ⑦ 감사 신호(경고 — 실패 아님)
+//  ⑧ emailVerified 불변식(계정 레코드 존재=true — 대표 피드백 2026-07-20·TBO-31 C5 D10).
 //  사용: DATABASE_URL=... npx ts-node? → 아니오: nest build 후 `npm run db:integrity`.
 //  출력: JSON { ok, checkedAt, counts, issues[], warnings[] } · issues>0 → exitCode 1.
 import { INestApplication } from '@nestjs/common';
@@ -49,7 +50,7 @@ const ACTIVE_UNIQUE: Array<{ table: string; keys: string[]; ci?: boolean }> = [
 // 감사 원칙 대상에서 제외되는 테이블(erd.dbml audit_log Note 단일 소스와 동일).
 const AUDIT_EXCLUDED = new Set([
   'audit_log', 'auth_events', 'auth_refresh_tokens', 'profile_verification_challenges',
-  'countries', 'instructor_contracts', 'nav_seen_states',
+  'countries', 'instructor_contracts', 'nav_seen_states', 'signup_email_challenges',
 ]);
 
 async function main() {
@@ -122,6 +123,14 @@ async function main() {
     if (refs > 1) push(issues, 'TX_BACKREF_NOT_EXCLUSIVE', 'transactions', tx.id, `역참조 ${refs}개(정확히 하나 규약)`);
     if ((tx.category === 'instructor_payout' || tx.category === 'payout_reversal') && tx.payoutId == null)
       push(issues, 'TX_PAYOUT_REF_MISSING', 'transactions', tx.id, `category=${tx.category}인데 payoutId 없음`);
+  }
+
+  // ⑧ [TBO-31 C5 D10] emailVerified 불변식 — 계정 생성 전 경로(OTP 가입·승인 tx·직접 등록·시드)는
+  //    전부 true로 생성한다(컬럼 기본값 false는 방어선일 뿐). false 행 존재 = 레거시 잔재 또는
+  //    비정상 생성 경로의 증거이므로 위반으로 보고한다(소프트 삭제 행은 제외).
+  for (const account of rows<BaseRow & { emailVerified?: boolean; webId?: string; status?: string }>('users')) {
+    if (account.emailVerified !== true)
+      push(issues, 'EMAIL_VERIFIED_INVARIANT', 'users', account.id, `email_verified=${String(account.emailVerified)} (status=${account.status ?? '?'}) — 계정 레코드는 항상 true`);
   }
 
   // ⑦ 감사 신호(경고) — 감사 원칙 대상 테이블에 행이 있는데 audit_log 0건(역사적 데이터 허용 — 실패 아님)
