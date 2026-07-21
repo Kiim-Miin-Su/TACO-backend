@@ -2,7 +2,7 @@ import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Req, Unauthori
 import { ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES, isInstructorOnly } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 import { RegistrationsService } from './registrations.service';
 import { RegisterStudentDto } from './dto/register-student.dto';
@@ -36,8 +36,11 @@ export class RegistrationsController {
 
   @Get(':id/aggregate')
   @Roles(...STAFF_ROLES)
-  getAggregate(@Param('id', ParseIntPipe) id: number) {
-    return this.registrations.getAggregate(id);
+  getAggregate(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    const aggregate = this.registrations.getAggregate(id);
+    if (!isInstructorOnly(req.user?.roles)) return aggregate;
+    const { student, interests, guardians } = aggregate;
+    return { student, interests, guardians };
   }
 
   @Patch(':id/aggregate')

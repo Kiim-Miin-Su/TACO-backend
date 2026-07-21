@@ -1,6 +1,14 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import type { StudentAggregate } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { ENROLLMENTS_SPEC, PARENT_STUDENT_RELATIONS_SPEC, STUDENT_INTERESTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
+import {
+  ENROLLMENTS_SPEC,
+  PARENT_STUDENT_RELATIONS_SPEC,
+  STUDENT_ACADEMIC_HISTORIES_SPEC,
+  STUDENT_FAMILY_RELATIONS_SPEC,
+  STUDENT_INTERESTS_SPEC,
+  STUDENTS_SPEC,
+} from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
@@ -8,9 +16,13 @@ import { Student, STUDENTS } from './student.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
-import { ParentStudent, PARENT_STUDENTS } from '../parents/parent.entity';
+import { Parent, ParentStudent, PARENTS, PARENT_STUDENTS } from '../parents/parent.entity';
 import { StudentInterest, STUDENT_INTERESTS } from './student-interest.entity';
 import { studentGradeBirthDateError } from './student-grade.policy';
+import { StudentFamilyRelation, STUDENT_FAMILY_RELATIONS } from './student-family-relation.entity';
+import { StudentAcademicHistory, STUDENT_ACADEMIC_HISTORIES } from './student-academic-history.entity';
+import { CreateStudentFamilyRelationDto, UpdateStudentFamilyRelationDto } from './dto/student-family-relation.dto';
+import { CreateStudentAcademicHistoryDto, UpdateStudentAcademicHistoryDto } from './dto/student-academic-history.dto';
 
 @Injectable()
 export class StudentsService implements OnModuleInit {
@@ -25,6 +37,8 @@ export class StudentsService implements OnModuleInit {
   // 프론트는 이제 이 데이터를 GET /students로 가져와 store에 적재(단일 소스: 백엔드).
   async onModuleInit(): Promise<void> {
     const hydrated = await this.store.hydrate<Student>(STUDENTS_SPEC);
+    await this.store.hydrate<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC);
+    await this.store.hydrate<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC);
     if (hydrated.length || this.db.findAll<Student>(STUDENTS).length) return;
     await this.store.seed<Student>(STUDENTS_SPEC, [
       { id: 1, name: '김서연', englishName: 'Sophia', birthDate: '2009-03-14', grade: 11, residenceType: 'overseas', country: 'US', status: 'enrolled' },
@@ -42,6 +56,223 @@ export class StudentsService implements OnModuleInit {
     const student = this.db.findById<Student>(STUDENTS, id);
     if (!student) throw new NotFoundException(`Student ${id} not found`);
     return student;
+  }
+
+  findAggregate(id: number): StudentAggregate {
+    const student = this.findOne(id);
+    const guardians = this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'studentId', id)
+      .map((relation) => ({ parent: this.db.findById<Parent>(PARENTS, relation.parentId), relation }))
+      .filter((entry): entry is { parent: Parent; relation: ParentStudent } => entry.parent != null)
+      .sort((a, b) => Number(b.relation.isPrimary) - Number(a.relation.isPrimary) || a.relation.id - b.relation.id);
+    return {
+      student,
+      interests: this.db.findByField<StudentInterest>(STUDENT_INTERESTS, 'studentId', id)
+        .sort((a, b) => a.priority - b.priority || a.id - b.id),
+      guardians,
+      familyRelations: this.findFamilyRelations(id),
+      academicHistories: this.findAcademicHistories(id),
+    };
+  }
+
+  findFamilyRelations(studentId: number): StudentFamilyRelation[] {
+    this.findOne(studentId);
+    return this.db.findBy<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS, (row) =>
+      row.studentIdA === studentId || row.studentIdB === studentId)
+      .sort((a, b) => a.id - b.id);
+  }
+
+  async createFamilyRelation(studentId: number, dto: CreateStudentFamilyRelationDto, actorId: number): Promise<StudentFamilyRelation> {
+    if (studentId === dto.relatedStudentId) throw new BadRequestException('학생은 자기 자신과 가족 관계를 맺을 수 없습니다.');
+    this.findOne(studentId);
+    this.findOne(dto.relatedStudentId);
+    const [studentIdA, studentIdB] = [studentId, dto.relatedStudentId].sort((a, b) => a - b);
+    const normalized = this.normalizeFamilyRelation(dto.relationType, dto.relationLabel);
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'student', id: studentIdA }, { kind: 'student', id: studentIdB }]);
+      const duplicate = this.db.findBy<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS, (row) =>
+        row.studentIdA === studentIdA && row.studentIdB === studentIdB)[0];
+      if (duplicate) throw new ConflictException('두 학생의 활성 가족 관계가 이미 존재합니다.');
+      const row = await this.store.insert<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC, {
+        studentIdA, studentIdB, ...normalized,
+      });
+      await this.audit.log({
+        entity: STUDENT_FAMILY_RELATIONS, entityId: row.id, action: 'create', actorId,
+        changes: this.audit.diffOf({}, row),
+      });
+      return row;
+    });
+  }
+
+  async updateFamilyRelation(
+    studentId: number,
+    relationId: number,
+    dto: UpdateStudentFamilyRelationDto,
+    actorId: number,
+  ): Promise<StudentFamilyRelation> {
+    return this.uow.run(async () => {
+      const before = { ...this.familyRelationForStudent(studentId, relationId) };
+      await this.uow.lockTargets([{ kind: 'student', id: before.studentIdA }, { kind: 'student', id: before.studentIdB }]);
+      const normalized = this.normalizeFamilyRelation(
+        dto.relationType ?? before.relationType,
+        dto.relationLabel !== undefined
+          ? dto.relationLabel
+          : dto.relationType === 'sibling' ? null : before.relationLabel,
+      );
+      const after = await this.store.update<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC, relationId, normalized);
+      if (!after) throw new NotFoundException(`가족 관계 ${relationId} 없음`);
+      await this.audit.log({
+        entity: STUDENT_FAMILY_RELATIONS, entityId: relationId, action: 'update', actorId,
+        changes: this.audit.diffOf(before, after),
+      });
+      return after;
+    });
+  }
+
+  async removeFamilyRelation(studentId: number, relationId: number, actorId: number): Promise<{ id: number; deleted: true }> {
+    return this.uow.run(async () => {
+      const before = { ...this.familyRelationForStudent(studentId, relationId) };
+      await this.uow.lockTargets([{ kind: 'student', id: before.studentIdA }, { kind: 'student', id: before.studentIdB }]);
+      await this.store.remove(STUDENT_FAMILY_RELATIONS_SPEC, relationId, actorId);
+      await this.audit.log({
+        entity: STUDENT_FAMILY_RELATIONS, entityId: relationId, action: 'delete', actorId,
+        changes: this.audit.snapshotOf(before),
+      });
+      return { id: relationId, deleted: true };
+    });
+  }
+
+  findAcademicHistories(studentId: number): StudentAcademicHistory[] {
+    this.findOne(studentId);
+    return this.db.findByField<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES, 'studentId', studentId)
+      .sort((a, b) => a.startedOn.localeCompare(b.startedOn) || a.id - b.id);
+  }
+
+  async createAcademicHistory(
+    studentId: number,
+    dto: CreateStudentAcademicHistoryDto,
+    actorId: number,
+  ): Promise<StudentAcademicHistory> {
+    this.findOne(studentId);
+    const normalized = this.normalizeAcademicHistory(dto);
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
+      this.assertNoAcademicOverlap(studentId, normalized);
+      const row = await this.store.insert<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC, {
+        studentId, ...normalized, changedBy: actorId, changedAt: new Date().toISOString(),
+      });
+      await this.audit.log({
+        entity: STUDENT_ACADEMIC_HISTORIES, entityId: row.id, action: 'create', actorId,
+        changes: this.audit.diffOf({}, row),
+      });
+      await this.syncCurrentAcademicProjection(studentId, actorId, `academic-history-create:${row.id}`);
+      return row;
+    });
+  }
+
+  async updateAcademicHistory(
+    studentId: number,
+    historyId: number,
+    dto: UpdateStudentAcademicHistoryDto,
+    actorId: number,
+  ): Promise<StudentAcademicHistory> {
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
+      const before = { ...this.academicHistoryForStudent(studentId, historyId) };
+      const normalized = this.normalizeAcademicHistory({ ...before, ...dto });
+      this.assertNoAcademicOverlap(studentId, normalized, historyId);
+      const after = await this.store.update<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC, historyId, {
+        ...normalized, changedBy: actorId, changedAt: new Date().toISOString(),
+      });
+      if (!after) throw new NotFoundException(`학교/학년 이력 ${historyId} 없음`);
+      await this.audit.log({
+        entity: STUDENT_ACADEMIC_HISTORIES, entityId: historyId, action: 'update', actorId,
+        changes: this.audit.diffOf(before, after),
+      });
+      await this.syncCurrentAcademicProjection(studentId, actorId, `academic-history-update:${historyId}`);
+      return after;
+    });
+  }
+
+  async removeAcademicHistory(studentId: number, historyId: number, actorId: number): Promise<{ id: number; deleted: true }> {
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
+      const before = { ...this.academicHistoryForStudent(studentId, historyId) };
+      await this.store.remove(STUDENT_ACADEMIC_HISTORIES_SPEC, historyId, actorId);
+      await this.audit.log({
+        entity: STUDENT_ACADEMIC_HISTORIES, entityId: historyId, action: 'delete', actorId,
+        changes: this.audit.snapshotOf(before),
+      });
+      await this.syncCurrentAcademicProjection(studentId, actorId, `academic-history-delete:${historyId}`);
+      return { id: historyId, deleted: true };
+    });
+  }
+
+  private familyRelationForStudent(studentId: number, relationId: number): StudentFamilyRelation {
+    this.findOne(studentId);
+    const row = this.db.findById<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS, relationId);
+    if (!row || (row.studentIdA !== studentId && row.studentIdB !== studentId)) {
+      throw new NotFoundException(`학생 ${studentId}의 가족 관계 ${relationId} 없음`);
+    }
+    return row;
+  }
+
+  private normalizeFamilyRelation(
+    relationType: StudentFamilyRelation['relationType'],
+    relationLabel?: string | null,
+  ): Pick<StudentFamilyRelation, 'relationType' | 'relationLabel'> {
+    const label = relationLabel?.trim() || null;
+    if (relationType === 'other' && !label) throw new BadRequestException('기타 가족 관계명은 필수입니다.');
+    if (relationType === 'sibling' && label) throw new BadRequestException('형제/자매 관계에는 기타 관계명을 입력할 수 없습니다.');
+    return { relationType, relationLabel: relationType === 'other' ? label : null };
+  }
+
+  private academicHistoryForStudent(studentId: number, historyId: number): StudentAcademicHistory {
+    this.findOne(studentId);
+    const row = this.db.findById<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES, historyId);
+    if (!row || row.studentId !== studentId) throw new NotFoundException(`학생 ${studentId}의 학교/학년 이력 ${historyId} 없음`);
+    return row;
+  }
+
+  private normalizeAcademicHistory(input: {
+    grade: number; schoolName: string; startedOn: string; endedOn?: string | null;
+  }): Pick<StudentAcademicHistory, 'grade' | 'schoolName' | 'startedOn' | 'endedOn'> {
+    const schoolName = input.schoolName.trim();
+    const endedOn = input.endedOn || null;
+    if (!schoolName) throw new BadRequestException('학교 이름은 공백일 수 없습니다.');
+    if (input.grade < 0 || input.grade > 13) throw new BadRequestException('학년은 Kinder(0)부터 G13까지입니다.');
+    if (endedOn && input.startedOn > endedOn) throw new BadRequestException('학교/학년 이력 종료일은 시작일보다 빠를 수 없습니다.');
+    return { grade: input.grade, schoolName, startedOn: input.startedOn, endedOn };
+  }
+
+  private assertNoAcademicOverlap(
+    studentId: number,
+    candidate: Pick<StudentAcademicHistory, 'startedOn' | 'endedOn'>,
+    excludeId?: number,
+  ): void {
+    const overlaps = this.db.findByField<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES, 'studentId', studentId)
+      .some((row) => row.id !== excludeId
+        && row.startedOn <= (candidate.endedOn ?? '9999-12-31')
+        && (row.endedOn ?? '9999-12-31') >= candidate.startedOn);
+    if (overlaps) throw new ConflictException('학교/학년 이력 기간이 기존 활성 구간과 겹칩니다.');
+  }
+
+  private async syncCurrentAcademicProjection(studentId: number, actorId: number, reason: string): Promise<void> {
+    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
+    const current = this.db.findByField<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES, 'studentId', studentId)
+      .filter((row) => row.startedOn <= today && (row.endedOn == null || row.endedOn >= today))
+      .sort((a, b) => b.startedOn.localeCompare(a.startedOn) || b.id - a.id)[0];
+    if (!current) return;
+    const before = { ...this.findOne(studentId) };
+    if (before.grade === current.grade && before.schoolName === current.schoolName) return;
+    const gradeError = studentGradeBirthDateError(current.grade, before.birthDate);
+    if (gradeError) throw new BadRequestException(gradeError);
+    const after = await this.store.update<Student>(STUDENTS_SPEC, studentId, {
+      grade: current.grade, schoolName: current.schoolName,
+    });
+    await this.audit.log({
+      entity: STUDENTS, entityId: studentId, action: 'update', actorId,
+      changes: this.audit.diffOf(before, after as Student), reason,
+    });
   }
 
   async create(dto: CreateStudentDto, actorId?: number): Promise<Student> {
@@ -131,13 +362,30 @@ export class StudentsService implements OnModuleInit {
           changes: this.audit.snapshotOf(relation), reason: `student-delete:${id}`,
         });
       }
+      const familyRelations = this.db.findBy<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS, (row) =>
+        row.studentIdA === id || row.studentIdB === id);
+      for (const relation of familyRelations) {
+        await this.store.remove(STUDENT_FAMILY_RELATIONS_SPEC, relation.id, actorId);
+        if (actorId != null) await this.audit.log({
+          entity: STUDENT_FAMILY_RELATIONS, entityId: relation.id, action: 'delete', actorId,
+          changes: this.audit.snapshotOf(relation), reason: `student-delete:${id}`,
+        });
+      }
+      const academicHistories = this.db.findByField<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES, 'studentId', id);
+      for (const history of academicHistories) {
+        await this.store.remove(STUDENT_ACADEMIC_HISTORIES_SPEC, history.id, actorId);
+        if (actorId != null) await this.audit.log({
+          entity: STUDENT_ACADEMIC_HISTORIES, entityId: history.id, action: 'delete', actorId,
+          changes: this.audit.snapshotOf(history), reason: `student-delete:${id}`,
+        });
+      }
       await this.store.remove(STUDENTS_SPEC, id, actorId);
       const after = this.db.findById<Student>(STUDENTS, id, { withDeleted: true })!;
       if (actorId != null) {
         await this.audit.log({
           entity: STUDENTS, entityId: id, action: 'delete', actorId,
           changes: this.audit.maskContactPii(this.audit.snapshotOf(before)),
-          reason: `cascade interests=${interests.length};relations=${relations.length};enrollments=${enrollments.length}`,
+          reason: `cascade interests=${interests.length};guardians=${relations.length};family=${familyRelations.length};academic=${academicHistories.length};enrollments=${enrollments.length}`,
         });
       }
       return after;

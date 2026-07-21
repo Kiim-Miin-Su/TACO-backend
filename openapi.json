@@ -1529,6 +1529,302 @@
         ]
       }
     },
+    "/api/students/{id}/family-relations": {
+      "get": {
+        "operationId": "StudentsController_findFamilyRelations",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      },
+      "post": {
+        "operationId": "StudentsController_createFamilyRelation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStudentFamilyRelationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/students/{id}/family-relations/{relationId}": {
+      "patch": {
+        "operationId": "StudentsController_updateFamilyRelation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "relationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStudentFamilyRelationDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      },
+      "delete": {
+        "operationId": "StudentsController_removeFamilyRelation",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "relationId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/students/{id}/academic-histories": {
+      "get": {
+        "operationId": "StudentsController_findAcademicHistories",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      },
+      "post": {
+        "operationId": "StudentsController_createAcademicHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateStudentAcademicHistoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
+    "/api/students/{id}/academic-histories/{historyId}": {
+      "patch": {
+        "operationId": "StudentsController_updateAcademicHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "historyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateStudentAcademicHistoryDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      },
+      "delete": {
+        "operationId": "StudentsController_removeAcademicHistory",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "historyId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "Students"
+        ]
+      }
+    },
     "/api/students/{id}": {
       "get": {
         "operationId": "StudentsController_findOne",
@@ -4504,6 +4800,42 @@
         ]
       }
     },
+    "/api/counsel/{id}/aggregate": {
+      "get": {
+        "operationId": "CounselController_findAggregate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 폼+회차+연결 학생 aggregate [관리 역할]",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
     "/api/counsel/{id}/rounds": {
       "post": {
         "operationId": "CounselController_createRound",
@@ -4538,6 +4870,95 @@
           }
         ],
         "summary": "상담 회차 추가 [관리 역할] — roundNo 자동, 폼 nextContactAt 동기화",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
+    "/api/counsel/{id}/rounds/{roundId}": {
+      "patch": {
+        "operationId": "CounselController_updateRound",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "roundId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCounselRoundDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 회차 수정 [관리 역할] — snapshot/다음 상담일 동기화+감사",
+        "tags": [
+          "counsel"
+        ]
+      },
+      "delete": {
+        "operationId": "CounselController_removeRound",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "roundId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          }
+        ],
+        "summary": "상담 회차 soft delete [관리 역할] — 최신 다음 상담일 재계산+감사",
         "tags": [
           "counsel"
         ]
@@ -6273,6 +6694,93 @@
           "reason"
         ]
       },
+      "CreateStudentFamilyRelationDto": {
+        "type": "object",
+        "properties": {
+          "relatedStudentId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "relationType": {
+            "type": "string",
+            "enum": [
+              "sibling",
+              "other"
+            ]
+          },
+          "relationLabel": {
+            "type": "string",
+            "maxLength": 50
+          }
+        },
+        "required": [
+          "relatedStudentId",
+          "relationType"
+        ]
+      },
+      "UpdateStudentFamilyRelationDto": {
+        "type": "object",
+        "properties": {
+          "relationType": {
+            "type": "string",
+            "enum": [
+              "sibling",
+              "other"
+            ]
+          },
+          "relationLabel": {
+            "type": "string",
+            "maxLength": 50
+          }
+        }
+      },
+      "CreateStudentAcademicHistoryDto": {
+        "type": "object",
+        "properties": {
+          "grade": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 13
+          },
+          "schoolName": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "startedOn": {
+            "type": "string"
+          },
+          "endedOn": {
+            "type": "string",
+            "nullable": true
+          }
+        },
+        "required": [
+          "grade",
+          "schoolName",
+          "startedOn"
+        ]
+      },
+      "UpdateStudentAcademicHistoryDto": {
+        "type": "object",
+        "properties": {
+          "grade": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 13
+          },
+          "schoolName": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "startedOn": {
+            "type": "string"
+          },
+          "endedOn": {
+            "type": "string",
+            "nullable": true
+          }
+        }
+      },
       "StudentInterestDto": {
         "type": "object",
         "properties": {
@@ -7774,6 +8282,10 @@
             "type": "string",
             "maxLength": 500
           },
+          "referenceNotes": {
+            "type": "string",
+            "maxLength": 2000
+          },
           "nextContactAt": {
             "type": "string"
           }
@@ -7872,6 +8384,11 @@
             "type": "string",
             "nullable": true,
             "maxLength": 500
+          },
+          "referenceNotes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
           },
           "nextContactAt": {
             "type": "string",
@@ -7977,6 +8494,11 @@
             "nullable": true,
             "maxLength": 500
           },
+          "referenceNotes": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
           "nextContactAt": {
             "type": "string",
             "nullable": true
@@ -8020,6 +8542,59 @@
           "nextContactAt": {
             "type": "string",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}$"
+          },
+          "formSnapshot": {
+            "$ref": "#/components/schemas/CounselFormSnapshotDto"
+          }
+        }
+      },
+      "UpdateCounselRoundDto": {
+        "type": "object",
+        "properties": {
+          "counselorId": {
+            "type": "number",
+            "nullable": true
+          },
+          "scheduledAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "completedAt": {
+            "type": "string",
+            "nullable": true
+          },
+          "isCompleted": {
+            "type": "boolean"
+          },
+          "summary": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 300
+          },
+          "detail": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 2000
+          },
+          "result": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "positive",
+              "neutral",
+              "negative",
+              "no_response",
+              "registered"
+            ]
+          },
+          "nextAction": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "nextContactAt": {
+            "type": "string",
+            "nullable": true
           },
           "formSnapshot": {
             "$ref": "#/components/schemas/CounselFormSnapshotDto"
@@ -8450,7 +9025,7 @@
           "grade": {
             "type": "number",
             "minimum": 0,
-            "maximum": 12
+            "maximum": 13
           },
           "schoolName": {
             "type": "string",
@@ -8614,7 +9189,7 @@
           "grade": {
             "type": "number",
             "minimum": 0,
-            "maximum": 12
+            "maximum": 13
           },
           "phone": {
             "type": "string",

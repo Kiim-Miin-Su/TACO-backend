@@ -5,6 +5,7 @@ import { CounselService } from './counsel.service';
 import { CreateCounselDto } from './dto/create-counsel.dto';
 import { UpdateCounselDto } from './dto/update-counsel.dto';
 import { CreateCounselRoundDto } from './dto/create-round.dto';
+import { UpdateCounselRoundDto } from './dto/update-round.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
@@ -46,6 +47,13 @@ export class CounselController {
     return this.counsel.findForm(id);
   }
 
+  @Get(':id/aggregate')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '상담 폼+회차+연결 학생 aggregate [관리 역할]' })
+  findAggregate(@Param('id', ParseIntPipe) id: number) {
+    return this.counsel.findAggregate(id);
+  }
+
   @Post()
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '상담 접수 생성 [관리 역할] — 전체 폼 저장, status=requested, nextContactAt은 예약 캘린더 단일 소스' })
@@ -75,5 +83,28 @@ export class CounselController {
   @ApiCreatedResponse({ description: '생성된 CounselRound' })
   createRound(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateCounselRoundDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.counsel.createRound(id, dto, req.user?.sub);
+  }
+
+  @Patch(':id/rounds/:roundId')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '상담 회차 수정 [관리 역할] — snapshot/다음 상담일 동기화+감사' })
+  updateRound(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('roundId', ParseIntPipe) roundId: number,
+    @Body() dto: UpdateCounselRoundDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.counsel.updateRound(id, roundId, dto, req.user!.sub);
+  }
+
+  @Delete(':id/rounds/:roundId')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '상담 회차 soft delete [관리 역할] — 최신 다음 상담일 재계산+감사' })
+  removeRound(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('roundId', ParseIntPipe) roundId: number,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.counsel.removeRound(id, roundId, req.user!.sub);
   }
 }

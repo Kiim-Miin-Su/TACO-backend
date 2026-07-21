@@ -67,7 +67,8 @@ describe('Assetization sweep 2 (e2e)', () => {
       .send({ status: 'on_leave' }).expect(200)).body.status).toBe('on_leave');
     // 가드: 잘못된 국가 코드·학년 범위·미존재 학생
     await http.patch(`/api/students/${st.id}`).set(asAdmin()).send({ country: 'usa' }).expect(400);
-    await http.patch(`/api/students/${st.id}`).set(asAdmin()).send({ grade: 13 }).expect(400);
+    await http.patch(`/api/students/${st.id}`).set(asAdmin()).send({ grade: 13 }).expect(200);
+    await http.patch(`/api/students/${st.id}`).set(asAdmin()).send({ grade: 14 }).expect(400);
     await http.patch('/api/students/99999').set(asAdmin()).send({ status: 'enrolled' }).expect(404);
   });
 

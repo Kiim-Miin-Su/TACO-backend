@@ -28,6 +28,9 @@ describe('Counsel API (e2e)', () => {
     await http.patch('/api/counsel/1').set(asInstructor).send({ applicantName: '권한차단' }).expect(403);
     await http.delete('/api/counsel/1').set(asInstructor).expect(403);
     await http.post('/api/counsel/1/rounds').set(asInstructor).send({ summary: '권한차단' }).expect(403);
+    await http.get('/api/counsel/1/aggregate').set(asInstructor).expect(403);
+    await http.patch('/api/counsel/1/rounds/1').set(asInstructor).send({ summary: '권한차단' }).expect(403);
+    await http.delete('/api/counsel/1/rounds/1').set(asInstructor).expect(403);
   });
 
   it('GET /counsel — 상담 접수 3건(시드)', async () => {
@@ -74,13 +77,13 @@ describe('Counsel API (e2e)', () => {
       applicantName: '전체입력', applicantPhone: '010-1234-5678', source: 'manual', submitterType: 'parent', assignedStaffId: 3,
       interestSubjectId: 1, interestCourseId: 10, academyExpectation: '정기 피드백',
       desiredStartTime: 'within_1_month', learningAtmosphere: 'needs_management',
-      studentIntention: 'student_wants', weakness: '어휘', nextContactAt: '2099-07-21',
+      studentIntention: 'student_wants', weakness: '어휘', referenceNotes: '해외 거주로 카카오 우선', nextContactAt: '2099-07-21',
     }).expect(201)).body;
     expect(created).toMatchObject({
       applicantName: '전체입력', applicantPhone: '010-1234-5678', submitterType: 'parent', assignedStaffId: 3,
       interestSubjectId: 1, interestCourseId: 10, academyExpectation: '정기 피드백',
       desiredStartTime: 'within_1_month', learningAtmosphere: 'needs_management',
-      studentIntention: 'student_wants', weakness: '어휘', nextContactAt: '2099-07-21',
+      studentIntention: 'student_wants', weakness: '어휘', referenceNotes: '해외 거주로 카카오 우선', nextContactAt: '2099-07-21',
     });
 
     const updated = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin()).send({
@@ -107,12 +110,49 @@ describe('Counsel API (e2e)', () => {
     expect(update.actorId).toBe(3);
     expect(update.changes.nextContactAt.after).toBe('2099-07-22');
     expect(update.changes.applicantPhone).toEqual({ before: '[masked]', after: '[masked]' });
+    const createAudit = audit.find((row: { action: string }) => row.action === 'create');
+    expect(createAudit.changes.referenceNotes.after).toBe('[masked]');
+  });
+
+  it('상담 aggregate를 읽고 회차 수정·삭제 시 최신 nextContactAt과 회차별 audit를 보존한다', async () => {
+    const form = (await http.post('/api/counsel').set(asAdmin())
+      .send({ applicantName: '회차CRUD', source: 'manual', referenceNotes: '상담 참고' }).expect(201)).body;
+    const first = (await http.post(`/api/counsel/${form.id}/rounds`).set(asAdmin())
+      .send({ summary: '1차', nextContactAt: '2099-08-01' }).expect(201)).body;
+    const second = (await http.post(`/api/counsel/${form.id}/rounds`).set(asAdmin())
+      .send({ summary: '2차', nextContactAt: '2099-08-02' }).expect(201)).body;
+    const aggregate = (await http.get(`/api/counsel/${form.id}/aggregate`).set(asAdmin()).expect(200)).body;
+    expect(aggregate.form).toMatchObject({ id: form.id, referenceNotes: '상담 참고', nextContactAt: '2099-08-02' });
+    expect(aggregate.rounds.map((row: { id: number }) => row.id)).toEqual([first.id, second.id]);
+
+    await http.patch(`/api/counsel/${form.id}/rounds/${first.id}`).set(asAdmin())
+      .send({ nextContactAt: '2099-09-01' }).expect(200);
+    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt).toBe('2099-08-02');
+
+    await http.patch(`/api/counsel/${form.id}/rounds/${second.id}`).set(asAdmin())
+      .send({ summary: '2차 수정', nextContactAt: '2099-08-03' }).expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ summary: '2차 수정', nextContactAt: '2099-08-03' }));
+    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt).toBe('2099-08-03');
+
+    await http.delete(`/api/counsel/${form.id}/rounds/${second.id}`).set(asAdmin()).expect(200);
+    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt).toBe('2099-09-01');
+    const audit = (await http.get(`/api/audit?entity=counsel_rounds&entityId=${second.id}`).set(asAdmin()).expect(200)).body;
+    expect(audit.map((row: { action: string }) => row.action).sort()).toEqual(['create', 'delete', 'update']);
   });
 
   it('POST /counsel — 없는 interestCourseId → 400(FK)', async () => {
     const token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     await http.post('/api/counsel').set({ Authorization: `Bearer ${token}` })
       .send({ applicantName: 'x', source: 'manual', interestCourseId: 99999 }).expect(400);
+  });
+
+  it('POST /counsel — 학생·보호자 FK와 두 원부의 활성 관계를 검증한다', async () => {
+    await http.post('/api/counsel').set(asAdmin())
+      .send({ applicantName: '학생없음', source: 'manual', studentId: 99999 }).expect(400);
+    await http.post('/api/counsel').set(asAdmin())
+      .send({ applicantName: '보호자없음', source: 'manual', parentId: 99999 }).expect(400);
+    await http.post('/api/counsel').set(asAdmin())
+      .send({ applicantName: '관계없음', source: 'manual', studentId: 2, parentId: 1 }).expect(400);
   });
 
   it('POST/PATCH/round — 존재하지 않는 담당 직원 FK는 400', async () => {

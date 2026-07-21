@@ -19,12 +19,14 @@ describe('Students Soft-Delete (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let ADMIN = '';
+  let INSTRUCTOR = '';
   const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
     ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
+    INSTRUCTOR = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
   });
   afterAll(async () => { await app.close(); });
 
@@ -120,5 +122,75 @@ describe('Students Soft-Delete (e2e)', () => {
       addressDetail: { after: '[masked]' }, kakaoId: { after: '[masked]' },
       name: { after: '학생명' },
     });
+  });
+
+  it('가족 관계를 canonical pair로 CRUD하고 자기연결·중복·nested IDOR를 차단하며 전 변경을 감사한다', async () => {
+    const first = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('가족학생A')).expect(201)).body.student;
+    const second = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('가족학생B')).expect(201)).body.student;
+
+    await http.post(`/api/students/${first.id}/family-relations`).set(asAdmin())
+      .send({ relatedStudentId: first.id, relationType: 'sibling' }).expect(400);
+    const relation = (await http.post(`/api/students/${second.id}/family-relations`).set(asAdmin())
+      .send({ relatedStudentId: first.id, relationType: 'other', relationLabel: '사촌' }).expect(201)).body;
+    expect(relation).toMatchObject({
+      studentIdA: Math.min(first.id, second.id), studentIdB: Math.max(first.id, second.id),
+      relationType: 'other', relationLabel: '사촌',
+    });
+    await http.post(`/api/students/${first.id}/family-relations`).set(asAdmin())
+      .send({ relatedStudentId: second.id, relationType: 'sibling' }).expect(409);
+
+    const aggregate = (await http.get(`/api/students/${first.id}/aggregate`).set(asAdmin()).expect(200)).body;
+    expect(aggregate.familyRelations.map((row: { id: number }) => row.id)).toContain(relation.id);
+    await http.patch(`/api/students/${first.id}/family-relations/${relation.id}`).set(asAdmin())
+      .send({ relationType: 'sibling' }).expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({ relationType: 'sibling', relationLabel: null }));
+    await http.patch(`/api/students/99999/family-relations/${relation.id}`).set(asAdmin())
+      .send({ relationType: 'sibling' }).expect(404);
+    await http.delete(`/api/students/${second.id}/family-relations/${relation.id}`).set(asAdmin()).expect(200);
+
+    const audit = (await http.get(`/api/audit?entity=student_family_relations&entityId=${relation.id}`).set(asAdmin()).expect(200)).body;
+    expect(audit.map((row: { action: string }) => row.action).sort()).toEqual(['create', 'delete', 'update']);
+    expect(audit.every((row: { actorId: number }) => row.actorId === 3)).toBe(true);
+  });
+
+  it('강사 학생 aggregate는 core만 반환하고 가족/학사 전용 URL 직접 접근은 403이다', async () => {
+    const asInstructor = { Authorization: `Bearer ${INSTRUCTOR}` };
+    const aggregate = (await http.get('/api/students/1/aggregate').set(asInstructor).expect(200)).body;
+    expect(aggregate.student).toBeDefined();
+    expect(aggregate.familyRelations).toBeUndefined();
+    expect(aggregate.academicHistories).toBeUndefined();
+    await http.get('/api/students/1/family-relations').set(asInstructor).expect(403);
+    await http.post('/api/students/1/family-relations').set(asInstructor)
+      .send({ relatedStudentId: 2, relationType: 'sibling' }).expect(403);
+    await http.get('/api/students/1/academic-histories').set(asInstructor).expect(403);
+    await http.post('/api/students/1/academic-histories').set(asInstructor)
+      .send({ grade: 1, schoolName: 'x', startedOn: '2020-01-01' }).expect(403);
+  });
+
+  it('과거·현재·미래 학교/학년 이력을 CRUD하고 overlap·actor spoof를 막으며 현재 profile을 동기화한다', async () => {
+    const student = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('학사이력학생', { student: { grade: 11, schoolName: '기존학교' } })).expect(201)).body.student;
+    const history = (await http.post(`/api/students/${student.id}/academic-histories`).set(asAdmin()).send({
+      grade: 13, schoolName: '현재학교', startedOn: '2026-01-01', endedOn: null,
+    }).expect(201)).body;
+    expect((await http.get(`/api/students/${student.id}`).set(asAdmin()).expect(200)).body)
+      .toMatchObject({ grade: 13, schoolName: '현재학교' });
+
+    await http.post(`/api/students/${student.id}/academic-histories`).set(asAdmin()).send({
+      grade: 12, schoolName: '겹침학교', startedOn: '2026-06-01', endedOn: '2027-01-01',
+    }).expect(409);
+    await http.patch(`/api/students/${student.id}/academic-histories/${history.id}`).set(asAdmin())
+      .send({ changedBy: 999, grade: 12 }).expect(400);
+    const updated = (await http.patch(`/api/students/${student.id}/academic-histories/${history.id}`).set(asAdmin())
+      .send({ grade: 12, schoolName: '수정학교' }).expect(200)).body;
+    expect(updated).toMatchObject({ grade: 12, schoolName: '수정학교', changedBy: 3 });
+    expect((await http.get(`/api/students/${student.id}/aggregate`).set(asAdmin()).expect(200)).body)
+      .toMatchObject({ student: { grade: 12, schoolName: '수정학교' } });
+
+    await http.delete(`/api/students/${student.id}/academic-histories/${history.id}`).set(asAdmin()).expect(200);
+    const audit = (await http.get(`/api/audit?entity=student_academic_histories&entityId=${history.id}`).set(asAdmin()).expect(200)).body;
+    expect(audit.map((row: { action: string }) => row.action).sort()).toEqual(['create', 'delete', 'update']);
   });
 });

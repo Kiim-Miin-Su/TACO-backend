@@ -87,11 +87,7 @@ export class RegistrationsService {
   }
 
   getAggregate(studentId: number): StudentAggregate {
-    return {
-      student: this.students.findOne(studentId),
-      interests: this.interests.findByStudent(studentId),
-      guardians: this.parents.guardiansForStudent(studentId),
-    };
+    return this.students.findAggregate(studentId);
   }
 
   async updateAggregate(studentId: number, dto: UpdateStudentAggregateDto, actorId: number): Promise<StudentAggregate> {

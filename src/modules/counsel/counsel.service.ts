@@ -11,8 +11,12 @@ import { CounselForm, CounselRound, COUNSEL_FORMS } from './counsel.entity';
 import { CreateCounselDto } from './dto/create-counsel.dto';
 import { UpdateCounselDto } from './dto/update-counsel.dto';
 import { CreateCounselRoundDto } from './dto/create-round.dto';
-import type { CounselFormSnapshot } from '@kms545487/contracts';
+import type { CounselAggregate, CounselFormSnapshot } from '@kms545487/contracts';
 import type { BaseRow } from '../../common/types/base';
+import { UpdateCounselRoundDto } from './dto/update-round.dto';
+import { StudentsService } from '../students/students.service';
+import { Parent, ParentStudent, PARENTS, PARENT_STUDENTS } from '../parents/parent.entity';
+import { Student, STUDENTS } from '../students/student.entity';
 
 const snapshotOfForm = (form: CounselFormSnapshot): CounselFormSnapshot => ({
   applicantName: form.applicantName,
@@ -41,15 +45,31 @@ export class CounselService implements OnModuleInit {
     private readonly store: PostgresCollectionStore,
     private readonly uow: CalendarUnitOfWork,
     private readonly audit: AuditService,
+    private readonly students: StudentsService,
   ) {}
 
   // 관심 과목/코스 FK 존재 검증(있을 때만) — 참조 무결성.
-  private assertRefs(dto: { interestSubjectId?: number | null; interestCourseId?: number | null; assignedStaffId?: number | null }): void {
+  private assertRefs(dto: {
+    interestSubjectId?: number | null;
+    interestCourseId?: number | null;
+    assignedStaffId?: number | null;
+    parentId?: number | null;
+    studentId?: number | null;
+  }): void {
     if (dto.interestSubjectId != null && !this.db.findById<Subject>(SUBJECTS, dto.interestSubjectId))
       throw new BadRequestException(`interestSubjectId ${dto.interestSubjectId} 없음`);
     if (dto.interestCourseId != null && !this.db.findById<Course>(COURSES, dto.interestCourseId))
       throw new BadRequestException(`interestCourseId ${dto.interestCourseId} 없음`);
     if (dto.assignedStaffId != null) this.assertActiveStaff(dto.assignedStaffId, 'assignedStaffId');
+    if (dto.studentId != null && !this.db.findById<Student>(STUDENTS, dto.studentId))
+      throw new BadRequestException(`studentId ${dto.studentId} 없음`);
+    if (dto.parentId != null && !this.db.findById<Parent>(PARENTS, dto.parentId))
+      throw new BadRequestException(`parentId ${dto.parentId} 없음`);
+    if (dto.studentId != null && dto.parentId != null) {
+      const linked = this.db.findBy<ParentStudent>(PARENT_STUDENTS, (row) =>
+        row.studentId === dto.studentId && row.parentId === dto.parentId).length > 0;
+      if (!linked) throw new BadRequestException('parentId와 studentId 사이의 활성 보호자 관계가 없습니다.');
+    }
   }
 
   private assertActiveStaff(id: number, field: 'assignedStaffId' | 'counselorId'): void {
@@ -63,6 +83,15 @@ export class CounselService implements OnModuleInit {
     const [row] = await this.store.findActive<CounselForm>(COUNSEL_FORMS_SPEC, { where: { id } });
     if (!row) throw new NotFoundException(`CounselForm ${id} not found`);
     return row;
+  }
+
+  async findAggregate(id: number): Promise<CounselAggregate> {
+    const form = await this.findForm(id);
+    return {
+      form,
+      rounds: await this.findAllRounds(id),
+      student: form.studentId == null ? null : this.students.findAggregate(form.studentId),
+    };
   }
 
   // 상담 접수 생성 — 최초 status='requested'(미지정 시). actorId 없으면(시드·내부 경로) audit 생략.
@@ -156,6 +185,83 @@ export class CounselService implements OnModuleInit {
     });
   }
 
+  async updateRound(formId: number, roundId: number, dto: UpdateCounselRoundDto, actorId: number): Promise<CounselRound> {
+    if (dto.counselorId != null) this.assertActiveStaff(dto.counselorId, 'counselorId');
+    if (dto.formSnapshot) this.assertRefs(dto.formSnapshot);
+    if (dto.nextContactAt !== undefined && dto.formSnapshot?.nextContactAt !== undefined
+      && dto.nextContactAt !== dto.formSnapshot.nextContactAt) {
+      throw new BadRequestException('nextContactAt과 formSnapshot.nextContactAt이 일치해야 합니다');
+    }
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'counselForm', id: formId }]);
+      const beforeForm = { ...(await this.findForm(formId)) };
+      const before = { ...this.roundForForm(formId, roundId) };
+      const formSnapshot = dto.formSnapshot == null
+        ? { ...before.formSnapshot }
+        : snapshotOfForm({ ...before.formSnapshot, ...dto.formSnapshot });
+      if (dto.nextContactAt !== undefined) formSnapshot.nextContactAt = dto.nextContactAt;
+      const patch = {
+        ...(dto.counselorId !== undefined ? { counselorId: dto.counselorId } : {}),
+        ...(dto.scheduledAt !== undefined ? { scheduledAt: dto.scheduledAt } : {}),
+        ...(dto.completedAt !== undefined ? { completedAt: dto.completedAt } : {}),
+        ...(dto.isCompleted !== undefined ? { isCompleted: dto.isCompleted } : {}),
+        ...(dto.summary !== undefined ? { summary: dto.summary } : {}),
+        ...(dto.detail !== undefined ? { detail: dto.detail } : {}),
+        ...(dto.result !== undefined ? { result: dto.result } : {}),
+        ...(dto.nextAction !== undefined ? { nextAction: dto.nextAction } : {}),
+        ...(dto.nextContactAt !== undefined ? { nextContactAt: dto.nextContactAt } : {}),
+        ...(dto.formSnapshot !== undefined || dto.nextContactAt !== undefined ? { formSnapshot } : {}),
+      };
+      const after = await this.store.update<CounselRound>(COUNSEL_ROUNDS_SPEC, roundId, patch);
+      if (!after) throw new NotFoundException(`CounselRound ${roundId} not found`);
+      const rounds = await this.findAllRounds(formId);
+      const latestRoundId = rounds.sort((a, b) => b.roundNo - a.roundNo || b.id - a.id)[0]?.id;
+      if ((dto.nextContactAt !== undefined || dto.formSnapshot !== undefined) && latestRoundId === roundId) {
+        const nextContactAt = formSnapshot.nextContactAt ?? null;
+        const afterForm = await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, formId, { nextContactAt });
+        await this.audit.log({
+          entity: COUNSEL_FORMS, entityId: formId, action: 'update', actorId,
+          changes: this.audit.diffOf(beforeForm, afterForm as CounselForm), reason: `round-update:${roundId}`,
+        });
+      }
+      await this.audit.log({
+        entity: 'counsel_rounds', entityId: roundId, action: 'update', actorId,
+        changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
+      });
+      return after;
+    });
+  }
+
+  async removeRound(formId: number, roundId: number, actorId: number): Promise<{ id: number; deleted: true }> {
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'counselForm', id: formId }]);
+      const beforeForm = { ...(await this.findForm(formId)) };
+      const before = { ...this.roundForForm(formId, roundId) };
+      await this.store.remove(COUNSEL_ROUNDS_SPEC, roundId, actorId);
+      await this.audit.log({
+        entity: 'counsel_rounds', entityId: roundId, action: 'delete', actorId,
+        changes: this.audit.maskContactPii(this.audit.snapshotOf(before)),
+      });
+      const remaining = await this.findAllRounds(formId);
+      const latest = remaining.sort((a, b) => b.roundNo - a.roundNo || b.id - a.id)[0];
+      const nextContactAt = latest?.nextContactAt ?? null;
+      if ((beforeForm.nextContactAt ?? null) !== nextContactAt) {
+        const afterForm = await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, formId, { nextContactAt });
+        await this.audit.log({
+          entity: COUNSEL_FORMS, entityId: formId, action: 'update', actorId,
+          changes: this.audit.diffOf(beforeForm, afterForm as CounselForm), reason: `round-delete:${roundId}`,
+        });
+      }
+      return { id: roundId, deleted: true };
+    });
+  }
+
+  private roundForForm(formId: number, roundId: number): CounselRound {
+    const row = this.db.findById<CounselRound>('counsel_rounds', roundId);
+    if (!row || row.counselFormId !== formId) throw new NotFoundException(`상담 ${formId}의 회차 ${roundId} 없음`);
+    return row;
+  }
+
   // 데모 상담 시드 — 프론트 목데이터 이관. rounds.counselFormId→forms.id(무결성).
   // 상담 탭 배지: status≠dropped ∧ nextContactAt 없음(다음 상담일 미정) 기준.
   async onModuleInit(): Promise<void> {
@@ -192,11 +298,19 @@ export class CounselService implements OnModuleInit {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'counselForm', id }]);
       const before = await this.findForm(id);
-      await this.store.removeByField(COUNSEL_ROUNDS_SPEC, 'counselFormId', id, actorId);
+      const rounds = await this.findAllRounds(id);
+      for (const round of rounds) {
+        await this.store.remove(COUNSEL_ROUNDS_SPEC, round.id, actorId);
+        await this.audit.log({
+          entity: 'counsel_rounds', entityId: round.id, action: 'delete', actorId,
+          changes: this.audit.maskContactPii(this.audit.snapshotOf(round)), reason: `counsel-form-delete:${id}`,
+        });
+      }
       await this.store.remove(COUNSEL_FORMS_SPEC, id, actorId);
       await this.audit.log({
         entity: 'counsel_forms', entityId: id, action: 'delete', actorId,
         changes: this.audit.maskContactPii(this.audit.snapshotOf(before)),
+        reason: `cascade-rounds:${rounds.length}`,
       });
       return before;
     });
