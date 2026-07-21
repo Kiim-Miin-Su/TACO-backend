@@ -1,4 +1,5 @@
 import {
+  canDecideSignupRole,
   isInstructorOnly,
   isStaffRole,
   roleHasCapability,
@@ -11,11 +12,22 @@ describe('role policy', () => {
     expect(isStaffRole('parent')).toBe(false);
   });
 
-  it('keeps finance and signup decisions CEO-only', () => {
+  it('keeps finance CEO-only and opens the scoped signup-decision route to admin roles', () => {
     expect(roleHasCapability('super_admin', 'finance.access')).toBe(true);
     expect(roleHasCapability('super_admin', 'signup.decide')).toBe(true);
     expect(roleHasCapability('admin', 'finance.access')).toBe(false);
-    expect(roleHasCapability('manager', 'signup.decide')).toBe(false);
+    expect(roleHasCapability('admin', 'signup.decide')).toBe(true);
+    expect(roleHasCapability('manager', 'signup.decide')).toBe(true);
+  });
+
+  it('enforces the signup decision target matrix without role mutation', () => {
+    expect(canDecideSignupRole('manager', 'instructor')).toBe(true);
+    expect(canDecideSignupRole('manager', 'manager')).toBe(false);
+    expect(canDecideSignupRole('admin', 'instructor')).toBe(true);
+    expect(canDecideSignupRole('admin', 'manager')).toBe(true);
+    expect(canDecideSignupRole('admin', 'admin')).toBe(false);
+    expect(canDecideSignupRole('super_admin', 'admin')).toBe(true);
+    expect(canDecideSignupRole('super_admin', 'super_admin')).toBe(false);
   });
 
   it('allows all admin roles to manage approvals and calendars', () => {

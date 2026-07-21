@@ -3,7 +3,7 @@ import request from "supertest";
 import { createTestApp } from "./setup-app";
 
 // 권한 매트릭스 e2e (#6) — 데모 역할별 토큰으로 주요 엔드포인트 호출 → 기대 응답 검증.
-// 가드 현황(2026-07-03): /auth/pending·approve·reject = super_admin 전용.
+// 가드 현황(2026-07-21): /auth/pending·approve·reject = 관리자 역할 진입 후 서비스가 target role 범위 강제.
 // schedule·reports 읽기 = 로그인(STAFF). money/payouts 전체 읽기 = super_admin 전용.
 // instructor payout은 /payouts/me 계열에서 본인 정산/시수 미리보기만 허용.
 // conflicts 드라이런·users/exists = 로그인 필수(H1·H2 — @Roles 누락 무인증 개방 수정).
@@ -32,12 +32,12 @@ describe("Permission matrix (e2e)", () => {
 
   const auth = (role?: string) => (role ? { Authorization: `Bearer ${tokens[role]}` } : {});
 
-  describe("super_admin 전용 — /auth/pending", () => {
+  describe("관리자 역할 — /auth/pending", () => {
     it("super_admin → 200", async () => {
       await http.get("/api/auth/pending").set(auth("super_admin")).expect(200);
     });
-    it("manager → 403", async () => {
-      await http.get("/api/auth/pending").set(auth("manager")).expect(403);
+    it("manager → 200 (응답 행은 서비스가 instructor 요청으로 제한)", async () => {
+      await http.get("/api/auth/pending").set(auth("manager")).expect(200);
     });
     it("instructor → 403", async () => {
       await http.get("/api/auth/pending").set(auth("instructor")).expect(403);
@@ -47,9 +47,12 @@ describe("Permission matrix (e2e)", () => {
     });
   });
 
-  describe("super_admin 전용 — /auth/approve/:id (가드가 핸들러보다 먼저)", () => {
-    it("manager → 403 (id 무관)", async () => {
-      await http.post("/api/auth/approve/999").set(auth("manager")).send({}).expect(403);
+  describe("관리자 역할 — /auth/approve/:id", () => {
+    it("manager는 route 진입 후 존재하지 않는 대상이면 404", async () => {
+      await http.post("/api/auth/approve/999").set(auth("manager")).send({}).expect(404);
+    });
+    it("instructor → 403", async () => {
+      await http.post("/api/auth/approve/999").set(auth("instructor")).send({}).expect(403);
     });
     it("토큰 없음 → 401", async () => {
       await http.post("/api/auth/approve/999").send({}).expect(401);

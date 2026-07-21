@@ -52,7 +52,7 @@ describe('Auth API (e2e)', () => {
     const pending = (await http.get('/api/auth/pending').set('Authorization', `Bearer ${admin}`).expect(200)).body;
     const target = pending.find((p: { webId: string }) => p.webId === 'flow1');
     expect(target).toBeTruthy();
-    await http.post(`/api/auth/approve/${target.id}`).set('Authorization', `Bearer ${admin}`).send({ role: 'manager' }).expect(201);
+    await http.post(`/api/auth/approve/${target.id}`).set('Authorization', `Bearer ${admin}`).send({}).expect(201);
 
     // 이제 로그인 성공
     const login = (await http.post('/api/auth/login').send({ webId: 'flow1', password: 'password123' }).expect(201)).body;
@@ -78,11 +78,11 @@ describe('Auth API (e2e)', () => {
     }
   });
 
-  it('super_admin 가드: 토큰 없이 승인목록 → 401', async () => {
+  it('관리자 가드: 토큰 없이 승인목록 → 401', async () => {
     await http.get('/api/auth/pending').expect(401);
   });
 
-  it('super_admin 가드: 비대표 토큰으로 승인목록 → 403', async () => {
+  it('관리자 가드: 강사 토큰으로 승인목록 → 403', async () => {
     // park_inst(instructor) 로그인
     const inst = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
     await http.get('/api/auth/pending').set('Authorization', `Bearer ${inst}`).expect(403);

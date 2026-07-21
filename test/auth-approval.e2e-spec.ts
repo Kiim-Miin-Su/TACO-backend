@@ -127,13 +127,65 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     expect(auditOf(id)).toHaveLength(0);
   });
 
-  // [대표 지시 2026-07-16] super_admin 단일 계정 불변식 — 승인으로 super_admin 부여 불가(명시 400).
-  it('T5b: 승인 role=super_admin → 400 (단일 계정 불변식 — 부여 경로는 bootstrap뿐)', async () => {
+  // 요청 역할은 가입 시 확정된다. 승인 payload에서 role을 바꾸려는 시도는 whitelist 경계에서 거부한다.
+  it('T5b: 승인 payload role 주입 → 400 (요청 역할 변경·승격 불가)', async () => {
     const id = await signupVerified('t5b_inst');
     const admin = await login('admin');
     await http.post(`/api/auth/approve/${id}`).set('Authorization', `Bearer ${admin}`)
       .send({ role: 'super_admin' }).expect(400);
     expect(userOf(id).status).toBe('pending'); // 변경 없음
+  });
+
+  it('T5c: 매니저·관리자·대표 승인 범위와 pending 목록이 동일한 역할 매트릭스를 사용한다', async () => {
+    const instructorId = await signupVerified('t5c_inst', 'instructor');
+    const managerId = await signupVerified('t5c_manager', 'manager');
+    const adminId = await signupVerified('t5c_admin', 'admin');
+    const managerToken = await login('manager');
+    const adminToken = await login('prof_admin');
+    const ceoToken = await login('admin');
+
+    const managerPending = (await http.get('/api/auth/pending')
+      .set('Authorization', `Bearer ${managerToken}`).expect(200)).body as Array<{ id: number }>;
+    expect(managerPending.some((row) => row.id === instructorId)).toBe(true);
+    expect(managerPending.some((row) => row.id === managerId || row.id === adminId)).toBe(false);
+    await http.post(`/api/auth/approve/${managerId}`)
+      .set('Authorization', `Bearer ${managerToken}`).send({}).expect(403);
+    const approvedInstructor = (await http.post(`/api/auth/approve/${instructorId}`)
+      .set('Authorization', `Bearer ${managerToken}`).send({ reason: '강사 검토 완료' }).expect(201)).body;
+    expect(approvedInstructor).toMatchObject({ role: 'instructor', approvedBy: 4 });
+
+    const adminPending = (await http.get('/api/auth/pending')
+      .set('Authorization', `Bearer ${adminToken}`).expect(200)).body as Array<{ id: number }>;
+    expect(adminPending.some((row) => row.id === managerId)).toBe(true);
+    expect(adminPending.some((row) => row.id === adminId)).toBe(false);
+    await http.post(`/api/auth/approve/${adminId}`)
+      .set('Authorization', `Bearer ${adminToken}`).send({}).expect(403);
+    const approvedManager = (await http.post(`/api/auth/approve/${managerId}`)
+      .set('Authorization', `Bearer ${adminToken}`).send({ reason: '매니저 검토 완료' }).expect(201)).body;
+    expect(approvedManager).toMatchObject({ role: 'manager', approvedBy: 5 });
+
+    const ceoPending = (await http.get('/api/auth/pending')
+      .set('Authorization', `Bearer ${ceoToken}`).expect(200)).body as Array<{ id: number }>;
+    expect(ceoPending.some((row) => row.id === adminId)).toBe(true);
+    const approvedAdmin = (await http.post(`/api/auth/approve/${adminId}`)
+      .set('Authorization', `Bearer ${ceoToken}`).send({ reason: '관리자 검토 완료' }).expect(201)).body;
+    expect(approvedAdmin).toMatchObject({ role: 'admin', approvedBy: 3 });
+  });
+
+  it('T5d: 반려도 승인과 같은 역할 범위를 강제하고 actor·사유를 감사 이력에 남긴다', async () => {
+    const instructorId = await signupVerified('t5d_inst', 'instructor');
+    const managerId = await signupVerified('t5d_manager', 'manager');
+    const managerToken = await login('manager');
+    const adminToken = await login('prof_admin');
+
+    await http.post(`/api/auth/reject/${managerId}`).set('Authorization', `Bearer ${managerToken}`)
+      .send({ reason: '권한 범위 밖' }).expect(403);
+    await http.post(`/api/auth/reject/${instructorId}`).set('Authorization', `Bearer ${managerToken}`)
+      .send({ reason: '강사 요건 미달' }).expect(201);
+    await http.post(`/api/auth/reject/${managerId}`).set('Authorization', `Bearer ${adminToken}`)
+      .send({ reason: '매니저 요건 미달' }).expect(201);
+    expect(auditOf(instructorId)[0]).toMatchObject({ action: 'reject', actorId: 4, reason: '강사 요건 미달' });
+    expect(auditOf(managerId)[0]).toMatchObject({ action: 'reject', actorId: 5, reason: '매니저 요건 미달' });
   });
 
   it('T6: 이메일 미인증(잔존 구 흐름) 계정 승인 → 403 (CAS 안에서 판정)', async () => {

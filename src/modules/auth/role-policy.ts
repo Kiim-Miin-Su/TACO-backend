@@ -17,7 +17,7 @@ const CAPABILITY_ROLES: Record<RoleCapability, readonly AppRole[]> = {
   'staff.login': STAFF_ROLES,
   'admin.area': ADMIN_ROLES,
   'approval.manage': ADMIN_ROLES,
-  'signup.decide': ['super_admin'],
+  'signup.decide': ADMIN_ROLES,
   'finance.access': ['super_admin'],
   'calendar.manage': ADMIN_ROLES,
   'calendar.request-own': STAFF_ROLES,
@@ -30,3 +30,11 @@ export const isInstructorOnly = (roles?: readonly string[]): boolean =>
   (roles ?? []).includes('instructor') && !hasAdminRole(roles);
 export const roleHasCapability = (role: string, capability: RoleCapability): boolean =>
   CAPABILITY_ROLES[capability].includes(role as AppRole);
+
+/** 가입 신청의 요청 역할은 승인자가 바꿀 수 없다. 역할별 처리 가능 범위만 서버에서 판정한다. */
+export const canDecideSignupRole = (actorRole: AppRole, requestedRole: AppRole): boolean => {
+  if (requestedRole === 'super_admin') return false;
+  if (actorRole === 'super_admin') return true;
+  if (actorRole === 'admin') return requestedRole === 'instructor' || requestedRole === 'manager';
+  return actorRole === 'manager' && requestedRole === 'instructor';
+};

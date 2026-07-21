@@ -17,7 +17,7 @@ import {
 import { ApiBearerAuth, ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { Throttle } from '@nestjs/throttler';
 import { RolesGuard } from './roles.guard';
-import { Roles, STAFF_ROLES } from './roles.decorator';
+import { ADMIN_ROLES, Roles, STAFF_ROLES } from './roles.decorator';
 import type { Request, Response } from 'express';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { isForbiddenDemoCredential } from '../../config/production-guards';
@@ -373,24 +373,26 @@ export class AuthController {
     return { ok: true };
   }
 
-  // ── 대표(super_admin) 고유 권한: 승인 관리 ──
+  // ── 가입 승인 관리 ──
 
   @Get('pending')
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(RolesGuard)
+  @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '승인 대기 계정 목록(대표 전용).' })
-  pending() {
-    return this.users.listPending();
+  @ApiOperation({ summary: '처리 가능한 승인 대기 계정 목록(매니저=강사, 관리자=강사·매니저, 대표=대표 외).' })
+  pending(@Req() req: Request & { user?: JwtClaims }) {
+    return this.users.listPending(this.actorOf(req));
   }
 
   // [TBO-28B] 원자적 승인 command — actor=JWT sub(바디 위조 불가), users CAS + instructor_profiles + audit_log 단일 tx.
   //  동시 approve/approve·approve/reject는 한 command만 성공(나머지 409). 미인증 계정 403(검사도 CAS 안).
   @Post('approve/:id')
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(RolesGuard)
+  @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '가입 승인(원자 tx: 상태+승인메타+강사프로필+audit, 역할 지정 가능) — 대표 전용. 동시 결정은 409.' })
+  @ApiOperation({ summary: '가입 승인(요청 역할 보존, 역할별 범위 강제, 원자 tx+audit). 동시 결정은 409.' })
   async approve(@Param('id', ParseIntPipe) id: number, @Body() dto: ApproveDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.users.approve(id, this.actorOf(req), dto.role, dto.reason);
+    return this.users.approve(id, this.actorOf(req), dto.reason);
   }
 
   // [핫픽스 2026-07-20] 레거시 pending 계정 인증 메일 재발송 — 구 링크 가입자가 SMTP 부재기에
@@ -412,9 +414,10 @@ export class AuthController {
   }
 
   @Post('reject/:id')
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(RolesGuard)
+  @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '가입 반려(사유 필수, audit 기록) — 대표 전용. 동시 결정은 409.' })
+  @ApiOperation({ summary: '가입 반려(역할별 범위 강제, 사유 필수, audit 기록). 동시 결정은 409.' })
   async reject(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.users.reject(id, this.actorOf(req), dto.reason);
   }
@@ -429,7 +432,7 @@ export class AuthController {
     return this.users.deletePendingAccount(id, this.actorOf(req), dto.reason);
   }
 
-  /** 검증된 JWT의 sub만 actor로 쓴다(불변식 §5-4). SuperAdminGuard가 req.user를 부착한다. */
+  /** 검증된 JWT의 sub만 actor로 쓴다(불변식 §5-4). 인증 가드가 req.user를 부착한다. */
   private actorOf(req: Request & { user?: JwtClaims }): number {
     const sub = req.user?.sub;
     if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');

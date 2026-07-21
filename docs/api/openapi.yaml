@@ -281,7 +281,7 @@ paths:
                   type: object
       security:
       - bearer: []
-      summary: 승인 대기 계정 목록(대표 전용).
+      summary: 처리 가능한 승인 대기 계정 목록(매니저=강사, 관리자=강사·매니저, 대표=대표 외).
       tags:
       - auth
   /api/auth/approve/{id}:
@@ -308,7 +308,7 @@ paths:
                 type: object
       security:
       - bearer: []
-      summary: '가입 승인(원자 tx: 상태+승인메타+강사프로필+audit, 역할 지정 가능) — 대표 전용. 동시 결정은 409.'
+      summary: 가입 승인(요청 역할 보존, 역할별 범위 강제, 원자 tx+audit). 동시 결정은 409.
       tags:
       - auth
   /api/auth/pending/{id}/resend-verification:
@@ -352,7 +352,7 @@ paths:
                 type: object
       security:
       - bearer: []
-      summary: 가입 반려(사유 필수, audit 기록) — 대표 전용. 동시 결정은 409.
+      summary: 가입 반려(역할별 범위 강제, 사유 필수, audit 기록). 동시 결정은 409.
       tags:
       - auth
   /api/auth/pending/{id}:
@@ -3416,13 +3416,6 @@ components:
     ApproveDto:
       type: object
       properties:
-        role:
-          type: string
-          enum:
-          - instructor
-          - manager
-          - admin
-          - super_admin
         reason:
           type: string
           maxLength: 500

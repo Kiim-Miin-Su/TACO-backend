@@ -22,6 +22,7 @@ import type { InstructorProfile } from './instructor-profiles.store';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import type { Course } from '../courses/course.entity';
 import type { InstructorContract } from '../instructor-contracts/instructor-contract.entity';
+import { canDecideSignupRole, roleHasCapability } from '../auth/role-policy';
 import {
   USERS, authVersionOf, isStaffRole, toSafe,
   type AccountStatus, type SafeAccount, type StaffAccount, type StaffRole,
@@ -780,11 +781,13 @@ export class UsersService implements OnModuleInit {
     });
   }
 
-  async listPending(): Promise<Array<SafeAccount & { rrnMasked: string | null }>> {
+  async listPending(actorId: number): Promise<Array<SafeAccount & { rrnMasked: string | null }>> {
     await this.refreshFromDb(); // [28F] 다른 인스턴스의 신규 가입이 대표 대기목록에 즉시 반영
+    const actor = this.signupDecisionActor(actorId);
     // [TBO-31 C1 D2] 승인 판단 근거로 rrnMasked('950101-1******')만 노출 — 평문·암호문은 응답에 없다.
     //  birthYear(파생값)는 SafeAccount에 그대로 유지(기존 승인센터 표시 소비처).
-    return this.db.findBy<StaffAccount>(USERS, (a) => a.status === 'pending').map((a) => ({
+    return this.db.findBy<StaffAccount>(USERS, (a) =>
+      a.status === 'pending' && a.deletedAt == null && canDecideSignupRole(actor.role, a.role)).map((a) => ({
       ...toSafe(a),
       rrnMasked: this.rrnMaskedOf(a),
     }));
@@ -800,21 +803,34 @@ export class UsersService implements OnModuleInit {
     }
   }
 
+  private signupDecisionActor(actorId: number): StaffAccount {
+    const actor = this.findById(actorId);
+    if (!actor || actor.status !== 'active' || actor.deletedAt != null || !roleHasCapability(actor.role, 'signup.decide'))
+      throw new ForbiddenException('활성 관리자만 가입 신청을 처리할 수 있습니다.');
+    return actor;
+  }
+
+  private assertSignupDecisionScope(actorId: number, target: StaffAccount): void {
+    const actor = this.signupDecisionActor(actorId);
+    if (!canDecideSignupRole(actor.role, target.role))
+      throw new ForbiddenException('해당 역할의 가입 신청을 처리할 권한이 없습니다.');
+  }
+
   // ── [TBO-28B] 승인/반려 — 원자적 승인 command ────────────────────────────────
   //  · actor = 검증된 JWT sub만(바디 위조 불가 — 불변식 §5-4). reason은 audit_log에 남는다.
   //  · CAS(조건부 update: status='pending')로 동시 approve/approve·approve/reject 중 **한 command만 성공**(나머지 409).
   //  · users + instructor_profiles + audit_log가 **같은 트랜잭션**(CalendarUnitOfWork: 메모리 스냅샷 ⊃ pg tx).
   //  · auth_version +1 → 상태/역할 변경 즉시 기존 JWT 무효(AccountStateService 대조).
 
-  async approve(id: number, actorId: number, role?: string, reason?: string): Promise<SafeAccount> {
+  async approve(id: number, actorId: number, reason?: string): Promise<SafeAccount> {
     await this.refreshFromDb(); // [28F] 사전 조회(authVersion 등) 정합 — 최종 판정은 CAS가 권위
-    // [대표 지시 2026-07-16] super_admin 단일 계정 불변식 — 승인으로 super_admin을 만들 수 없다
-    //  (종전엔 조용히 기존 role로 폴백 — 명시 400으로 교체. 유일한 super_admin 경로는 bootstrap-ceo).
-    if (role === 'super_admin') throw new BadRequestException('super_admin은 단일 계정입니다 — 승인으로 부여할 수 없습니다.');
     return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'user', id }, { kind: 'user', id: actorId }]);
+      await this.refreshFromDb();
       const before = this.findById(id);
       if (!before) throw new NotFoundException(`계정 ${id} 없음`);
-      const finalRole: StaffRole = role && isStaffRole(role) && role !== 'super_admin' ? role : before.role;
+      this.assertSignupDecisionScope(actorId, before);
+      const finalRole: StaffRole = before.role;
       const approvedAt = new Date().toISOString();
       const updated = await this.store.updateIf<StaffAccount>(
         USERS_SPEC, id,
@@ -845,7 +861,6 @@ export class UsersService implements OnModuleInit {
         entity: 'users', entityId: id, action: 'approve', actorId,
         changes: {
           status: { before: 'pending', after: 'active' },
-          ...(finalRole !== before.role ? { role: { before: before.role, after: finalRole } } : {}),
         },
         reason,
       });
@@ -911,8 +926,11 @@ export class UsersService implements OnModuleInit {
   async reject(id: number, actorId: number, reason: string): Promise<SafeAccount> {
     await this.refreshFromDb(); // [28F]
     return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'user', id }, { kind: 'user', id: actorId }]);
+      await this.refreshFromDb();
       const before = this.findById(id);
       if (!before) throw new NotFoundException(`계정 ${id} 없음`);
+      this.assertSignupDecisionScope(actorId, before);
       const updated = await this.store.updateIf<StaffAccount>(
         USERS_SPEC, id,
         { status: 'pending' },
