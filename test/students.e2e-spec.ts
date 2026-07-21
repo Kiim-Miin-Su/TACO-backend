@@ -12,7 +12,6 @@ import { studentAggregateBody } from './fixtures/student-profile';
 describe('Students Soft-Delete (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
-  const S1 = 1; // 김서연 — 시드상 수강 2건(enrollment 1, 4)
   let ADMIN = '';
   const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
@@ -24,23 +23,26 @@ describe('Students Soft-Delete (e2e)', () => {
   afterAll(async () => { await app.close(); });
 
   it('DELETE 기존 학생 → active 조회 제외 + deletedAt 기록', async () => {
-    // 사전: 학생1은 enrolled, 수강 2건 active
-    const before = (await http.get(`/api/students/${S1}`).set(asAdmin()).expect(200)).body;
-    expect(before.status).toBe('enrolled');
+    // 시드 id/실행 순서에 의존하지 않고 이 테스트가 자신의 aggregate와 수강을 직접 준비한다.
+    const created = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('삭제독립학생', { student: { status: 'enrolled' } })).expect(201)).body.student;
+    await http.post('/api/enrollments').set(asAdmin()).send({ studentId: created.id, courseId: 10 }).expect(201);
+    const before = (await http.get(`/api/students/${created.id}`).set(asAdmin()).expect(200)).body;
+    expect(before).toMatchObject({ id: created.id, status: 'enrolled' });
     const enrBefore = (await http.get('/api/enrollments').set(asAdmin()).expect(200)).body
-      .filter((e: { studentId: number }) => e.studentId === S1);
-    expect(enrBefore.length).toBeGreaterThan(0);
+      .filter((e: { studentId: number }) => e.studentId === created.id);
+    expect(enrBefore).toHaveLength(1);
 
-    const res = await http.delete(`/api/students/${S1}`).set(asAdmin()).expect(200);
+    const res = await http.delete(`/api/students/${created.id}`).set(asAdmin()).expect(200);
     expect(res.body.deletedAt).toBeTruthy();
     expect(res.body.deletedBy).toBe(3);
 
-    await http.get(`/api/students/${S1}`).set(asAdmin()).expect(404);
-    expect((await http.get('/api/students').set(asAdmin()).expect(200)).body.some((row: { id: number }) => row.id === S1)).toBe(false);
+    await http.get(`/api/students/${created.id}`).set(asAdmin()).expect(404);
+    expect((await http.get('/api/students').set(asAdmin()).expect(200)).body.some((row: { id: number }) => row.id === created.id)).toBe(false);
 
     // 해당 학생 수강 전부 canceled
     const enrAfter = (await http.get('/api/enrollments').set(asAdmin()).expect(200)).body
-      .filter((e: { studentId: number }) => e.studentId === S1);
+      .filter((e: { studentId: number }) => e.studentId === created.id);
     expect(enrAfter.length).toBe(enrBefore.length);
     for (const e of enrAfter) expect(e.status).toBe('canceled');
   });
