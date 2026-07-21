@@ -36,7 +36,7 @@ describe('Schedule cohort integrity (e2e)', () => {
 
   it('신규 학생 + 코스10 수강 등록 → 코호트·resources에 즉시 반영', async () => {
     newStudentId = (
-      await http.post('/api/students').set(asAdmin()).send({ name: '테스트학생', grade: 9, status: 'active' }).expect(201)
+      await http.post('/api/students').set(asAdmin()).send({ name: '테스트학생', grade: 9, status: 'enrolled' }).expect(201)
     ).body.id;
     await http.post('/api/enrollments').set(asAdmin())
       .send({ studentId: newStudentId, courseId: 10, totalSessions: 8 }).expect(201);
@@ -51,7 +51,7 @@ describe('Schedule cohort integrity (e2e)', () => {
     expect(mine.every((r: { courseId: number }) => r.courseId === 10)).toBe(true);
   });
 
-  it('학생 소프트삭제(canceled) → 코호트·resources·개인 스케줄에서 즉시 제외(이력은 보존)', async () => {
+  it('학생 퇴원(withdrawn) → 코호트·resources·개인 스케줄에서 즉시 제외(이력은 보존)', async () => {
     await http.delete(`/api/students/${newStudentId}`).set(asAdmin()).expect(200);
 
     const rows = await course10Rows();
@@ -60,11 +60,11 @@ describe('Schedule cohort integrity (e2e)', () => {
     expect(res.students.map((s: { id: number }) => s.id)).not.toContain(newStudentId);
     const mine = (await http.get(`/api/schedule?studentId=${newStudentId}`).set(asAdmin()).expect(200)).body;
     expect(mine.length).toBe(0);
-    // 소프트삭제 — 학생 행 자체는 보존(status만 canceled)
+    // 35B 호환 DELETE — 학생 행 자체는 보존(status만 withdrawn, deleted_at 분리는 35C)
     const all = (await http.get('/api/students').set(asAdmin()).expect(200)).body;
     const st = all.find((s: { id: number }) => s.id === newStudentId);
     expect(st).toBeDefined();
-    expect(st.status).toBe('canceled');
+    expect(st.status).toBe('withdrawn');
     // 기존 코호트(1·4)는 영향 없음
     for (const r of rows) expect([...r.studentIds].sort()).toEqual([1, 4]);
   });

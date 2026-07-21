@@ -54,7 +54,8 @@ export class RegistrationsService {
         action: 'create',
         actorId,
         reason: 'registration(aggregate)',
-        changes: {
+        changes: this.audit.maskContactPii({
+          student: { after: student },
           registration: {
             after: {
               guardianRelationId: guardian?.relation.id ?? null,
@@ -63,7 +64,7 @@ export class RegistrationsService {
               courseId: dto.courseId ?? null,
             },
           },
-        },
+        }),
       });
       return { student, guardian, enrollment };
     });

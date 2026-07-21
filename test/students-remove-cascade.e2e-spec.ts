@@ -27,7 +27,7 @@ describe('[TBO-29D D0] student remove cascades enrollments (write-through)', () 
   const auth = { Authorization: '' };
   beforeEach(() => { auth.Authorization = `Bearer ${token}`; });
 
-  it('삭제 → 학생 canceled + 활성 수강 전부 canceled(같은 tx)', async () => {
+  it('삭제 → 학생 withdrawn + 활성 수강 전부 canceled(같은 tx)', async () => {
     const student = (await http.post('/api/students').set(auth).send({ name: 'D0 카스케이드', grade: 11 }).expect(201)).body;
     const enrollment = (await http.post('/api/enrollments').set(auth).send({ studentId: student.id, courseId: 10 }).expect(201)).body;
 

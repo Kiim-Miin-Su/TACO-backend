@@ -21,6 +21,7 @@ import {
   ROADMAP_COURSES_TABLE_SQL,
   REPORT_TEMPLATES_TABLE_SQL,
 } from './migrations/remaining-persistence.migration';
+import { STUDENT_INTERESTS_TABLE_SQL } from './migrations/student-profile.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -418,6 +419,8 @@ export const STUDENTS_SPEC: PostgresCollectionSpec = {
       mentor_id integer,
       name varchar(50) NOT NULL,
       english_name varchar(50),
+      gender varchar(20),
+      birth_date date,
       phone varchar(20),
       grade integer,
       school_name varchar(100),
@@ -432,7 +435,9 @@ export const STUDENTS_SPEC: PostgresCollectionSpec = {
       level_status varchar(32) NOT NULL DEFAULT 'unknown',
       short_term_goal text,
       long_term_goal text,
-      status varchar(32) NOT NULL DEFAULT 'lead',
+      kakao_id varchar(100),
+      counsel_topic text,
+      status varchar(32) NOT NULL DEFAULT 'new_inquiry',
       memo text,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now(),
@@ -443,6 +448,22 @@ export const STUDENTS_SPEC: PostgresCollectionSpec = {
   indexes: [
     activeIndex('students', 'idx_students_status', 'status'),
     activeIndex('students', 'idx_students_country', 'country'),
+  ],
+  dateFields: ['birthDate'],
+};
+
+export const STUDENT_INTERESTS_SPEC: PostgresCollectionSpec = {
+  table: 'student_interests',
+  createSql: STUDENT_INTERESTS_TABLE_SQL,
+  indexes: [
+    activeIndex('student_interests', 'idx_student_interests_student', 'student_id, priority'),
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_student_interests_student_priority
+       ON student_interests (student_id, priority) WHERE deleted_at IS NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_student_interests_course
+       ON student_interests (student_id, course_id) WHERE deleted_at IS NULL AND course_id IS NOT NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_student_interests_custom
+       ON student_interests (student_id, LOWER(BTRIM(custom_label)))
+       WHERE deleted_at IS NULL AND custom_label IS NOT NULL`,
   ],
 };
 

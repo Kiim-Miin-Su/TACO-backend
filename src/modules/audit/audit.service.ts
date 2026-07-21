@@ -60,12 +60,13 @@ export class AuditService implements OnModuleInit {
     return { __row: { before: { ...row } } };
   }
 
-  /** [감사 전수 2026-07-16] PII 마스킹 — audit changes(diff/snapshot)에 연락처 원문 금지.
-   *  키 이름에 phone/email이 포함된 항목(phone·email·parentPhone·applicantPhone 등)은 값 대신
-   *  '[masked]'로 치환한다(중첩 객체 재귀 — snapshotOf의 __row.before 내부 포함).
+  /** [감사 전수 2026-07-21] PII 마스킹 — audit changes(diff/snapshot)에 원문 금지.
+   *  연락처뿐 아니라 학생 생년월일·주소·Kakao ID·주민번호 계열 키도 값 대신 '[masked]'로
+   *  치환한다(중첩 객체 재귀 — snapshotOf의 __row.before 내부 포함).
    *  근거: users.service의 maskTarget 규약(연락처는 마스킹된 형태로만 이력에 남긴다)과 동일 원칙. */
   maskContactPii<T>(changes: T): T {
-    const isContactKey = (key: string): boolean => /phone|email/i.test(key);
+    const isContactKey = (key: string): boolean =>
+      /phone|email|birth_?date|address|kakao_?id|overseas_?country|rrn/i.test(key);
     const walk = (value: unknown): unknown => {
       if (!value || typeof value !== 'object') return value;
       if (Array.isArray(value)) return value.map(walk);

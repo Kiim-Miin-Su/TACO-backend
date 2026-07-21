@@ -1,4 +1,5 @@
 import {
+  IsDateString,
   IsIn,
   IsInt,
   IsOptional,
@@ -10,6 +11,7 @@ import {
 } from 'class-validator';
 import type { CreateStudentInput } from '@kms545487/contracts';
 import { ResidenceType, StudentStatus } from '../student.entity';
+import type { StudentGender } from '@kms545487/contracts';
 
 // DTO는 type이 아니라 class로 둡니다.
 // 이유: class-validator 데코레이터와 ValidationPipe가 런타임 메타데이터를
@@ -24,6 +26,14 @@ export class CreateStudentDto implements CreateStudentInput {
   @IsString()
   @MaxLength(50)
   englishName?: string;
+
+  @IsOptional()
+  @IsIn(['male', 'female', 'other', 'undisclosed'])
+  gender?: StudentGender;
+
+  @IsOptional()
+  @IsDateString({ strict: true }, { message: 'birthDate는 유효한 YYYY-MM-DD 날짜여야 합니다.' })
+  birthDate?: string;
 
   @IsOptional()
   @IsString()
@@ -46,7 +56,27 @@ export class CreateStudentDto implements CreateStudentInput {
   residenceType?: ResidenceType;
 
   @IsOptional()
-  @IsIn(['lead', 'active', 'paused', 'completed', 'canceled'])
+  @IsString()
+  @MaxLength(100)
+  address?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  addressDetail?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(100)
+  kakaoId?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  counselTopic?: string;
+
+  @IsOptional()
+  @IsIn(['enrolled', 'on_leave', 'withdrawn', 'registration_lost', 'new_inquiry'])
   status?: StudentStatus;
 
   @IsOptional()

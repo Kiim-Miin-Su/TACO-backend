@@ -13,6 +13,7 @@ import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { Course, COURSES as COURSES_COL } from '../courses/course.entity';
 import { Subject, SUBJECTS as SUBJECTS_COL } from '../subjects/subject.entity';
 import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
+import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
 import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
 import { ClassSessionsStore } from './class-sessions.store';
@@ -264,7 +265,7 @@ export class ScheduleService implements OnModuleInit {
   private isInstructor(id: number): boolean {
     return isActiveInstructor(this.db.findById<StaffAccount>(USERS, id));
   }
-  // 코호트 = 활성 수강(enrollment.status==='active') ∧ 학생 미삭제(status!=='canceled').
+  // 코호트 = 활성 수강(enrollment.status==='active') ∧ 캘린더 노출 상태 학생.
   //  students.remove(소프트삭제)가 학생·수강 모두 'canceled'로 정리하므로 삭제 즉시 코호트에서 빠진다.
   private activeStudentIds(courseId: number): number[] {
     // 인덱스 조회(courseId) — enrich가 세션마다 호출하는 핫패스(전체 스캔 제거)
@@ -272,7 +273,10 @@ export class ScheduleService implements OnModuleInit {
       .findByField<Enrollment>(ENROLLMENTS_COL, 'courseId', courseId)
       .filter((e) => e.status === 'active')
       .map((e) => e.studentId)
-      .filter((sid) => this.studentOf(sid)?.status !== 'canceled');
+      .filter((sid) => {
+        const student = this.studentOf(sid);
+        return student != null && isScheduleVisibleStudentStatus(student.status);
+      });
   }
 
   // [B7 E3 2026-07-16] 단건 조회 — list와 동일 enrich(발행된 ScheduleRow 계약 재사용, 계약 무변경).
@@ -399,9 +403,9 @@ export class ScheduleService implements OnModuleInit {
         type: 'room' as const, id: r.id, name: r.name, color: r.color,
         sub: r.capacity != null ? `정원 ${r.capacity}` : undefined,
       })),
-      // 학생 = students 컬렉션(단일 소스). 소프트삭제(canceled)만 제외 — 신규 등록·삭제가 즉시 반영.
+      // 학생 = students 컬렉션(단일 소스). 중앙 상태 술어로 캘린더 노출 대상을 제한한다.
       students: this.db
-        .findBy<Student>(STUDENTS_COL, (s) => s.status !== 'canceled' && (scopedStudentIds == null || scopedStudentIds.has(Number(s.id))))
+        .findBy<Student>(STUDENTS_COL, (s) => isScheduleVisibleStudentStatus(s.status) && (scopedStudentIds == null || scopedStudentIds.has(Number(s.id))))
         .map((s) => ({
           type: 'student' as const, id: s.id, name: s.name,
           color: PALETTE[(s.id + 2) % PALETTE.length],

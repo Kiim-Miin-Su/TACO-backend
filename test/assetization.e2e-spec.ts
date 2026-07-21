@@ -63,11 +63,11 @@ describe('Assetization sweep 2 (e2e)', () => {
     expect(moved).toMatchObject({ country: 'US', residenceType: 'overseas', name: '수정테스트' });
     // 갑작스런 휴원
     expect((await http.patch(`/api/students/${st.id}`).set(asAdmin())
-      .send({ status: 'paused' }).expect(200)).body.status).toBe('paused');
+      .send({ status: 'on_leave' }).expect(200)).body.status).toBe('on_leave');
     // 가드: 잘못된 국가 코드·학년 범위·미존재 학생
     await http.patch(`/api/students/${st.id}`).set(asAdmin()).send({ country: 'usa' }).expect(400);
     await http.patch(`/api/students/${st.id}`).set(asAdmin()).send({ grade: 13 }).expect(400);
-    await http.patch('/api/students/99999').set(asAdmin()).send({ status: 'active' }).expect(404);
+    await http.patch('/api/students/99999').set(asAdmin()).send({ status: 'enrolled' }).expect(404);
   });
 
   it('[v0.1.13] 세션 명시 코호트: 학생 선택 저장·부분집합 검증 400·미지정=코스 파생(하위 호환)', async () => {

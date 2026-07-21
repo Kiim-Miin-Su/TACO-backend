@@ -24,10 +24,10 @@ export class StudentsService implements OnModuleInit {
     const hydrated = await this.store.hydrate<Student>(STUDENTS_SPEC);
     if (hydrated.length || this.db.findAll<Student>(STUDENTS).length) return;
     await this.store.seed<Student>(STUDENTS_SPEC, [
-      { id: 1, name: '김서연', englishName: 'Sophia', grade: 11, residenceType: 'overseas', country: 'US', status: 'active' },
-      { id: 2, name: '이준호', englishName: 'Daniel', grade: 12, residenceType: 'domestic', country: 'KR', status: 'active' },
-      { id: 3, name: '박지민', englishName: 'Emma', grade: 10, residenceType: 'overseas', country: 'VN', status: 'paused' },
-      { id: 4, name: '최민준', englishName: 'Lucas', grade: 11, residenceType: 'domestic', status: 'active' },
+      { id: 1, name: '김서연', englishName: 'Sophia', grade: 11, residenceType: 'overseas', country: 'US', status: 'enrolled' },
+      { id: 2, name: '이준호', englishName: 'Daniel', grade: 12, residenceType: 'domestic', country: 'KR', status: 'enrolled' },
+      { id: 3, name: '박지민', englishName: 'Emma', grade: 10, residenceType: 'overseas', country: 'VN', status: 'on_leave' },
+      { id: 4, name: '최민준', englishName: 'Lucas', grade: 11, residenceType: 'domestic', status: 'enrolled' },
     ]);
   }
 
@@ -46,23 +46,33 @@ export class StudentsService implements OnModuleInit {
       const row = await this.store.insert<Student>(STUDENTS_SPEC, {
         name: dto.name,
         englishName: dto.englishName,
+        gender: dto.gender,
+        birthDate: dto.birthDate,
         phone: dto.phone,
         grade: dto.grade,
         schoolName: dto.schoolName,
         residenceType: dto.residenceType ?? 'domestic',
-        status: dto.status ?? 'lead',
+        address: dto.address,
+        addressDetail: dto.addressDetail,
+        kakaoId: dto.kakaoId,
+        counselTopic: dto.counselTopic,
+        status: dto.status ?? 'new_inquiry',
         country: dto.country,
         memo: dto.memo,
       });
-      // [감사 전수 2026-07-16] 직접 생성 이력 — 연락처(PII) 원문은 기록하지 않음.
+      // 생성 당시의 비민감 값은 복원 가능한 이력으로 남기고 학생 PII는 키 단위 마스킹한다.
       if (actorId != null) {
-        await this.audit.log({ entity: 'students', entityId: row.id, action: 'create', actorId });
+        await this.audit.log({
+          entity: 'students', entityId: row.id, action: 'create', actorId,
+          changes: this.audit.maskContactPii(this.audit.diffOf({}, row)),
+        });
       }
       return row;
     });
   }
 
-  // 소프트 삭제: 학생 상태를 canceled로, 해당 학생의 active 수강도 canceled로 정리(무결성).
+  // 호환 DELETE: 학생을 퇴원 상태로 전이하고 해당 학생의 active 수강도 canceled로 정리한다.
+  // status와 deleted_at을 분리한 실제 soft delete는 TBO-35C aggregate CRUD에서 전환한다.
   // [피드백 2026-07-03] 부분 수정 — 캘린더 우측 패널의 학생 정보 편집(국가·거주·상태·연락처 등).
   //  존재 검증 후 전달된 필드만 갱신(빈 body는 no-op). 퇴원(수강 동반 정리)은 remove가 담당.
   async update(id: number, dto: UpdateStudentDto, actorId?: number): Promise<Student> {
@@ -96,12 +106,12 @@ export class StudentsService implements OnModuleInit {
       for (const e of enrollments) {
         await this.store.update<Enrollment>(ENROLLMENTS_SPEC, e.id, { status: 'canceled' });
       }
-      const after = (await this.store.update<Student>(STUDENTS_SPEC, id, { status: 'canceled' })) as Student;
+      const after = (await this.store.update<Student>(STUDENTS_SPEC, id, { status: 'withdrawn' })) as Student;
       // [감사 전수 2026-07-16] 퇴원(소프트삭제) + 동반 수강 취소를 한 이력으로.
       if (actorId != null) {
         await this.audit.log({
           entity: 'students', entityId: id, action: 'status_change', actorId,
-          changes: { status: { before: beforeStatus, after: 'canceled' }, canceledEnrollmentIds: { after: enrollments.map((e) => e.id) } },
+          changes: { status: { before: beforeStatus, after: 'withdrawn' }, canceledEnrollmentIds: { after: enrollments.map((e) => e.id) } },
         });
       }
       return after;

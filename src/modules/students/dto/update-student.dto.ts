@@ -1,10 +1,9 @@
-import { IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { IsDateString, IsIn, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
 import type { UpdateStudentInput } from '@kms545487/contracts';
 
 // [피드백 2026-07-03] 캘린더 우측 패널에서 학생 정보 즉시 수정 —
 //  해외 학생의 출국/입국(country·residenceType 변경)과 갑작스런 그만둠(status) 대응.
-//  status 'canceled'는 DELETE(퇴원 처리 — 수강 동반 정리)와 달리 단순 상태 표기용으로도 허용하되,
-//  수강 정리가 필요한 퇴원은 기존 remove 흐름을 사용(프론트가 안내).
+//  업무 상태 변경과 삭제는 분리한다. 현재 DELETE 호환 경로의 완전한 deleted_at 전환은 TBO-35C에서 닫는다.
 // [v0.1.14 A1] implements UpdateStudentInput — country 누락 drift를 contracts에 보정 후 연결.
 export class UpdateStudentDto implements UpdateStudentInput {
   @IsOptional() @IsString() @MaxLength(20)
@@ -12,6 +11,13 @@ export class UpdateStudentDto implements UpdateStudentInput {
 
   @IsOptional() @IsString() @MaxLength(50)
   englishName?: string;
+
+  @IsOptional() @IsIn(['male', 'female', 'other', 'undisclosed'])
+  gender?: 'male' | 'female' | 'other' | 'undisclosed';
+
+  @IsOptional()
+  @IsDateString({ strict: true }, { message: 'birthDate는 유효한 YYYY-MM-DD 날짜여야 합니다.' })
+  birthDate?: string;
 
   @IsOptional() @IsInt() @Min(1) @Max(12)
   grade?: number;
@@ -26,8 +32,20 @@ export class UpdateStudentDto implements UpdateStudentInput {
   @IsOptional() @IsIn(['domestic', 'overseas'])
   residenceType?: 'domestic' | 'overseas';
 
-  @IsOptional() @IsIn(['lead', 'active', 'paused', 'completed', 'canceled'])
-  status?: 'lead' | 'active' | 'paused' | 'completed' | 'canceled';
+  @IsOptional() @IsString() @MaxLength(100)
+  address?: string;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  addressDetail?: string;
+
+  @IsOptional() @IsString() @MaxLength(100)
+  kakaoId?: string;
+
+  @IsOptional() @IsString() @MaxLength(1000)
+  counselTopic?: string;
+
+  @IsOptional() @IsIn(['enrolled', 'on_leave', 'withdrawn', 'registration_lost', 'new_inquiry'])
+  status?: 'enrolled' | 'on_leave' | 'withdrawn' | 'registration_lost' | 'new_inquiry';
 
   @IsOptional() @IsString() @MaxLength(500)
   memo?: string;

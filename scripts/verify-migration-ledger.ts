@@ -20,6 +20,7 @@ import { AUTH_RATE_LIMITS_MIGRATION_ID } from '../src/database/migrations/auth-r
 import { REMAINING_PERSISTENCE_MIGRATION_ID } from '../src/database/migrations/remaining-persistence.migration';
 import { COUNSEL_FORM_INPUTS_MIGRATION_ID } from '../src/database/migrations/counsel-form-inputs.migration';
 import { COUNSEL_ROUND_SNAPSHOTS_MIGRATION_ID } from '../src/database/migrations/counsel-round-snapshots.migration';
+import { STUDENT_PROFILE_MIGRATION_ID } from '../src/database/migrations/student-profile.migration';
 
 loadLocalEnv();
 
@@ -42,6 +43,7 @@ export const EXPECTED_MIGRATION_IDS = [
   REMAINING_PERSISTENCE_MIGRATION_ID,
   COUNSEL_FORM_INPUTS_MIGRATION_ID,
   COUNSEL_ROUND_SNAPSHOTS_MIGRATION_ID,
+  STUDENT_PROFILE_MIGRATION_ID,
 ] as const;
 
 const url = directDatabaseUrl();
