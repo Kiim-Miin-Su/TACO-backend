@@ -41,7 +41,7 @@ export class CreateStudentDto implements CreateStudentInput {
 
   @IsInt()
   @Min(0)
-  @Max(12)
+  @Max(13)
   grade!: number;
 
   @IsOptional()

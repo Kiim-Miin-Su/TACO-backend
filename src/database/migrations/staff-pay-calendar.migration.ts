@@ -33,13 +33,13 @@ export const TBO36_STUDENTS_SQL: readonly string[] = [
      IF EXISTS (
        SELECT 1 FROM pg_constraint
        WHERE conname = 'students_grade_check'
-         AND (pg_get_constraintdef(oid) NOT LIKE '%grade >= 0%' OR pg_get_constraintdef(oid) NOT LIKE '%grade <= 12%')
+         AND (pg_get_constraintdef(oid) NOT LIKE '%grade >= 0%' OR pg_get_constraintdef(oid) NOT LIKE '%grade <= 13%')
      ) THEN
        ALTER TABLE students DROP CONSTRAINT students_grade_check;
      END IF;
      IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'students_grade_check') THEN
        ALTER TABLE students ADD CONSTRAINT students_grade_check
-         CHECK (grade IS NOT NULL AND grade BETWEEN 0 AND 12) NOT VALID;
+         CHECK (grade IS NOT NULL AND grade BETWEEN 0 AND 13) NOT VALID;
      END IF;
    END $$`,
   `DO $$ BEGIN

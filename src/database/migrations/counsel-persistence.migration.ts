@@ -21,6 +21,7 @@ export const COUNSEL_FORMS_TABLE_SQL = `
     learning_atmosphere varchar(32),
     student_intention varchar(32),
     weakness text,
+    reference_notes text,
     next_contact_at date,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),

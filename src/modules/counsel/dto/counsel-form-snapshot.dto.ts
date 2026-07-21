@@ -29,6 +29,7 @@ export class CounselFormSnapshotDto implements CounselFormSnapshot {
   @IsOptional() @IsIn(ATMOS as unknown as string[]) learningAtmosphere?: CounselFormSnapshot['learningAtmosphere'];
   @IsOptional() @IsIn(INTENT as unknown as string[]) studentIntention?: CounselFormSnapshot['studentIntention'];
   @IsOptional() @IsString() @MaxLength(COUNSEL_TEXT.weakness) weakness?: string | null;
+  @IsOptional() @IsString() @MaxLength(COUNSEL_TEXT.referenceNotes) referenceNotes?: string | null;
   @IsOptional() @Matches(COUNSEL_DATE, { message: 'formSnapshot.nextContactAt must be YYYY-MM-DD' })
   nextContactAt?: string | null;
 }

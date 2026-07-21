@@ -91,6 +91,10 @@ describe('Students Soft-Delete (e2e)', () => {
       .send(studentAggregateBody('킨더저연령', { student: { birthDate: birthDateForAge(2), grade: 0 } })).expect(400);
     await http.post('/api/students').set(asAdmin())
       .send(studentAggregateBody('킨더고연령', { student: { birthDate: birthDateForAge(8), grade: 0 } })).expect(400);
+    await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('G13학생', { student: { grade: 13 } })).expect(201);
+    await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('G14학생', { student: { grade: 14 } })).expect(400);
   });
 
   it('학생 수정도 최종 grade/birthDate 조합을 재검증하고 Kinder 경계 밖 변경을 거부한다', async () => {

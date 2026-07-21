@@ -10,7 +10,7 @@ export const INTENT = ['student_wants', 'parent_only', 'unknown'] as const;
 export const COUNSEL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // [보안 2026-07-07] 자유 텍스트 상한 — 스케줄 DTO와 통일(무제한 문자열 = 저장 남용/페이로드 비대 방지).
-export const COUNSEL_TEXT = { name: 60, phone: 30, weakness: 500, expectation: 1000 } as const;
+export const COUNSEL_TEXT = { name: 60, phone: 30, weakness: 500, expectation: 1000, referenceNotes: 2000 } as const;
 
 export class CreateCounselDto implements CreateCounselInput {
   @IsString() @MaxLength(COUNSEL_TEXT.name) applicantName!: string;
@@ -25,5 +25,6 @@ export class CreateCounselDto implements CreateCounselInput {
   @IsOptional() @IsIn(ATMOS as unknown as string[]) learningAtmosphere?: CreateCounselInput['learningAtmosphere'];
   @IsOptional() @IsIn(INTENT as unknown as string[]) studentIntention?: CreateCounselInput['studentIntention'];
   @IsOptional() @IsString() @MaxLength(COUNSEL_TEXT.weakness) weakness?: string;
+  @IsOptional() @IsString() @MaxLength(COUNSEL_TEXT.referenceNotes) referenceNotes?: string;
   @IsOptional() @Matches(COUNSEL_DATE, { message: 'nextContactAt must be YYYY-MM-DD' }) nextContactAt?: string;
 }

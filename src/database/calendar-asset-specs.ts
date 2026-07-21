@@ -25,6 +25,13 @@ import { STUDENT_INTERESTS_FK_SQL, STUDENT_INTERESTS_TABLE_SQL } from './migrati
 import { TBO36_COURSES_SQL, TBO36_STUDENTS_SQL } from './migrations/staff-pay-calendar.migration';
 import { STUDENT_REQUIRED_CONTRACT_SQL } from './migrations/student-required-contract.migration';
 import { COURSE_PAY_SSOT_SQL } from './migrations/course-pay-ssot.migration';
+import {
+  COUNSEL_FAMILY_ACADEMIC_EXPAND_SQL,
+  STUDENT_ACADEMIC_HISTORIES_INDEX_SQL,
+  STUDENT_ACADEMIC_HISTORIES_TABLE_SQL,
+  STUDENT_FAMILY_RELATIONS_INDEX_SQL,
+  STUDENT_FAMILY_RELATIONS_TABLE_SQL,
+} from './migrations/counsel-family-academic-expand.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -472,6 +479,20 @@ export const STUDENT_INTERESTS_SPEC: PostgresCollectionSpec = {
   ],
 };
 
+export const STUDENT_FAMILY_RELATIONS_SPEC: PostgresCollectionSpec = {
+  table: 'student_family_relations',
+  createSql: STUDENT_FAMILY_RELATIONS_TABLE_SQL,
+  indexes: [...STUDENT_FAMILY_RELATIONS_INDEX_SQL],
+};
+
+export const STUDENT_ACADEMIC_HISTORIES_SPEC: PostgresCollectionSpec = {
+  table: 'student_academic_histories',
+  createSql: STUDENT_ACADEMIC_HISTORIES_TABLE_SQL,
+  indexes: [...STUDENT_ACADEMIC_HISTORIES_INDEX_SQL],
+  dateFields: ['startedOn', 'endedOn'],
+  timestampFields: ['changedAt'],
+};
+
 // [TBO-29D D1] 보호자 + 학생↔보호자 관계 — 메모리 전용에서 Postgres 자산으로 승격(20260715_04와 SQL 공유).
 //  활성 (parent,student) unique·학생당 대표 1명 partial unique를 DB가 강제. FK는 존재 확인 후 멱등 추가.
 export const PARENTS_SPEC: PostgresCollectionSpec = {
@@ -579,7 +600,7 @@ export const REPORT_TEMPLATES_SPEC: PostgresCollectionSpec = {
 export const COUNSEL_FORMS_SPEC: PostgresCollectionSpec = {
   table: 'counsel_forms',
   createSql: COUNSEL_FORMS_TABLE_SQL,
-  migrations: [...COUNSEL_FORM_INPUTS_MIGRATION_SQL],
+  migrations: [...COUNSEL_FORM_INPUTS_MIGRATION_SQL, COUNSEL_FAMILY_ACADEMIC_EXPAND_SQL[0]],
   indexes: COUNSEL_PERSISTENCE_INDEX_SQL.slice(0, 4),
   dateFields: ['nextContactAt'],
 };

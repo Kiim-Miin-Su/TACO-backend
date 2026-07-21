@@ -22,5 +22,6 @@ export class UpdateCounselDto implements UpdateCounselInput {
   @IsOptional() @IsIn(ATMOS as unknown as string[]) learningAtmosphere?: UpdateCounselInput['learningAtmosphere'];
   @IsOptional() @IsIn(INTENT as unknown as string[]) studentIntention?: UpdateCounselInput['studentIntention'];
   @IsOptional() @IsString() @MaxLength(COUNSEL_TEXT.weakness) weakness?: string | null;
+  @IsOptional() @IsString() @MaxLength(COUNSEL_TEXT.referenceNotes) referenceNotes?: string | null;
   @IsOptional() @Matches(COUNSEL_DATE, { message: 'nextContactAt must be YYYY-MM-DD' }) nextContactAt?: string | null;
 }
