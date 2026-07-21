@@ -110,21 +110,23 @@ describe("Full Flow (e2e)", () => {
     await http.patch(`/api/schedule/${S1}`).set(asAdmin()).send({ status: "held", force: true }).expect(200);
   });
 
-  // 7) 리포트 작성 + 승인 (수강생 학생1)
+  // 7) 그룹 수업 대상 학생 전원의 리포트 작성 + 승인
   let reportId = 0;
-  it("7) 리포트 작성(submitted) + 관리자 승인 → approved", async () => {
-    const r = await http
-      .post("/api/reports")
-      .set(asAdmin())
-      .send({ sessionId: S1, studentId: 1, content: "진도: 추론 문제. 정답률 향상." })
-      .expect(201);
-    reportId = r.body.id;
-    expect(r.body.status).toBe("submitted");
-    await http
-      .post(`/api/reports/${reportId}/approve`)
-      .set(asAdmin())
-      .expect(201)
-      .then((res) => expect(res.body.approvalStatus).toBe("approved"));
+  it("7) 그룹 학생 1·4 리포트 작성(submitted) + 관리자 승인 → approved", async () => {
+    for (const studentId of [1, 4]) {
+      const r = await http
+        .post("/api/reports")
+        .set(asAdmin())
+        .send({ sessionId: S1, studentId, content: "진도: 추론 문제. 정답률 향상." })
+        .expect(201);
+      reportId = r.body.id;
+      expect(r.body.status).toBe("submitted");
+      await http
+        .post(`/api/reports/${reportId}/approve`)
+        .set(asAdmin())
+        .expect(201)
+        .then((res) => expect(res.body.approvalStatus).toBe("approved"));
+    }
   });
 
   // 8) 페이 계산(preview) — held ∧ 승인 세션만

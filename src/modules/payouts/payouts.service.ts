@@ -5,12 +5,13 @@ import { PostgresCollectionStore } from '../../database/postgres-collection.stor
 import { hhmmToMin, minToHhmm } from '../../common/time.util'; // [R-3 함수 통일]
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
-import { countsForTeachingHours, payoutAmountOf } from '../schedule/session-accounting.policy';
+import { payoutAmountOf } from '../schedule/session-accounting.policy';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { CoursesService } from '../courses/courses.service';
 import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // 대표 schedule owner는 정산 제외
 import { ReportsService } from '../reports/reports.service';
 import { AuditService } from '../audit/audit.service';
+import { PayoutReadinessService } from './payout-readiness.service';
 import { demoSeedEnabled } from '../../config/demo-seed';
 import {
   InstructorPayoutRow,
@@ -43,7 +44,7 @@ export type MeasureResult = {
  * 시수 적격성(참조 무결성 게이트, 모두 충족해야 시수가 채워짐):
  *   1) 세션이 실제 진행됨        → status === 'held'  (취소/노쇼/예정·보강 제외)
  *   1-b) 강사가 결석하지 않음      → instructorAttendance !== 'absent'  [TBO-19 시수 정책]
- *   2) 승인된 보고서 존재         → reports.approvalStatus === 'approved'
+ *   2) 대상 학생 전원의 보고서 승인 → 모든 reports.approvalStatus === 'approved'
  *   3) 코스 FK 유효(시급 조인)    → courses.id 존재
  *   4) 다른 정산서에 미연결        → session.payoutId == null (이중 계상 방지)
  * 페이 = Σ round(durationMinutes / 60 × effectiveCourseHourlyRate)
@@ -62,6 +63,7 @@ export class PayoutsService implements OnModuleInit {
     private readonly unitOfWork: CalendarUnitOfWork,
     private readonly audit: AuditService, // [감사 전수 2026-07-16] 급여 전 상태전환 이력(대표 지시)
     private readonly courses: CoursesService,
+    private readonly readiness: PayoutReadinessService,
   ) {}
 
   // 데모 mock 주입 — 현재 주(週) 범위 밖(6월 중순)에 held 세션 + 승인 보고서를 심어
@@ -89,27 +91,29 @@ export class PayoutsService implements OnModuleInit {
         topic: '정규 수업', // 캘린더 표기는 실데이터 문구만(피드백 2026-07-02)
       } as Omit<SessionWithPayout, 'id' | 'createdAt' | 'updatedAt'>).then((row) => row.id);
     // 세션 + 보고서(작성→승인) 동시 생성. status==='held'·승인이라야 시수 적격.
-    const withApprovedReport = async (sessionId: number, studentId: number) => {
-      const existing = this.reports.findBySession(sessionId).find((r) => r.studentId === studentId);
-      const r = existing ?? await this.reports.create({ sessionId, studentId, content: '진도·피드백(데모)' });
-      if (r.approvalStatus === 'approved') return;
-      const submitted = r.approvalStatus === 'submitted' ? r : await this.reports.submit(r.id);
-      await this.reports.approve(submitted.id, 0);
+    const withApprovedReports = async (sessionId: number, studentIds: number[]) => {
+      for (const studentId of studentIds) {
+        const existing = this.reports.findBySession(sessionId).find((r) => r.studentId === studentId);
+        const r = existing ?? await this.reports.create({ sessionId, studentId, content: '진도·피드백(데모)' });
+        if (r.approvalStatus === 'approved') continue;
+        const submitted = r.approvalStatus === 'submitted' ? r : await this.reports.submit(r.id);
+        await this.reports.approve(submitted.id, 0);
+      }
     };
 
     // 강사1(박지훈) — 적격 3건(미정산)
-    await withApprovedReport(await make(10, 1, '2026-06-08', '16:00', 90, 'held'), 1);
-    await withApprovedReport(await make(10, 1, '2026-06-10', '16:00', 90, 'held'), 1);
-    await withApprovedReport(await make(12, 1, '2026-06-15', '18:00', 120, 'held'), 1);
+    await withApprovedReports(await make(10, 1, '2026-06-08', '16:00', 90, 'held'), [1, 4]);
+    await withApprovedReports(await make(10, 1, '2026-06-10', '16:00', 90, 'held'), [1, 4]);
+    await withApprovedReports(await make(12, 1, '2026-06-15', '18:00', 120, 'held'), [1]);
     // 게이트 데모: held이지만 보고서 없음 → 제외
     await make(10, 1, '2026-06-09', '16:00', 60, 'held');
     // 게이트 데모: 보고서 승인됐지만 취소 → 제외
-    await withApprovedReport(await make(10, 1, '2026-06-11', '16:00', 90, 'canceled'), 1);
+    await withApprovedReports(await make(10, 1, '2026-06-11', '16:00', 90, 'canceled'), [1, 4]);
 
     // 강사2(정유진) — 적격 3건 → 즉시 정산·지급(완료 상태 시연)
-    await withApprovedReport(await make(11, 2, '2026-06-09', '16:00', 120, 'held'), 2);
-    await withApprovedReport(await make(11, 2, '2026-06-11', '16:00', 120, 'held'), 2);
-    await withApprovedReport(await make(11, 2, '2026-06-16', '16:00', 120, 'held'), 2);
+    await withApprovedReports(await make(11, 2, '2026-06-09', '16:00', 120, 'held'), [2]);
+    await withApprovedReports(await make(11, 2, '2026-06-11', '16:00', 120, 'held'), [2]);
+    await withApprovedReports(await make(11, 2, '2026-06-16', '16:00', 120, 'held'), [2]);
     const paid = await this.generate(2, '2026-06-01', '2026-06-30');
     await this.confirm(paid.id);
     await this.pay(paid.id);
@@ -122,16 +126,14 @@ export class PayoutsService implements OnModuleInit {
     if (!from || !to) throw new BadRequestException('정산 기간(from/to)이 필요합니다');
     if (from > to) throw new BadRequestException('정산 기간이 잘못되었습니다(from > to)');
 
-    const approved = this.reports.approvedSessionIds();
+    const eligible = new Set(this.readiness.evaluate(instructorId, from, to).eligibleSessionIds);
     const sessions = this.db.findBy<SessionWithPayout>(
       SESSIONS,
       (s) =>
         s.instructorId === instructorId &&
         s.sessionDate >= from &&
         s.sessionDate <= to &&
-        countsForTeachingHours(s) && // (1, 1-b) **진행 완료(held)만** + 강사 결석 제외(공통 정책 —
-        //  scheduled/canceled/no_show/makeup(진행 전 보강)은 여기서 전부 탈락. 대표 지시 2026-07-20 재확인)
-        approved.has(s.id) && // (2) 승인 보고서 존재
+        eligible.has(s.id) && // (1~3) 진행·전체 코호트 보고서 승인·유효 단가 — readiness 단일 정책
         s.payoutId == null && // (4) 미연결(이중 계상 방지)
         s.isPaid !== true, // (5) [TBO-32 C1] 지급 완료 플래그 fail-safe — 정상 흐름에선 payoutId가
         //  먼저 막지만, 드리프트(is_paid=true인데 payout_id NULL)가 생겨도 재계상만은 차단한다

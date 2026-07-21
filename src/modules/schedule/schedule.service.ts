@@ -800,7 +800,7 @@ export class ScheduleService implements OnModuleInit {
     // 1) 대상(primary) 세션의 새 필드 계산
     const primary = this.mergeFields(cur, dto);
     this.assertDependentsCompatible(cur.id, cur, primary);
-    const approved = this.reports.approvedSessionIds().has(cur.id);
+    const approved = this.reports.isSessionReportComplete(cur.id);
     const primaryImpact = accountingImpactOf(cur, primary, {
       beforeApprovedReport: approved,
       afterApprovedReport: approved,
@@ -856,7 +856,7 @@ export class ScheduleService implements OnModuleInit {
       const member = patch.before;
       if (isPayoutLocked(member)) accountingLocked.push(member);
       this.assertDependentsCompatible(member.id, member, patch.fields);
-      const memberApproved = this.reports.approvedSessionIds().has(member.id);
+      const memberApproved = this.reports.isSessionReportComplete(member.id);
       accountingImpacts.push(accountingImpactOf(member, patch.fields, {
         beforeApprovedReport: memberApproved,
         afterApprovedReport: memberApproved,

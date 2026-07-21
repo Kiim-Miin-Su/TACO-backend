@@ -2317,7 +2317,7 @@ paths:
                 type: object
       security:
       - bearer: []
-      summary: '시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서. [대표]'
+      summary: '시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + roster 전원 보고서 승인. [대표]'
       tags:
       - payouts
   /api/payouts/me:
@@ -2362,6 +2362,65 @@ paths:
       security:
       - bearer: []
       summary: 내 시수×시급 산정 미리보기 [강사 본인]
+      tags:
+      - payouts
+  /api/payouts/readiness:
+    get:
+      operationId: PayoutsController_readinessAll
+      parameters:
+      - name: instructorId
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: from
+        required: false
+        in: query
+        description: '기본: 종료일 기준 90일 전'
+        schema:
+          type: string
+      - name: to
+        required: false
+        in: query
+        description: '기본: 오늘(KST)'
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: 전체 또는 지정 강사의 시수·페이 누락 항목(학생별 보고서 포함) [매니저 이상]
+      tags:
+      - payouts
+  /api/payouts/me/readiness:
+    get:
+      operationId: PayoutsController_readinessMine
+      parameters:
+      - name: from
+        required: false
+        in: query
+        schema:
+          type: string
+      - name: to
+        required: false
+        in: query
+        schema:
+          type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: 내 시수·페이 누락 항목(학생별 보고서 포함) [강사 본인]
       tags:
       - payouts
   /api/payouts/uncovered:

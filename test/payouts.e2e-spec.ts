@@ -36,7 +36,7 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
     const res = await http
       .post("/api/schedule")
       .set(asAdmin())
-      .send({ courseId, instructorId: INSTRUCTOR, sessionDate: TUE, startTime, durationMinutes, force: true })
+      .send({ courseId, instructorId: INSTRUCTOR, studentIds: [STUDENT], sessionDate: TUE, startTime, durationMinutes, force: true })
       .expect(201);
     return res.body.row.id;
   }

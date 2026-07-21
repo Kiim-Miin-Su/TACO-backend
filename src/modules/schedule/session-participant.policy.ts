@@ -12,10 +12,7 @@ export function studentBelongsToSession(
   studentId: number,
   enrollments: readonly ParticipantEnrollment[],
 ): boolean {
-  if (session.studentIds?.length) return session.studentIds.map(Number).includes(Number(studentId));
-  return enrollments.some(
-    (row) => row.courseId === session.courseId && row.studentId === studentId && row.status === 'active',
-  );
+  return participantIdsForSession(session, buildCohortIndex(enrollments)).includes(Number(studentId));
 }
 
 // [EP1 2026-07-16] 대량 판정용 코호트 인덱스 — studentBelongsToSession과 **같은 정책**(활성 수강)을
@@ -34,12 +31,22 @@ export function buildCohortIndex(enrollments: readonly ParticipantEnrollment[]):
   return index;
 }
 
+/** 세션의 전체 리포트 대상 학생. 명시 코호트 우선 규칙의 목록형 단일 구현. */
+export function participantIdsForSession(
+  session: Pick<ClassSession, 'courseId' | 'studentIds'>,
+  cohortIndex: CohortIndex,
+): number[] {
+  const ids = session.studentIds?.length
+    ? session.studentIds.map(Number)
+    : [...(cohortIndex.get(session.courseId) ?? [])];
+  return [...new Set(ids)].sort((a, b) => a - b);
+}
+
 /** studentBelongsToSession의 인덱스 판(동일 의미) — 명시 코호트 우선, 없으면 활성 수강 인덱스. */
 export function studentBelongsToSessionIndexed(
   session: Pick<ClassSession, 'courseId' | 'studentIds'>,
   studentId: number,
   cohortIndex: CohortIndex,
 ): boolean {
-  if (session.studentIds?.length) return session.studentIds.map(Number).includes(Number(studentId));
-  return cohortIndex.get(session.courseId)?.has(Number(studentId)) ?? false;
+  return participantIdsForSession(session, cohortIndex).includes(Number(studentId));
 }

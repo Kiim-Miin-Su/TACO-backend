@@ -11,7 +11,7 @@ import { SessionReportRow, SESSION_REPORTS } from './report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
 import { Student, STUDENTS } from '../students/student.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
-import { studentBelongsToSession } from '../schedule/session-participant.policy';
+import { buildCohortIndex, participantIdsForSession, studentBelongsToSession } from '../schedule/session-participant.policy';
 import { isSessionVisibleToInstructor } from '../schedule/schedule-visibility.policy';
 
 // [보안 2026-07-07 H2] 액터 컨텍스트 — 비관리자(강사)는 본인 세션·본인 보고서만 쓰기 가능(IDOR 차단).
@@ -20,7 +20,7 @@ const actorIsAdmin = (actor?: ReportActor) => !!actor && actor.roles.some((r) =>
 
 /**
  * 수업 보고서 — 강사 제출 → 관리자 승인/반려.
- * 시수/페이 산정은 '승인된 보고서가 있는 held 세션'만 대상으로 하므로,
+ * 시수/페이 산정은 '대상 학생 전원의 보고서가 승인된 held 세션'만 대상으로 하므로,
  * 여기서 세션 FK·중복(세션×학생)·강사 일치 등 참조 무결성을 먼저 지킨다.
  */
 @Injectable()
@@ -83,13 +83,21 @@ export class ReportsService implements OnModuleInit {
     return this.findBySession(sessionId);
   }
 
-  // 승인된 보고서가 있는 세션 id 집합 — 시수 적격성 판정에 사용(payouts에서 호출).
-  approvedSessionIds(): Set<number> {
-    return new Set(
-      this.db
-        .findBy<SessionReportRow>(SESSION_REPORTS, (r) => r.approvalStatus === 'approved')
-        .map((r) => r.sessionId),
+  /** 회계 영향 미리보기용 보고서 완전성. payout 적격성 자체는 PayoutReadinessPolicy가 최종 권위다. */
+  isSessionReportComplete(sessionId: number): boolean {
+    const session = this.db.findById<ClassSession>(SESSIONS, sessionId);
+    if (!session) return false;
+    const participantIds = participantIdsForSession(
+      session,
+      buildCohortIndex(this.db.findAll<Enrollment>(ENROLLMENTS)),
     );
+    if (participantIds.length === 0) return false;
+    const approved = new Set(
+      this.findBySession(sessionId)
+        .filter((row) => row.approvalStatus === 'approved')
+        .map((row) => row.studentId),
+    );
+    return participantIds.every((studentId) => approved.has(studentId));
   }
 
   async create(dto: CreateReportDto, actor?: ReportActor): Promise<SessionReportRow> {

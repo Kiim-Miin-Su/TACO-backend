@@ -1,18 +1,22 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiUnauthorizedResponse, ApiForbiddenResponse } from '@nestjs/swagger';
 import { PayoutsService } from './payouts.service';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { ADMIN_ROLES, Roles } from '../auth/roles.decorator';
 import { GeneratePayoutDto, GenerateBulkPayoutDto, AdjustPayoutDto, RejectPayoutDto, ReversePayoutDto } from './dto/payout.dto';
+import { PayoutReadinessService } from './payout-readiness.service';
 
 @ApiTags('payouts')
 @ApiBearerAuth()
 @UseGuards(RolesGuard)
 @Controller('payouts')
 export class PayoutsController {
-  constructor(private readonly payouts: PayoutsService) {}
+  constructor(
+    private readonly payouts: PayoutsService,
+    private readonly readiness: PayoutReadinessService,
+  ) {}
 
   @Get()
   @Roles('super_admin') // [TBO-21 RBAC] 전체 정산 목록은 돈 관련 정보 → 대표 전용
@@ -24,7 +28,7 @@ export class PayoutsController {
   // GET /api/payouts/preview?instructorId=&from=&to= — 산정 미리보기(읽기 전용)
   @Get('preview')
   @Roles('super_admin')
-  @ApiOperation({ summary: '시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + 승인 보고서. [대표]' })
+  @ApiOperation({ summary: '시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + roster 전원 보고서 승인. [대표]' })
   @ApiQuery({ name: 'instructorId', required: true })
   @ApiQuery({ name: 'from', required: true })
   @ApiQuery({ name: 'to', required: true })
@@ -54,6 +58,35 @@ export class PayoutsController {
     @Query('to') to: string,
   ) {
     return this.payouts.preview(req.user!.sub, from, to);
+  }
+
+  @Get('readiness')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '전체 또는 지정 강사의 시수·페이 누락 항목(학생별 보고서 포함) [매니저 이상]' })
+  @ApiQuery({ name: 'instructorId', required: false })
+  @ApiQuery({ name: 'from', required: false, description: '기본: 종료일 기준 90일 전' })
+  @ApiQuery({ name: 'to', required: false, description: '기본: 오늘(KST)' })
+  readinessAll(
+    @Query('instructorId') instructorId?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    const parsed = instructorId == null ? undefined : Number(instructorId);
+    if (parsed != null && (!Number.isInteger(parsed) || parsed <= 0)) {
+      throw new BadRequestException('instructorId는 양의 정수여야 합니다.');
+    }
+    return this.readiness.evaluate(parsed, from, to);
+  }
+
+  @Get('me/readiness')
+  @Roles('instructor')
+  @ApiOperation({ summary: '내 시수·페이 누락 항목(학생별 보고서 포함) [강사 본인]' })
+  readinessMine(
+    @Req() req: Request & { user?: JwtClaims },
+    @Query('from') from?: string,
+    @Query('to') to?: string,
+  ) {
+    return this.readiness.evaluate(req.user!.sub, from, to);
   }
 
   // [TBO-32 C1 2026-07-20] 미정산 감지 — 최근 N개월 중 적격 세션이 남아 있는 (강사×월) 목록.
