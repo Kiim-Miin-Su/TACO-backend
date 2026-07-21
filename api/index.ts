@@ -9,6 +9,11 @@ import { LoggingInterceptor } from "../src/common/logging.interceptor";
 import { assertProductionBootSafety } from "../src/config/production-guards";
 import { configureTrustProxy } from "../src/common/trust-proxy";
 
+// Production cold starts initialize and hydrate the Postgres-backed runtime stores before
+// the first request can be served. Vercel's default function duration can expire during that
+// work, so keep the entrypoint within an explicit, documented upper bound.
+export const config = { maxDuration: 60 };
+
 // 서버리스(@vercel/node)는 런타임 컴파일에서 데코레이터 메타데이터/Swagger 플러그인이
 // 소실돼 request body·parameter 스키마가 비어 보일 수 있다. → 빌드 타임에 생성해 커밋한
 // openapi.json(npm run openapi)을 우선 서빙한다. 없으면 런타임 생성으로 폴백.
@@ -23,8 +28,7 @@ try {
 // ─────────────────────────────────────────────────────────────
 // Vercel 서버리스 엔트리. main.ts와 동일 부트 설정을 함수로 래핑.
 // 콜드스타트마다 Nest 앱을 1회 부트하고 그 이후 캐시(express 인스턴스)를 재사용.
-// ⚠️ in-memory 저장소는 함수 인스턴스 수명 동안만 유지(콜드스타트 시 초기 시드로 리셋) → 데모용.
-//    영속이 필요하면 DB(TypeORM) 이관 후 사용.
+// Postgres가 구성된 production에서는 영속 store가 권위이며, 메모리는 인스턴스별 read model로만 사용한다.
 // ─────────────────────────────────────────────────────────────
 let cachedServer: ((req: unknown, res: unknown) => void) | undefined;
 
