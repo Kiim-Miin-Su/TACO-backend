@@ -70,6 +70,12 @@ export class ParentsController {
     return this.parents.removeRelation(id, this.actor(req));
   }
 
+  @Delete('relations/:id/guardian')
+  @Roles(...ADMIN_ROLES)
+  removeGuardian(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.parents.removeGuardian(id, this.actor(req));
+  }
+
   @Patch(':id')
   @Roles(...ADMIN_ROLES)
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateParentDto, @Req() req: Request & { user?: JwtClaims }) {

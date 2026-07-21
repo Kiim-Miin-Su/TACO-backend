@@ -96,8 +96,8 @@ describe('[TBO-35 35C] student aggregate CRUD/RBAC/audit', () => {
     await http.patch(`/api/parents/${parentId}`).set(owner()).send({ name: '35C 보호자 수정', phone: '010-8999-0000' }).expect(200);
     await http.patch(`/api/parents/relations/${relationId}`).set(owner()).send({ relation: '부', isPayer: false }).expect(200);
     await http.delete(`/api/parents/${parentId}`).set(owner()).expect(409);
-    await http.delete(`/api/parents/relations/${relationId}`).set(owner()).expect(200);
-    await http.delete(`/api/parents/${parentId}`).set(owner()).expect(200);
+    const guardianDelete = (await http.delete(`/api/parents/relations/${relationId}/guardian`).set(owner()).expect(200)).body;
+    expect(guardianDelete).toEqual({ relationId, parentId, parentDeleted: true });
 
     const deleted = (await http.delete(`/api/students/${studentId}`).set(owner()).expect(200)).body;
     expect(deleted.deletedAt).toBeTruthy();

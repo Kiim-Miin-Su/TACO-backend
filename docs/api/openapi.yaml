@@ -2973,6 +2973,20 @@ paths:
           description: ''
       tags:
       - parents
+  /api/parents/relations/{id}/guardian:
+    delete:
+      operationId: ParentsController_removeGuardian
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+      tags:
+      - parents
   /api/students/registrations:
     post:
       operationId: RegistrationsController_register
@@ -5278,6 +5292,7 @@ components:
         name:
           type: string
           maxLength: 100
+          pattern: \S
         phone:
           type: string
           maxLength: 30
@@ -5332,6 +5347,7 @@ components:
         name:
           type: string
           maxLength: 50
+          pattern: \S
         phone:
           type: string
           maxLength: 20
@@ -5404,6 +5420,7 @@ components:
         name:
           type: string
           maxLength: 20
+          pattern: \S
           example: 김학부모
           description: 보호자 이름
         phone:

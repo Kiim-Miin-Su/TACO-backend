@@ -4903,6 +4903,29 @@
         ]
       }
     },
+    "/api/parents/relations/{id}/guardian": {
+      "delete": {
+        "operationId": "ParentsController_removeGuardian",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "tags": [
+          "parents"
+        ]
+      }
+    },
     "/api/students/registrations": {
       "post": {
         "operationId": "RegistrationsController_register",
@@ -7950,7 +7973,8 @@
         "properties": {
           "name": {
             "type": "string",
-            "maxLength": 100
+            "maxLength": 100,
+            "pattern": "\\S"
           },
           "phone": {
             "type": "string",
@@ -8027,7 +8051,8 @@
         "properties": {
           "name": {
             "type": "string",
-            "maxLength": 50
+            "maxLength": 50,
+            "pattern": "\\S"
           },
           "phone": {
             "type": "string",
@@ -8126,6 +8151,7 @@
           "name": {
             "type": "string",
             "maxLength": 20,
+            "pattern": "\\S",
             "example": "김학부모",
             "description": "보호자 이름"
           },

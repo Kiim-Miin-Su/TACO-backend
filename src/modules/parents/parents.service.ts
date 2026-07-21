@@ -212,6 +212,29 @@ export class ParentsService implements OnModuleInit {
     });
   }
 
+  /** 학생 상세의 보호자 삭제 command. 관계와, 다른 학생 관계가 없는 보호자 원부를 한 UoW에서 정리한다. */
+  async removeGuardian(id: number, actorId: number): Promise<{ relationId: number; parentId: number; parentDeleted: boolean }> {
+    return this.uow.run(async () => {
+      const relation = this.db.findById<ParentStudent>(PARENT_STUDENTS, id);
+      if (!relation) throw new NotFoundException(`관계 ${id} 없음`);
+      await this.uow.lockTargets([{ kind: 'student', id: relation.studentId }, { kind: 'parent', id: relation.parentId }]);
+      const parent = { ...this.findOne(relation.parentId) };
+      await this.store.remove(PARENT_STUDENT_RELATIONS_SPEC, id, actorId);
+      await this.audit.log({
+        entity: 'parent_student_relations', entityId: id, action: 'delete', actorId,
+        changes: this.audit.snapshotOf(relation),
+      });
+      const remaining = this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'parentId', relation.parentId);
+      if (remaining.length) return { relationId: id, parentId: relation.parentId, parentDeleted: false };
+      await this.store.remove(PARENTS_SPEC, relation.parentId, actorId);
+      await this.audit.log({
+        entity: 'parents', entityId: relation.parentId, action: 'delete', actorId,
+        changes: this.audit.maskContactPii(this.audit.snapshotOf(parent)),
+      });
+      return { relationId: id, parentId: relation.parentId, parentDeleted: true };
+    });
+  }
+
   async update(id: number, dto: UpdateParentDto, actorId: number): Promise<Parent> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'parent', id }]);
