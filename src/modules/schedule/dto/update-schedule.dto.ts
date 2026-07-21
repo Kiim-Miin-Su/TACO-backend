@@ -96,4 +96,8 @@ export class UpdateScheduleDto implements UpdateClassSessionInput {
   @ApiPropertyOptional({ enum: SESSION_MODES, example: 'online', description: '[v0.1.16] 수업방식 변경(대면/비대면)' })
   @IsOptional() @IsIn(SESSION_MODES)
   mode?: SessionMode;
+
+  @ApiPropertyOptional({ example: true, description: '공통 일정 조회 공개 여부' })
+  @IsOptional() @IsBoolean()
+  isPublic?: boolean;
 }

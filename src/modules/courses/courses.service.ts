@@ -32,9 +32,9 @@ export class CoursesService implements OnModuleInit {
     if (hydrated.length) return;
     await this.store.seed<Course>(COURSES_SPEC, [
       // 정가(price)는 결제 시드 금액과 정합(코스10=480,000 등) — 단일 소스 일관성.
-      { id: 10, name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, price: 480000, hourlyRate: 50000, color: '#0969da' },
-      { id: 11, name: 'AP Calculus BC', subjectId: 2, instructorId: 2, price: 520000, hourlyRate: 60000, color: '#8250df' },
-      { id: 12, name: 'TOEFL 정규', subjectId: 1, instructorId: 1, price: 420000, hourlyRate: 45000, color: '#1b7c83' },
+      { id: 10, name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, price: 480000, hourlyRate: 50000, hourlyRateOverride: null, isKinder: false, color: '#0969da' },
+      { id: 11, name: 'AP Calculus BC', subjectId: 2, instructorId: 2, price: 520000, hourlyRate: 60000, hourlyRateOverride: null, isKinder: false, color: '#8250df' },
+      { id: 12, name: 'TOEFL 정규', subjectId: 1, instructorId: 1, price: 420000, hourlyRate: 45000, hourlyRateOverride: null, isKinder: false, color: '#1b7c83' },
     ]);
   }
 
@@ -57,7 +57,9 @@ export class CoursesService implements OnModuleInit {
         subjectId: dto.subjectId,
         instructorId: dto.instructorId,
         price: dto.price,
-        hourlyRate: dto.hourlyRate,
+        hourlyRate: dto.hourlyRate ?? dto.hourlyRateOverride ?? 0,
+        hourlyRateOverride: dto.hourlyRateOverride ?? null,
+        isKinder: dto.isKinder ?? false,
         color: dto.color,
       });
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)

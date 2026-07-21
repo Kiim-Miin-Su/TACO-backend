@@ -26,10 +26,10 @@ export class StudentsService implements OnModuleInit {
     const hydrated = await this.store.hydrate<Student>(STUDENTS_SPEC);
     if (hydrated.length || this.db.findAll<Student>(STUDENTS).length) return;
     await this.store.seed<Student>(STUDENTS_SPEC, [
-      { id: 1, name: '김서연', englishName: 'Sophia', grade: 11, residenceType: 'overseas', country: 'US', status: 'enrolled' },
-      { id: 2, name: '이준호', englishName: 'Daniel', grade: 12, residenceType: 'domestic', country: 'KR', status: 'enrolled' },
-      { id: 3, name: '박지민', englishName: 'Emma', grade: 10, residenceType: 'overseas', country: 'VN', status: 'on_leave' },
-      { id: 4, name: '최민준', englishName: 'Lucas', grade: 11, residenceType: 'domestic', status: 'enrolled' },
+      { id: 1, name: '김서연', englishName: 'Sophia', birthDate: '2009-03-14', grade: 11, residenceType: 'overseas', country: 'US', status: 'enrolled' },
+      { id: 2, name: '이준호', englishName: 'Daniel', birthDate: '2008-08-21', grade: 12, residenceType: 'domestic', country: 'KR', status: 'enrolled' },
+      { id: 3, name: '박지민', englishName: 'Emma', birthDate: '2010-11-02', grade: 10, residenceType: 'overseas', country: 'VN', status: 'on_leave' },
+      { id: 4, name: '최민준', englishName: 'Lucas', birthDate: '2009-06-09', grade: 11, residenceType: 'domestic', status: 'enrolled' },
     ]);
   }
 

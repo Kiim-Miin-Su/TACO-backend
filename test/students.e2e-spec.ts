@@ -68,6 +68,20 @@ describe('Students Soft-Delete (e2e)', () => {
     await http.post('/api/students').set(asAdmin()).send(studentAggregateBody('상태오류', { student: { status: 'active' as never } })).expect(400);
   });
 
+  it('Kinder는 grade=0으로 저장하고 생년월일·학년 누락 신규 입력은 400으로 차단한다', async () => {
+    const kinder = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('킨더학생', { student: { birthDate: '2021-05-04', grade: 0 } })).expect(201)).body.student;
+    expect(kinder).toMatchObject({ birthDate: '2021-05-04', grade: 0 });
+
+    const missingBirth = studentAggregateBody('생일누락') as unknown as { student: Record<string, unknown> };
+    delete missingBirth.student.birthDate;
+    await http.post('/api/students').set(asAdmin()).send(missingBirth).expect(400);
+
+    const missingGrade = studentAggregateBody('학년누락') as unknown as { student: Record<string, unknown> };
+    delete missingGrade.student.grade;
+    await http.post('/api/students').set(asAdmin()).send(missingGrade).expect(400);
+  });
+
   it('학생 PII는 감사 diff에서 원문 대신 마스킹된다', () => {
     const masked = app.get(AuditService).maskContactPii({
       phone: { before: '010-1111-2222', after: '010-3333-4444' },

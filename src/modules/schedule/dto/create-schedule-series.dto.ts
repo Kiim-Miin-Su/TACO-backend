@@ -98,6 +98,10 @@ export class CreateScheduleSeriesDto implements CreateScheduleSeriesCommand {
   @IsOptional() @IsIn(SESSION_MODES)
   mode?: SessionMode;
 
+  @ApiPropertyOptional({ example: false, description: '반복 회차 전체의 공통 일정 공개 여부' })
+  @IsOptional() @IsBoolean()
+  isPublic?: boolean;
+
   @ApiPropertyOptional({ example: false, description: '충돌이 있어도 강제 적용(기본 false → 전체 충돌 목록과 함께 409)' })
   @IsOptional() @IsBoolean()
   force?: boolean;

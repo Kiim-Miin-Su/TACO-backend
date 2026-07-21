@@ -77,6 +77,7 @@ type MergedFields = {
   instructorAttendance?: ClassSession['instructorAttendance'] | null;
   kind?: ClassSession['kind']; price?: number; // [v0.1.14]
   mode?: ClassSession['mode']; // [v0.1.16] 수업방식
+  isPublic?: boolean;
 };
 
 @Injectable()
@@ -447,6 +448,7 @@ export class ScheduleService implements OnModuleInit {
     seriesId?: number; status?: ClassSession['status']; force?: boolean;
     kind?: ClassSession['kind']; price?: number; // [v0.1.14] 종류·세션 단건 가격
     mode?: ClassSession['mode']; // [v0.1.16] 수업방식(기본 in_person)
+    isPublic?: boolean;
     makeupForSessionId?: number; // [대표 지시 ⑭ 2026-07-16] 보강 세션 → 원본(결강) 세션 링크
   }, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[] }> {
     await this.ensureReady();
@@ -503,6 +505,7 @@ export class ScheduleService implements OnModuleInit {
         status: dto.status ?? SESSION_DEFAULTS.status,
         kind: dto.kind ?? SESSION_DEFAULTS.kind, // [v0.1.14] 기본 class(하위호환)
         mode: dto.mode ?? SESSION_DEFAULTS.mode, // [v0.1.16] 기본 대면(하위호환)
+        isPublic: dto.isPublic ?? false,
         makeupForSessionId: dto.makeupForSessionId, // [대표 지시 ⑭] 보강→원본 링크(해소 판정 근거)
         price: dto.price,
         topic: dto.topic ?? course.name,
@@ -606,6 +609,7 @@ export class ScheduleService implements OnModuleInit {
           status: dto.status ?? SESSION_DEFAULTS.status,
           kind: dto.kind ?? SESSION_DEFAULTS.kind,
           mode: dto.mode ?? SESSION_DEFAULTS.mode,
+          isPublic: dto.isPublic ?? false,
           price: dto.price,
           topic: dto.topic ?? course.name,
           memo: dto.memo,
@@ -958,6 +962,7 @@ export class ScheduleService implements OnModuleInit {
       //  audit diff가 "변경"으로 잡아 이력이 지저분했음. 보존으로 바꿔 미변경 필드는 diff에 안 남음(읽기 기본값=enrich).
       kind: dto.kind ?? cur.kind, // [v0.1.14] 미저장이면 undefined 유지(enrich가 read-time에 class 채움)
       mode: dto.mode ?? cur.mode, // [v0.1.16] 미저장이면 undefined 유지(enrich가 read-time에 in_person 채움)
+      isPublic: dto.isPublic ?? cur.isPublic,
       price: dto.price ?? cur.price,
     };
   }

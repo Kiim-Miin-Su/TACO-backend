@@ -55,6 +55,22 @@ describe("Schedule API (e2e)", () => {
     await http.delete(`/api/schedule/${created.id}`).set(TH()).expect(200); // 정리
   });
 
+  it("공통 일정 isPublic은 생성·상세·수정·목록에서 같은 DB 필드로 왕복한다", async () => {
+    const created = (await http.post('/api/schedule').set(TH()).send({
+      courseId: 10, sessionDate: addDaysISO(MON, 4), startTime: '07:10', durationMinutes: 40,
+      isPublic: true, force: true,
+    }).expect(201)).body.row;
+    expect(created.isPublic).toBe(true);
+    expect((await http.get(`/api/schedule/${created.id}`).set(asAdmin()).expect(200)).body.isPublic).toBe(true);
+    expect((await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body
+      .find((row: { id: number }) => row.id === created.id).isPublic).toBe(true);
+
+    const updated = (await http.patch(`/api/schedule/${created.id}`).set(TH())
+      .send({ isPublic: false, force: true }).expect(200)).body.row;
+    expect(updated.isPublic).toBe(false);
+    await http.delete(`/api/schedule/${created.id}`).set(TH()).expect(200);
+  });
+
   it("GET /schedule/resources — 강사·강의실·학생·코스 옵션", async () => {
     const res = await http.get("/api/schedule/resources").set(asAdmin()).expect(200);
     expect(res.body.instructors.length).toBeGreaterThan(0);

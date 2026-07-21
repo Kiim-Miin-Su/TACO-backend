@@ -22,6 +22,7 @@ import {
   REPORT_TEMPLATES_TABLE_SQL,
 } from './migrations/remaining-persistence.migration';
 import { STUDENT_INTERESTS_FK_SQL, STUDENT_INTERESTS_TABLE_SQL } from './migrations/student-profile.migration';
+import { TBO36_COURSES_SQL, TBO36_STUDENTS_SQL } from './migrations/staff-pay-calendar.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -445,6 +446,7 @@ export const STUDENTS_SPEC: PostgresCollectionSpec = {
       deleted_by integer
     )
   `,
+  migrations: [...TBO36_STUDENTS_SQL],
   indexes: [
     activeIndex('students', 'idx_students_status', 'status'),
     activeIndex('students', 'idx_students_country', 'country'),
@@ -527,6 +529,8 @@ export const COURSES_SPEC: PostgresCollectionSpec = {
       description text,
       price integer NOT NULL DEFAULT 0,
       hourly_rate integer NOT NULL DEFAULT 0,
+      hourly_rate_override integer,
+      is_kinder boolean NOT NULL DEFAULT false,
       default_session_count integer,
       default_duration_minutes integer,
       status varchar(32) NOT NULL DEFAULT 'active',
@@ -537,6 +541,7 @@ export const COURSES_SPEC: PostgresCollectionSpec = {
       deleted_by integer
     )
   `,
+  migrations: [...TBO36_COURSES_SQL],
   indexes: [
     activeIndex('courses', 'idx_courses_subject', 'subject_id'),
     activeIndex('courses', 'idx_courses_instructor', 'instructor_id'),

@@ -34,11 +34,13 @@ describe('Catalog CRUD and RBAC (e2e)', () => {
     expect(updatedSubject.name).toBe('리뷰 과목 수정');
 
     const course = (await http.post('/api/courses').set(auth(admin)).send({
-      name: '리뷰 코스', subjectId: subject.id, instructorId: 1, price: 100000, hourlyRate: 40000,
+      name: '리뷰 코스', subjectId: subject.id, instructorId: 1, price: 100000,
+      hourlyRateOverride: 40000, isKinder: false,
     }).expect(201)).body;
+    expect(course).toMatchObject({ hourlyRateOverride: 40000, isKinder: false });
     const updatedCourse = (await http.patch(`/api/courses/${course.id}`).set(auth(admin))
-      .send({ name: '리뷰 코스 수정', color: '#123456' }).expect(200)).body;
-    expect(updatedCourse).toMatchObject({ name: '리뷰 코스 수정', color: '#123456' });
+      .send({ name: '리뷰 코스 수정', color: '#123456', isKinder: true }).expect(200)).body;
+    expect(updatedCourse).toMatchObject({ name: '리뷰 코스 수정', color: '#123456', isKinder: true });
 
     await http.delete(`/api/subjects/${subject.id}`).set(auth(admin)).expect(409);
     await http.delete(`/api/courses/${course.id}`).set(auth(admin)).expect(200);

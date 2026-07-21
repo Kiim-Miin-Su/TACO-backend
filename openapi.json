@@ -5997,14 +5997,22 @@
             "type": "number",
             "minimum": 0,
             "maximum": 100000000
+          },
+          "hourlyRateOverride": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "isKinder": {
+            "type": "boolean"
           }
         },
         "required": [
           "name",
           "subjectId",
           "instructorId",
-          "price",
-          "hourlyRate"
+          "price"
         ]
       },
       "UpdateCourseDto": {
@@ -6033,6 +6041,15 @@
             "type": "number",
             "minimum": 0,
             "maximum": 100000000
+          },
+          "hourlyRateOverride": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 100000000
+          },
+          "isKinder": {
+            "type": "boolean"
           }
         }
       },
@@ -6514,6 +6531,11 @@
             "example": "in_person",
             "description": "[v0.1.16] 수업방식(기본 in_person) — 대면/비대면. 강의실 유무와 독립"
           },
+          "isPublic": {
+            "type": "boolean",
+            "example": false,
+            "description": "공통 일정 여부. true면 전 직원 조회 가능하나 수정 권한은 확장되지 않음"
+          },
           "makeupForSessionId": {
             "type": "number",
             "minimum": 1,
@@ -6681,6 +6703,11 @@
             "type": "string",
             "example": "in_person"
           },
+          "isPublic": {
+            "type": "boolean",
+            "example": false,
+            "description": "반복 회차 전체의 공통 일정 공개 여부"
+          },
           "force": {
             "type": "boolean",
             "example": false,
@@ -6836,6 +6863,11 @@
             "type": "string",
             "example": "online",
             "description": "[v0.1.16] 수업방식 변경(대면/비대면)"
+          },
+          "isPublic": {
+            "type": "boolean",
+            "example": true,
+            "description": "공통 일정 조회 공개 여부"
           }
         }
       },
@@ -8092,7 +8124,7 @@
           },
           "grade": {
             "type": "number",
-            "minimum": 1,
+            "minimum": 0,
             "maximum": 12
           },
           "schoolName": {
@@ -8142,7 +8174,9 @@
           }
         },
         "required": [
-          "name"
+          "name",
+          "birthDate",
+          "grade"
         ]
       },
       "RegistrationGuardianDto": {
@@ -8254,7 +8288,7 @@
           },
           "grade": {
             "type": "number",
-            "minimum": 1,
+            "minimum": 0,
             "maximum": 12
           },
           "phone": {

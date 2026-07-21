@@ -8,6 +8,7 @@ import type { BaseRow } from '../../common/types/base';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { PostgresConnectionService } from '../../database/postgres-connection.service';
 import { normalizeQueryRows, toIsoString } from '../../database/postgres-row.util';
+import { TBO36_INSTRUCTOR_PROFILE_SQL } from '../../database/migrations/staff-pay-calendar.migration';
 
 export const INSTRUCTOR_PROFILES = 'instructor_profiles';
 
@@ -16,6 +17,8 @@ export type InstructorProfileDetails = {
   university?: string | null; // 대학교
   major?: string | null; // 전공
   birthYear?: number | null; // 출생연도(나이는 가변이라 연도로 보관)
+  defaultHourlyRate?: number;
+  canTeachKinder?: boolean;
 };
 
 export type InstructorProfile = {
@@ -34,6 +37,8 @@ const CREATE_SQL = `
     university varchar(100),
     major varchar(100),
     birth_year integer,
+    default_hourly_rate integer NOT NULL DEFAULT 0,
+    can_teach_kinder boolean NOT NULL DEFAULT false,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
@@ -61,6 +66,7 @@ export class InstructorProfilesStore implements OnModuleInit {
     if (!this.postgres.ready) return false;
     if (this.tableReady) return true;
     await this.postgres.ddl(CREATE_SQL);
+    for (const sql of TBO36_INSTRUCTOR_PROFILE_SQL) await this.postgres.ddl(sql);
     await this.postgres.ddl(INDEX_SQL);
     this.tableReady = true;
     this.logger.log('instructor_profiles table ready (Postgres-backed)');
@@ -80,18 +86,22 @@ export class InstructorProfilesStore implements OnModuleInit {
     const university = details?.university ?? null;
     const major = details?.major ?? null;
     const birthYear = details?.birthYear ?? null;
+    const defaultHourlyRate = details?.defaultHourlyRate ?? 0;
+    const canTeachKinder = details?.canTeachKinder ?? false;
     if (await this.ensureReady()) {
       const rows = normalizeQueryRows(await this.postgres.query(
-        `INSERT INTO instructor_profiles (user_id, active, approved_by, approved_at, university, major, birth_year)
-           VALUES ($1, true, $2, $3, $4, $5, $6)
+        `INSERT INTO instructor_profiles (user_id, active, approved_by, approved_at, university, major, birth_year, default_hourly_rate, can_teach_kinder)
+           VALUES ($1, true, $2, $3, $4, $5, $6, $7, $8)
            ON CONFLICT (user_id) DO UPDATE
              SET active = true, approved_by = EXCLUDED.approved_by, approved_at = EXCLUDED.approved_at,
                  university = COALESCE(EXCLUDED.university, instructor_profiles.university),
                  major = COALESCE(EXCLUDED.major, instructor_profiles.major),
                  birth_year = COALESCE(EXCLUDED.birth_year, instructor_profiles.birth_year),
+                 default_hourly_rate = CASE WHEN EXCLUDED.default_hourly_rate <> 0 THEN EXCLUDED.default_hourly_rate ELSE instructor_profiles.default_hourly_rate END,
+                 can_teach_kinder = EXCLUDED.can_teach_kinder,
                  deleted_at = NULL, deleted_by = NULL, updated_at = now()
            RETURNING *`,
-        [userId, approvedBy, approvedAtIso, university, major, birthYear],
+        [userId, approvedBy, approvedAtIso, university, major, birthYear, defaultHourlyRate, canTeachKinder],
       ));
       const saved = this.fromRow(rows[0]);
       this.memory.seedExact<InstructorProfile>(INSTRUCTOR_PROFILES, [saved]);
@@ -102,11 +112,13 @@ export class InstructorProfilesStore implements OnModuleInit {
       this.memory.update<InstructorProfile>(INSTRUCTOR_PROFILES, userId, {
         active: true, approvedBy, approvedAt: approvedAtIso,
         university: university ?? existing.university, major: major ?? existing.major, birthYear: birthYear ?? existing.birthYear,
+        defaultHourlyRate: defaultHourlyRate || existing.defaultHourlyRate || 0,
+        canTeachKinder,
       });
       return this.memory.findById<InstructorProfile>(INSTRUCTOR_PROFILES, userId)!;
     }
     const [saved] = this.memory.seed<InstructorProfile>(INSTRUCTOR_PROFILES, [
-      { id: userId, userId, active: true, approvedBy, approvedAt: approvedAtIso, university, major, birthYear },
+      { id: userId, userId, active: true, approvedBy, approvedAt: approvedAtIso, university, major, birthYear, defaultHourlyRate, canTeachKinder },
     ]);
     return saved;
   }
@@ -144,6 +156,8 @@ export class InstructorProfilesStore implements OnModuleInit {
       university: row.university == null ? null : String(row.university),
       major: row.major == null ? null : String(row.major),
       birthYear: row.birth_year == null ? null : Number(row.birth_year),
+      defaultHourlyRate: Number(row.default_hourly_rate ?? 0),
+      canTeachKinder: !!row.can_teach_kinder,
       createdAt: toIsoString(row.created_at) as string,
       updatedAt: toIsoString(row.updated_at) as string,
       deletedAt: (toIsoString(row.deleted_at) ?? null) as string | null,

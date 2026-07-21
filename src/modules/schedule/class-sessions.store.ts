@@ -18,6 +18,7 @@ import {
   CLASS_SESSION_SERIES_TABLE_SQL,
 } from '../../database/migrations/class-session-series.migration';
 import { demoSeedEnabled } from '../../config/demo-seed';
+import { TBO36_CLASS_SESSIONS_SQL } from '../../database/migrations/staff-pay-calendar.migration';
 
 const TABLE = SESSIONS;
 
@@ -181,6 +182,7 @@ export class ClassSessionsStore implements OnModuleInit {
         instructor_pay_amount integer,
         is_paid boolean NOT NULL DEFAULT false,
         paid_payout_id integer,
+        is_public boolean NOT NULL DEFAULT false,
         makeup_for_session_id integer,
         student_ids text NOT NULL DEFAULT '[]',
         created_at timestamptz NOT NULL DEFAULT now(),
@@ -194,6 +196,7 @@ export class ClassSessionsStore implements OnModuleInit {
     //  payout_id가 끊겨도 지급 이력이 세션에 남는다). 기존 DB 멱등 추가 + paid 정산서 연결분 backfill.
     await this.postgres.ddl(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS is_paid boolean NOT NULL DEFAULT false`);
     await this.postgres.ddl(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS paid_payout_id integer`);
+    for (const sql of TBO36_CLASS_SESSIONS_SQL) await this.postgres.ddl(sql);
     //  backfill은 instructor_payouts 존재 시에만(부팅 순서상 이 store가 먼저 뜰 수 있음 — fresh DB는
     //  backfill 대상 자체가 없어 스킵이 정답).
     await this.postgres.ddl(`

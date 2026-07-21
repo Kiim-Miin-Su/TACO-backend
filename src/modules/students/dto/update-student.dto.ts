@@ -19,7 +19,7 @@ export class UpdateStudentDto implements UpdateStudentInput {
   @IsDateString({ strict: true }, { message: 'birthDate는 유효한 YYYY-MM-DD 날짜여야 합니다.' })
   birthDate?: string;
 
-  @IsOptional() @IsInt() @Min(1) @Max(12)
+  @IsOptional() @IsInt() @Min(0) @Max(12)
   grade?: number;
 
   @IsOptional() @IsString() @MaxLength(20)

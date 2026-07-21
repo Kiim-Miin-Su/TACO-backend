@@ -1,4 +1,4 @@
-import { IsInt, IsOptional, IsString, MaxLength, Min, Max } from 'class-validator';
+import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min, Max } from 'class-validator';
 import type { CreateCourseInput } from '@kms545487/contracts';
 import { MAX_AMOUNT } from '../../../common/validation-limits'; // [보안] 금액 상한 단일 소스
 
@@ -21,8 +21,19 @@ export class CreateCourseDto implements CreateCourseInput {
   @Max(MAX_AMOUNT)
   price!: number;
 
+  @IsOptional()
   @IsInt()
   @Min(0)
   @Max(MAX_AMOUNT)
-  hourlyRate!: number;
+  hourlyRate?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_AMOUNT)
+  hourlyRateOverride?: number | null;
+
+  @IsOptional()
+  @IsBoolean()
+  isKinder?: boolean;
 }
