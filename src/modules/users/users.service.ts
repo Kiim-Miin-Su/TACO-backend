@@ -216,7 +216,11 @@ export class UsersService implements OnModuleInit {
     ]);
     // 데모 시드된 활성 강사는 프로필도 동반(승인 경로와 동일 불변식: active instructor ↔ active profile 1행).
     for (const inst of this.db.findBy<StaffAccount>(USERS, (u) => u.role === 'instructor' && u.status === 'active')) {
-      if (!this.profiles.findActive(inst.id)) await this.profiles.upsertActive(inst.id, 3, new Date().toISOString());
+      if (!this.profiles.findActive(inst.id)) {
+        await this.profiles.upsertActive(inst.id, 3, new Date().toISOString(), {
+          defaultHourlyRate: inst.id === 1 ? 50000 : inst.id === 2 ? 60000 : 0,
+        });
+      }
     }
   }
 

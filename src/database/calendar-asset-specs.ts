@@ -24,6 +24,7 @@ import {
 import { STUDENT_INTERESTS_FK_SQL, STUDENT_INTERESTS_TABLE_SQL } from './migrations/student-profile.migration';
 import { TBO36_COURSES_SQL, TBO36_STUDENTS_SQL } from './migrations/staff-pay-calendar.migration';
 import { STUDENT_REQUIRED_CONTRACT_SQL } from './migrations/student-required-contract.migration';
+import { COURSE_PAY_SSOT_SQL } from './migrations/course-pay-ssot.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -529,7 +530,6 @@ export const COURSES_SPEC: PostgresCollectionSpec = {
       name varchar(100) NOT NULL,
       description text,
       price integer NOT NULL DEFAULT 0,
-      hourly_rate integer NOT NULL DEFAULT 0,
       hourly_rate_override integer,
       is_kinder boolean NOT NULL DEFAULT false,
       default_session_count integer,
@@ -542,7 +542,7 @@ export const COURSES_SPEC: PostgresCollectionSpec = {
       deleted_by integer
     )
   `,
-  migrations: [...TBO36_COURSES_SQL],
+  migrations: [...TBO36_COURSES_SQL, ...COURSE_PAY_SSOT_SQL],
   indexes: [
     activeIndex('courses', 'idx_courses_subject', 'subject_id'),
     activeIndex('courses', 'idx_courses_instructor', 'instructor_id'),

@@ -10,7 +10,7 @@ import { StaffAccount, USERS, isActiveInstructor } from '../users/user.entity';
 import { Enrollment } from '../enrollments/enrollment.entity';
 import { CounselForm } from '../counsel/counsel.entity';
 import { ROADMAP_COURSES, RoadmapCourse } from '../roadmaps/roadmap.entity';
-import { Course, COURSES } from './course.entity';
+import { Course, COURSES, StoredCourse } from './course.entity';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
 import { InstructorProfilesStore } from '../users/instructor-profiles.store';
@@ -27,32 +27,31 @@ export class CoursesService implements OnModuleInit {
     private readonly profiles: InstructorProfilesStore,
   ) {}
 
-  // 데모 코스 시드 — 스케줄 모듈 COURSES(10,11,12)와 id·강사·과목·색 정렬.
-  // hourlyRate(시급)는 페이 산정의 기준값으로, class_sessions.courseId → courses.id
-  // 조인의 단일 소스. 세션이 참조하는 코스 id를 고정해 FK/조인 무결성을 보장한다.
+  // 테스트/개발 시드. 운영은 demoSeedEnabled() gate로 이 경로에 진입하지 않는다.
+  // 페이 SSOT는 instructor_profiles.default_hourly_rate이며 course 12만 명시 override를 가진다.
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<Course>(COURSES_SPEC);
+    const hydrated = await this.store.hydrate<StoredCourse>(COURSES_SPEC);
     if (hydrated.length) return;
-    await this.store.seed<Course>(COURSES_SPEC, [
+    await this.store.seed<StoredCourse>(COURSES_SPEC, [
       // 정가(price)는 결제 시드 금액과 정합(코스10=480,000 등) — 단일 소스 일관성.
-      { id: 10, name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, price: 480000, hourlyRate: 50000, hourlyRateOverride: null, isKinder: false, color: '#0969da' },
-      { id: 11, name: 'AP Calculus BC', subjectId: 2, instructorId: 2, price: 520000, hourlyRate: 60000, hourlyRateOverride: null, isKinder: false, color: '#8250df' },
-      { id: 12, name: 'TOEFL 정규', subjectId: 1, instructorId: 1, price: 420000, hourlyRate: 45000, hourlyRateOverride: null, isKinder: false, color: '#1b7c83' },
+      { id: 10, name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, price: 480000, hourlyRateOverride: null, isKinder: false, color: '#0969da' },
+      { id: 11, name: 'AP Calculus BC', subjectId: 2, instructorId: 2, price: 520000, hourlyRateOverride: null, isKinder: false, color: '#8250df' },
+      { id: 12, name: 'TOEFL 정규', subjectId: 1, instructorId: 1, price: 420000, hourlyRateOverride: 45000, isKinder: false, color: '#1b7c83' },
     ]);
   }
 
   findAll(): Course[] {
-    return this.db.findAll<Course>(COURSES).map((course) => this.effective(course));
+    return this.db.findAll<StoredCourse>(COURSES).map((course) => this.effective(course));
   }
 
   findOne(id: number): Course {
-    const row = this.db.findById<Course>(COURSES, id);
+    const row = this.db.findById<StoredCourse>(COURSES, id);
     if (!row) throw new NotFoundException(`Course ${id} not found`);
     return this.effective(row);
   }
 
   findOptional(id: number): Course | undefined {
-    const row = this.db.findById<Course>(COURSES, id);
+    const row = this.db.findById<StoredCourse>(COURSES, id);
     return row ? this.effective(row) : undefined;
   }
 
@@ -66,12 +65,11 @@ export class CoursesService implements OnModuleInit {
     if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
     if (dto.isKinder && !profile!.canTeachKinder) throw new BadRequestException('Kinder 수업이 불가능한 강사입니다.');
     return this.uow.run(async () => {
-      const row = await this.store.insert<Course>(COURSES_SPEC, {
+      const row = await this.store.insert<StoredCourse>(COURSES_SPEC, {
         name: dto.name,
         subjectId: dto.subjectId,
         instructorId: dto.instructorId,
         price: dto.price,
-        hourlyRate: effectiveRate,
         hourlyRateOverride: explicitOverride,
         isKinder: dto.isKinder ?? false,
         color: dto.color,
@@ -84,7 +82,7 @@ export class CoursesService implements OnModuleInit {
   }
 
   async update(id: number, dto: UpdateCourseDto, actorId?: number): Promise<Course> {
-    const current = this.db.findById<Course>(COURSES, id);
+    const current = this.db.findById<StoredCourse>(COURSES, id);
     if (!current) throw new NotFoundException(`Course ${id} not found`);
     const before = this.effective(current);
     const instructorId = dto.instructorId ?? current.instructorId;
@@ -92,9 +90,8 @@ export class CoursesService implements OnModuleInit {
     const explicitOverride = dto.hourlyRateOverride !== undefined
       ? dto.hourlyRateOverride
       : dto.hourlyRate !== undefined ? dto.hourlyRate : current.hourlyRateOverride ?? null;
-    const legacyFallback = current.hourlyRate;
     const profileRate = profile?.defaultHourlyRate ?? 0;
-    const effectiveRate = explicitOverride ?? (profileRate > 0 ? profileRate : legacyFallback);
+    const effectiveRate = explicitOverride ?? profileRate;
     const isKinder = dto.isKinder ?? current.isKinder;
     if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
     if (isKinder && !profile!.canTeachKinder) throw new BadRequestException('Kinder 수업이 불가능한 강사입니다.');
@@ -102,12 +99,11 @@ export class CoursesService implements OnModuleInit {
       await this.uow.lockTargets([{ kind: 'course', id }]);
       const { hourlyRate: _legacyInput, ...fields } = dto;
       void _legacyInput;
-      const stored = await this.store.update<Course>(COURSES_SPEC, id, {
+      const stored = await this.store.update<StoredCourse>(COURSES_SPEC, id, {
         ...fields,
-        hourlyRate: effectiveRate,
         hourlyRateOverride: explicitOverride,
         isKinder,
-      }) as Course;
+      }) as StoredCourse;
       const after = this.effective(stored);
       if (actorId != null) {
         await this.audit.log({ entity: 'courses', entityId: id, action: 'update', actorId, changes: this.audit.diffOf(before, after) });
@@ -150,7 +146,7 @@ export class CoursesService implements OnModuleInit {
     return undefined;
   }
 
-  private effective(course: Course): Course {
+  private effective(course: StoredCourse): Course {
     return withEffectiveCourseRate(course, this.profiles.findActive(course.instructorId));
   }
 }

@@ -205,7 +205,10 @@ async function main() {
   }
 
   // ⑦ 감사 신호(경고) — 감사 원칙 대상 테이블에 행이 있는데 audit_log 0건(역사적 데이터 허용 — 실패 아님)
-  const auditEntities = new Set(rows<BaseRow & { entity: string }>('audit_log', true).map((a) => a.entity));
+  // audit_log는 durable 모드에서 skipMemoryWhenDurable=true라 메모리 컬렉션이 의도적으로 비어 있다.
+  // 감사 존재/건수는 반드시 PostgreSQL을 직접 읽어 false warning/count를 만들지 않는다.
+  const persistedAuditEntities = await pg.query<{ entity: string }>('SELECT DISTINCT entity FROM audit_log');
+  const auditEntities = new Set(persistedAuditEntities.map((row) => row.entity));
   for (const { table_name } of serials) {
     if (AUDIT_EXCLUDED.has(table_name) || auditEntities.has(table_name)) continue;
     const [{ n }] = await pg.query<{ n: string }>(`SELECT COUNT(*)::int AS n FROM ${table_name} WHERE deleted_at IS NULL`);
@@ -213,9 +216,11 @@ async function main() {
   }
 
   const counts = Object.fromEntries(
-    ['users', 'students', 'student_interests', 'class_sessions', 'attendance', 'session_reports', 'payments', 'expenses', 'transactions', 'instructor_payouts', 'audit_log']
+    ['users', 'students', 'student_interests', 'class_sessions', 'attendance', 'session_reports', 'payments', 'expenses', 'transactions', 'instructor_payouts']
       .map((t) => [t, rows(t, true).length]),
   );
+  const [{ n: auditCount }] = await pg.query<{ n: string }>('SELECT COUNT(*)::int AS n FROM audit_log');
+  counts.audit_log = Number(auditCount);
   const ok = issues.length === 0;
   console.log(JSON.stringify({ ok, checkedAt: new Date().toISOString(), counts, issues, warnings }, null, 2));
   if (!ok) process.exitCode = 1;

@@ -2,4 +2,6 @@ import type { Course as CourseContract } from '@kms545487/contracts';
 import type { BaseRow } from '../../common/types/base';
 
 export type Course = CourseContract & BaseRow;
+/** DB row. `hourlyRate` is an API projection, never a physical courses column. */
+export type StoredCourse = Omit<Course, 'hourlyRate'>;
 export const COURSES = 'courses';

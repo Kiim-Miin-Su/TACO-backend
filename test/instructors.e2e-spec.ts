@@ -24,7 +24,7 @@ describe('Instructor aggregate CRUD (e2e)', () => {
       const list = (await http.get('/api/instructors').set(as(role)).expect(200)).body;
       expect(list.some((row: { id: number }) => row.id === 1)).toBe(true);
       expect((await http.get('/api/instructors/1').set(as(role)).expect(200)).body)
-        .toMatchObject({ id: 1, defaultHourlyRate: 0, canTeachKinder: false });
+        .toMatchObject({ id: 1, defaultHourlyRate: 50000, canTeachKinder: false });
     }
     await http.get('/api/instructors').set(as('instructor')).expect(403);
   });
