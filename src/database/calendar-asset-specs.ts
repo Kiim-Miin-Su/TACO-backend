@@ -21,7 +21,7 @@ import {
   ROADMAP_COURSES_TABLE_SQL,
   REPORT_TEMPLATES_TABLE_SQL,
 } from './migrations/remaining-persistence.migration';
-import { STUDENT_INTERESTS_TABLE_SQL } from './migrations/student-profile.migration';
+import { STUDENT_INTERESTS_FK_SQL, STUDENT_INTERESTS_TABLE_SQL } from './migrations/student-profile.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -455,6 +455,7 @@ export const STUDENTS_SPEC: PostgresCollectionSpec = {
 export const STUDENT_INTERESTS_SPEC: PostgresCollectionSpec = {
   table: 'student_interests',
   createSql: STUDENT_INTERESTS_TABLE_SQL,
+  migrations: [STUDENT_INTERESTS_FK_SQL],
   indexes: [
     activeIndex('student_interests', 'idx_student_interests_student', 'student_id, priority'),
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_student_interests_student_priority

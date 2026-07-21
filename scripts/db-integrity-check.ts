@@ -30,6 +30,8 @@ const APP_FK: Array<{ child: string; field: string; parent: string }> = [
   { child: 'payments', field: 'enrollmentId', parent: 'enrollments' },
   { child: 'parent_student_relations', field: 'parentId', parent: 'parents' },
   { child: 'parent_student_relations', field: 'studentId', parent: 'students' },
+  { child: 'student_interests', field: 'studentId', parent: 'students' },
+  { child: 'student_interests', field: 'courseId', parent: 'courses' },
   { child: 'counsel_forms', field: 'interestSubjectId', parent: 'subjects' },
   { child: 'counsel_forms', field: 'interestCourseId', parent: 'courses' },
   { child: 'counsel_rounds', field: 'counselFormId', parent: 'counsel_forms' },
@@ -50,6 +52,9 @@ const ACTIVE_UNIQUE: Array<{ table: string; keys: string[]; ci?: boolean }> = [
   { table: 'users', keys: ['email'], ci: true },
   { table: 'roadmap_courses', keys: ['roadmapId', 'courseId'] },
   { table: 'report_templates', keys: ['name'] },
+  { table: 'student_interests', keys: ['studentId', 'priority'] },
+  { table: 'student_interests', keys: ['studentId', 'courseId'] },
+  { table: 'student_interests', keys: ['studentId', 'customLabel'], ci: true },
 ];
 
 // 감사 원칙 대상에서 제외되는 테이블(erd.dbml audit_log Note 단일 소스와 동일).
@@ -141,6 +146,40 @@ async function main() {
       push(issues, 'EMAIL_VERIFIED_INVARIANT', 'users', account.id, `email_verified=${String(account.emailVerified)} (status=${account.status ?? '?'}) — 계정 레코드는 항상 true`);
   }
 
+  // ⑩ [TBO-35 35C] 학생 희망 수업 aggregate 불변. 신규/수정 command는 항상 2개 이상을 강제하지만
+  //  35B expand 이전 legacy 학생은 reset/constrain 전까지 0개일 수 있어 warning으로 계측한다.
+  //  35F cleanup 후 warning 0을 확인하고 hard issue로 승격한다.
+  {
+    const interests = rows<BaseRow & { studentId: number; courseId?: number | null; customLabel?: string | null; priority: number }>('student_interests');
+    const byStudent = new Map<number, typeof interests>();
+    for (const interest of interests) {
+      if (!byStudent.has(interest.studentId)) byStudent.set(interest.studentId, []);
+      byStudent.get(interest.studentId)!.push(interest);
+      const custom = interest.customLabel?.trim();
+      if ((interest.courseId != null) === !!custom)
+        push(issues, 'STUDENT_INTEREST_TARGET', 'student_interests', interest.id, 'courseId/customLabel 중 정확히 하나 필요');
+      if (!Number.isInteger(interest.priority) || interest.priority < 1)
+        push(issues, 'STUDENT_INTEREST_PRIORITY', 'student_interests', interest.id, `priority=${interest.priority}`);
+    }
+    const customSeen = new Map<string, number>();
+    for (const interest of interests) {
+      const custom = interest.customLabel?.trim().toLowerCase();
+      if (!custom) continue;
+      const key = `${interest.studentId}¦${custom}`;
+      const prior = customSeen.get(key);
+      if (prior != null) push(issues, 'STUDENT_INTEREST_CUSTOM_DUPLICATE', 'student_interests', interest.id, `학생 ${interest.studentId} custom 중복 상대 id ${prior}`);
+      else customSeen.set(key, interest.id);
+    }
+    for (const student of rows('students')) {
+      const owned = byStudent.get(student.id) ?? [];
+      const count = owned.length;
+      if (count < 2) push(warnings, 'STUDENT_INTEREST_MINIMUM_LEGACY', 'students', student.id, `활성 관심 수업 ${count}개 — 35F cleanup 대상`);
+      const priorities = owned.map((row) => row.priority).sort((a, b) => a - b);
+      if (priorities.some((priority, index) => priority !== index + 1))
+        push(issues, 'STUDENT_INTEREST_PRIORITY_GAP', 'students', student.id, `priority=${priorities.join(',')}`);
+    }
+  }
+
   // ⑨(선행분) [TBO-32 C1 2026-07-20] 세션 지급 플래그 정합 — is_paid ⇔ 연결 정산서 paid.
   //    is_paid=true인데 payout_id NULL/비paid = 드리프트(measure fail-safe가 재계상은 막지만 보고).
   //    paid 정산서의 lines 세션인데 is_paid=false = 지급 플래그 누락. paid_payout_id는 이력 컬럼
@@ -174,7 +213,7 @@ async function main() {
   }
 
   const counts = Object.fromEntries(
-    ['users', 'students', 'class_sessions', 'attendance', 'session_reports', 'payments', 'expenses', 'transactions', 'instructor_payouts', 'audit_log']
+    ['users', 'students', 'student_interests', 'class_sessions', 'attendance', 'session_reports', 'payments', 'expenses', 'transactions', 'instructor_payouts', 'audit_log']
       .map((t) => [t, rows(t, true).length]),
   );
   const ok = issues.length === 0;

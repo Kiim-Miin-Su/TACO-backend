@@ -9,6 +9,7 @@ import { Student, STUDENTS } from '../students/student.entity';
 import { Parent, ParentStudent, PARENTS, PARENT_STUDENTS } from './parent.entity';
 import { CreateParentDto } from './dto/create-parent.dto';
 import { LinkParentDto, UpdateRelationDto } from './dto/link-parent.dto';
+import { UpdateParentDto } from './dto/update-parent.dto';
 
 /**
  * [참조/처리] 보호자 + 학생↔보호자 M:N. 프론트 목데이터 이관 + 참조 무결성 게이트.
@@ -56,6 +57,19 @@ export class ParentsService implements OnModuleInit {
     return this.db.findAll<ParentStudent>(PARENT_STUDENTS);
   }
 
+  findOne(id: number): Parent {
+    const parent = this.db.findById<Parent>(PARENTS, id);
+    if (!parent) throw new NotFoundException(`보호자 ${id} 없음`);
+    return parent;
+  }
+
+  guardiansForStudent(studentId: number): Array<{ parent: Parent; relation: ParentStudent }> {
+    return this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'studentId', studentId)
+      .map((relation) => ({ parent: this.db.findById<Parent>(PARENTS, relation.parentId), relation }))
+      .filter((entry): entry is { parent: Parent; relation: ParentStudent } => entry.parent != null)
+      .sort((a, b) => Number(b.relation.isPrimary) - Number(a.relation.isPrimary) || a.relation.id - b.relation.id);
+  }
+
   // 신규 보호자 + 학생 연결(intake). [원자성] 생성+연결(+기존 대표 강등)이 한 PG tx — 고아 보호자/이중 대표 방지.
   // actorId 없으면(시드·내부 경로) audit 생략.
   async create(dto: CreateParentDto, actorId?: number): Promise<{ parent: Parent; relation: ParentStudent }> {
@@ -70,7 +84,10 @@ export class ParentsService implements OnModuleInit {
         webId: dto.webId,
       });
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — changes 없음(phone 등 PII는 이력에 남기지 않음).
-      if (actorId != null) await this.audit.log({ entity: 'parents', entityId: parent.id, action: 'create', actorId });
+      if (actorId != null) await this.audit.log({
+        entity: 'parents', entityId: parent.id, action: 'create', actorId,
+        changes: this.audit.maskContactPii(this.audit.diffOf({}, parent)),
+      });
       const relation = await this.linkInTx({
         parentId: parent.id,
         studentId: dto.studentId,
@@ -90,8 +107,8 @@ export class ParentsService implements OnModuleInit {
     });
   }
 
-  /** [TBO-29D D2] 등록 aggregate 전용(tx 내부에서만 호출) — 보호자 전화 일치 시 기존 행에 연결(upsert-or-link).
-   *  정책: 같은 전화번호 = 같은 보호자(학원 실무 규약). 이름은 덮어쓰지 않고 기존 행을 반환 —
+  /** [TBO-35 35C] 등록 aggregate 전용(tx 내부에서만 호출) — 정규화 전화+이름이 모두 일치할 때만 연결.
+   *  가족 공용 번호로 다른 보호자가 합쳐지는 것을 막고, 이름은 덮어쓰지 않은 기존 행을 반환한다.
    *  응답의 linkedExisting으로 FE가 "기존 보호자와 연결됨"을 안내한다. 경합은 호출자의
    *  parentIntake advisory lock이 직렬화(같은 번호 동시 등록 → 보호자 1행). */
   async attachGuardianInTx(
@@ -101,8 +118,10 @@ export class ParentsService implements OnModuleInit {
   ): Promise<{ parent: Parent; relation: ParentStudent; linkedExisting: boolean }> {
     const digits = (v?: string) => (v ?? '').replace(/\D/g, '');
     const normalized = digits(guardian.phone);
+    const normalizedName = guardian.name.trim().toLowerCase();
     const existing = normalized
-      ? this.db.findBy<Parent>(PARENTS, (parent) => digits(parent.phone) === normalized)[0]
+      ? this.db.findBy<Parent>(PARENTS, (parent) =>
+        digits(parent.phone) === normalized && parent.name.trim().toLowerCase() === normalizedName)[0]
       : undefined;
     const parent = existing
       ?? (await this.store.insert<Parent>(PARENTS_SPEC, {
@@ -111,8 +130,11 @@ export class ParentsService implements OnModuleInit {
         kakaoAvailable: false,
       }));
     // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — 신규 보호자 행이 실제 생성된 경우에만
-    //  (기존 행 재연결 시 create 아님). changes 없음(phone 등 PII는 이력에 남기지 않음 — registrations 규약).
-    if (!existing && actorId != null) await this.audit.log({ entity: 'parents', entityId: parent.id, action: 'create', actorId });
+    //  (기존 행 재연결 시 create 아님). 연락처 PII는 마스킹된 스냅샷만 남긴다.
+    if (!existing && actorId != null) await this.audit.log({
+      entity: 'parents', entityId: parent.id, action: 'create', actorId,
+      changes: this.audit.maskContactPii(this.audit.diffOf({}, parent)),
+    });
     const relation = await this.linkInTx({
       parentId: parent.id,
       studentId,
@@ -145,7 +167,10 @@ export class ParentsService implements OnModuleInit {
       isPrimary: dto.isPrimary ?? false,
     });
     // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
-    if (actorId != null) await this.audit.log({ entity: 'parent_student_relations', entityId: relation.id, action: 'create', actorId });
+    if (actorId != null) await this.audit.log({
+      entity: 'parent_student_relations', entityId: relation.id, action: 'create', actorId,
+      changes: this.audit.diffOf({}, relation),
+    });
     return relation;
   }
 
@@ -170,6 +195,49 @@ export class ParentsService implements OnModuleInit {
         });
       }
       return after;
+    });
+  }
+
+  async removeRelation(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
+    return this.uow.run(async () => {
+      const relation = this.db.findById<ParentStudent>(PARENT_STUDENTS, id);
+      if (!relation) throw new NotFoundException(`관계 ${id} 없음`);
+      await this.uow.lockTargets([{ kind: 'student', id: relation.studentId }]);
+      await this.store.remove(PARENT_STUDENT_RELATIONS_SPEC, id, actorId);
+      await this.audit.log({
+        entity: 'parent_student_relations', entityId: id, action: 'delete', actorId,
+        changes: this.audit.snapshotOf(relation),
+      });
+      return { id, deleted: true };
+    });
+  }
+
+  async update(id: number, dto: UpdateParentDto, actorId: number): Promise<Parent> {
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'parent', id }]);
+      const before = { ...this.findOne(id) };
+      const after = await this.store.update<Parent>(PARENTS_SPEC, id, dto);
+      if (!after) throw new NotFoundException(`보호자 ${id} 없음`);
+      await this.audit.log({
+        entity: 'parents', entityId: id, action: 'update', actorId,
+        changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
+      });
+      return after;
+    });
+  }
+
+  async remove(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'parent', id }]);
+      const parent = { ...this.findOne(id) };
+      const relations = this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'parentId', id);
+      if (relations.length) throw new ConflictException('활성 학생 관계가 있는 보호자는 삭제할 수 없습니다. 관계를 먼저 삭제하세요.');
+      await this.store.remove(PARENTS_SPEC, id, actorId);
+      await this.audit.log({
+        entity: 'parents', entityId: id, action: 'delete', actorId,
+        changes: this.audit.maskContactPii(this.audit.snapshotOf(parent)),
+      });
+      return { id, deleted: true };
     });
   }
 

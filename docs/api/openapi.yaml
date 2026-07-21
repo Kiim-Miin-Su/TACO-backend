@@ -808,14 +808,14 @@ paths:
       tags:
       - Students
     post:
-      operationId: StudentsController_create
+      operationId: RegistrationsController_create
       parameters: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CreateStudentDto'
+              $ref: '#/components/schemas/RegisterStudentDto'
       responses:
         '201':
           description: ''
@@ -823,8 +823,9 @@ paths:
             application/json:
               schema:
                 type: object
+      summary: 학생 aggregate 생성 — /students/registrations와 동일한 원자 command
       tags:
-      - Students
+      - students
   /api/students/{id}:
     get:
       operationId: StudentsController_findOne
@@ -834,29 +835,6 @@ paths:
         in: path
         schema:
           type: number
-      responses:
-        '200':
-          description: ''
-          content:
-            application/json:
-              schema:
-                type: object
-      tags:
-      - Students
-    patch:
-      operationId: StudentsController_update
-      parameters:
-      - name: id
-        required: true
-        in: path
-        schema:
-          type: number
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateStudentDto'
       responses:
         '200':
           description: ''
@@ -883,6 +861,209 @@ paths:
                 type: object
       tags:
       - Students
+    patch:
+      operationId: RegistrationsController_updateStudent
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStudentDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - students
+  /api/students/{studentId}/interests:
+    get:
+      operationId: StudentInterestsController_list
+      parameters:
+      - name: studentId
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+      tags:
+      - StudentInterests
+    put:
+      operationId: StudentInterestsController_replace
+      parameters:
+      - name: studentId
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: array
+              items:
+                type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+      tags:
+      - StudentInterests
+    post:
+      operationId: StudentInterestsController_add
+      parameters:
+      - name: studentId
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StudentInterestDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - StudentInterests
+  /api/students/{studentId}/interests/{interestId}:
+    delete:
+      operationId: StudentInterestsController_remove
+      parameters:
+      - name: studentId
+        required: true
+        in: path
+        schema:
+          type: number
+      - name: interestId
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+      tags:
+      - StudentInterests
+  /api/courses:
+    get:
+      operationId: CoursesController_findAll
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+      tags:
+      - courses
+    post:
+      operationId: CoursesController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCourseDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - courses
+  /api/courses/{id}:
+    get:
+      operationId: CoursesController_findOne
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - courses
+    patch:
+      operationId: CoursesController_update
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCourseDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - courses
+    delete:
+      operationId: CoursesController_remove
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - courses
   /api/enrollments:
     get:
       operationId: EnrollmentsController_findAll
@@ -1158,97 +1339,6 @@ paths:
                 type: object
       tags:
       - subjects
-  /api/courses:
-    get:
-      operationId: CoursesController_findAll
-      parameters: []
-      responses:
-        '200':
-          description: ''
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  type: object
-      tags:
-      - courses
-    post:
-      operationId: CoursesController_create
-      parameters: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/CreateCourseDto'
-      responses:
-        '201':
-          description: ''
-          content:
-            application/json:
-              schema:
-                type: object
-      tags:
-      - courses
-  /api/courses/{id}:
-    get:
-      operationId: CoursesController_findOne
-      parameters:
-      - name: id
-        required: true
-        in: path
-        schema:
-          type: number
-      responses:
-        '200':
-          description: ''
-          content:
-            application/json:
-              schema:
-                type: object
-      tags:
-      - courses
-    patch:
-      operationId: CoursesController_update
-      parameters:
-      - name: id
-        required: true
-        in: path
-        schema:
-          type: number
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/UpdateCourseDto'
-      responses:
-        '200':
-          description: ''
-          content:
-            application/json:
-              schema:
-                type: object
-      tags:
-      - courses
-    delete:
-      operationId: CoursesController_remove
-      parameters:
-      - name: id
-        required: true
-        in: path
-        schema:
-          type: number
-      responses:
-        '200':
-          description: ''
-          content:
-            application/json:
-              schema:
-                type: object
-      tags:
-      - courses
   /api/expenses:
     get:
       operationId: ExpensesController_findAll
@@ -2779,6 +2869,60 @@ paths:
       summary: 학생↔보호자 관계(ParentStudent[]) — M:N(대표/납부자)
       tags:
       - parents
+  /api/parents/{id}:
+    get:
+      operationId: ParentsController_findOne
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - parents
+    patch:
+      operationId: ParentsController_update
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateParentDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - parents
+    delete:
+      operationId: ParentsController_remove
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+      tags:
+      - parents
   /api/parents/link:
     post:
       operationId: ParentsController_link
@@ -2816,6 +2960,19 @@ paths:
       summary: 관계 수정(대표 이전·납부자 변경) — 대표 지정 시 기존 대표 강등
       tags:
       - parents
+    delete:
+      operationId: ParentsController_removeRelation
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+      tags:
+      - parents
   /api/students/registrations:
     post:
       operationId: RegistrationsController_register
@@ -2830,6 +2987,47 @@ paths:
         '201':
           description: '{ student, guardian: { parent, relation, linkedExisting } | null, enrollment | null }'
       summary: 학생 원자 등록 — student+guardian(선택)+enrollment(선택)+audit 단일 tx. 중간 실패 시 전부 +0.
+      tags:
+      - students
+  /api/students/{id}/aggregate:
+    get:
+      operationId: RegistrationsController_getAggregate
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      tags:
+      - students
+    patch:
+      operationId: RegistrationsController_updateAggregate
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateStudentAggregateDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       tags:
       - students
   /api/nav-seen:
@@ -3536,81 +3734,71 @@ components:
           example: 전화번호 확인 후 다시 요청해 주세요.
       required:
       - reason
-    CreateStudentDto:
+    StudentInterestDto:
+      type: object
+      properties:
+        courseId:
+          type: number
+          minimum: 1
+          description: 기존 course 선택. customLabel과 정확히 하나만 허용
+        customLabel:
+          type: string
+          maxLength: 120
+          description: 카탈로그 외 희망 수업. courseId와 정확히 하나만 허용
+        priority:
+          type: number
+          minimum: 1
+          description: 1부터 시작하는 연속 우선순위
+      required:
+      - priority
+    CreateCourseDto:
       type: object
       properties:
         name:
-          type: string
-          maxLength: 20
-        englishName:
-          type: string
-          maxLength: 50
-        phone:
-          type: string
-          maxLength: 20
-        grade:
-          type: number
-          minimum: 1
-          maximum: 12
-        schoolName:
           type: string
           maxLength: 100
-        residenceType:
+        color:
           type: string
-          enum:
-          - domestic
-          - overseas
-        status:
-          type: string
-          enum:
-          - lead
-          - active
-          - paused
-          - completed
-          - canceled
-        country:
-          type: string
-          pattern: ^[A-Z]{2}$
-        memo:
-          type: string
-          maxLength: 500
+          maxLength: 20
+        subjectId:
+          type: number
+        instructorId:
+          type: number
+        price:
+          type: number
+          minimum: 0
+          maximum: 100000000
+        hourlyRate:
+          type: number
+          minimum: 0
+          maximum: 100000000
       required:
       - name
-    UpdateStudentDto:
+      - subjectId
+      - instructorId
+      - price
+      - hourlyRate
+    UpdateCourseDto:
       type: object
       properties:
         name:
           type: string
-          maxLength: 20
-        englishName:
+          maxLength: 100
+        color:
           type: string
-          maxLength: 50
-        grade:
+          maxLength: 20
+        subjectId:
           type: number
-          minimum: 1
-          maximum: 12
-        phone:
-          type: string
-          maxLength: 20
-        country:
-          type: string
-          pattern: ^[A-Z]{2}$
-        residenceType:
-          type: string
-          enum:
-          - domestic
-          - overseas
-        status:
-          type: string
-          enum:
-          - lead
-          - active
-          - paused
-          - completed
-          - canceled
-        memo:
-          type: string
-          maxLength: 500
+        instructorId:
+          type: number
+        price:
+          type: number
+          minimum: 0
+          maximum: 100000000
+        hourlyRate:
+          type: number
+          minimum: 0
+          maximum: 100000000
     CreateEnrollmentDto:
       type: object
       properties:
@@ -3699,54 +3887,6 @@ components:
         name:
           type: string
           maxLength: 50
-    CreateCourseDto:
-      type: object
-      properties:
-        name:
-          type: string
-          maxLength: 100
-        color:
-          type: string
-          maxLength: 20
-        subjectId:
-          type: number
-        instructorId:
-          type: number
-        price:
-          type: number
-          minimum: 0
-          maximum: 100000000
-        hourlyRate:
-          type: number
-          minimum: 0
-          maximum: 100000000
-      required:
-      - name
-      - subjectId
-      - instructorId
-      - price
-      - hourlyRate
-    UpdateCourseDto:
-      type: object
-      properties:
-        name:
-          type: string
-          maxLength: 100
-        color:
-          type: string
-          maxLength: 20
-        subjectId:
-          type: number
-        instructorId:
-          type: number
-        price:
-          type: number
-          minimum: 0
-          maximum: 100000000
-        hourlyRate:
-          type: number
-          minimum: 0
-          maximum: 100000000
     CreateExpenseDto:
       type: object
       properties:
@@ -5186,6 +5326,78 @@ components:
           type: boolean
         isPrimary:
           type: boolean
+    UpdateParentDto:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 50
+        phone:
+          type: string
+          maxLength: 20
+        kakaoAvailable:
+          type: boolean
+    CreateStudentDto:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 20
+        englishName:
+          type: string
+          maxLength: 50
+        gender:
+          type: string
+          enum:
+          - male
+          - female
+          - other
+          - undisclosed
+        birthDate:
+          type: string
+        phone:
+          type: string
+          maxLength: 20
+        grade:
+          type: number
+          minimum: 1
+          maximum: 12
+        schoolName:
+          type: string
+          maxLength: 100
+        residenceType:
+          type: string
+          enum:
+          - domestic
+          - overseas
+        address:
+          type: string
+          maxLength: 100
+        addressDetail:
+          type: string
+          maxLength: 100
+        kakaoId:
+          type: string
+          maxLength: 100
+        counselTopic:
+          type: string
+          maxLength: 1000
+        status:
+          type: string
+          enum:
+          - enrolled
+          - on_leave
+          - withdrawn
+          - registration_lost
+          - new_inquiry
+        country:
+          type: string
+          pattern: ^[A-Z]{2}$
+        memo:
+          type: string
+          maxLength: 500
+      required:
+      - name
     RegistrationGuardianDto:
       type: object
       properties:
@@ -5219,8 +5431,22 @@ components:
           description: 학생 정보(기존 POST /students와 동일 필드)
           allOf:
           - $ref: '#/components/schemas/CreateStudentDto'
+        interests:
+          minItems: 2
+          maxItems: 20
+          description: 희망 수업 2개 이상
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentInterestDto'
+        guardians:
+          maxItems: 10
+          description: 보호자 0~10명
+          type: array
+          items:
+            $ref: '#/components/schemas/RegistrationGuardianDto'
         guardian:
-          description: 보호자 — 있으면 parent+관계를 같은 tx로 생성/연결
+          deprecated: true
+          description: v0.2.5 호환 단건 보호자. guardians와 동시 사용 금지
           allOf:
           - $ref: '#/components/schemas/RegistrationGuardianDto'
         courseId:
@@ -5230,6 +5456,74 @@ components:
           description: 수강 코스 — 있으면 enrollment를 같은 tx로 생성
       required:
       - student
+      - interests
+    UpdateStudentDto:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 20
+        englishName:
+          type: string
+          maxLength: 50
+        gender:
+          enum:
+          - male
+          - female
+          - other
+          - undisclosed
+          type: string
+        birthDate:
+          type: string
+        grade:
+          type: number
+          minimum: 1
+          maximum: 12
+        phone:
+          type: string
+          maxLength: 20
+        country:
+          type: string
+          pattern: ^[A-Z]{2}$
+        residenceType:
+          enum:
+          - domestic
+          - overseas
+          type: string
+        address:
+          type: string
+          maxLength: 100
+        addressDetail:
+          type: string
+          maxLength: 100
+        kakaoId:
+          type: string
+          maxLength: 100
+        counselTopic:
+          type: string
+          maxLength: 1000
+        status:
+          enum:
+          - enrolled
+          - on_leave
+          - withdrawn
+          - registration_lost
+          - new_inquiry
+          type: string
+        memo:
+          type: string
+          maxLength: 500
+    UpdateStudentAggregateDto:
+      type: object
+      properties:
+        student:
+          $ref: '#/components/schemas/UpdateStudentDto'
+        interests:
+          minItems: 2
+          maxItems: 20
+          type: array
+          items:
+            $ref: '#/components/schemas/StudentInterestDto'
     MarkNavSeenDto:
       type: object
       properties:

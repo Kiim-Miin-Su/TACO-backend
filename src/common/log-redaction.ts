@@ -1,4 +1,4 @@
-const SENSITIVE_KEY = /(authorization|access_?token|refresh_?token|token|password|secret|email|phone|code|birth_?date|address|kakao_?id|rrn)/i;
+const SENSITIVE_KEY = /(authorization|access_?token|refresh_?token|token|password|secret|email|phone|code|birth_?date|address|kakao_?id|counsel_?topic|rrn)/i;
 
 export function redactLogValue(value: unknown, depth = 0): unknown {
   if (value == null) return value;

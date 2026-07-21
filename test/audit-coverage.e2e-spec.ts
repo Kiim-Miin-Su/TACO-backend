@@ -4,6 +4,7 @@
 import { createHash } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
+import { studentAggregateBody } from './fixtures/student-profile';
 import { createTestApp } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
@@ -81,11 +82,11 @@ describe('Audit coverage — 전 테이블 CRUD 이력 (e2e)', () => {
 
   it('students: 직접 생성·수정(PII 마스킹)·퇴원 이력', async () => {
     const s = (await http.post('/api/students').set(auth())
-      .send({ name: '감사학생', phone: '010-1111-2222' }).expect(201)).body;
+      .send(studentAggregateBody('감사학생', { student: { phone: '010-1111-2222' } })).expect(201)).body.student;
     await http.patch(`/api/students/${s.id}`).set(auth()).send({ phone: '010-3333-4444', grade: 11 }).expect(200);
     await http.delete(`/api/students/${s.id}`).set(auth()).expect(200);
     const rows = audits('students', s.id);
-    expect(rows.map((a) => a.action)).toEqual(['create', 'update', 'status_change']);
+    expect(rows.map((a) => a.action)).toEqual(['create', 'update', 'delete']);
     // PII 마스킹 — 연락처 diff 원문이 이력에 남지 않는다.
     const upd = rows.find((a) => a.action === 'update')!;
     const serialized = JSON.stringify(upd);

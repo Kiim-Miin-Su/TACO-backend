@@ -17,6 +17,22 @@ export const STUDENT_INTERESTS_TABLE_SQL = `
     CONSTRAINT student_interests_priority_check CHECK (priority > 0)
   )`;
 
+export const STUDENT_INTERESTS_FK_SQL = `DO $$
+   BEGIN
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_student_interests_student') THEN
+       ALTER TABLE student_interests ADD CONSTRAINT fk_student_interests_student
+         FOREIGN KEY (student_id) REFERENCES students(id);
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_student_interests_course') THEN
+       ALTER TABLE student_interests ADD CONSTRAINT fk_student_interests_course
+         FOREIGN KEY (course_id) REFERENCES courses(id);
+     END IF;
+     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_student_interests_deleted_by') THEN
+       ALTER TABLE student_interests ADD CONSTRAINT fk_student_interests_deleted_by
+         FOREIGN KEY (deleted_by) REFERENCES users(id);
+     END IF;
+   END $$`;
+
 export const STUDENT_PROFILE_MIGRATION_SQL: readonly string[] = [
   `ALTER TABLE students ADD COLUMN IF NOT EXISTS gender varchar(20)`,
   `ALTER TABLE students ADD COLUMN IF NOT EXISTS birth_date date`,
@@ -48,19 +64,5 @@ export const STUDENT_PROFILE_MIGRATION_SQL: readonly string[] = [
   `CREATE UNIQUE INDEX IF NOT EXISTS uq_student_interests_custom
      ON student_interests (student_id, LOWER(BTRIM(custom_label)))
      WHERE deleted_at IS NULL AND custom_label IS NOT NULL`,
-  `DO $$
-   BEGIN
-     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_student_interests_student') THEN
-       ALTER TABLE student_interests ADD CONSTRAINT fk_student_interests_student
-         FOREIGN KEY (student_id) REFERENCES students(id);
-     END IF;
-     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_student_interests_course') THEN
-       ALTER TABLE student_interests ADD CONSTRAINT fk_student_interests_course
-         FOREIGN KEY (course_id) REFERENCES courses(id);
-     END IF;
-     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_student_interests_deleted_by') THEN
-       ALTER TABLE student_interests ADD CONSTRAINT fk_student_interests_deleted_by
-         FOREIGN KEY (deleted_by) REFERENCES users(id);
-     END IF;
-   END $$`,
+  STUDENT_INTERESTS_FK_SQL,
 ];

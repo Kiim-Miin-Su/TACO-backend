@@ -2,10 +2,11 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
 import { AuditService } from '../src/modules/audit/audit.service';
+import { studentAggregateBody } from './fixtures/student-profile';
 
 // ─────────────────────────────────────────────────────────────
-// 학생(students) 퇴원 호환 DELETE e2e.
-//  DELETE /students/:id → 학생 status=withdrawn + 해당 학생 수강 canceled(무결성).
+// 학생(students) soft DELETE e2e.
+//  DELETE /students/:id → deleted_at/deleted_by + 해당 학생 수강 canceled(무결성).
 //  없는 학생 삭제 → 404.
 // ─────────────────────────────────────────────────────────────
 describe('Students Soft-Delete (e2e)', () => {
@@ -22,7 +23,7 @@ describe('Students Soft-Delete (e2e)', () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it('DELETE 기존 학생 → status=withdrawn', async () => {
+  it('DELETE 기존 학생 → active 조회 제외 + deletedAt 기록', async () => {
     // 사전: 학생1은 enrolled, 수강 2건 active
     const before = (await http.get(`/api/students/${S1}`).set(asAdmin()).expect(200)).body;
     expect(before.status).toBe('enrolled');
@@ -31,11 +32,11 @@ describe('Students Soft-Delete (e2e)', () => {
     expect(enrBefore.length).toBeGreaterThan(0);
 
     const res = await http.delete(`/api/students/${S1}`).set(asAdmin()).expect(200);
-    expect(res.body.status).toBe('withdrawn');
+    expect(res.body.deletedAt).toBeTruthy();
+    expect(res.body.deletedBy).toBe(3);
 
-    // 학생 상태 반영
-    const after = (await http.get(`/api/students/${S1}`).set(asAdmin()).expect(200)).body;
-    expect(after.status).toBe('withdrawn');
+    await http.get(`/api/students/${S1}`).set(asAdmin()).expect(404);
+    expect((await http.get('/api/students').set(asAdmin()).expect(200)).body.some((row: { id: number }) => row.id === S1)).toBe(false);
 
     // 해당 학생 수강 전부 canceled
     const enrAfter = (await http.get('/api/enrollments').set(asAdmin()).expect(200)).body
@@ -55,13 +56,14 @@ describe('Students Soft-Delete (e2e)', () => {
       schoolName: 'TACO School', phone: '+1-206-555-0100', kakaoId: 'masked-user',
       counselTopic: 'Writing 집중 상담', status: 'new_inquiry',
     };
-    const created = (await http.post('/api/students').set(asAdmin()).send(payload).expect(201)).body;
+    const created = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('프로필학생', { student: payload })).expect(201)).body.student;
     expect(created).toMatchObject(payload);
     expect((await http.get(`/api/students/${created.id}`).set(asAdmin()).expect(200)).body).toMatchObject(payload);
 
-    await http.post('/api/students').set(asAdmin()).send({ name: '날짜오류', birthDate: '2012-02-30' }).expect(400);
-    await http.post('/api/students').set(asAdmin()).send({ name: '성별오류', gender: 'unknown' }).expect(400);
-    await http.post('/api/students').set(asAdmin()).send({ name: '상태오류', status: 'active' }).expect(400);
+    await http.post('/api/students').set(asAdmin()).send(studentAggregateBody('날짜오류', { student: { birthDate: '2012-02-30' } })).expect(400);
+    await http.post('/api/students').set(asAdmin()).send(studentAggregateBody('성별오류', { student: { gender: 'unknown' as never } })).expect(400);
+    await http.post('/api/students').set(asAdmin()).send(studentAggregateBody('상태오류', { student: { status: 'active' as never } })).expect(400);
   });
 
   it('학생 PII는 감사 diff에서 원문 대신 마스킹된다', () => {

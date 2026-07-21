@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ParentsService } from './parents.service';
@@ -7,6 +7,7 @@ import { LinkParentDto, UpdateRelationDto } from './dto/link-parent.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
+import { UpdateParentDto } from './dto/update-parent.dto';
 
 // [참조/처리] /api/parents REST(people 도메인 — students와 동일하게 무가드).
 //  - GET /parents · GET /parents/relations(M:N). POST /parents(신규+연결) · POST /parents/link(기존 연결).
@@ -33,6 +34,12 @@ export class ParentsController {
     return this.parents.findAllRelations();
   }
 
+  @Get(':id')
+  @Roles(...STAFF_ROLES)
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.parents.findOne(id);
+  }
+
   @Post()
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '보호자 등록 + 학생 연결 — studentId FK 검증, 대표 불변' })
@@ -55,5 +62,28 @@ export class ParentsController {
   @ApiOkResponse({ description: '수정된 ParentStudent' })
   updateRelation(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRelationDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.parents.updateRelation(id, dto, req.user?.sub);
+  }
+
+  @Delete('relations/:id')
+  @Roles(...ADMIN_ROLES)
+  removeRelation(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.parents.removeRelation(id, this.actor(req));
+  }
+
+  @Patch(':id')
+  @Roles(...ADMIN_ROLES)
+  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateParentDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.parents.update(id, dto, this.actor(req));
+  }
+
+  @Delete(':id')
+  @Roles(...ADMIN_ROLES)
+  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.parents.remove(id, this.actor(req));
+  }
+
+  private actor(req: Request & { user?: JwtClaims }): number {
+    if (typeof req.user?.sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
+    return req.user.sub;
   }
 }

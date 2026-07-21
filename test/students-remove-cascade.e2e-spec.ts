@@ -9,6 +9,7 @@ import { PostgresCollectionStore } from '../src/database/postgres-collection.sto
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { ENROLLMENTS_SPEC } from '../src/database/calendar-asset-specs';
 import type { Enrollment } from '../src/modules/enrollments/enrollment.entity';
+import { studentAggregateBody } from './fixtures/student-profile';
 
 describe('[TBO-29D D0] student remove cascades enrollments (write-through)', () => {
   let app: INestApplication;
@@ -27,8 +28,9 @@ describe('[TBO-29D D0] student remove cascades enrollments (write-through)', () 
   const auth = { Authorization: '' };
   beforeEach(() => { auth.Authorization = `Bearer ${token}`; });
 
-  it('삭제 → 학생 withdrawn + 활성 수강 전부 canceled(같은 tx)', async () => {
-    const student = (await http.post('/api/students').set(auth).send({ name: 'D0 카스케이드', grade: 11 }).expect(201)).body;
+  it('soft delete + 활성 수강 전부 canceled(같은 tx)', async () => {
+    const student = (await http.post('/api/students').set(auth)
+      .send(studentAggregateBody('D0 카스케이드', { student: { grade: 11 } })).expect(201)).body.student;
     const enrollment = (await http.post('/api/enrollments').set(auth).send({ studentId: student.id, courseId: 10 }).expect(201)).body;
 
     await http.delete(`/api/students/${student.id}`).set(auth).expect(200);
@@ -38,7 +40,8 @@ describe('[TBO-29D D0] student remove cascades enrollments (write-through)', () 
   });
 
   it('[회귀 핵심] PG 재수화 후에도 취소가 유지된다 — 메모리 전용 쓰기였다면 되살아난다', async () => {
-    const student = (await http.post('/api/students').set(auth).send({ name: 'D0 재수화', grade: 12 }).expect(201)).body;
+    const student = (await http.post('/api/students').set(auth)
+      .send(studentAggregateBody('D0 재수화', { student: { grade: 12 } })).expect(201)).body.student;
     const enrollment = (await http.post('/api/enrollments').set(auth).send({ studentId: student.id, courseId: 10 }).expect(201)).body;
     await http.delete(`/api/students/${student.id}`).set(auth).expect(200);
 

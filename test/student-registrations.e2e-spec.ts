@@ -11,10 +11,12 @@ import {
   PARENT_STUDENT_RELATIONS_SPEC,
   STUDENTS_SPEC,
   ENROLLMENTS_SPEC,
+  STUDENT_INTERESTS_SPEC,
 } from '../src/database/calendar-asset-specs';
 import type { Parent, ParentStudent } from '../src/modules/parents/parent.entity';
 import type { Student } from '../src/modules/students/student.entity';
 import type { Enrollment } from '../src/modules/enrollments/enrollment.entity';
+import type { StudentInterest } from '../src/modules/students/student-interest.entity';
 
 describe('[TBO-29D D2] POST /students/registrations (atomic aggregate)', () => {
   let app: INestApplication;
@@ -36,25 +38,43 @@ describe('[TBO-29D D2] POST /students/registrations (atomic aggregate)', () => {
     parents: db.findAll<Parent>('parents').length,
     relations: db.findAll<ParentStudent>('parent_student_relations').length,
     enrollments: db.findAll<Enrollment>('enrollments').length,
+    interests: db.findAll<StudentInterest>('student_interests').length,
     audit: db.findAll<{ id: number }>('audit_log').length,
   });
+
+  const studentProfile = (name: string, country = 'KR') => ({
+    name, gender: 'undisclosed', birthDate: '2012-07-21', grade: 8, country,
+    residenceType: country === 'KR' ? 'domestic' : 'overseas', address: country === 'KR' ? '서울시' : 'Seattle',
+    schoolName: 'TACO School', phone: country === 'KR' ? '010-9000-0000' : '+1-206-555-0100',
+    ...(country === 'KR' ? {} : { kakaoId: `${name}-kakao` }), counselTopic: 'Writing 상담',
+  });
+  const interests = (label: string) => [
+    { courseId: 10, priority: 1 },
+    { customLabel: `${label} 심화`, priority: 2 },
+  ];
 
   it('성공 — student+parent+relation+enrollment+audit가 한 번에 생기고 PG 재수화 후에도 유지', async () => {
     const before = counts();
     const res = await http.post('/api/students/registrations').set(auth()).send({
-      student: { name: '통합 등록', grade: 9, country: 'KR' },
-      guardian: { name: '통합 보호자', phone: '010-7777-0001', relation: '모' },
+      student: studentProfile('통합 등록'),
+      interests: interests('통합'),
+      guardians: [
+        { name: '통합 보호자', phone: '010-7777-0001', relation: '모', isPrimary: true },
+        { name: '통합 보호자2', phone: '010-7777-0004', relation: '부', isPayer: true },
+      ],
       courseId: 10,
     }).expect(201);
     const after = counts();
     expect(after).toEqual({
       students: before.students + 1,
-      parents: before.parents + 1,
-      relations: before.relations + 1,
+      parents: before.parents + 2,
+      relations: before.relations + 2,
       enrollments: before.enrollments + 1,
-      // [감사 전수 2026-07-16] students 집계 1건 + parents create + relation create = +3
-      audit: before.audit + 3,
+      interests: before.interests + 2,
+      // students aggregate 1 + interests 2 + parents 2 + relations 2 + enrollment 1
+      audit: before.audit + 8,
     });
+    expect(res.body.guardians).toHaveLength(2);
     expect(res.body.guardian.linkedExisting).toBe(false);
     expect(res.body.guardian.relation).toMatchObject({ studentId: res.body.student.id, isPrimary: true, isPayer: true });
     expect(res.body.enrollment).toMatchObject({ studentId: res.body.student.id, courseId: 10, status: 'active' });
@@ -73,10 +93,12 @@ describe('[TBO-29D D2] POST /students/registrations (atomic aggregate)', () => {
       await store.hydrate<Parent>(PARENTS_SPEC);
       await store.hydrate<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC);
       await store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
+      await store.hydrate<StudentInterest>(STUDENT_INTERESTS_SPEC);
     }
     expect(db.findById<Student>('students', res.body.student.id)?.name).toBe('통합 등록');
     expect(db.findById<ParentStudent>('parent_student_relations', res.body.guardian.relation.id)?.isPrimary).toBe(true);
     expect(db.findById<Enrollment>('enrollments', res.body.enrollment.id)?.status).toBe('active');
+    expect(db.findByField<StudentInterest>('student_interests', 'studentId', res.body.student.id)).toHaveLength(2);
 
     // [TBO-35 35A] 캘린더 학생 피커도 별도 mock/목록이 아니라 같은 students DB row를 투영한다.
     // 신규 학생은 수강 여부와 무관하게 /students와 /schedule/resources에서 같은 id/name으로 보여야 한다.
@@ -90,32 +112,41 @@ describe('[TBO-29D D2] POST /students/registrations (atomic aggregate)', () => {
   it('실패 주입(enrollment 단계 — 미존재 코스) → 400 + 모든 자산 +0(부분 저장 없음)', async () => {
     const before = counts();
     await http.post('/api/students/registrations').set(auth()).send({
-      student: { name: '롤백 학생', grade: 10 },
+      student: studentProfile('롤백 학생'),
+      interests: interests('롤백'),
       guardian: { name: '롤백 보호자', phone: '010-7777-0002' },
       courseId: 999999,
     }).expect(400);
     expect(counts()).toEqual(before); // student·parent·relation·audit 전부 롤백
   });
 
-  it('보호자 전화 일치 → 기존 parent에 연결(upsert-or-link, parents +0)', async () => {
+  it('보호자 전화+이름 일치만 기존 parent에 연결하고 같은 번호·다른 이름은 새 행으로 분리한다', async () => {
     const before = counts();
     const res = await http.post('/api/students/registrations').set(auth()).send({
-      student: { name: '형제 학생', grade: 7 },
-      guardian: { name: '이름 달라도', phone: '010-7777-0001' }, // 첫 케이스의 번호 재사용
+      student: studentProfile('형제 학생'),
+      interests: interests('형제'),
+      guardian: { name: '통합 보호자', phone: '010-7777-0001' },
     }).expect(201);
     expect(res.body.guardian.linkedExisting).toBe(true);
-    expect(res.body.guardian.parent.name).toBe('통합 보호자'); // 기존 이름 보존(덮어쓰지 않음)
+    expect(res.body.guardian.parent.name).toBe('통합 보호자');
     const after = counts();
     expect(after.parents).toBe(before.parents); // 보호자 신규 0
     expect(after.relations).toBe(before.relations + 1);
+
+    const different = await http.post('/api/students/registrations').set(auth()).send({
+      student: studentProfile('공용번호 학생'), interests: interests('공용번호'),
+      guardian: { name: '다른 보호자', phone: '010-7777-0001' },
+    }).expect(201);
+    expect(different.body.guardian.linkedExisting).toBe(false);
+    expect(different.body.guardian.parent.id).not.toBe(res.body.guardian.parent.id);
   });
 
   it('같은 번호 동시 등록 2건 → 보호자 정확히 1행 + 관계 2행(parentIntake lock 직렬화)', async () => {
     const phone = '010-7777-0003';
     const beforeParents = db.findAll<Parent>('parents').length;
     const [a, b] = await Promise.all([
-      http.post('/api/students/registrations').set(auth()).send({ student: { name: '동시A', grade: 8 }, guardian: { name: '동시 보호자', phone } }),
-      http.post('/api/students/registrations').set(auth()).send({ student: { name: '동시B', grade: 8 }, guardian: { name: '동시 보호자', phone } }),
+      http.post('/api/students/registrations').set(auth()).send({ student: studentProfile('동시A'), interests: interests('동시A'), guardian: { name: '동시 보호자', phone } }),
+      http.post('/api/students/registrations').set(auth()).send({ student: studentProfile('동시B'), interests: interests('동시B'), guardian: { name: '동시 보호자', phone } }),
     ]);
     expect([a.status, b.status]).toEqual([201, 201]);
     expect(db.findAll<Parent>('parents').length).toBe(beforeParents + 1); // 1행만 증가
@@ -127,6 +158,6 @@ describe('[TBO-29D D2] POST /students/registrations (atomic aggregate)', () => {
   it('권한 — 강사는 403(관리자 전용 등록)', async () => {
     const inst = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
     await http.post('/api/students/registrations').set({ Authorization: `Bearer ${inst}` })
-      .send({ student: { name: '권한 테스트' } }).expect(403);
+      .send({ student: studentProfile('권한 테스트'), interests: interests('권한') }).expect(403);
   });
 });

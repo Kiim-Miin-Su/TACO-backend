@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
+import { ENROLLMENTS_SPEC, PARENT_STUDENT_RELATIONS_SPEC, STUDENT_INTERESTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
@@ -8,6 +8,8 @@ import { Student, STUDENTS } from './student.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
+import { ParentStudent, PARENT_STUDENTS } from '../parents/parent.entity';
+import { StudentInterest, STUDENT_INTERESTS } from './student-interest.entity';
 
 @Injectable()
 export class StudentsService implements OnModuleInit {
@@ -71,19 +73,16 @@ export class StudentsService implements OnModuleInit {
     });
   }
 
-  // 호환 DELETE: 학생을 퇴원 상태로 전이하고 해당 학생의 active 수강도 canceled로 정리한다.
-  // status와 deleted_at을 분리한 실제 soft delete는 TBO-35C aggregate CRUD에서 전환한다.
-  // [피드백 2026-07-03] 부분 수정 — 캘린더 우측 패널의 학생 정보 편집(국가·거주·상태·연락처 등).
-  //  존재 검증 후 전달된 필드만 갱신(빈 body는 no-op). 퇴원(수강 동반 정리)은 remove가 담당.
+  // 부분 수정 — 업무 상태 전이는 status_change audit, 삭제는 remove의 deleted_at 경로로 완전히 분리한다.
   async update(id: number, dto: UpdateStudentDto, actorId?: number): Promise<Student> {
     // ⚠ live-reference 함정: findOne은 메모리 행 참조를 그대로 주므로 update가 before까지 바꾼다 — 클론 필수.
     const before = { ...this.findOne(id) };
     return this.uow.run(async () => {
       const after = await this.store.update<Student>(STUDENTS_SPEC, id, { ...dto }) as Student;
-      // [감사 전수 2026-07-16] 수정 diff — phone 등 연락처 키는 마스킹(maskContactPii).
+      // 상태 변경과 일반 프로필 수정을 감사 action에서도 분리한다.
       if (actorId != null) {
         await this.audit.log({
-          entity: 'students', entityId: id, action: 'update', actorId,
+          entity: 'students', entityId: id, action: before.status !== after.status ? 'status_change' : 'update', actorId,
           changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
         });
       }
@@ -92,7 +91,7 @@ export class StudentsService implements OnModuleInit {
   }
 
   async remove(id: number, actorId?: number): Promise<Student> {
-    // [원자성] 학생 소프트삭제 + 활성 수강 일괄 canceled(부분 정리 잔존 금지).
+    // [원자성] 학생·희망 수업·보호자 관계 soft delete + 활성 수강 canceled(부분 정리 잔존 금지).
     //  [TBO-29D D0 버그수정 2026-07-15] 수강 취소가 db.update(메모리 전용)로만 쓰여 PG에 미영속 —
     //  재기동/재수화 시 취소가 되살아나는 실버그(메모리 read model만 읽는 e2e는 통과해 왔다).
     //  uow.run(메모리 tx ⊃ PG tx) + student advisory lock + ENROLLMENTS_SPEC write-through로 교체:
@@ -101,17 +100,38 @@ export class StudentsService implements OnModuleInit {
       await this.uow.lockTargets([{ kind: 'student', id }]);
       const student = this.db.findById<Student>(STUDENTS, id);
       if (!student) throw new NotFoundException(`Student ${id} not found`);
-      const beforeStatus = student.status; // live-reference — update 전에 캡처
+      const before = { ...student };
       const enrollments = this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === id && e.status !== 'canceled');
       for (const e of enrollments) {
-        await this.store.update<Enrollment>(ENROLLMENTS_SPEC, e.id, { status: 'canceled' });
+        const afterEnrollment = await this.store.update<Enrollment>(ENROLLMENTS_SPEC, e.id, { status: 'canceled' });
+        if (actorId != null && afterEnrollment) await this.audit.log({
+          entity: ENROLLMENTS, entityId: e.id, action: 'status_change', actorId,
+          changes: this.audit.diffOf(e, afterEnrollment), reason: `student-delete:${id}`,
+        });
       }
-      const after = (await this.store.update<Student>(STUDENTS_SPEC, id, { status: 'withdrawn' })) as Student;
-      // [감사 전수 2026-07-16] 퇴원(소프트삭제) + 동반 수강 취소를 한 이력으로.
+      const interests = this.db.findByField<StudentInterest>(STUDENT_INTERESTS, 'studentId', id);
+      for (const interest of interests) {
+        await this.store.remove(STUDENT_INTERESTS_SPEC, interest.id, actorId);
+        if (actorId != null) await this.audit.log({
+          entity: STUDENT_INTERESTS, entityId: interest.id, action: 'delete', actorId,
+          changes: this.audit.snapshotOf(interest), reason: `student-delete:${id}`,
+        });
+      }
+      const relations = this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'studentId', id);
+      for (const relation of relations) {
+        await this.store.remove(PARENT_STUDENT_RELATIONS_SPEC, relation.id, actorId);
+        if (actorId != null) await this.audit.log({
+          entity: PARENT_STUDENTS, entityId: relation.id, action: 'delete', actorId,
+          changes: this.audit.snapshotOf(relation), reason: `student-delete:${id}`,
+        });
+      }
+      await this.store.remove(STUDENTS_SPEC, id, actorId);
+      const after = this.db.findById<Student>(STUDENTS, id, { withDeleted: true })!;
       if (actorId != null) {
         await this.audit.log({
-          entity: 'students', entityId: id, action: 'status_change', actorId,
-          changes: { status: { before: beforeStatus, after: 'withdrawn' }, canceledEnrollmentIds: { after: enrollments.map((e) => e.id) } },
+          entity: STUDENTS, entityId: id, action: 'delete', actorId,
+          changes: this.audit.maskContactPii(this.audit.snapshotOf(before)),
+          reason: `cascade interests=${interests.length};relations=${relations.length};enrollments=${enrollments.length}`,
         });
       }
       return after;

@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
 import { signupWithOtp } from './signup-helper';
+import { studentAggregateBody } from './fixtures/student-profile';
 
 // ─────────────────────────────────────────────────────────────
 // [자산화 점검 2026-07-02] 전 도메인 "쓰기 → in-memory 저장" 전수 검증.
@@ -45,7 +46,8 @@ describe('Asset persistence sweep (e2e)', () => {
     const course = (await http.post('/api/courses').set(asAdmin())
       .send({ name: '과학 정규', subjectId: subj.id, instructorId: 1, price: 300000, hourlyRate: 40000 }).expect(201)).body;
     const room = (await http.post('/api/rooms').set(asAdmin()).send({ name: 'C301', capacity: 6, isActive: true }).expect(201)).body;
-    const student = (await http.post('/api/students').set(asAdmin()).send({ name: '자산학생', grade: 9, status: 'enrolled' }).expect(201)).body;
+    const student = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('자산학생', { student: { grade: 9, status: 'enrolled' } })).expect(201)).body.student;
     const enr = (await http.post('/api/enrollments').set(asAdmin())
       .send({ studentId: student.id, courseId: course.id, totalSessions: 8 }).expect(201)).body;
     // POST /parents = 보호자 생성 + 학생 연결 동시(DTO가 studentId 필수)
@@ -96,9 +98,10 @@ describe('Asset persistence sweep (e2e)', () => {
 
   it('[감사 2026-07-02] 입력 가드 회귀: country 형식·enrollment FK·duration/amount 상한 = 400', async () => {
     // H1: country는 ISO alpha-2 대문자 2자만 — 임의 문자열/소문자/1자 거부
-    await http.post('/api/students').set(asAdmin()).send({ name: '가드학생', country: 'usa' }).expect(400);
-    await http.post('/api/students').set(asAdmin()).send({ name: '가드학생', country: 'X' }).expect(400);
-    const ok = (await http.post('/api/students').set(asAdmin()).send({ name: '가드학생', country: 'US' }).expect(201)).body;
+    await http.post('/api/students').set(asAdmin()).send(studentAggregateBody('가드학생', { student: { country: 'usa' } })).expect(400);
+    await http.post('/api/students').set(asAdmin()).send(studentAggregateBody('가드학생', { student: { country: 'X' } })).expect(400);
+    const ok = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('가드학생', { student: { country: 'US' } })).expect(201)).body.student;
     expect(ok.country).toBe('US');
     // H3: enrollments FK — 존재하지 않는 학생/코스 거부(유령 코호트 방지)
     await http.post('/api/enrollments').set(asAdmin()).send({ studentId: 99999, courseId: 10 }).expect(400);

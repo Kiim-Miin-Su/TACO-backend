@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
+import { studentAggregateBody } from './fixtures/student-profile';
 
 // ─────────────────────────────────────────────────────────────
 // [자산화 2차 스위프 2026-07-03 — 실DB 이관 가정 감사 반영]
@@ -56,10 +57,10 @@ describe('Assetization sweep 2 (e2e)', () => {
 
   it('students PATCH: 국가·거주·상태 부분 수정(출국/입국·그만둠 대응) + 형식 가드 400', async () => {
     const st = (await http.post('/api/students').set(asAdmin())
-      .send({ name: '수정테스트', country: 'KR' }).expect(201)).body;
+      .send(studentAggregateBody('수정테스트')).expect(201)).body.student;
     // 출국: KR→US + 해외 전환
     const moved = (await http.patch(`/api/students/${st.id}`).set(asAdmin())
-      .send({ country: 'US', residenceType: 'overseas' }).expect(200)).body;
+      .send({ country: 'US', residenceType: 'overseas', kakaoId: 'moved-student' }).expect(200)).body;
     expect(moved).toMatchObject({ country: 'US', residenceType: 'overseas', name: '수정테스트' });
     // 갑작스런 휴원
     expect((await http.patch(`/api/students/${st.id}`).set(asAdmin())

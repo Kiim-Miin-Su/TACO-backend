@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import type { StudentAggregate } from '@kms545487/contracts';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { StudentsService } from '../students/students.service';
 import { ParentsService } from '../parents/parents.service';
@@ -8,10 +9,13 @@ import type { Student } from '../students/student.entity';
 import type { Parent, ParentStudent } from '../parents/parent.entity';
 import type { Enrollment } from '../enrollments/enrollment.entity';
 import { RegisterStudentDto } from './dto/register-student.dto';
+import { StudentInterestsService } from '../students/student-interests.service';
+import { UpdateStudentAggregateDto } from '../students/dto/update-student-aggregate.dto';
 
 export type RegistrationResult = {
   student: Student;
   guardian: { parent: Parent; relation: ParentStudent; linkedExisting: boolean } | null;
+  guardians: Array<{ parent: Parent; relation: ParentStudent; linkedExisting: boolean }>;
   enrollment: Enrollment | null;
 };
 
@@ -29,22 +33,32 @@ export class RegistrationsService {
     private readonly uow: CalendarUnitOfWork,
     private readonly students: StudentsService,
     private readonly parents: ParentsService,
+    private readonly interests: StudentInterestsService,
     private readonly enrollments: EnrollmentsService,
     private readonly audit: AuditService,
   ) {}
 
   async register(dto: RegisterStudentDto, actorId: number): Promise<RegistrationResult> {
     return this.uow.run(async () => {
-      // 전화번호 → 31-bit 결정적 lock id(FNV-1a). 같은 보호자 번호의 등록을 직렬화한다.
-      const phoneDigits = (dto.guardian?.phone ?? '').replace(/\D/g, '');
-      if (phoneDigits) await this.uow.lockTargets([{ kind: 'parentIntake', id: phoneLockIdOf(phoneDigits) }]);
+      if (dto.guardian && dto.guardians) throw new BadRequestException('guardian과 guardians를 동시에 사용할 수 없습니다.');
+      const guardians = this.normalizeGuardians(dto.guardians ?? (dto.guardian ? [dto.guardian] : []));
+      const studentInput = this.normalizeCompleteProfile(dto.student);
+      // 학생 생성 전에 관심 target/FK/순서를 검증해 실패 요청이 id조차 발급하지 않도록 한다.
+      this.interests.validate(dto.interests);
+      const locks = guardians
+        .map((guardian) => (guardian.phone ?? '').replace(/\D/g, ''))
+        .filter(Boolean)
+        .map((digits) => ({ kind: 'parentIntake' as const, id: phoneLockIdOf(digits) }));
+      await this.uow.lockTargets(locks);
 
-      const student = await this.students.create(dto.student);
+      const student = await this.students.create(studentInput);
+      await this.interests.replaceInTx(student.id, dto.interests, actorId);
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — actorId 스레딩:
       //  attachGuardianInTx가 같은 tx 안에서 parents create + parent_student_relations create audit을 남긴다.
-      const guardian = dto.guardian ? await this.parents.attachGuardianInTx(student.id, dto.guardian, actorId) : null;
+      const savedGuardians = [] as RegistrationResult['guardians'];
+      for (const guardian of guardians) savedGuardians.push(await this.parents.attachGuardianInTx(student.id, guardian, actorId));
       const enrollment = dto.courseId != null
-        ? await this.enrollments.create({ studentId: student.id, courseId: dto.courseId })
+        ? await this.enrollments.create({ studentId: student.id, courseId: dto.courseId }, actorId)
         : null;
 
       // PII 금지 — 보호자 연락처/이름은 남기지 않고 구성 요약만(관계 행 id는 추적 가능 참조).
@@ -58,16 +72,79 @@ export class RegistrationsService {
           student: { after: student },
           registration: {
             after: {
-              guardianRelationId: guardian?.relation.id ?? null,
-              guardianLinkedExisting: guardian?.linkedExisting ?? false,
+              guardianRelationIds: savedGuardians.map((entry) => entry.relation.id),
+              linkedExistingCount: savedGuardians.filter((entry) => entry.linkedExisting).length,
+              interestCount: dto.interests.length,
               enrollmentId: enrollment?.id ?? null,
               courseId: dto.courseId ?? null,
             },
           },
         }),
       });
-      return { student, guardian, enrollment };
+      return { student, guardian: savedGuardians[0] ?? null, guardians: savedGuardians, enrollment };
     });
+  }
+
+  getAggregate(studentId: number): StudentAggregate {
+    return {
+      student: this.students.findOne(studentId),
+      interests: this.interests.findByStudent(studentId),
+      guardians: this.parents.guardiansForStudent(studentId),
+    };
+  }
+
+  async updateAggregate(studentId: number, dto: UpdateStudentAggregateDto, actorId: number): Promise<StudentAggregate> {
+    if (!dto.student && !dto.interests) throw new BadRequestException('student 또는 interests 변경이 필요합니다.');
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
+      const before = this.students.findOne(studentId);
+      const currentInterests = this.interests.findByStudent(studentId);
+      this.interests.validate(dto.interests ?? currentInterests.map((row) => ({
+        ...(row.courseId != null ? { courseId: row.courseId } : { customLabel: row.customLabel ?? undefined }),
+        priority: row.priority,
+      })));
+      if (dto.student) {
+        const merged = { ...before, ...dto.student };
+        this.normalizeCompleteProfile(merged);
+        const patch = {
+          ...dto.student,
+          ...(dto.student.country != null
+            ? { residenceType: dto.student.country === 'KR' ? 'domestic' as const : 'overseas' as const }
+            : {}),
+        };
+        await this.students.update(studentId, patch, actorId);
+      }
+      if (dto.interests) await this.interests.replaceInTx(studentId, dto.interests, actorId);
+      return this.getAggregate(studentId);
+    });
+  }
+
+  private normalizeCompleteProfile<T extends {
+    name?: string; gender?: string; birthDate?: string; grade?: number; country?: string; address?: string;
+    schoolName?: string; phone?: string; kakaoId?: string; counselTopic?: string; residenceType?: string;
+  }>(input: T): T & { residenceType: 'domestic' | 'overseas' } {
+    const required: Array<[string, unknown]> = [
+      ['학생 이름', input.name], ['성별', input.gender], ['생년월일', input.birthDate], ['학년', input.grade],
+      ['현 거주 국가', input.country], ['현 거주지', input.address], ['재학 학교', input.schoolName],
+      ['연락처', input.phone], ['상담 주제', input.counselTopic],
+    ];
+    const missing = required.filter(([, value]) => value == null || (typeof value === 'string' && !value.trim())).map(([label]) => label);
+    if (missing.length) throw new BadRequestException(`필수 학생 정보가 누락되었습니다: ${missing.join(', ')}`);
+    const country = input.country!.trim();
+    if (country !== 'KR' && !input.kakaoId?.trim()) throw new BadRequestException('해외 거주 학생은 카카오톡 ID가 필수입니다.');
+    const residenceType = country === 'KR' ? 'domestic' : 'overseas';
+    if (input.residenceType && input.residenceType !== residenceType) {
+      throw new BadRequestException('거주 유형과 국가가 일치하지 않습니다.');
+    }
+    return { ...input, residenceType };
+  }
+
+  private normalizeGuardians<T extends { name: string; phone?: string; isPrimary?: boolean }>(guardians: T[]): Array<T & { isPrimary: boolean }> {
+    if (guardians.filter((guardian) => guardian.isPrimary).length > 1) throw new ConflictException('주보호자는 최대 1명입니다.');
+    const normalized = guardians.map((guardian, index) => ({ ...guardian, isPrimary: guardians.some((item) => item.isPrimary) ? guardian.isPrimary === true : index === 0 }));
+    const keys = normalized.map((guardian) => `${guardian.name.trim().toLowerCase()}:${(guardian.phone ?? '').replace(/\D/g, '')}`);
+    if (new Set(keys).size !== keys.length) throw new ConflictException('중복된 보호자 입력이 있습니다.');
+    return normalized;
   }
 }
 

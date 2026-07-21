@@ -25,6 +25,7 @@ export const LOCK_KIND = {
   counselForm: 12, // [TBO-33 C1] 상담 회차 번호 발급·폼 삭제 직렬화
   course: 13, // [TBO-33 C2] 코스 수정·참조 검사·삭제 직렬화
   subject: 14, // [TBO-33 C2] 과목 수정·참조 검사·삭제 직렬화
+  parent: 15, // [TBO-35 35C] 보호자 원부 수정·삭제 직렬화
 } as const;
 
 export type CalendarLockKey = { kind: keyof typeof LOCK_KIND; id: number };

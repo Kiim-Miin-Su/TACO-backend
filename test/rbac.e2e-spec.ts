@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
+import { studentAggregateBody } from './fixtures/student-profile';
 
 // ─────────────────────────────────────────────────────────────
 // RBAC 하드닝 검증 e2e — 쓰기 엔드포인트 대표 표본에 대해:
@@ -26,7 +27,7 @@ describe('RBAC hardening (e2e)', () => {
   afterAll(async () => { await app.close(); });
 
   // 유효 본문(검증 통과) — 인가만 순수하게 확인하기 위함.
-  const studentBody = { name: 'RBAC 테스트학생' };
+  const studentBody = studentAggregateBody('RBAC 테스트학생');
   const courseBody = { name: 'RBAC 테스트강좌', subjectId: 1, instructorId: 1, price: 100000, hourlyRate: 50000 };
   const parentBody = { name: 'RBAC 보호자', studentId: 3 };
   const availBody = { ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday: 6, startTime: '06:00', endTime: '07:00' };

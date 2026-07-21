@@ -1,13 +1,16 @@
 import { Type } from 'class-transformer';
-import { IsBoolean, IsInt, IsOptional, IsString, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import type { CreateStudentAggregateInput } from '@kms545487/contracts';
 import { CreateStudentDto } from '../../students/dto/create-student.dto';
+import { StudentInterestDto } from '../../students/dto/student-interest.dto';
 
 // [TBO-29D D2] 원자 등록 command 입력 — 학생(필수) + 보호자(선택) + 수강(선택)을 한 요청·한 tx로.
 //  학생/보호자에 webId 없음(로그인 계정 아님 — 29A 계약). 보호자 기본값: 대표(primary)·납부자(payer).
 export class RegistrationGuardianDto {
   @ApiProperty({ example: '김학부모', description: '보호자 이름' })
   @IsString()
+  @Matches(/\S/, { message: 'name must contain a non-whitespace character' })
   @MaxLength(20)
   name!: string;
 
@@ -34,13 +37,29 @@ export class RegistrationGuardianDto {
   isPrimary?: boolean;
 }
 
-export class RegisterStudentDto {
+export class RegisterStudentDto implements CreateStudentAggregateInput {
   @ApiProperty({ type: CreateStudentDto, description: '학생 정보(기존 POST /students와 동일 필드)' })
   @ValidateNested()
   @Type(() => CreateStudentDto)
   student!: CreateStudentDto;
 
-  @ApiPropertyOptional({ type: RegistrationGuardianDto, description: '보호자 — 있으면 parent+관계를 같은 tx로 생성/연결' })
+  @ApiProperty({ type: [StudentInterestDto], minItems: 2, maxItems: 20, description: '희망 수업 2개 이상' })
+  @IsArray()
+  @ArrayMinSize(2)
+  @ArrayMaxSize(20)
+  @ValidateNested({ each: true })
+  @Type(() => StudentInterestDto)
+  interests!: StudentInterestDto[];
+
+  @ApiPropertyOptional({ type: [RegistrationGuardianDto], maxItems: 10, description: '보호자 0~10명' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => RegistrationGuardianDto)
+  guardians?: RegistrationGuardianDto[];
+
+  @ApiPropertyOptional({ type: RegistrationGuardianDto, deprecated: true, description: 'v0.2.5 호환 단건 보호자. guardians와 동시 사용 금지' })
   @IsOptional()
   @ValidateNested()
   @Type(() => RegistrationGuardianDto)
