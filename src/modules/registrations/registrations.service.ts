@@ -52,7 +52,7 @@ export class RegistrationsService {
         .map((digits) => ({ kind: 'parentIntake' as const, id: phoneLockIdOf(digits) }));
       await this.uow.lockTargets(locks);
 
-      const student = await this.students.create(studentInput);
+      const student = await this.students.create(studentInput, actorId);
       await this.interests.replaceInTx(student.id, dto.interests, actorId);
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — actorId 스레딩:
       //  attachGuardianInTx가 같은 tx 안에서 parents create + parent_student_relations create audit을 남긴다.

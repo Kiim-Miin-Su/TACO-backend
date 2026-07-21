@@ -4,8 +4,6 @@ import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { COUNSEL_FORMS_SPEC, COUNSEL_ROUNDS_SPEC } from '../../database/calendar-asset-specs';
 import { AuditService } from '../audit/audit.service';
-import { Course, COURSES } from '../courses/course.entity';
-import { Subject, SUBJECTS } from '../subjects/subject.entity';
 import { type StaffAccount, USERS, isStaffRole } from '../users/user.entity';
 import { CounselForm, CounselRound, COUNSEL_FORMS } from './counsel.entity';
 import { CreateCounselDto } from './dto/create-counsel.dto';
@@ -15,25 +13,14 @@ import type { CounselAggregate, CounselFormSnapshot } from '@kms545487/contracts
 import type { BaseRow } from '../../common/types/base';
 import { UpdateCounselRoundDto } from './dto/update-round.dto';
 import { StudentsService } from '../students/students.service';
-import { Parent, ParentStudent, PARENTS, PARENT_STUDENTS } from '../parents/parent.entity';
 import { Student, STUDENTS } from '../students/student.entity';
 
 const snapshotOfForm = (form: CounselFormSnapshot): CounselFormSnapshot => ({
-  applicantName: form.applicantName,
-  applicantPhone: form.applicantPhone ?? null,
-  parentId: form.parentId ?? null,
-  studentId: form.studentId ?? null,
+  studentId: form.studentId,
   assignedStaffId: form.assignedStaffId ?? null,
   status: form.status,
   source: form.source,
   submitterType: form.submitterType,
-  interestSubjectId: form.interestSubjectId ?? null,
-  interestCourseId: form.interestCourseId ?? null,
-  academyExpectation: form.academyExpectation ?? null,
-  desiredStartTime: form.desiredStartTime ?? null,
-  learningAtmosphere: form.learningAtmosphere ?? null,
-  studentIntention: form.studentIntention ?? null,
-  weakness: form.weakness ?? null,
   referenceNotes: form.referenceNotes ?? null,
   nextContactAt: form.nextContactAt ?? null,
 });
@@ -48,28 +35,14 @@ export class CounselService implements OnModuleInit {
     private readonly students: StudentsService,
   ) {}
 
-  // 관심 과목/코스 FK 존재 검증(있을 때만) — 참조 무결성.
+  // 상담의 학생 프로필·보호자·관심 수업은 student aggregate만 권위다.
   private assertRefs(dto: {
-    interestSubjectId?: number | null;
-    interestCourseId?: number | null;
     assignedStaffId?: number | null;
-    parentId?: number | null;
-    studentId?: number | null;
+    studentId?: number;
   }): void {
-    if (dto.interestSubjectId != null && !this.db.findById<Subject>(SUBJECTS, dto.interestSubjectId))
-      throw new BadRequestException(`interestSubjectId ${dto.interestSubjectId} 없음`);
-    if (dto.interestCourseId != null && !this.db.findById<Course>(COURSES, dto.interestCourseId))
-      throw new BadRequestException(`interestCourseId ${dto.interestCourseId} 없음`);
     if (dto.assignedStaffId != null) this.assertActiveStaff(dto.assignedStaffId, 'assignedStaffId');
     if (dto.studentId != null && !this.db.findById<Student>(STUDENTS, dto.studentId))
       throw new BadRequestException(`studentId ${dto.studentId} 없음`);
-    if (dto.parentId != null && !this.db.findById<Parent>(PARENTS, dto.parentId))
-      throw new BadRequestException(`parentId ${dto.parentId} 없음`);
-    if (dto.studentId != null && dto.parentId != null) {
-      const linked = this.db.findBy<ParentStudent>(PARENT_STUDENTS, (row) =>
-        row.studentId === dto.studentId && row.parentId === dto.parentId).length > 0;
-      if (!linked) throw new BadRequestException('parentId와 studentId 사이의 활성 보호자 관계가 없습니다.');
-    }
   }
 
   private assertActiveStaff(id: number, field: 'assignedStaffId' | 'counselorId'): void {
@@ -90,7 +63,7 @@ export class CounselService implements OnModuleInit {
     return {
       form,
       rounds: await this.findAllRounds(id),
-      student: form.studentId == null ? null : this.students.findAggregate(form.studentId),
+      student: this.students.findAggregate(form.studentId),
     };
   }
 
@@ -122,7 +95,7 @@ export class CounselService implements OnModuleInit {
       const before = { ...(await this.findForm(id)) };
       const after = (await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, id, dto)) as CounselForm;
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
-      // PII 마스킹: applicantPhone 등 연락처 키는 diff에 원문 금지 — users.service maskTarget 규약과 동일 원칙.
+      // referenceNotes 등 상담 민감 텍스트는 audit 원문 금지.
       if (actorId != null) {
         await this.audit.log({
           entity: 'counsel_forms', entityId: id, action: 'update', actorId,
@@ -269,9 +242,9 @@ export class CounselService implements OnModuleInit {
     const rounds = await this.store.hydrate<CounselRound>(COUNSEL_ROUNDS_SPEC);
     if (forms.length || rounds.length || this.db.findAll<CounselForm>(COUNSEL_FORMS).length) return;
     const seedForms: Array<Omit<CounselForm, keyof BaseRow> & { id: number }> = [
-      { id: 1, applicantName: '한서진', applicantPhone: '010-7777-1212', assignedStaffId: 1, status: 'pending', source: 'internal_form', submitterType: 'unknown', interestSubjectId: 1, academyExpectation: '내신·수능 영어 전반 보완, 독해 속도 개선', desiredStartTime: 'within_1_month', learningAtmosphere: 'needs_management', studentIntention: 'parent_only', weakness: '독해 속도, 어휘량 부족', nextContactAt: '2026-06-29' },
-      { id: 2, applicantName: '오민재', applicantPhone: '010-8888-3434', assignedStaffId: 1, status: 'registered', source: 'naver_form', submitterType: 'unknown', interestCourseId: 11, interestSubjectId: 2, academyExpectation: 'AP Calculus 대비', desiredStartTime: 'immediately', learningAtmosphere: 'self_directed', studentIntention: 'student_wants', weakness: '서술형 풀이 과정' },
-      { id: 3, applicantName: '신유나', applicantPhone: '010-9999-5656', status: 'requested', source: 'manual', submitterType: 'unknown', interestSubjectId: 1, desiredStartTime: 'undecided', studentIntention: 'unknown' },
+      { id: 1, studentId: 1, assignedStaffId: 1, status: 'pending', source: 'internal_form', submitterType: 'parent', referenceNotes: '독해 속도와 어휘량 확인', nextContactAt: '2026-06-29' },
+      { id: 2, studentId: 2, assignedStaffId: 1, status: 'registered', source: 'naver_form', submitterType: 'student', referenceNotes: '서술형 풀이 과정 확인' },
+      { id: 3, studentId: 3, status: 'requested', source: 'manual', submitterType: 'staff' },
     ];
     await this.store.seed<CounselForm>(COUNSEL_FORMS_SPEC, seedForms);
     await this.store.seed<CounselRound>(COUNSEL_ROUNDS_SPEC, [

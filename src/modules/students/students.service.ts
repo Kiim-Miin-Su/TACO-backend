@@ -39,23 +39,31 @@ export class StudentsService implements OnModuleInit {
     const hydrated = await this.store.hydrate<Student>(STUDENTS_SPEC);
     await this.store.hydrate<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC);
     await this.store.hydrate<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC);
-    if (hydrated.length || this.db.findAll<Student>(STUDENTS).length) return;
-    await this.store.seed<Student>(STUDENTS_SPEC, [
-      { id: 1, name: '김서연', englishName: 'Sophia', birthDate: '2009-03-14', grade: 11, residenceType: 'overseas', country: 'US', status: 'enrolled' },
-      { id: 2, name: '이준호', englishName: 'Daniel', birthDate: '2008-08-21', grade: 12, residenceType: 'domestic', country: 'KR', status: 'enrolled' },
-      { id: 3, name: '박지민', englishName: 'Emma', birthDate: '2010-11-02', grade: 10, residenceType: 'overseas', country: 'VN', status: 'on_leave' },
-      { id: 4, name: '최민준', englishName: 'Lucas', birthDate: '2009-06-09', grade: 11, residenceType: 'domestic', status: 'enrolled' },
-    ]);
+    if (!hydrated.length && !this.db.findAll<Student>(STUDENTS).length) {
+      await this.store.seed<Student>(STUDENTS_SPEC, [
+        { id: 1, name: '김서연', englishName: 'Sophia', birthDate: '2009-03-14', residenceType: 'overseas', country: 'US', status: 'enrolled' },
+        { id: 2, name: '이준호', englishName: 'Daniel', birthDate: '2008-08-21', residenceType: 'domestic', country: 'KR', status: 'enrolled' },
+        { id: 3, name: '박지민', englishName: 'Emma', birthDate: '2010-11-02', residenceType: 'overseas', country: 'VN', status: 'on_leave' },
+        { id: 4, name: '최민준', englishName: 'Lucas', birthDate: '2009-06-09', residenceType: 'domestic', status: 'enrolled' },
+      ]);
+      await this.store.seed<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC, [
+        { id: 1, studentId: 1, grade: 11, schoolName: '미입력', startedOn: '2026-01-01', changedBy: 1, changedAt: new Date().toISOString() },
+        { id: 2, studentId: 2, grade: 12, schoolName: '미입력', startedOn: '2026-01-01', changedBy: 1, changedAt: new Date().toISOString() },
+        { id: 3, studentId: 3, grade: 10, schoolName: '미입력', startedOn: '2026-01-01', changedBy: 1, changedAt: new Date().toISOString() },
+        { id: 4, studentId: 4, grade: 11, schoolName: '미입력', startedOn: '2026-01-01', changedBy: 1, changedAt: new Date().toISOString() },
+      ]);
+    }
+    for (const student of this.db.findAll<Student>(STUDENTS)) this.refreshAcademicReadModel(student.id);
   }
 
   findAll(): Student[] {
-    return this.db.findAll<Student>(STUDENTS);
+    return this.db.findAll<Student>(STUDENTS).map((student) => ({ ...student }));
   }
 
   findOne(id: number): Student {
     const student = this.db.findById<Student>(STUDENTS, id);
     if (!student) throw new NotFoundException(`Student ${id} not found`);
-    return student;
+    return { ...student };
   }
 
   findAggregate(id: number): StudentAggregate {
@@ -256,28 +264,55 @@ export class StudentsService implements OnModuleInit {
     if (overlaps) throw new ConflictException('학교/학년 이력 기간이 기존 활성 구간과 겹칩니다.');
   }
 
-  private async syncCurrentAcademicProjection(studentId: number, actorId: number, reason: string): Promise<void> {
-    const today = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
+  private refreshAcademicReadModel(studentId: number): void {
+    const today = this.today();
     const current = this.db.findByField<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES, 'studentId', studentId)
       .filter((row) => row.startedOn <= today && (row.endedOn == null || row.endedOn >= today))
       .sort((a, b) => b.startedOn.localeCompare(a.startedOn) || b.id - a.id)[0];
-    if (!current) return;
-    const before = { ...this.findOne(studentId) };
-    if (before.grade === current.grade && before.schoolName === current.schoolName) return;
-    const gradeError = studentGradeBirthDateError(current.grade, before.birthDate);
-    if (gradeError) throw new BadRequestException(gradeError);
-    const after = await this.store.update<Student>(STUDENTS_SPEC, studentId, {
-      grade: current.grade, schoolName: current.schoolName,
-    });
-    await this.audit.log({
-      entity: STUDENTS, entityId: studentId, action: 'update', actorId,
-      changes: this.audit.diffOf(before, after as Student), reason,
-    });
+    const row = this.db.findById<Student>(STUDENTS, studentId);
+    if (!row) return;
+    row.grade = current?.grade;
+    row.schoolName = current?.schoolName;
   }
 
-  async create(dto: CreateStudentDto, actorId?: number): Promise<Student> {
+  private async syncCurrentAcademicProjection(studentId: number, _actorId: number, _reason: string): Promise<void> {
+    this.refreshAcademicReadModel(studentId);
+  }
+
+  private today(): string {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
+  }
+
+  private previousDate(date: string): string {
+    const value = new Date(`${date}T00:00:00Z`);
+    value.setUTCDate(value.getUTCDate() - 1);
+    return value.toISOString().slice(0, 10);
+  }
+
+  private async transitionAcademicProfile(
+    studentId: number,
+    grade: number,
+    schoolName: string,
+    actorId: number,
+  ): Promise<void> {
+    const today = this.today();
+    const current = this.db.findByField<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES, 'studentId', studentId)
+      .filter((row) => row.startedOn <= today && (row.endedOn == null || row.endedOn >= today))
+      .sort((a, b) => b.startedOn.localeCompare(a.startedOn) || b.id - a.id)[0];
+    if (current?.grade === grade && current.schoolName === schoolName) return;
+    if (current?.startedOn === today) {
+      await this.updateAcademicHistory(studentId, current.id, { grade, schoolName }, actorId);
+      return;
+    }
+    if (current) await this.updateAcademicHistory(studentId, current.id, { endedOn: this.previousDate(today) }, actorId);
+    await this.createAcademicHistory(studentId, { grade, schoolName, startedOn: today, endedOn: null }, actorId);
+  }
+
+  async create(dto: CreateStudentDto, actorId: number): Promise<Student> {
     const gradeError = studentGradeBirthDateError(dto.grade, dto.birthDate);
     if (gradeError) throw new BadRequestException(gradeError);
+    const schoolName = dto.schoolName?.trim();
+    if (!schoolName) throw new BadRequestException('재학 학교는 필수입니다.');
     return this.uow.run(async () => {
       const row = await this.store.insert<Student>(STUDENTS_SPEC, {
         name: dto.name,
@@ -285,8 +320,6 @@ export class StudentsService implements OnModuleInit {
         gender: dto.gender,
         birthDate: dto.birthDate,
         phone: dto.phone,
-        grade: dto.grade,
-        schoolName: dto.schoolName,
         residenceType: dto.residenceType ?? 'domestic',
         address: dto.address,
         addressDetail: dto.addressDetail,
@@ -296,33 +329,42 @@ export class StudentsService implements OnModuleInit {
         country: dto.country,
         memo: dto.memo,
       });
-      // 생성 당시의 비민감 값은 복원 가능한 이력으로 남기고 학생 PII는 키 단위 마스킹한다.
-      if (actorId != null) {
-        await this.audit.log({
-          entity: 'students', entityId: row.id, action: 'create', actorId,
-          changes: this.audit.maskContactPii(this.audit.diffOf({}, row)),
-        });
-      }
-      return row;
+      const history = await this.store.insert<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC, {
+        studentId: row.id, grade: dto.grade, schoolName, startedOn: this.today(), endedOn: null,
+        changedBy: actorId, changedAt: new Date().toISOString(),
+      });
+      await this.audit.log({
+        entity: STUDENT_ACADEMIC_HISTORIES, entityId: history.id, action: 'create', actorId,
+        changes: this.audit.diffOf({}, history), reason: 'student-create:initial-academic-history',
+      });
+      this.refreshAcademicReadModel(row.id);
+      return this.findOne(row.id);
     });
   }
 
   // 부분 수정 — 업무 상태 전이는 status_change audit, 삭제는 remove의 deleted_at 경로로 완전히 분리한다.
-  async update(id: number, dto: UpdateStudentDto, actorId?: number): Promise<Student> {
+  async update(id: number, dto: UpdateStudentDto, actorId: number): Promise<Student> {
     // ⚠ live-reference 함정: findOne은 메모리 행 참조를 그대로 주므로 update가 before까지 바꾼다 — 클론 필수.
     const before = { ...this.findOne(id) };
     const merged = { ...before, ...dto };
     const gradeError = studentGradeBirthDateError(merged.grade, merged.birthDate);
     if (gradeError) throw new BadRequestException(gradeError);
     return this.uow.run(async () => {
-      const after = await this.store.update<Student>(STUDENTS_SPEC, id, { ...dto }) as Student;
-      // 상태 변경과 일반 프로필 수정을 감사 action에서도 분리한다.
-      if (actorId != null) {
-        await this.audit.log({
-          entity: 'students', entityId: id, action: before.status !== after.status ? 'status_change' : 'update', actorId,
-          changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
-        });
+      const { grade, schoolName, ...profilePatch } = dto;
+      if (Object.keys(profilePatch).length) await this.store.update<Student>(STUDENTS_SPEC, id, profilePatch);
+      if (grade !== undefined || schoolName !== undefined) {
+        const nextGrade = grade ?? before.grade;
+        const nextSchoolName = (schoolName ?? before.schoolName)?.trim();
+        if (nextGrade == null || !nextSchoolName) throw new BadRequestException('학년과 재학 학교는 함께 필요합니다.');
+        await this.transitionAcademicProfile(id, nextGrade, nextSchoolName, actorId);
       }
+      this.refreshAcademicReadModel(id);
+      const after = this.findOne(id);
+      // 상태 변경과 일반 프로필 수정을 감사 action에서도 분리한다.
+      await this.audit.log({
+        entity: 'students', entityId: id, action: before.status !== after.status ? 'status_change' : 'update', actorId,
+        changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
+      });
       return after;
     });
   }

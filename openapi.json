@@ -8213,17 +8213,6 @@
       "CreateCounselDto": {
         "type": "object",
         "properties": {
-          "applicantName": {
-            "type": "string",
-            "maxLength": 60
-          },
-          "applicantPhone": {
-            "type": "string",
-            "maxLength": 30
-          },
-          "parentId": {
-            "type": "number"
-          },
           "studentId": {
             "type": "number"
           },
@@ -8249,45 +8238,6 @@
           "assignedStaffId": {
             "type": "number"
           },
-          "interestSubjectId": {
-            "type": "number"
-          },
-          "interestCourseId": {
-            "type": "number"
-          },
-          "academyExpectation": {
-            "type": "string",
-            "maxLength": 1000
-          },
-          "desiredStartTime": {
-            "type": "string",
-            "enum": [
-              "immediately",
-              "within_1_month",
-              "within_2_3_months",
-              "undecided"
-            ]
-          },
-          "learningAtmosphere": {
-            "type": "string",
-            "enum": [
-              "self_directed",
-              "normal",
-              "needs_management"
-            ]
-          },
-          "studentIntention": {
-            "type": "string",
-            "enum": [
-              "student_wants",
-              "parent_only",
-              "unknown"
-            ]
-          },
-          "weakness": {
-            "type": "string",
-            "maxLength": 500
-          },
           "referenceNotes": {
             "type": "string",
             "maxLength": 2000
@@ -8297,7 +8247,7 @@
           }
         },
         "required": [
-          "applicantName",
+          "studentId",
           "source"
         ]
       },
@@ -8332,72 +8282,12 @@
               "unknown"
             ]
           },
-          "applicantName": {
-            "type": "string",
-            "maxLength": 60
-          },
-          "applicantPhone": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 30
-          },
-          "parentId": {
-            "type": "number",
-            "nullable": true
-          },
           "studentId": {
-            "type": "number",
-            "nullable": true
+            "type": "number"
           },
           "assignedStaffId": {
             "type": "number",
             "nullable": true
-          },
-          "interestSubjectId": {
-            "type": "number",
-            "nullable": true
-          },
-          "interestCourseId": {
-            "type": "number",
-            "nullable": true
-          },
-          "academyExpectation": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 1000
-          },
-          "desiredStartTime": {
-            "type": "string",
-            "nullable": true,
-            "enum": [
-              "immediately",
-              "within_1_month",
-              "within_2_3_months",
-              "undecided"
-            ]
-          },
-          "learningAtmosphere": {
-            "type": "string",
-            "nullable": true,
-            "enum": [
-              "self_directed",
-              "normal",
-              "needs_management"
-            ]
-          },
-          "studentIntention": {
-            "type": "string",
-            "nullable": true,
-            "enum": [
-              "student_wants",
-              "parent_only",
-              "unknown"
-            ]
-          },
-          "weakness": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 500
           },
           "referenceNotes": {
             "type": "string",
@@ -8413,22 +8303,8 @@
       "CounselFormSnapshotDto": {
         "type": "object",
         "properties": {
-          "applicantName": {
-            "type": "string",
-            "maxLength": 60
-          },
-          "applicantPhone": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 30
-          },
-          "parentId": {
-            "type": "number",
-            "nullable": true
-          },
           "studentId": {
-            "type": "number",
-            "nullable": true
+            "type": "number"
           },
           "assignedStaffId": {
             "type": "number",
@@ -8462,52 +8338,6 @@
               "unknown"
             ]
           },
-          "interestSubjectId": {
-            "type": "number",
-            "nullable": true
-          },
-          "interestCourseId": {
-            "type": "number",
-            "nullable": true
-          },
-          "academyExpectation": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 1000
-          },
-          "desiredStartTime": {
-            "type": "string",
-            "nullable": true,
-            "enum": [
-              "immediately",
-              "within_1_month",
-              "within_2_3_months",
-              "undecided"
-            ]
-          },
-          "learningAtmosphere": {
-            "type": "string",
-            "nullable": true,
-            "enum": [
-              "self_directed",
-              "normal",
-              "needs_management"
-            ]
-          },
-          "studentIntention": {
-            "type": "string",
-            "nullable": true,
-            "enum": [
-              "student_wants",
-              "parent_only",
-              "unknown"
-            ]
-          },
-          "weakness": {
-            "type": "string",
-            "nullable": true,
-            "maxLength": 500
-          },
           "referenceNotes": {
             "type": "string",
             "nullable": true,
@@ -8519,7 +8349,7 @@
           }
         },
         "required": [
-          "applicantName",
+          "studentId",
           "status",
           "source",
           "submitterType"
@@ -9204,6 +9034,10 @@
             "type": "number",
             "minimum": 0,
             "maximum": 13
+          },
+          "schoolName": {
+            "type": "string",
+            "maxLength": 100
           },
           "phone": {
             "type": "string",

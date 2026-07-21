@@ -1,7 +1,7 @@
 import { ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import type { BaseRow } from '../../common/types/base';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { COUNSEL_FORMS_SPEC, COURSES_SPEC, SESSION_REPORTS_SPEC, SUBJECTS_SPEC } from '../../database/calendar-asset-specs';
+import { COURSES_SPEC, SESSION_REPORTS_SPEC, SUBJECTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
@@ -9,7 +9,6 @@ import { Subject, SUBJECTS } from './subject.entity';
 import { CreateSubjectDto } from './dto/create-subject.dto';
 import { UpdateSubjectDto } from './dto/update-subject.dto';
 import { Course } from '../courses/course.entity';
-import { CounselForm } from '../counsel/counsel.entity';
 
 type SubjectReportRef = BaseRow & { subjectId: number };
 
@@ -73,12 +72,11 @@ export class SubjectsService implements OnModuleInit {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'subject', id }]);
       const before = { ...this.findOne(id) };
-      const [course, counsel, report] = await Promise.all([
+      const [course, report] = await Promise.all([
         this.store.findActive<Course>(COURSES_SPEC, { where: { subjectId: id }, limit: 1 }),
-        this.store.findActive<CounselForm>(COUNSEL_FORMS_SPEC, { where: { interestSubjectId: id }, limit: 1 }),
         this.store.findActive<SubjectReportRef>(SESSION_REPORTS_SPEC, { where: { subjectId: id }, limit: 1 }),
       ]);
-      const blockers = [course.length && '코스', counsel.length && '상담', report.length && '보고서'].filter(Boolean);
+      const blockers = [course.length && '코스', report.length && '보고서'].filter(Boolean);
       if (blockers.length) throw new ConflictException(`참조 중인 과목은 삭제할 수 없습니다: ${blockers.join('·')}`);
       await this.store.remove(SUBJECTS_SPEC, id, actorId);
       if (actorId != null) {

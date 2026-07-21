@@ -135,8 +135,8 @@ async function cleanupStaleFixtures(pg: PostgresConnectionService, actorId: numb
     `owner_type='student' AND owner_id IN (SELECT id FROM students WHERE name LIKE 'DBCRUD%')`, [], actorId);
   await fallbackSoftDelete(pg, 'calendar_view_presets', `name LIKE 'DB-CRUD-%'`, [], actorId);
   await fallbackSoftDelete(pg, 'counsel_rounds',
-    `counsel_form_id IN (SELECT id FROM counsel_forms WHERE applicant_name LIKE 'DBCRUD 상담 %')`, [], actorId);
-  await fallbackSoftDelete(pg, 'counsel_forms', `applicant_name LIKE 'DBCRUD 상담 %'`, [], actorId);
+    `counsel_form_id IN (SELECT id FROM counsel_forms WHERE reference_notes LIKE 'DBCRUD 상담 %')`, [], actorId);
+  await fallbackSoftDelete(pg, 'counsel_forms', `reference_notes LIKE 'DBCRUD 상담 %'`, [], actorId);
   await fallbackSoftDelete(pg, 'student_family_relations',
     `(student_id_a IN (SELECT id FROM students WHERE name LIKE 'DBCRUD%')
        OR student_id_b IN (SELECT id FROM students WHERE name LIKE 'DBCRUD%'))`, [], actorId);
@@ -489,16 +489,14 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
         .expect(201)).body.id);
       academicHistoryId = Number((await http.post(`/api/students/${qaStudentId}/academic-histories`)
         .set(auth(ceo))
-        .send({ grade: 13, schoolName, startedOn: '2098-01-01', endedOn: '2098-12-31' })
+        .send({ grade: 13, schoolName, startedOn: '2025-01-01', endedOn: '2025-12-31' })
         .expect(201)).body.id);
       qaCounselId = Number((await http.post('/api/counsel')
         .set(auth(ceo))
         .send({
-          applicantName: `DBCRUD 상담 ${Date.now()}`,
-          applicantPhone: '010-0000-0000',
           source: 'manual',
           studentId: qaStudentId,
-          referenceNotes: 'DB CRUD 비공개 참고',
+          referenceNotes: `DBCRUD 상담 ${Date.now()} · 비공개 참고`,
           nextContactAt: '2099-01-10',
         })
         .expect(201)).body.id);

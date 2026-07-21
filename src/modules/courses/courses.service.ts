@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { COUNSEL_FORMS_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC } from '../../database/calendar-asset-specs';
+import { COURSES_SPEC, ENROLLMENTS_SPEC, STUDENT_INTERESTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
@@ -8,7 +8,7 @@ import { AuditService } from '../audit/audit.service';
 import { Subject, SUBJECTS } from '../subjects/subject.entity';
 import { StaffAccount, USERS, isActiveInstructor } from '../users/user.entity';
 import { Enrollment } from '../enrollments/enrollment.entity';
-import { CounselForm } from '../counsel/counsel.entity';
+import { StudentInterest } from '../students/student-interest.entity';
 import { ROADMAP_COURSES, RoadmapCourse } from '../roadmaps/roadmap.entity';
 import { Course, COURSES, StoredCourse } from './course.entity';
 import { CreateCourseDto } from './dto/create-course.dto';
@@ -116,13 +116,13 @@ export class CoursesService implements OnModuleInit {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'course', id }]);
       const before = { ...this.findOne(id) };
-      const [enrollment, counsel] = await Promise.all([
+      const [enrollment, interest] = await Promise.all([
         this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, { where: { courseId: id }, limit: 1 }),
-        this.store.findActive<CounselForm>(COUNSEL_FORMS_SPEC, { where: { interestCourseId: id }, limit: 1 }),
+        this.store.findActive<StudentInterest>(STUDENT_INTERESTS_SPEC, { where: { courseId: id }, limit: 1 }),
       ]);
       const hasSession = await this.sessions.existsForCourse(id);
       const roadmap = this.db.findBy<RoadmapCourse>(ROADMAP_COURSES, (row) => row.courseId === id)[0];
-      const blockers = [enrollment.length && '수강', hasSession && '수업', counsel.length && '상담', roadmap && '로드맵'].filter(Boolean);
+      const blockers = [enrollment.length && '수강', hasSession && '수업', interest.length && '학생 희망 수업', roadmap && '로드맵'].filter(Boolean);
       if (blockers.length) throw new ConflictException(`참조 중인 코스는 삭제할 수 없습니다: ${blockers.join('·')}`);
       await this.store.remove(COURSES_SPEC, id, actorId);
       if (actorId != null) {

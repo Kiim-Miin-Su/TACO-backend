@@ -48,6 +48,7 @@
     "db:migrate:student-required-contract": "ts-node scripts/migrate-student-required-contract.ts",
     "db:migrate:course-pay-ssot": "ts-node scripts/migrate-course-pay-ssot.ts",
     "db:migrate:counsel-family-academic-expand": "ts-node scripts/migrate-counsel-family-academic-expand.ts",
+    "db:migrate:counsel-student-ssot-contract": "ts-node scripts/migrate-counsel-student-ssot-contract.ts",
     "db:check:counsel-family-academic-contract": "ts-node scripts/check-counsel-family-academic-contract.ts",
     "db:cleanup:demo-data": "ts-node scripts/cleanup-demo-data.ts",
     "db:repair:legacy-unverified-users": "ts-node scripts/repair-legacy-unverified-users.ts",
@@ -58,7 +59,7 @@
     "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts"
   },
   "dependencies": {
-    "@kms545487/contracts": "^0.2.11",
+    "@kms545487/contracts": "0.2.12",
     "@neondatabase/serverless": "^1.1.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",

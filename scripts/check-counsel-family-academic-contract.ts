@@ -22,8 +22,9 @@ async function main(): Promise<void> {
     )) AS students_without_timeline,
     (SELECT COUNT(*)::int FROM counsel_forms WHERE deleted_at IS NULL) AS active_counsel_forms,
     (SELECT COUNT(*)::int FROM counsel_forms WHERE deleted_at IS NULL AND student_id IS NOT NULL) AS linked_counsel_forms,
-    (SELECT COUNT(*)::int FROM counsel_forms WHERE deleted_at IS NULL AND (
-      learning_atmosphere IS NOT NULL OR interest_course_id IS NOT NULL OR student_intention IS NOT NULL OR academy_expectation IS NOT NULL
+    (SELECT COUNT(*)::int FROM counsel_forms f WHERE deleted_at IS NULL AND (
+      to_jsonb(f)->>'learning_atmosphere' IS NOT NULL OR to_jsonb(f)->>'interest_course_id' IS NOT NULL
+      OR to_jsonb(f)->>'student_intention' IS NOT NULL OR to_jsonb(f)->>'academy_expectation' IS NOT NULL
     )) AS active_legacy_counsel_values,
     (SELECT COUNT(*)::int FROM student_family_relations f LEFT JOIN students a ON a.id=f.student_id_a LEFT JOIN students b ON b.id=f.student_id_b
       WHERE f.deleted_at IS NULL AND (a.id IS NULL OR b.id IS NULL OR a.deleted_at IS NOT NULL OR b.deleted_at IS NOT NULL)) AS family_orphans,
@@ -44,7 +45,7 @@ async function main(): Promise<void> {
     blockers,
     contractDecision: blockers.length
       ? 'backfill/repair 후 contract migration 가능'
-      : '데이터 blocker는 0이지만 신규 backend/frontend production readback 전 destructive drop은 보류',
+      : '데이터 blocker 0 — counsel/student SSOT contract migration 적용 가능',
   }, null, 2));
   if (blockers.length) process.exitCode = 1;
 }

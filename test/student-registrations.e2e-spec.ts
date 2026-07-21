@@ -71,8 +71,8 @@ describe('[TBO-29D D2] POST /students/registrations (atomic aggregate)', () => {
       relations: before.relations + 2,
       enrollments: before.enrollments + 1,
       interests: before.interests + 2,
-      // students aggregate 1 + interests 2 + parents 2 + relations 2 + enrollment 1
-      audit: before.audit + 8,
+      // initial academic history 1 + student aggregate 1 + interests 2 + parents 2 + relations 2 + enrollment 1
+      audit: before.audit + 9,
     });
     expect(res.body.guardians).toHaveLength(2);
     expect(res.body.guardian.linkedExisting).toBe(false);

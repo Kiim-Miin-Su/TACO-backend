@@ -32,8 +32,6 @@ const APP_FK: Array<{ child: string; field: string; parent: string }> = [
   { child: 'parent_student_relations', field: 'studentId', parent: 'students' },
   { child: 'student_interests', field: 'studentId', parent: 'students' },
   { child: 'student_interests', field: 'courseId', parent: 'courses' },
-  { child: 'counsel_forms', field: 'interestSubjectId', parent: 'subjects' },
-  { child: 'counsel_forms', field: 'interestCourseId', parent: 'courses' },
   { child: 'counsel_rounds', field: 'counselFormId', parent: 'counsel_forms' },
   { child: 'session_reports', field: 'subjectId', parent: 'subjects' },
   { child: 'courses', field: 'subjectId', parent: 'subjects' },

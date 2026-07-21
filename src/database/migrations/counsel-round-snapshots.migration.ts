@@ -39,5 +39,27 @@ export const COUNSEL_ROUND_SNAPSHOTS_MIGRATION_SQL: readonly string[] = [
          ADD CONSTRAINT counsel_rounds_form_snapshot_object_check
          CHECK (jsonb_typeof(form_snapshot) = 'object');
      END IF;
-   END $$`,
+  END $$`,
+];
+
+// Runtime bootstrap은 versioned backfill을 재실행하지 않는다. contract migration 이후에도 필요한
+// schema repair만 현재 counsel SSOT 컬럼으로 수행해 local/test 기존 DB를 안전하게 올린다.
+const runtimeSnapshotExpression = `jsonb_build_object(
+  'studentId', f.student_id,
+  'assignedStaffId', f.assigned_staff_id,
+  'status', f.status,
+  'source', f.source,
+  'submitterType', f.submitter_type,
+  'referenceNotes', f.reference_notes,
+  'nextContactAt', COALESCE(r.next_contact_at, f.next_contact_at)
+)`;
+
+export const COUNSEL_ROUND_SNAPSHOTS_RUNTIME_SQL: readonly string[] = [
+  COUNSEL_ROUND_SNAPSHOTS_MIGRATION_SQL[0],
+  `UPDATE counsel_rounds r
+      SET form_snapshot = ${runtimeSnapshotExpression}
+     FROM counsel_forms f
+    WHERE f.id = r.counsel_form_id
+      AND (r.form_snapshot IS NULL OR r.form_snapshot = '{}'::jsonb)`,
+  ...COUNSEL_ROUND_SNAPSHOTS_MIGRATION_SQL.slice(2),
 ];

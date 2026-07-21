@@ -10,20 +10,23 @@ import {
 import { ACADEMY_EVENTS_TABLE_SQL, ACADEMY_EVENTS_INDEX_SQL } from './migrations/academy-events.migration';
 import { COUNTRIES_TABLE_SQL } from './migrations/countries.migration';
 import {
-  COUNSEL_FORMS_TABLE_SQL,
   COUNSEL_ROUNDS_TABLE_SQL,
   COUNSEL_PERSISTENCE_INDEX_SQL,
 } from './migrations/counsel-persistence.migration';
 import { COUNSEL_FORM_INPUTS_MIGRATION_SQL } from './migrations/counsel-form-inputs.migration';
-import { COUNSEL_ROUND_SNAPSHOTS_MIGRATION_SQL } from './migrations/counsel-round-snapshots.migration';
+import { COUNSEL_ROUND_SNAPSHOTS_RUNTIME_SQL } from './migrations/counsel-round-snapshots.migration';
+import {
+  COUNSEL_FORMS_CANONICAL_TABLE_SQL,
+  COUNSEL_STUDENT_SSOT_CONTRACT_SQL,
+  STUDENTS_CANONICAL_TABLE_SQL,
+} from './migrations/counsel-student-ssot-contract.migration';
 import {
   ROADMAPS_TABLE_SQL,
   ROADMAP_COURSES_TABLE_SQL,
   REPORT_TEMPLATES_TABLE_SQL,
 } from './migrations/remaining-persistence.migration';
 import { STUDENT_INTERESTS_FK_SQL, STUDENT_INTERESTS_TABLE_SQL } from './migrations/student-profile.migration';
-import { TBO36_COURSES_SQL, TBO36_STUDENTS_SQL } from './migrations/staff-pay-calendar.migration';
-import { STUDENT_REQUIRED_CONTRACT_SQL } from './migrations/student-required-contract.migration';
+import { TBO36_COURSES_SQL } from './migrations/staff-pay-calendar.migration';
 import { COURSE_PAY_SSOT_SQL } from './migrations/course-pay-ssot.migration';
 import {
   COUNSEL_FAMILY_ACADEMIC_EXPAND_SQL,
@@ -422,40 +425,8 @@ export const AUTH_REFRESH_TOKENS_SPEC: PostgresCollectionSpec = {
 
 export const STUDENTS_SPEC: PostgresCollectionSpec = {
   table: 'students',
-  createSql: `
-    CREATE TABLE IF NOT EXISTS students (
-      id serial PRIMARY KEY,
-      user_id integer,
-      mentor_id integer,
-      name varchar(50) NOT NULL,
-      english_name varchar(50),
-      gender varchar(20),
-      birth_date date NOT NULL,
-      phone varchar(20),
-      grade integer NOT NULL,
-      school_name varchar(100),
-      school_type varchar(32),
-      residence_type varchar(32) NOT NULL DEFAULT 'domestic',
-      country varchar(8),
-      time_zone varchar(64),
-      address varchar(100),
-      address_detail varchar(100),
-      overseas_country varchar(100),
-      language_type varchar(32) NOT NULL DEFAULT 'korean',
-      level_status varchar(32) NOT NULL DEFAULT 'unknown',
-      short_term_goal text,
-      long_term_goal text,
-      kakao_id varchar(100),
-      counsel_topic text,
-      status varchar(32) NOT NULL DEFAULT 'new_inquiry',
-      memo text,
-      created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now(),
-      deleted_at timestamptz,
-      deleted_by integer
-    )
-  `,
-  migrations: [...TBO36_STUDENTS_SQL, ...STUDENT_REQUIRED_CONTRACT_SQL],
+  createSql: STUDENTS_CANONICAL_TABLE_SQL,
+  migrations: [...COUNSEL_STUDENT_SSOT_CONTRACT_SQL.slice(-3)],
   indexes: [
     activeIndex('students', 'idx_students_status', 'status'),
     activeIndex('students', 'idx_students_country', 'country'),
@@ -599,16 +570,16 @@ export const REPORT_TEMPLATES_SPEC: PostgresCollectionSpec = {
 //  기존 contract의 상태값을 보존한 채 forms → rounds 순으로 hydrate/write-through한다.
 export const COUNSEL_FORMS_SPEC: PostgresCollectionSpec = {
   table: 'counsel_forms',
-  createSql: COUNSEL_FORMS_TABLE_SQL,
-  migrations: [...COUNSEL_FORM_INPUTS_MIGRATION_SQL, COUNSEL_FAMILY_ACADEMIC_EXPAND_SQL[0]],
-  indexes: COUNSEL_PERSISTENCE_INDEX_SQL.slice(0, 4),
+  createSql: COUNSEL_FORMS_CANONICAL_TABLE_SQL,
+  migrations: [...COUNSEL_FORM_INPUTS_MIGRATION_SQL, COUNSEL_FAMILY_ACADEMIC_EXPAND_SQL[0], ...COUNSEL_STUDENT_SSOT_CONTRACT_SQL.slice(0, -3)],
+  indexes: COUNSEL_PERSISTENCE_INDEX_SQL.slice(0, 3),
   dateFields: ['nextContactAt'],
 };
 
 export const COUNSEL_ROUNDS_SPEC: PostgresCollectionSpec = {
   table: 'counsel_rounds',
   createSql: COUNSEL_ROUNDS_TABLE_SQL,
-  migrations: [...COUNSEL_ROUND_SNAPSHOTS_MIGRATION_SQL],
+  migrations: [...COUNSEL_ROUND_SNAPSHOTS_RUNTIME_SQL],
   indexes: COUNSEL_PERSISTENCE_INDEX_SQL.slice(4),
   jsonFields: ['formSnapshot'],
   dateFields: ['scheduledAt', 'completedAt', 'nextContactAt'],

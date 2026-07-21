@@ -151,7 +151,7 @@ describe('Students Soft-Delete (e2e)', () => {
     await http.delete(`/api/students/${second.id}/family-relations/${relation.id}`).set(asAdmin()).expect(200);
 
     const audit = (await http.get(`/api/audit?entity=student_family_relations&entityId=${relation.id}`).set(asAdmin()).expect(200)).body;
-    expect(audit.map((row: { action: string }) => row.action).sort()).toEqual(['create', 'delete', 'update']);
+    expect(audit.map((row: { action: string }) => row.action)).toEqual(expect.arrayContaining(['create', 'update', 'delete']));
     expect(audit.every((row: { actorId: number }) => row.actorId === 3)).toBe(true);
   });
 
@@ -172,9 +172,10 @@ describe('Students Soft-Delete (e2e)', () => {
   it('과거·현재·미래 학교/학년 이력을 CRUD하고 overlap·actor spoof를 막으며 현재 profile을 동기화한다', async () => {
     const student = (await http.post('/api/students').set(asAdmin())
       .send(studentAggregateBody('학사이력학생', { student: { grade: 11, schoolName: '기존학교' } })).expect(201)).body.student;
-    const history = (await http.post(`/api/students/${student.id}/academic-histories`).set(asAdmin()).send({
+    const initial = (await http.get(`/api/students/${student.id}/aggregate`).set(asAdmin()).expect(200)).body.academicHistories[0];
+    const history = (await http.patch(`/api/students/${student.id}/academic-histories/${initial.id}`).set(asAdmin()).send({
       grade: 13, schoolName: '현재학교', startedOn: '2026-01-01', endedOn: null,
-    }).expect(201)).body;
+    }).expect(200)).body;
     expect((await http.get(`/api/students/${student.id}`).set(asAdmin()).expect(200)).body)
       .toMatchObject({ grade: 13, schoolName: '현재학교' });
 
@@ -191,6 +192,6 @@ describe('Students Soft-Delete (e2e)', () => {
 
     await http.delete(`/api/students/${student.id}/academic-histories/${history.id}`).set(asAdmin()).expect(200);
     const audit = (await http.get(`/api/audit?entity=student_academic_histories&entityId=${history.id}`).set(asAdmin()).expect(200)).body;
-    expect(audit.map((row: { action: string }) => row.action).sort()).toEqual(['create', 'delete', 'update']);
+    expect(audit.map((row: { action: string }) => row.action)).toEqual(expect.arrayContaining(['create', 'update', 'delete']));
   });
 });

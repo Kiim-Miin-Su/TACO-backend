@@ -55,11 +55,11 @@ describe('Detail single-fetch endpoints (e2e, B7 E3)', () => {
 
   it('GET /counsel/:id — 단건 200 · 없는 id 404 · 무토큰 401', async () => {
     const form = (await http.post('/api/counsel').set(auth(admin)).send({
-      applicantName: 'B7 단건화 검증', applicantPhone: '010-1234-5678', source: 'manual',
+      studentId: 1, source: 'manual',
     }).expect(201)).body;
     const got = (await http.get(`/api/counsel/${form.id}`).set(auth(admin)).expect(200)).body;
     expect(got.id).toBe(form.id);
-    expect(got.applicantName).toBe('B7 단건화 검증');
+    expect(got.studentId).toBe(1);
     await http.get('/api/counsel/999999').set(auth(admin)).expect(404);
     await http.get(`/api/counsel/${form.id}`).expect(401);
   });

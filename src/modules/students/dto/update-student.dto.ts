@@ -22,6 +22,9 @@ export class UpdateStudentDto implements UpdateStudentInput {
   @IsOptional() @IsInt() @Min(0) @Max(13)
   grade?: number;
 
+  @IsOptional() @IsString() @MaxLength(100)
+  schoolName?: string;
+
   @IsOptional() @IsString() @MaxLength(20)
   phone?: string;
 

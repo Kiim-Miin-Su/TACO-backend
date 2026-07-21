@@ -14,6 +14,7 @@ describe('Asset persistence sweep (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let ADMIN = '';
+  let persistenceAttempt = 0;
   const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
   const listLen = async (path: string) => ((await http.get(path).set(asAdmin()).expect(200)).body as unknown[]).length;
@@ -71,13 +72,14 @@ describe('Asset persistence sweep (e2e)', () => {
   });
 
   it('운영 데이터: schedule/availability/attendance/counsel(+round)/reports/events 생성이 저장된다', async () => {
+    const startHour = 10 + persistenceAttempt++;
     const ses = (await http.post('/api/schedule').set(asAdmin())
-      .send({ courseId: 10, sessionDate: '2099-01-04', startTime: '10:00', endTime: '11:00' }).expect(201)).body.row;
+      .send({ courseId: 10, sessionDate: '2099-01-04', startTime: `${startHour}:00`, endTime: `${startHour + 1}:00` }).expect(201)).body.row;
     await http.put('/api/availability').set(asAdmin())
       .send({ ownerType: 'instructor', ownerId: 1, kind: 'unavailable', weekday: 0, startTime: '07:00', endTime: '08:00' }).expect(200);
     await http.put('/api/attendance').set(asAdmin()).send({ sessionId: ses.id, studentId: 1, status: 'present' }).expect(200);
     const counsel = (await http.post('/api/counsel').set(asAdmin())
-      .send({ applicantName: '자산상담', applicantPhone: '010-1111-2222', source: 'manual' }).expect(201)).body;
+      .send({ studentId: 1, source: 'manual' }).expect(201)).body;
     await http.post(`/api/counsel/${counsel.id}/rounds`).set(asAdmin())
       .send({ summary: '1차 상담 기록', nextContactAt: '2099-01-06' }).expect(201);
     const report = (await http.post('/api/reports').set(asAdmin())
