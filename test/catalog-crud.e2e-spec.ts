@@ -26,6 +26,8 @@ describe('Catalog CRUD and RBAC (e2e)', () => {
   });
 
   it('관리자는 과목·코스를 수정하고 미참조 자산을 soft delete할 수 있다', async () => {
+    await http.patch('/api/instructors/1').set(auth(admin))
+      .send({ defaultHourlyRate: 50000, canTeachKinder: true }).expect(200);
     const suffix = String(Date.now());
     const subject = (await http.post('/api/subjects').set(auth(admin))
       .send({ code: `review-${suffix}`, name: '리뷰 과목' }).expect(201)).body;
@@ -38,11 +40,28 @@ describe('Catalog CRUD and RBAC (e2e)', () => {
       hourlyRateOverride: 40000, isKinder: false,
     }).expect(201)).body;
     expect(course).toMatchObject({ hourlyRateOverride: 40000, isKinder: false });
+    const defaultCourse = (await http.post('/api/courses').set(auth(admin)).send({
+      name: '강사 기본 페이 코스', subjectId: subject.id, instructorId: 1, price: 100000, isKinder: false,
+    }).expect(201)).body;
+    expect(defaultCourse).toMatchObject({ hourlyRate: 50000, hourlyRateOverride: null });
     const updatedCourse = (await http.patch(`/api/courses/${course.id}`).set(auth(admin))
       .send({ name: '리뷰 코스 수정', color: '#123456', isKinder: true }).expect(200)).body;
     expect(updatedCourse).toMatchObject({ name: '리뷰 코스 수정', color: '#123456', isKinder: true });
 
+    const inherited = (await http.patch(`/api/courses/${course.id}`).set(auth(admin))
+      .send({ hourlyRateOverride: null }).expect(200)).body;
+    expect(inherited).toMatchObject({ hourlyRate: 50000, hourlyRateOverride: null });
+    await http.patch('/api/instructors/1').set(auth(admin)).send({ defaultHourlyRate: 55000 }).expect(200);
+    expect((await http.get(`/api/courses/${course.id}`).set(auth(admin)).expect(200)).body)
+      .toMatchObject({ hourlyRate: 55000, hourlyRateOverride: null });
+
+    await http.post('/api/courses').set(auth(admin)).send({
+      name: 'Kinder 차단', subjectId: subject.id, instructorId: 2, price: 100000,
+      hourlyRateOverride: 40000, isKinder: true,
+    }).expect(400);
+
     await http.delete(`/api/subjects/${subject.id}`).set(auth(admin)).expect(409);
+    await http.delete(`/api/courses/${defaultCourse.id}`).set(auth(admin)).expect(200);
     await http.delete(`/api/courses/${course.id}`).set(auth(admin)).expect(200);
     await http.delete(`/api/subjects/${subject.id}`).set(auth(admin)).expect(200);
 

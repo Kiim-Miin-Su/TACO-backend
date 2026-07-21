@@ -11,6 +11,7 @@ import { ClassSession, SESSIONS } from './schedule.entity';
 import { detectConflicts } from './conflict.util';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { Course, COURSES as COURSES_COL } from '../courses/course.entity';
+import { CoursesService } from '../courses/courses.service';
 import { Subject, SUBJECTS as SUBJECTS_COL } from '../subjects/subject.entity';
 import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
@@ -94,6 +95,7 @@ export class ScheduleService implements OnModuleInit {
     private readonly attendance: AttendanceService,
     private readonly reports: ReportsService,
     private readonly collections: PostgresCollectionStore, // [TBO-28F] users 투영 재조회(교차 인스턴스 정합)
+    private readonly courses: CoursesService,
   ) {}
 
   // 이번 주 데모 수업 시드 — 주간 반복 시리즈 단위(같은 시리즈=한 seriesId). 충돌 없게 구성.
@@ -246,7 +248,7 @@ export class ScheduleService implements OnModuleInit {
 
   // ── 카탈로그/명단 조회(단일 소스 = 실제 컬렉션) — 감사 A ──
   private courseOf(id: number): Course | undefined {
-    return this.db.findById<Course>(COURSES_COL, id);
+    return this.courses.findOptional(id);
   }
   private subjectOf(id?: number): Subject | undefined {
     return id == null ? undefined : this.db.findById<Subject>(SUBJECTS_COL, id);

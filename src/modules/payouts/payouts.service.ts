@@ -7,7 +7,7 @@ import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { countsForTeachingHours, payoutAmountOf } from '../schedule/session-accounting.policy';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
-import { Course, COURSES } from '../courses/course.entity';
+import { CoursesService } from '../courses/courses.service';
 import { USERS, type StaffAccount } from '../users/user.entity'; // [TBO-32 C1] 일괄 산정 대상 강사 열거
 import { ReportsService } from '../reports/reports.service';
 import { AuditService } from '../audit/audit.service';
@@ -46,7 +46,7 @@ export type MeasureResult = {
  *   2) 승인된 보고서 존재         → reports.approvalStatus === 'approved'
  *   3) 코스 FK 유효(시급 조인)    → courses.id 존재
  *   4) 다른 정산서에 미연결        → session.payoutId == null (이중 계상 방지)
- * 페이 = Σ round(durationMinutes / 60 × course.hourlyRate)
+ * 페이 = Σ round(durationMinutes / 60 × effectiveCourseHourlyRate)
  *
  * ⚠ [TBO-19 시수 정책 · 2026-07-07 — 잠정 비즈니스 로직, 추후 변경]
  *   강사 결석·수업 미진행(취소/노쇼)·보강(makeup)은 우선 **시수 제외**(대표 결정). 지각은 인정(감산 없음).
@@ -61,6 +61,7 @@ export class PayoutsService implements OnModuleInit {
     private readonly reports: ReportsService,
     private readonly unitOfWork: CalendarUnitOfWork,
     private readonly audit: AuditService, // [감사 전수 2026-07-16] 급여 전 상태전환 이력(대표 지시)
+    private readonly courses: CoursesService,
   ) {}
 
   // 데모 mock 주입 — 현재 주(週) 범위 밖(6월 중순)에 held 세션 + 승인 보고서를 심어
@@ -136,7 +137,7 @@ export class PayoutsService implements OnModuleInit {
 
     const lines: PayoutLine[] = [];
     for (const s of sessions) {
-      const course = this.db.findById<Course>(COURSES, s.courseId);
+      const course = this.courses.findOptional(s.courseId);
       // (3) 코스 FK 무결성 — 시급 조인 불가면 산정 중단(데이터 오류를 조용히 넘기지 않음)
       if (!course) throw new BadRequestException(`courseId ${s.courseId} 없음 — 시급 조인 실패(세션 ${s.id})`);
       const amount = payoutAmountOf(s.durationMinutes, course.hourlyRate); // [C4] 환산식 단일 소스(policy)
