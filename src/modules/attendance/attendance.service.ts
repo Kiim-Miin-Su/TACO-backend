@@ -11,6 +11,7 @@ import { UpsertAttendanceDto } from './dto/upsert-attendance.dto';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { studentBelongsToSession } from '../schedule/session-participant.policy';
+import { isSessionVisibleToInstructor } from '../schedule/schedule-visibility.policy';
 
 /**
  * [참조/처리] 출결. 프론트 목데이터 이관 + 참조 무결성 게이트.
@@ -58,7 +59,9 @@ export class AttendanceService implements OnModuleInit {
   findAllForActor(actorId?: number, actorRoles?: string[]): Attendance[] {
     if (actorId == null || hasAdminRole(actorRoles)) return this.findAll();
     const ownSessionIds = new Set(
-      this.db.findByField<ClassSession>(SESSIONS, 'instructorId', actorId).map((s) => Number(s.id)),
+      this.db.findByField<ClassSession>(SESSIONS, 'instructorId', actorId)
+        .filter((session) => isSessionVisibleToInstructor(session, actorId))
+        .map((s) => Number(s.id)),
     );
     return this.findAll().filter((a) => ownSessionIds.has(Number(a.sessionId)));
   }
@@ -66,7 +69,7 @@ export class AttendanceService implements OnModuleInit {
   findBySessionForActor(sessionId: number, actorId?: number, actorRoles?: string[]): Attendance[] {
     if (actorId != null && !hasAdminRole(actorRoles)) {
       const session = this.db.findById<ClassSession>(SESSIONS, sessionId);
-      if (session && Number(session.instructorId) !== Number(actorId))
+      if (session && !isSessionVisibleToInstructor(session, actorId))
         throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 조회할 수 있습니다.');
     }
     return this.findBySession(sessionId);
@@ -88,7 +91,7 @@ export class AttendanceService implements OnModuleInit {
       throw new BadRequestException(`studentId ${dto.studentId}는 세션 ${dto.sessionId}의 수강생이 아닙니다`);
     // 3) 소유권(IDOR 방지) — 비관리자는 담당 강사 세션만. actorId 미상(무인증 컨텍스트)이면 검사 생략.
     const isAdmin = hasAdminRole(actorRoles);
-    if (actorId != null && !isAdmin && session.instructorId !== actorId)
+    if (actorId != null && !isAdmin && !isSessionVisibleToInstructor(session, actorId))
       throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 기록할 수 있습니다.');
 
     return this.unitOfWork.run(async () => {

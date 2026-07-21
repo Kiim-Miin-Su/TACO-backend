@@ -9,6 +9,7 @@ import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES, isInstructorOnly } from '../auth/roles.decorator';
+import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
 
 @ApiTags('scheduling')
 @ApiBearerAuth()
@@ -20,7 +21,7 @@ export class ScheduleController {
   // GET /api/schedule?from=YYYY-MM-DD&to=YYYY-MM-DD&instructorId=&roomId=&studentId=
   @Get()
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '스케줄 조회(기간·강사·강의실·학생 필터). studentId는 학생 활성 수강 코스의 세션만.' })
+  @ApiOperation({ summary: '스케줄 조회. 강사는 본인 배정 일반 일정만, 상담 일정은 관리 역할만.' })
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })
   @ApiQuery({ name: 'instructorId', required: false }) @ApiQuery({ name: 'roomId', required: false })
   @ApiQuery({ name: 'studentId', required: false, description: '학생 코호트(enrollment status≠drop) 역추적' })
@@ -78,13 +79,13 @@ export class ScheduleController {
   @Get(':id')
   @Roles(...STAFF_ROLES)
   @ApiParam({ name: 'id', description: '세션 id' })
-  @ApiOperation({ summary: '세션 단건(enriched ScheduleRow — 목록과 동일 형상). 강사는 본인 세션만(404→403).' })
+  @ApiOperation({ summary: '세션 단건. 강사는 본인 배정 일반 일정만, 상담은 관리 역할만(404→403).' })
   @ApiOkResponse({ description: 'ScheduleRow — 강사·과목·강의실명·코호트 포함' })
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     await this.schedule.ensureReady();
     const row = this.schedule.findOneEnriched(id);
-    if (isInstructorOnly(req.user?.roles) && row.instructorId !== req.user?.sub && row.isPublic !== true)
-      throw new ForbiddenException('본인 수업 또는 공개 일정만 조회할 수 있습니다.');
+    if (isInstructorOnly(req.user?.roles) && !isSessionVisibleToInstructor(row, req.user!.sub))
+      throw new ForbiddenException('강사는 본인이 배정된 일반 일정만 조회할 수 있습니다.');
     return row;
   }
 

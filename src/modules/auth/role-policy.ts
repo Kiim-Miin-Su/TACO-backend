@@ -8,7 +8,8 @@ export type RoleCapability =
   | 'signup.decide'
   | 'finance.access'
   | 'calendar.manage'
-  | 'calendar.request-own';
+  | 'calendar.request-own'
+  | 'counsel.manage';
 
 export const ADMIN_ROLES: AppRole[] = ['super_admin', 'manager', 'admin'];
 export const STAFF_ROLES: AppRole[] = ['instructor', 'manager', 'admin', 'super_admin'];
@@ -21,6 +22,7 @@ const CAPABILITY_ROLES: Record<RoleCapability, readonly AppRole[]> = {
   'finance.access': ['super_admin'],
   'calendar.manage': ADMIN_ROLES,
   'calendar.request-own': STAFF_ROLES,
+  'counsel.manage': ADMIN_ROLES,
 };
 
 export const isStaffRole = (role: string): role is AppRole => STAFF_ROLES.includes(role as AppRole);

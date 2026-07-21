@@ -18,10 +18,13 @@ export class ReportsController {
 
   @Get()
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '보고서 목록(sessionId 필터 가능)' })
+  @ApiOperation({ summary: '보고서 목록(sessionId 필터). 강사는 본인 일반 일정 보고서만.' })
   @ApiQuery({ name: 'sessionId', required: false })
-  findAll(@Query('sessionId') sessionId?: string) {
-    return sessionId ? this.reports.findBySession(Number(sessionId)) : this.reports.findAll();
+  findAll(@Req() req: Request & { user?: JwtClaims }, @Query('sessionId') sessionId?: string) {
+    const actor = req.user ? { id: req.user.sub, roles: req.user.roles } : undefined;
+    return sessionId
+      ? this.reports.findBySessionForActor(Number(sessionId), actor)
+      : this.reports.findAllForActor(actor);
   }
 
   @Get(':id')

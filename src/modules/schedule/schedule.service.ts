@@ -27,6 +27,7 @@ import { PostgresCollectionStore } from '../../database/postgres-collection.stor
 import { CLASS_SESSION_SERIES_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, isPayoutLocked, payoutIdOf, teachingMinutesOf, type SessionAccountingImpact } from './session-accounting.policy';
 import { studentBelongsToSession } from './session-participant.policy';
+import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
 import { hhmmToMin as toMin, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff } from '../../common/time.util';
@@ -326,7 +327,7 @@ export class ScheduleService implements OnModuleInit {
     opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number },
     viewerInstructorId: number,
   ): ScheduleRow[] {
-    return this.list(opts).filter((row) => row.isPublic === true || Number(row.instructorId) === viewerInstructorId);
+    return this.list(opts).filter((row) => isSessionVisibleToInstructor(row, viewerInstructorId));
   }
 
   // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터.

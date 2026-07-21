@@ -2892,7 +2892,7 @@
             "bearer": []
           }
         ],
-        "summary": "스케줄 조회(기간·강사·강의실·학생 필터). studentId는 학생 활성 수강 코스의 세션만.",
+        "summary": "스케줄 조회. 강사는 본인 배정 일반 일정만, 상담 일정은 관리 역할만.",
         "tags": [
           "scheduling"
         ]
@@ -3028,7 +3028,7 @@
             "bearer": []
           }
         ],
-        "summary": "세션 단건(enriched ScheduleRow — 목록과 동일 형상). 강사는 본인 세션만(404→403).",
+        "summary": "세션 단건. 강사는 본인 배정 일반 일정만, 상담은 관리 역할만(404→403).",
         "tags": [
           "scheduling"
         ]
@@ -3282,7 +3282,7 @@
             "bearer": []
           }
         ],
-        "summary": "보고서 목록(sessionId 필터 가능)",
+        "summary": "보고서 목록(sessionId 필터). 강사는 본인 일반 일정 보고서만.",
         "tags": [
           "reports"
         ]
@@ -4233,6 +4233,9 @@
         "responses": {
           "200": {
             "description": "CounselForm[] — 신청자·상태·관심 과목/코스·다음 상담일 등"
+          },
+          "403": {
+            "description": "강사 접근 불가 — manager/admin/super_admin 전용"
           }
         },
         "security": [
@@ -4268,7 +4271,7 @@
             "bearer": []
           }
         ],
-        "summary": "상담 접수 생성 — 전체 폼 저장, status=requested, nextContactAt은 예약 캘린더 단일 소스",
+        "summary": "상담 접수 생성 [관리 역할] — 전체 폼 저장, status=requested, nextContactAt은 예약 캘린더 단일 소스",
         "tags": [
           "counsel"
         ]
@@ -4297,7 +4300,7 @@
             "bearer": []
           }
         ],
-        "summary": "상담 회차 목록(CounselRound[]). counselFormId로 필터.",
+        "summary": "상담 회차 목록(CounselRound[]). counselFormId로 필터. [관리 역할]",
         "tags": [
           "counsel"
         ]
@@ -4326,7 +4329,7 @@
             "bearer": []
           }
         ],
-        "summary": "상담 폼 단건(CounselForm) — 상세 화면용. 없는 id=404.",
+        "summary": "상담 폼 단건(CounselForm) — 관리 역할 상세 화면용. 없는 id=404.",
         "tags": [
           "counsel"
         ]
@@ -4363,7 +4366,7 @@
             "bearer": []
           }
         ],
-        "summary": "상담 폼 수정 — 전체 입력 및 nextContactAt 예약 캘린더 동기화",
+        "summary": "상담 폼 수정 [관리 역할] — 전체 입력 및 nextContactAt 예약 캘린더 동기화",
         "tags": [
           "counsel"
         ]
@@ -4397,7 +4400,7 @@
             "bearer": []
           }
         ],
-        "summary": "상담 폼과 회차 soft delete — 감사 스냅샷 포함",
+        "summary": "상담 폼과 회차 soft delete [관리 역할] — 감사 스냅샷 포함",
         "tags": [
           "counsel"
         ]
@@ -4436,7 +4439,7 @@
             "bearer": []
           }
         ],
-        "summary": "상담 회차 추가 — roundNo 자동, 폼 nextContactAt 동기화",
+        "summary": "상담 회차 추가 [관리 역할] — roundNo 자동, 폼 nextContactAt 동기화",
         "tags": [
           "counsel"
         ]

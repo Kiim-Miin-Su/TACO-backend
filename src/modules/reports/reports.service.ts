@@ -12,6 +12,7 @@ import { CreateReportDto } from './dto/create-report.dto';
 import { Student, STUDENTS } from '../students/student.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { studentBelongsToSession } from '../schedule/session-participant.policy';
+import { isSessionVisibleToInstructor } from '../schedule/schedule-visibility.policy';
 
 // [보안 2026-07-07 H2] 액터 컨텍스트 — 비관리자(강사)는 본인 세션·본인 보고서만 쓰기 가능(IDOR 차단).
 export type ReportActor = { id: number; roles: string[] };
@@ -48,18 +49,38 @@ export class ReportsService implements OnModuleInit {
     return this.db.findAll<SessionReportRow>(SESSION_REPORTS);
   }
 
+  findAllForActor(actor?: ReportActor): SessionReportRow[] {
+    if (!actor || actorIsAdmin(actor)) return this.findAll();
+    return this.findAll().filter((report) => {
+      const session = this.db.findById<ClassSession>(SESSIONS, report.sessionId);
+      return !!session && isSessionVisibleToInstructor(session, actor.id);
+    });
+  }
+
   // [B7 E3 2026-07-16] 단건 GET 스코프 갭 수정 — 종전엔 오너 체크가 쓰기(create/update/submit)에만
   //  있어 강사가 타인 보고서 id를 조회할 수 있었다(IDOR). 단건 GET 표준(404→403, B7 문서 §1b) 적용.
   findOne(id: number, actor?: ReportActor): SessionReportRow {
     const row = this.db.findById<SessionReportRow>(SESSION_REPORTS, id);
     if (!row) throw new NotFoundException(`Report ${id} not found`);
-    if (actor && !actorIsAdmin(actor) && row.instructorId !== actor.id)
-      throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
+    if (actor && !actorIsAdmin(actor)) {
+      const session = this.db.findById<ClassSession>(SESSIONS, row.sessionId);
+      if (!session || !isSessionVisibleToInstructor(session, actor.id))
+        throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
+    }
     return row;
   }
 
   findBySession(sessionId: number): SessionReportRow[] {
     return this.db.findByField<SessionReportRow>(SESSION_REPORTS, 'sessionId', sessionId); // 인덱스 조회
+  }
+
+  findBySessionForActor(sessionId: number, actor?: ReportActor): SessionReportRow[] {
+    if (actor && !actorIsAdmin(actor)) {
+      const session = this.db.findById<ClassSession>(SESSIONS, sessionId);
+      if (session && !isSessionVisibleToInstructor(session, actor.id))
+        throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
+    }
+    return this.findBySession(sessionId);
   }
 
   // 승인된 보고서가 있는 세션 id 집합 — 시수 적격성 판정에 사용(payouts에서 호출).
@@ -81,8 +102,8 @@ export class ReportsService implements OnModuleInit {
       throw new BadRequestException(`studentId ${dto.studentId}는 세션 ${dto.sessionId}의 수강생이 아닙니다`);
 
     // 2) 소유권(H2 IDOR 차단) — 비관리자(강사)는 본인 담당 세션에만 작성 가능.
-    if (actor && !actorIsAdmin(actor) && session.instructorId !== actor.id)
-      throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 보고서를 작성할 수 있습니다.');
+    if (actor && !actorIsAdmin(actor) && !isSessionVisibleToInstructor(session, actor.id))
+      throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 세션의 보고서를 작성할 수 있습니다.');
 
     // 3) 강사 일치(미지정 시 세션 강사로 채움)
     const instructorId = dto.instructorId ?? session.instructorId;
@@ -131,7 +152,7 @@ export class ReportsService implements OnModuleInit {
     dto: { content?: string; homework?: string },
     actor?: ReportActor,
   ): Promise<SessionReportRow> {
-    const r = this.findOne(id);
+    const r = this.findOne(id, actor);
     // 소유권(H2 IDOR 차단) — 비관리자는 본인 명의 보고서만 수정 가능(submit과 동일 규칙).
     if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
       throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 수정할 수 있습니다.');
@@ -161,7 +182,7 @@ export class ReportsService implements OnModuleInit {
 
   // 강사: 작성완료 제출(draft → submitted)
   async submit(id: number, actor?: ReportActor): Promise<SessionReportRow> {
-    const r = this.findOne(id);
+    const r = this.findOne(id, actor);
     // 소유권(H2 IDOR 차단) — 비관리자는 본인 명의 보고서만 제출 가능.
     if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
       throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 제출할 수 있습니다.');

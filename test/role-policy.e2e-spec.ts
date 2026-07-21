@@ -34,8 +34,10 @@ describe('role policy', () => {
     for (const role of ['super_admin', 'admin', 'manager']) {
       expect(roleHasCapability(role, 'approval.manage')).toBe(true);
       expect(roleHasCapability(role, 'calendar.manage')).toBe(true);
+      expect(roleHasCapability(role, 'counsel.manage')).toBe(true);
     }
     expect(roleHasCapability('instructor', 'calendar.manage')).toBe(false);
+    expect(roleHasCapability('instructor', 'counsel.manage')).toBe(false);
   });
 
   it('detects instructor-only claims without granting mixed admin claims', () => {

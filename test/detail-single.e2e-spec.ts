@@ -74,4 +74,24 @@ describe('Detail single-fetch endpoints (e2e, B7 E3)', () => {
     await http.get(`/api/reports/${foreign!.id}`).set(auth(inst)).expect(403); // 종전엔 200(IDOR)
     await http.get(`/api/reports/${foreign!.id}`).set(auth(admin)).expect(200); // 관리자는 전체
   });
+
+  it('강사 보고서·출결 조회도 본인 일반 일정 술어를 공유하고 상담 세션을 누출하지 않는다', async () => {
+    const counselSession = (await http.post('/api/schedule').set(auth(admin)).send({
+      courseId: 10, instructorId: instId, sessionDate: '2098-03-01', startTime: '05:00', durationMinutes: 60,
+      kind: 'counsel', force: true,
+    }).expect(201)).body.row;
+    const report = (await http.post('/api/reports').set(auth(admin)).send({
+      sessionId: counselSession.id, studentId: 1, content: '관리자 상담 기록', status: 'draft',
+    }).expect(201)).body;
+
+    const visibleReports = (await http.get('/api/reports').set(auth(inst)).expect(200)).body;
+    expect(visibleReports.some((row: { id: number }) => row.id === report.id)).toBe(false);
+    await http.get(`/api/reports?sessionId=${counselSession.id}`).set(auth(inst)).expect(403);
+    await http.get(`/api/reports/${report.id}`).set(auth(inst)).expect(403);
+    await http.get(`/api/attendance?sessionId=${counselSession.id}`).set(auth(inst)).expect(403);
+    await http.put('/api/attendance').set(auth(inst))
+      .send({ sessionId: counselSession.id, studentId: 1, status: 'present' }).expect(403);
+
+    await http.delete(`/api/schedule/${counselSession.id}`).set(auth(admin)).expect(200);
+  });
 });

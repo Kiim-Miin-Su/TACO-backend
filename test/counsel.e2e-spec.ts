@@ -8,14 +8,27 @@ describe('Counsel API (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let ADMIN = '';
+  let INSTRUCTOR = '';
   const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
     ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
+    INSTRUCTOR = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
   });
   afterAll(async () => { await app.close(); });
+
+  it('상담 폼·회차·예약일은 관리 역할 전용이며 강사는 URL 직접 접근도 403', async () => {
+    const asInstructor = { Authorization: `Bearer ${INSTRUCTOR}` };
+    await http.get('/api/counsel').set(asInstructor).expect(403);
+    await http.get('/api/counsel/rounds').set(asInstructor).expect(403);
+    await http.get('/api/counsel/1').set(asInstructor).expect(403);
+    await http.post('/api/counsel').set(asInstructor).send({ applicantName: '권한차단', source: 'manual' }).expect(403);
+    await http.patch('/api/counsel/1').set(asInstructor).send({ applicantName: '권한차단' }).expect(403);
+    await http.delete('/api/counsel/1').set(asInstructor).expect(403);
+    await http.post('/api/counsel/1/rounds').set(asInstructor).send({ summary: '권한차단' }).expect(403);
+  });
 
   it('GET /counsel — 상담 접수 3건(시드)', async () => {
     const forms = (await http.get('/api/counsel').set(asAdmin()).expect(200)).body;
