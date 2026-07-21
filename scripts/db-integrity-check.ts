@@ -215,14 +215,19 @@ async function main() {
     if (Number(n) > 0) push(warnings, 'AUDIT_SILENT_TABLE', table_name, undefined, `활성 ${n}행인데 audit_log 이력 0건(시드/역사 데이터면 정상)`);
   }
 
-  const counts = Object.fromEntries(
-    ['users', 'students', 'student_interests', 'class_sessions', 'attendance', 'session_reports', 'payments', 'expenses', 'transactions', 'instructor_payouts']
-      .map((t) => [t, rows(t, true).length]),
-  );
+  const countedTables = [
+    'users', 'students', 'student_interests', 'class_sessions', 'attendance',
+    'session_reports', 'payments', 'expenses', 'transactions', 'instructor_payouts',
+  ];
+  // counts는 복원/감사 근거인 soft-delete 행까지 포함한 물리 이력 수를 하위 호환으로 유지한다.
+  // activeCounts를 함께 노출해 운영 데이터 0과 이력 보존을 혼동하지 않게 한다.
+  const counts = Object.fromEntries(countedTables.map((t) => [t, rows(t, true).length]));
+  const activeCounts = Object.fromEntries(countedTables.map((t) => [t, rows(t).length]));
   const [{ n: auditCount }] = await pg.query<{ n: string }>('SELECT COUNT(*)::int AS n FROM audit_log');
   counts.audit_log = Number(auditCount);
+  activeCounts.audit_log = Number(auditCount);
   const ok = issues.length === 0;
-  console.log(JSON.stringify({ ok, checkedAt: new Date().toISOString(), counts, issues, warnings }, null, 2));
+  console.log(JSON.stringify({ ok, checkedAt: new Date().toISOString(), counts, activeCounts, issues, warnings }, null, 2));
   if (!ok) process.exitCode = 1;
   await app.close();
 }
