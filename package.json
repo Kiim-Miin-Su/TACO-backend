@@ -48,6 +48,7 @@
     "db:migrate:student-required-contract": "ts-node scripts/migrate-student-required-contract.ts",
     "db:migrate:course-pay-ssot": "ts-node scripts/migrate-course-pay-ssot.ts",
     "db:migrate:counsel-family-academic-expand": "ts-node scripts/migrate-counsel-family-academic-expand.ts",
+    "db:check:counsel-family-academic-contract": "ts-node scripts/check-counsel-family-academic-contract.ts",
     "db:cleanup:demo-data": "ts-node scripts/cleanup-demo-data.ts",
     "db:repair:legacy-unverified-users": "ts-node scripts/repair-legacy-unverified-users.ts",
     "route-coverage": "node dist/scripts/e2e-route-coverage.js",
