@@ -20,6 +20,7 @@ describe('Counsel API (e2e)', () => {
   it('GET /counsel — 상담 접수 3건(시드)', async () => {
     const forms = (await http.get('/api/counsel').set(asAdmin()).expect(200)).body;
     expect(forms.length).toBe(3);
+    expect(forms.map((form: { id: number }) => form.id)).toEqual([3, 2, 1]); // 최근 접수순
     const statuses = forms.map((f: { status: string }) => f.status).sort();
     expect(statuses).toEqual(['pending', 'registered', 'requested']);
   });
@@ -36,6 +37,7 @@ describe('Counsel API (e2e)', () => {
     const rounds = (await http.get('/api/counsel/rounds').set(asAdmin()).expect(200)).body;
     expect(rounds.length).toBe(4);
     expect(rounds.every((r: { counselFormId: number }) => formIds.has(r.counselFormId))).toBe(true);
+    expect(rounds.every((r: { formSnapshot?: { applicantName?: string } }) => Boolean(r.formSnapshot?.applicantName))).toBe(true);
   });
 
   it('GET /counsel/rounds?counselFormId=1 — 폼1의 회차 2건', async () => {
@@ -69,12 +71,12 @@ describe('Counsel API (e2e)', () => {
     });
 
     const updated = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin()).send({
-      applicantName: '전체수정', submitterType: 'student', applicantPhone: null, interestSubjectId: null, interestCourseId: null,
+      applicantName: '전체수정', source: 'google_form', submitterType: 'student', applicantPhone: null, interestSubjectId: null, interestCourseId: null,
       academyExpectation: null, desiredStartTime: 'undecided', learningAtmosphere: 'normal',
       studentIntention: 'unknown', weakness: null, nextContactAt: '2099-07-22',
     }).expect(200)).body;
     expect(updated).toMatchObject({
-      applicantName: '전체수정', submitterType: 'student', applicantPhone: null, interestSubjectId: null, interestCourseId: null,
+      applicantName: '전체수정', source: 'google_form', submitterType: 'student', applicantPhone: null, interestSubjectId: null, interestCourseId: null,
       academyExpectation: null, desiredStartTime: 'undecided', learningAtmosphere: 'normal',
       studentIntention: 'unknown', weakness: null, nextContactAt: '2099-07-22',
     });
@@ -118,15 +120,31 @@ describe('Counsel API (e2e)', () => {
     const before = (await http.get('/api/counsel/rounds?counselFormId=2').set(asAdmin()).expect(200)).body;
     const maxNo = before.reduce((m: number, r: { roundNo: number }) => Math.max(m, r.roundNo), -1);
     const round = (await http.post('/api/counsel/2/rounds').set({ Authorization: `Bearer ${token}` })
-      .send({ summary: '추가 상담', result: 'positive', nextContactAt: '2026-09-01' }).expect(201)).body;
+      .send({
+        summary: '추가 상담', result: 'positive',
+        formSnapshot: {
+          applicantName: '오민재', applicantPhone: '010-8888-3434', status: 'registered', source: 'naver_form',
+          submitterType: 'student', weakness: '1차에서 확인된 약점', nextContactAt: '2026-09-01',
+        },
+      }).expect(201)).body;
     expect(round.roundNo).toBe(maxNo + 1);
     expect(round.counselFormId).toBe(2);
+    expect(round.formSnapshot).toMatchObject({
+      applicantName: '오민재', submitterType: 'student', weakness: '1차에서 확인된 약점', nextContactAt: '2026-09-01',
+    });
     const form = (await http.get('/api/counsel').set(asAdmin()).expect(200)).body.find((f: { id: number }) => f.id === 2);
     expect(form.nextContactAt).toBe('2026-09-01'); // 폼 동기화
     const audit = (await http.get('/api/audit?entity=counsel_forms&entityId=2').set(asAdmin()).expect(200)).body;
     const sync = audit.find((row: { action: string; changes?: { nextContactAt?: { after?: string } } }) =>
       row.action === 'update' && row.changes?.nextContactAt?.after === '2026-09-01');
     expect(sync).toMatchObject({ actorId: 3 });
+    const roundAudit = (await http.get(`/api/audit?entity=counsel_rounds&entityId=${round.id}`).set(asAdmin()).expect(200)).body[0];
+    expect(roundAudit.changes.formSnapshot.after.applicantPhone).toBe('[masked]');
+
+    await http.patch('/api/counsel/2').set(asAdmin()).send({ weakness: '최초 폼에서 나중에 수정' }).expect(200);
+    const persisted = (await http.get('/api/counsel/rounds?counselFormId=2').set(asAdmin()).expect(200)).body
+      .find((item: { id: number }) => item.id === round.id);
+    expect(persisted.formSnapshot.weakness).toBe('1차에서 확인된 약점'); // 최초 폼 후속 수정과 독립
   });
 
   it('POST /counsel/:id/rounds — 예약일 audit 실패 시 회차와 부모 현재값을 함께 롤백한다', async () => {
@@ -201,6 +219,15 @@ describe('Counsel API (e2e)', () => {
       await http.post('/api/counsel').set(TH())
         .send({ applicantName: '주체오류', source: 'manual', submitterType: 'anonymous' }).expect(400);
       await http.patch('/api/counsel/1').set(TH()).send({ submitterType: 'anonymous' }).expect(400);
+    });
+
+    it('POST /counsel/:id/rounds — 스냅샷 내부 미허용 키·필수값 누락 → 400', async () => {
+      await http.post('/api/counsel/1/rounds').set(TH()).send({
+        formSnapshot: { applicantName: 'x', status: 'pending', source: 'manual', submitterType: 'staff', hackerField: 1 },
+      }).expect(400);
+      await http.post('/api/counsel/1/rounds').set(TH()).send({
+        formSnapshot: { status: 'pending', source: 'manual', submitterType: 'staff' },
+      }).expect(400);
     });
 
     it('POST /counsel — 미허용 필드(status·임의 키)는 forbidNonWhitelisted로 400(상태 주입 차단)', async () => {

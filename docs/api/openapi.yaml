@@ -4741,6 +4741,14 @@ components:
           - pending
           - registered
           - dropped
+        source:
+          type: string
+          enum:
+          - internal_form
+          - naver_form
+          - google_form
+          - manual
+          - etc
         submitterType:
           type: string
           enum:
@@ -4797,6 +4805,91 @@ components:
         nextContactAt:
           type: string
           nullable: true
+    CounselFormSnapshotDto:
+      type: object
+      properties:
+        applicantName:
+          type: string
+          maxLength: 60
+        applicantPhone:
+          type: string
+          nullable: true
+          maxLength: 30
+        parentId:
+          type: number
+          nullable: true
+        studentId:
+          type: number
+          nullable: true
+        assignedStaffId:
+          type: number
+          nullable: true
+        status:
+          type: string
+          enum:
+          - requested
+          - pending
+          - registered
+          - dropped
+        source:
+          type: string
+          enum:
+          - internal_form
+          - naver_form
+          - google_form
+          - manual
+          - etc
+        submitterType:
+          type: string
+          enum:
+          - parent
+          - student
+          - staff
+          - unknown
+        interestSubjectId:
+          type: number
+          nullable: true
+        interestCourseId:
+          type: number
+          nullable: true
+        academyExpectation:
+          type: string
+          nullable: true
+          maxLength: 1000
+        desiredStartTime:
+          type: string
+          nullable: true
+          enum:
+          - immediately
+          - within_1_month
+          - within_2_3_months
+          - undecided
+        learningAtmosphere:
+          type: string
+          nullable: true
+          enum:
+          - self_directed
+          - normal
+          - needs_management
+        studentIntention:
+          type: string
+          nullable: true
+          enum:
+          - student_wants
+          - parent_only
+          - unknown
+        weakness:
+          type: string
+          nullable: true
+          maxLength: 500
+        nextContactAt:
+          type: string
+          nullable: true
+      required:
+      - applicantName
+      - status
+      - source
+      - submitterType
     CreateCounselRoundDto:
       type: object
       properties:
@@ -4822,6 +4915,8 @@ components:
         nextContactAt:
           type: string
           pattern: ^\d{4}-\d{2}-\d{2}$
+        formSnapshot:
+          $ref: '#/components/schemas/CounselFormSnapshotDto'
     CreateViewPresetDto:
       type: object
       properties:

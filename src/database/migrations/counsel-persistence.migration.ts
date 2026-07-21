@@ -42,6 +42,8 @@ export const COUNSEL_ROUNDS_TABLE_SQL = `
     result varchar(32),
     next_action varchar(500),
     next_contact_at date,
+    form_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb
+      CHECK (jsonb_typeof(form_snapshot) = 'object'),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,

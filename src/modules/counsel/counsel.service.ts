@@ -11,6 +11,27 @@ import { CounselForm, CounselRound, COUNSEL_FORMS } from './counsel.entity';
 import { CreateCounselDto } from './dto/create-counsel.dto';
 import { UpdateCounselDto } from './dto/update-counsel.dto';
 import { CreateCounselRoundDto } from './dto/create-round.dto';
+import type { CounselFormSnapshot } from '@kms545487/contracts';
+import type { BaseRow } from '../../common/types/base';
+
+const snapshotOfForm = (form: CounselFormSnapshot): CounselFormSnapshot => ({
+  applicantName: form.applicantName,
+  applicantPhone: form.applicantPhone ?? null,
+  parentId: form.parentId ?? null,
+  studentId: form.studentId ?? null,
+  assignedStaffId: form.assignedStaffId ?? null,
+  status: form.status,
+  source: form.source,
+  submitterType: form.submitterType,
+  interestSubjectId: form.interestSubjectId ?? null,
+  interestCourseId: form.interestCourseId ?? null,
+  academyExpectation: form.academyExpectation ?? null,
+  desiredStartTime: form.desiredStartTime ?? null,
+  learningAtmosphere: form.learningAtmosphere ?? null,
+  studentIntention: form.studentIntention ?? null,
+  weakness: form.weakness ?? null,
+  nextContactAt: form.nextContactAt ?? null,
+});
 
 @Injectable()
 export class CounselService implements OnModuleInit {
@@ -53,7 +74,12 @@ export class CounselService implements OnModuleInit {
         status: 'requested',
       } as Omit<CounselForm, 'id' | 'createdAt' | 'updatedAt'>);
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
-      if (actorId != null) await this.audit.log({ entity: 'counsel_forms', entityId: row.id, action: 'create', actorId });
+      if (actorId != null) {
+        await this.audit.log({
+          entity: 'counsel_forms', entityId: row.id, action: 'create', actorId,
+          changes: this.audit.maskContactPii(this.audit.diffOf({}, row)),
+        });
+      }
       return row;
     });
   }
@@ -80,6 +106,11 @@ export class CounselService implements OnModuleInit {
   // 회차 추가 — roundNo 자동 증가, 부모 폼 FK 검증 + nextContactAt 동기화(배지 단일 소스).
   async createRound(formId: number, dto: CreateCounselRoundDto, actorId?: number): Promise<CounselRound> {
     if (dto.counselorId != null) this.assertActiveStaff(dto.counselorId, 'counselorId');
+    if (dto.formSnapshot) this.assertRefs(dto.formSnapshot);
+    if (dto.nextContactAt !== undefined && dto.formSnapshot?.nextContactAt !== undefined
+      && dto.nextContactAt !== dto.formSnapshot.nextContactAt) {
+      throw new BadRequestException('nextContactAt과 formSnapshot.nextContactAt이 일치해야 합니다');
+    }
     // [원자성] 회차 기록 + 폼 nextContactAt 동기화가 함께(다음 일정 불일치 방지)
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'counselForm', id: formId }]);
@@ -89,15 +120,23 @@ export class CounselService implements OnModuleInit {
         orderBy: { field: 'roundNo' },
       });
       const roundNo = existing.reduce((max, r) => Math.max(max, r.roundNo), -1) + 1;
+      const formSnapshot: CounselFormSnapshot = {
+        ...snapshotOfForm(beforeForm),
+        ...dto.formSnapshot,
+      };
+      if (dto.nextContactAt !== undefined) formSnapshot.nextContactAt = dto.nextContactAt;
       const round = await this.store.insert<CounselRound>(COUNSEL_ROUNDS_SPEC, {
         counselFormId: formId, roundNo, counselorId: dto.counselorId,
         completedAt: new Date().toISOString().slice(0, 10), isCompleted: true,
         summary: dto.summary, detail: dto.detail, result: dto.result,
-        nextAction: dto.nextAction, nextContactAt: dto.nextContactAt,
+        nextAction: dto.nextAction, nextContactAt: formSnapshot.nextContactAt ?? null,
+        formSnapshot,
       } as Omit<CounselRound, 'id' | 'createdAt' | 'updatedAt'>);
       // 폼의 다음 상담일을 최신 회차 기준으로 동기화(상담 배지 = nextContactAt 미정).
-      if (dto.nextContactAt !== undefined) {
-        const afterForm = await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, formId, { nextContactAt: dto.nextContactAt });
+      if (dto.nextContactAt !== undefined || dto.formSnapshot !== undefined) {
+        const afterForm = await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, formId, {
+          nextContactAt: formSnapshot.nextContactAt ?? null,
+        });
         if (actorId != null) {
           await this.audit.log({
             entity: 'counsel_forms', entityId: formId, action: 'update', actorId,
@@ -106,7 +145,12 @@ export class CounselService implements OnModuleInit {
         }
       }
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — 기존 db.transaction 안에 audit만 추가.
-      if (actorId != null) await this.audit.log({ entity: 'counsel_rounds', entityId: round.id, action: 'create', actorId });
+      if (actorId != null) {
+        await this.audit.log({
+          entity: 'counsel_rounds', entityId: round.id, action: 'create', actorId,
+          changes: this.audit.maskContactPii(this.audit.diffOf({}, round)),
+        });
+      }
       return round;
     });
   }
@@ -117,21 +161,22 @@ export class CounselService implements OnModuleInit {
     const forms = await this.store.hydrate<CounselForm>(COUNSEL_FORMS_SPEC);
     const rounds = await this.store.hydrate<CounselRound>(COUNSEL_ROUNDS_SPEC);
     if (forms.length || rounds.length || this.db.findAll<CounselForm>(COUNSEL_FORMS).length) return;
-    await this.store.seed<CounselForm>(COUNSEL_FORMS_SPEC, [
+    const seedForms: Array<Omit<CounselForm, keyof BaseRow> & { id: number }> = [
       { id: 1, applicantName: '한서진', applicantPhone: '010-7777-1212', assignedStaffId: 1, status: 'pending', source: 'internal_form', submitterType: 'unknown', interestSubjectId: 1, academyExpectation: '내신·수능 영어 전반 보완, 독해 속도 개선', desiredStartTime: 'within_1_month', learningAtmosphere: 'needs_management', studentIntention: 'parent_only', weakness: '독해 속도, 어휘량 부족', nextContactAt: '2026-06-29' },
       { id: 2, applicantName: '오민재', applicantPhone: '010-8888-3434', assignedStaffId: 1, status: 'registered', source: 'naver_form', submitterType: 'unknown', interestCourseId: 11, interestSubjectId: 2, academyExpectation: 'AP Calculus 대비', desiredStartTime: 'immediately', learningAtmosphere: 'self_directed', studentIntention: 'student_wants', weakness: '서술형 풀이 과정' },
       { id: 3, applicantName: '신유나', applicantPhone: '010-9999-5656', status: 'requested', source: 'manual', submitterType: 'unknown', interestSubjectId: 1, desiredStartTime: 'undecided', studentIntention: 'unknown' },
-    ]);
+    ];
+    await this.store.seed<CounselForm>(COUNSEL_FORMS_SPEC, seedForms);
     await this.store.seed<CounselRound>(COUNSEL_ROUNDS_SPEC, [
-      { id: 1, counselFormId: 1, roundNo: 0, counselorId: 1, completedAt: '2026-06-19', isCompleted: true, summary: '초기 전화 상담', detail: '현 성적·목표 파악. 레벨테스트 권유.', result: 'neutral', nextAction: '레벨테스트 일정 조율', nextContactAt: '2026-06-23' },
-      { id: 2, counselFormId: 1, roundNo: 1, counselorId: 1, completedAt: '2026-06-24', isCompleted: true, summary: '레벨테스트 후 대면 상담', detail: '독해 보강 필요. SAT Reading 정규 제안.', result: 'positive', nextAction: '수강 등록 안내', nextContactAt: '2026-06-29' },
-      { id: 3, counselFormId: 2, roundNo: 0, counselorId: 1, completedAt: '2026-06-13', isCompleted: true, summary: '온라인 상담', detail: 'AP 일정 및 커리큘럼 안내.', result: 'positive', nextAction: '시간표 확정' },
-      { id: 4, counselFormId: 2, roundNo: 1, counselorId: 1, completedAt: '2026-06-16', isCompleted: true, summary: '등록 확정 상담', detail: 'AP Calculus BC 등록 결정.', result: 'registered', nextAction: '결제 및 반 배정' },
+      { id: 1, counselFormId: 1, roundNo: 0, counselorId: 1, completedAt: '2026-06-19', isCompleted: true, summary: '초기 전화 상담', detail: '현 성적·목표 파악. 레벨테스트 권유.', result: 'neutral', nextAction: '레벨테스트 일정 조율', nextContactAt: '2026-06-23', formSnapshot: { ...snapshotOfForm(seedForms[0]), nextContactAt: '2026-06-23' } },
+      { id: 2, counselFormId: 1, roundNo: 1, counselorId: 1, completedAt: '2026-06-24', isCompleted: true, summary: '레벨테스트 후 대면 상담', detail: '독해 보강 필요. SAT Reading 정규 제안.', result: 'positive', nextAction: '수강 등록 안내', nextContactAt: '2026-06-29', formSnapshot: snapshotOfForm(seedForms[0]) },
+      { id: 3, counselFormId: 2, roundNo: 0, counselorId: 1, completedAt: '2026-06-13', isCompleted: true, summary: '온라인 상담', detail: 'AP 일정 및 커리큘럼 안내.', result: 'positive', nextAction: '시간표 확정', formSnapshot: snapshotOfForm(seedForms[1]) },
+      { id: 4, counselFormId: 2, roundNo: 1, counselorId: 1, completedAt: '2026-06-16', isCompleted: true, summary: '등록 확정 상담', detail: 'AP Calculus BC 등록 결정.', result: 'registered', nextAction: '결제 및 반 배정', formSnapshot: snapshotOfForm(seedForms[1]) },
     ]);
   }
 
   async findAllForms(): Promise<CounselForm[]> {
-    return this.store.findActive<CounselForm>(COUNSEL_FORMS_SPEC, { orderBy: { field: 'id' } });
+    return this.store.findActive<CounselForm>(COUNSEL_FORMS_SPEC, { orderBy: { field: 'id', direction: 'DESC' } });
   }
 
   async findAllRounds(counselFormId?: number): Promise<CounselRound[]> {

@@ -2,11 +2,11 @@ import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength } from 'class-val
 import type { CreateCounselInput } from '@kms545487/contracts';
 
 // [참조/처리] POST /counsel — 상담 접수 생성. 관심 코스/과목·담당자 FK는 서비스가 검증.
-const SOURCES = ['internal_form', 'naver_form', 'google_form', 'manual', 'etc'] as const;
+export const SOURCES = ['internal_form', 'naver_form', 'google_form', 'manual', 'etc'] as const;
 export const SUBMITTERS = ['parent', 'student', 'staff', 'unknown'] as const;
-const START = ['immediately', 'within_1_month', 'within_2_3_months', 'undecided'] as const;
-const ATMOS = ['self_directed', 'normal', 'needs_management'] as const;
-const INTENT = ['student_wants', 'parent_only', 'unknown'] as const;
+export const START = ['immediately', 'within_1_month', 'within_2_3_months', 'undecided'] as const;
+export const ATMOS = ['self_directed', 'normal', 'needs_management'] as const;
+export const INTENT = ['student_wants', 'parent_only', 'unknown'] as const;
 export const COUNSEL_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // [보안 2026-07-07] 자유 텍스트 상한 — 스케줄 DTO와 통일(무제한 문자열 = 저장 남용/페이로드 비대 방지).

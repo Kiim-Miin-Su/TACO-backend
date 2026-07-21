@@ -15,6 +15,7 @@ import {
   COUNSEL_PERSISTENCE_INDEX_SQL,
 } from './migrations/counsel-persistence.migration';
 import { COUNSEL_FORM_INPUTS_MIGRATION_SQL } from './migrations/counsel-form-inputs.migration';
+import { COUNSEL_ROUND_SNAPSHOTS_MIGRATION_SQL } from './migrations/counsel-round-snapshots.migration';
 import {
   ROADMAPS_TABLE_SQL,
   ROADMAP_COURSES_TABLE_SQL,
@@ -558,7 +559,9 @@ export const COUNSEL_FORMS_SPEC: PostgresCollectionSpec = {
 export const COUNSEL_ROUNDS_SPEC: PostgresCollectionSpec = {
   table: 'counsel_rounds',
   createSql: COUNSEL_ROUNDS_TABLE_SQL,
+  migrations: [...COUNSEL_ROUND_SNAPSHOTS_MIGRATION_SQL],
   indexes: COUNSEL_PERSISTENCE_INDEX_SQL.slice(4),
+  jsonFields: ['formSnapshot'],
   dateFields: ['scheduledAt', 'completedAt', 'nextContactAt'],
 };
 
