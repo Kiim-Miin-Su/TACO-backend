@@ -14,6 +14,8 @@ export class UpdateCounselDto implements UpdateCounselInput {
   @IsOptional() @IsIn(SUBMITTERS as unknown as string[]) submitterType?: UpdateCounselInput['submitterType'];
   @IsOptional() @IsString() @MaxLength(COUNSEL_TEXT.name) applicantName?: string;
   @IsOptional() @IsString() @MaxLength(COUNSEL_TEXT.phone) applicantPhone?: string | null;
+  @IsOptional() @IsInt() parentId?: number | null;
+  @IsOptional() @IsInt() studentId?: number | null;
   @IsOptional() @IsInt() assignedStaffId?: number | null;
   @IsOptional() @IsInt() interestSubjectId?: number | null;
   @IsOptional() @IsInt() interestCourseId?: number | null;

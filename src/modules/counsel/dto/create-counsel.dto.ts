@@ -15,6 +15,8 @@ export const COUNSEL_TEXT = { name: 60, phone: 30, weakness: 500, expectation: 1
 export class CreateCounselDto implements CreateCounselInput {
   @IsString() @MaxLength(COUNSEL_TEXT.name) applicantName!: string;
   @IsOptional() @IsString() @MaxLength(COUNSEL_TEXT.phone) applicantPhone?: string;
+  @IsOptional() @IsInt() parentId?: number;
+  @IsOptional() @IsInt() studentId?: number;
   @IsIn(SOURCES as unknown as string[]) source!: CreateCounselInput['source'];
   @IsOptional() @IsIn(SUBMITTERS as unknown as string[]) submitterType?: CreateCounselInput['submitterType'];
   @IsOptional() @IsInt() assignedStaffId?: number;

@@ -8221,6 +8221,12 @@
             "type": "string",
             "maxLength": 30
           },
+          "parentId": {
+            "type": "number"
+          },
+          "studentId": {
+            "type": "number"
+          },
           "source": {
             "type": "string",
             "enum": [
@@ -8334,6 +8340,14 @@
             "type": "string",
             "nullable": true,
             "maxLength": 30
+          },
+          "parentId": {
+            "type": "number",
+            "nullable": true
+          },
+          "studentId": {
+            "type": "number",
+            "nullable": true
           },
           "assignedStaffId": {
             "type": "number",
