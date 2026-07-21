@@ -12,6 +12,8 @@ export const COUNSEL_FORMS_TABLE_SQL = `
       CHECK (status IN ('requested','pending','registered','dropped')),
     source varchar(32) NOT NULL DEFAULT 'manual'
       CHECK (source IN ('internal_form','naver_form','google_form','manual','etc')),
+    submitter_type varchar(16) NOT NULL DEFAULT 'unknown'
+      CHECK (submitter_type IN ('parent','student','staff','unknown')),
     interest_subject_id integer,
     interest_course_id integer,
     academy_expectation text,

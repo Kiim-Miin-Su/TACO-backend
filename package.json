@@ -41,6 +41,7 @@
     "db:migrate:counsel-persistence": "ts-node scripts/migrate-counsel-persistence.ts",
     "db:migrate:auth-rate-limits": "ts-node scripts/migrate-auth-rate-limits.ts",
     "db:migrate:remaining-persistence": "ts-node scripts/migrate-remaining-persistence.ts",
+    "db:migrate:counsel-form-inputs": "ts-node scripts/migrate-counsel-form-inputs.ts",
     "db:cleanup:demo-data": "ts-node scripts/cleanup-demo-data.ts",
     "route-coverage": "node dist/scripts/e2e-route-coverage.js",
     "e2e:coverage": "E2E_ROUTE_LOG=/tmp/e2e-routes.log jest --config test/jest-e2e.json --runInBand && npm run route-coverage -- /tmp/e2e-routes.log",

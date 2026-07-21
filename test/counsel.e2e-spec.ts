@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
+import { AuditService } from '../src/modules/audit/audit.service';
 
 // 상담(counsel) 모듈 e2e — 시드 목록 + rounds↔forms FK 무결성.
 describe('Counsel API (e2e)', () => {
@@ -53,6 +54,46 @@ describe('Counsel API (e2e)', () => {
     expect(f.id).toBeGreaterThan(3);
   });
 
+  it('POST/PATCH /counsel — 폼 전체 입력과 다음 상담일을 저장·해제하고 audit에 남긴다', async () => {
+    const created = (await http.post('/api/counsel').set(asAdmin()).send({
+      applicantName: '전체입력', applicantPhone: '010-1234-5678', source: 'manual', submitterType: 'parent', assignedStaffId: 3,
+      interestSubjectId: 1, interestCourseId: 10, academyExpectation: '정기 피드백',
+      desiredStartTime: 'within_1_month', learningAtmosphere: 'needs_management',
+      studentIntention: 'student_wants', weakness: '어휘', nextContactAt: '2099-07-21',
+    }).expect(201)).body;
+    expect(created).toMatchObject({
+      applicantName: '전체입력', applicantPhone: '010-1234-5678', submitterType: 'parent', assignedStaffId: 3,
+      interestSubjectId: 1, interestCourseId: 10, academyExpectation: '정기 피드백',
+      desiredStartTime: 'within_1_month', learningAtmosphere: 'needs_management',
+      studentIntention: 'student_wants', weakness: '어휘', nextContactAt: '2099-07-21',
+    });
+
+    const updated = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin()).send({
+      applicantName: '전체수정', submitterType: 'student', applicantPhone: null, interestSubjectId: null, interestCourseId: null,
+      academyExpectation: null, desiredStartTime: 'undecided', learningAtmosphere: 'normal',
+      studentIntention: 'unknown', weakness: null, nextContactAt: '2099-07-22',
+    }).expect(200)).body;
+    expect(updated).toMatchObject({
+      applicantName: '전체수정', submitterType: 'student', applicantPhone: null, interestSubjectId: null, interestCourseId: null,
+      academyExpectation: null, desiredStartTime: 'undecided', learningAtmosphere: 'normal',
+      studentIntention: 'unknown', weakness: null, nextContactAt: '2099-07-22',
+    });
+
+    const cleared = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin())
+      .send({ nextContactAt: null }).expect(200)).body;
+    expect(cleared.nextContactAt).toBeNull();
+    const readback = (await http.get(`/api/counsel/${created.id}`).set(asAdmin()).expect(200)).body;
+    expect(readback.nextContactAt).toBeNull();
+
+    const audit = (await http.get(`/api/audit?entity=counsel_forms&entityId=${created.id}`).set(asAdmin()).expect(200)).body;
+    const update = audit.find((row: { action: string; changes?: Record<string, unknown> }) =>
+      row.action === 'update' && row.changes?.applicantName);
+    expect(update).toBeDefined();
+    expect(update.actorId).toBe(3);
+    expect(update.changes.nextContactAt.after).toBe('2099-07-22');
+    expect(update.changes.applicantPhone).toEqual({ before: '[masked]', after: '[masked]' });
+  });
+
   it('POST /counsel — 없는 interestCourseId → 400(FK)', async () => {
     const token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     await http.post('/api/counsel').set({ Authorization: `Bearer ${token}` })
@@ -82,6 +123,24 @@ describe('Counsel API (e2e)', () => {
     expect(round.counselFormId).toBe(2);
     const form = (await http.get('/api/counsel').set(asAdmin()).expect(200)).body.find((f: { id: number }) => f.id === 2);
     expect(form.nextContactAt).toBe('2026-09-01'); // 폼 동기화
+    const audit = (await http.get('/api/audit?entity=counsel_forms&entityId=2').set(asAdmin()).expect(200)).body;
+    const sync = audit.find((row: { action: string; changes?: { nextContactAt?: { after?: string } } }) =>
+      row.action === 'update' && row.changes?.nextContactAt?.after === '2026-09-01');
+    expect(sync).toMatchObject({ actorId: 3 });
+  });
+
+  it('POST /counsel/:id/rounds — 예약일 audit 실패 시 회차와 부모 현재값을 함께 롤백한다', async () => {
+    const beforeRounds = (await http.get('/api/counsel/rounds?counselFormId=3').set(asAdmin()).expect(200)).body;
+    const audit = app.get(AuditService);
+    const fail = jest.spyOn(audit, 'log').mockRejectedValueOnce(new Error('injected counsel sync audit failure'));
+    await http.post('/api/counsel/3/rounds').set(asAdmin())
+      .send({ summary: '롤백 대상', nextContactAt: '2026-09-02' }).expect(500);
+    fail.mockRestore();
+
+    const afterForm = (await http.get('/api/counsel/3').set(asAdmin()).expect(200)).body;
+    const afterRounds = (await http.get('/api/counsel/rounds?counselFormId=3').set(asAdmin()).expect(200)).body;
+    expect(afterForm.nextContactAt == null).toBe(true);
+    expect(afterRounds).toHaveLength(beforeRounds.length);
   });
 
   it('POST /counsel/:id/rounds — 없는 폼 → 404', async () => {
@@ -130,6 +189,18 @@ describe('Counsel API (e2e)', () => {
       const f = (await http.post('/api/counsel').set(TH())
         .send({ applicantName: '신규접수', source: 'manual' }).expect(201)).body;
       expect(f.status).toBe('requested'); // 서비스가 강제
+    });
+
+    it('POST/PATCH /counsel — nextContactAt 형식 오류 → 400', async () => {
+      await http.post('/api/counsel').set(TH())
+        .send({ applicantName: '날짜오류', source: 'manual', nextContactAt: '21-07-2026' }).expect(400);
+      await http.patch('/api/counsel/1').set(TH()).send({ nextContactAt: 'tomorrow' }).expect(400);
+    });
+
+    it('POST/PATCH /counsel — 작성 주체 enum 밖의 값 → 400', async () => {
+      await http.post('/api/counsel').set(TH())
+        .send({ applicantName: '주체오류', source: 'manual', submitterType: 'anonymous' }).expect(400);
+      await http.patch('/api/counsel/1').set(TH()).send({ submitterType: 'anonymous' }).expect(400);
     });
 
     it('POST /counsel — 미허용 필드(status·임의 키)는 forbidNonWhitelisted로 400(상태 주입 차단)', async () => {

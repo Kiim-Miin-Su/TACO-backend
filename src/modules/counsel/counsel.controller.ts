@@ -47,7 +47,7 @@ export class CounselController {
 
   @Post()
   @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '상담 접수 생성 — status=requested' })
+  @ApiOperation({ summary: '상담 접수 생성 — 전체 폼 저장, status=requested, nextContactAt은 예약 캘린더 단일 소스' })
   @ApiCreatedResponse({ description: '생성된 CounselForm' })
   createForm(@Body() dto: CreateCounselDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.counsel.createForm(dto, req.user?.sub);
@@ -55,7 +55,7 @@ export class CounselController {
 
   @Patch(':id')
   @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '상담 폼 수정(상태 전환·담당자·관심사)' })
+  @ApiOperation({ summary: '상담 폼 수정 — 전체 입력 및 nextContactAt 예약 캘린더 동기화' })
   @ApiOkResponse({ description: '수정된 CounselForm' })
   updateForm(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCounselDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.counsel.updateForm(id, dto, req.user?.sub);

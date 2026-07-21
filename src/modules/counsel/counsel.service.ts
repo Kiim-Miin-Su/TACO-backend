@@ -22,7 +22,7 @@ export class CounselService implements OnModuleInit {
   ) {}
 
   // 관심 과목/코스 FK 존재 검증(있을 때만) — 참조 무결성.
-  private assertRefs(dto: { interestSubjectId?: number; interestCourseId?: number; assignedStaffId?: number }): void {
+  private assertRefs(dto: { interestSubjectId?: number | null; interestCourseId?: number | null; assignedStaffId?: number | null }): void {
     if (dto.interestSubjectId != null && !this.db.findById<Subject>(SUBJECTS, dto.interestSubjectId))
       throw new BadRequestException(`interestSubjectId ${dto.interestSubjectId} 없음`);
     if (dto.interestCourseId != null && !this.db.findById<Course>(COURSES, dto.interestCourseId))
@@ -49,6 +49,7 @@ export class CounselService implements OnModuleInit {
     return this.uow.run(async () => {
       const row = await this.store.insert<CounselForm>(COUNSEL_FORMS_SPEC, {
         ...dto,
+        submitterType: dto.submitterType ?? 'unknown',
         status: 'requested',
       } as Omit<CounselForm, 'id' | 'createdAt' | 'updatedAt'>);
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
@@ -82,7 +83,7 @@ export class CounselService implements OnModuleInit {
     // [원자성] 회차 기록 + 폼 nextContactAt 동기화가 함께(다음 일정 불일치 방지)
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'counselForm', id: formId }]);
-      await this.findForm(formId);
+      const beforeForm = { ...(await this.findForm(formId)) };
       const existing = await this.store.findActive<CounselRound>(COUNSEL_ROUNDS_SPEC, {
         where: { counselFormId: formId },
         orderBy: { field: 'roundNo' },
@@ -96,7 +97,13 @@ export class CounselService implements OnModuleInit {
       } as Omit<CounselRound, 'id' | 'createdAt' | 'updatedAt'>);
       // 폼의 다음 상담일을 최신 회차 기준으로 동기화(상담 배지 = nextContactAt 미정).
       if (dto.nextContactAt !== undefined) {
-        await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, formId, { nextContactAt: dto.nextContactAt });
+        const afterForm = await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, formId, { nextContactAt: dto.nextContactAt });
+        if (actorId != null) {
+          await this.audit.log({
+            entity: 'counsel_forms', entityId: formId, action: 'update', actorId,
+            changes: this.audit.diffOf(beforeForm, afterForm as CounselForm),
+          });
+        }
       }
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — 기존 db.transaction 안에 audit만 추가.
       if (actorId != null) await this.audit.log({ entity: 'counsel_rounds', entityId: round.id, action: 'create', actorId });
@@ -111,9 +118,9 @@ export class CounselService implements OnModuleInit {
     const rounds = await this.store.hydrate<CounselRound>(COUNSEL_ROUNDS_SPEC);
     if (forms.length || rounds.length || this.db.findAll<CounselForm>(COUNSEL_FORMS).length) return;
     await this.store.seed<CounselForm>(COUNSEL_FORMS_SPEC, [
-      { id: 1, applicantName: '한서진', applicantPhone: '010-7777-1212', assignedStaffId: 1, status: 'pending', source: 'internal_form', interestSubjectId: 1, academyExpectation: '내신·수능 영어 전반 보완, 독해 속도 개선', desiredStartTime: 'within_1_month', learningAtmosphere: 'needs_management', studentIntention: 'parent_only', weakness: '독해 속도, 어휘량 부족', nextContactAt: '2026-06-29' },
-      { id: 2, applicantName: '오민재', applicantPhone: '010-8888-3434', assignedStaffId: 1, status: 'registered', source: 'naver_form', interestCourseId: 11, interestSubjectId: 2, academyExpectation: 'AP Calculus 대비', desiredStartTime: 'immediately', learningAtmosphere: 'self_directed', studentIntention: 'student_wants', weakness: '서술형 풀이 과정' },
-      { id: 3, applicantName: '신유나', applicantPhone: '010-9999-5656', status: 'requested', source: 'manual', interestSubjectId: 1, desiredStartTime: 'undecided', studentIntention: 'unknown' },
+      { id: 1, applicantName: '한서진', applicantPhone: '010-7777-1212', assignedStaffId: 1, status: 'pending', source: 'internal_form', submitterType: 'unknown', interestSubjectId: 1, academyExpectation: '내신·수능 영어 전반 보완, 독해 속도 개선', desiredStartTime: 'within_1_month', learningAtmosphere: 'needs_management', studentIntention: 'parent_only', weakness: '독해 속도, 어휘량 부족', nextContactAt: '2026-06-29' },
+      { id: 2, applicantName: '오민재', applicantPhone: '010-8888-3434', assignedStaffId: 1, status: 'registered', source: 'naver_form', submitterType: 'unknown', interestCourseId: 11, interestSubjectId: 2, academyExpectation: 'AP Calculus 대비', desiredStartTime: 'immediately', learningAtmosphere: 'self_directed', studentIntention: 'student_wants', weakness: '서술형 풀이 과정' },
+      { id: 3, applicantName: '신유나', applicantPhone: '010-9999-5656', status: 'requested', source: 'manual', submitterType: 'unknown', interestSubjectId: 1, desiredStartTime: 'undecided', studentIntention: 'unknown' },
     ]);
     await this.store.seed<CounselRound>(COUNSEL_ROUNDS_SPEC, [
       { id: 1, counselFormId: 1, roundNo: 0, counselorId: 1, completedAt: '2026-06-19', isCompleted: true, summary: '초기 전화 상담', detail: '현 성적·목표 파악. 레벨테스트 권유.', result: 'neutral', nextAction: '레벨테스트 일정 조율', nextContactAt: '2026-06-23' },

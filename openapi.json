@@ -3949,7 +3949,7 @@
             "bearer": []
           }
         ],
-        "summary": "상담 접수 생성 — status=requested",
+        "summary": "상담 접수 생성 — 전체 폼 저장, status=requested, nextContactAt은 예약 캘린더 단일 소스",
         "tags": [
           "counsel"
         ]
@@ -4044,7 +4044,7 @@
             "bearer": []
           }
         ],
-        "summary": "상담 폼 수정(상태 전환·담당자·관심사)",
+        "summary": "상담 폼 수정 — 전체 입력 및 nextContactAt 예약 캘린더 동기화",
         "tags": [
           "counsel"
         ]
@@ -7096,6 +7096,15 @@
               "etc"
             ]
           },
+          "submitterType": {
+            "type": "string",
+            "enum": [
+              "parent",
+              "student",
+              "staff",
+              "unknown"
+            ]
+          },
           "assignedStaffId": {
             "type": "number"
           },
@@ -7137,6 +7146,9 @@
           "weakness": {
             "type": "string",
             "maxLength": 500
+          },
+          "nextContactAt": {
+            "type": "string"
           }
         },
         "required": [
@@ -7156,22 +7168,77 @@
               "dropped"
             ]
           },
+          "submitterType": {
+            "type": "string",
+            "enum": [
+              "parent",
+              "student",
+              "staff",
+              "unknown"
+            ]
+          },
+          "applicantName": {
+            "type": "string",
+            "maxLength": 60
+          },
+          "applicantPhone": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 30
+          },
           "assignedStaffId": {
-            "type": "number"
+            "type": "number",
+            "nullable": true
           },
           "interestSubjectId": {
-            "type": "number"
+            "type": "number",
+            "nullable": true
           },
           "interestCourseId": {
-            "type": "number"
+            "type": "number",
+            "nullable": true
           },
           "academyExpectation": {
             "type": "string",
+            "nullable": true,
             "maxLength": 1000
+          },
+          "desiredStartTime": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "immediately",
+              "within_1_month",
+              "within_2_3_months",
+              "undecided"
+            ]
+          },
+          "learningAtmosphere": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "self_directed",
+              "normal",
+              "needs_management"
+            ]
+          },
+          "studentIntention": {
+            "type": "string",
+            "nullable": true,
+            "enum": [
+              "student_wants",
+              "parent_only",
+              "unknown"
+            ]
           },
           "weakness": {
             "type": "string",
+            "nullable": true,
             "maxLength": 500
+          },
+          "nextContactAt": {
+            "type": "string",
+            "nullable": true
           }
         }
       },

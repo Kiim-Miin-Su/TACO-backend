@@ -18,6 +18,7 @@ import { CREDENTIAL_OTP_MIGRATION_ID } from '../src/database/migrations/credenti
 import { COUNSEL_PERSISTENCE_MIGRATION_ID } from '../src/database/migrations/counsel-persistence.migration';
 import { AUTH_RATE_LIMITS_MIGRATION_ID } from '../src/database/migrations/auth-rate-limits.migration';
 import { REMAINING_PERSISTENCE_MIGRATION_ID } from '../src/database/migrations/remaining-persistence.migration';
+import { COUNSEL_FORM_INPUTS_MIGRATION_ID } from '../src/database/migrations/counsel-form-inputs.migration';
 
 loadLocalEnv();
 
@@ -38,6 +39,7 @@ export const EXPECTED_MIGRATION_IDS = [
   COUNSEL_PERSISTENCE_MIGRATION_ID,
   AUTH_RATE_LIMITS_MIGRATION_ID,
   REMAINING_PERSISTENCE_MIGRATION_ID,
+  COUNSEL_FORM_INPUTS_MIGRATION_ID,
 ] as const;
 
 const url = directDatabaseUrl();
