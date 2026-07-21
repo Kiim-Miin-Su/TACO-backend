@@ -77,6 +77,14 @@ describe('[TBO-29D D2] POST /students/registrations (atomic aggregate)', () => {
     expect(db.findById<Student>('students', res.body.student.id)?.name).toBe('통합 등록');
     expect(db.findById<ParentStudent>('parent_student_relations', res.body.guardian.relation.id)?.isPrimary).toBe(true);
     expect(db.findById<Enrollment>('enrollments', res.body.enrollment.id)?.status).toBe('active');
+
+    // [TBO-35 35A] 캘린더 학생 피커도 별도 mock/목록이 아니라 같은 students DB row를 투영한다.
+    // 신규 학생은 수강 여부와 무관하게 /students와 /schedule/resources에서 같은 id/name으로 보여야 한다.
+    const studentList = (await http.get('/api/students').set(auth()).expect(200)).body;
+    const calendarResources = (await http.get('/api/schedule/resources').set(auth()).expect(200)).body;
+    expect(studentList.find((student: Student) => student.id === res.body.student.id)).toMatchObject({ name: '통합 등록' });
+    expect(calendarResources.students.find((student: { id: number; name: string }) => student.id === res.body.student.id))
+      .toMatchObject({ name: '통합 등록' });
   });
 
   it('실패 주입(enrollment 단계 — 미존재 코스) → 400 + 모든 자산 +0(부분 저장 없음)', async () => {
