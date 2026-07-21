@@ -29,6 +29,12 @@ function safeUrlInfo(url: string): Pick<DatabaseConnectionStatus, 'host' | 'data
   }
 }
 
+export function runtimeSchemaDdlEnabled(): boolean {
+  const explicit = process.env.RUNTIME_SCHEMA_DDL?.trim().toLowerCase();
+  if (explicit != null && explicit !== '') return explicit === 'true';
+  return process.env.NODE_ENV !== 'production';
+}
+
 @Injectable()
 export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PostgresConnectionService.name);
@@ -165,6 +171,10 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
   private ddlChain: Promise<void> = Promise.resolve();
 
   async ddl(sql: string): Promise<void> {
+    // Production schema changes belong to versioned migrations. Skipping runtime DDL also
+    // prevents separate serverless cold starts from racing on CREATE/ALTER/INDEX. The first
+    // real SELECT/INSERT still fails closed when a required migration is missing.
+    if (!runtimeSchemaDdlEnabled()) return;
     const run = this.ddlChain.then(async () => {
       try {
         await this.query(sql);
