@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { ENROLLMENTS_SPEC, PARENT_STUDENT_RELATIONS_SPEC, STUDENT_INTERESTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -10,6 +10,7 @@ import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { ParentStudent, PARENT_STUDENTS } from '../parents/parent.entity';
 import { StudentInterest, STUDENT_INTERESTS } from './student-interest.entity';
+import { studentGradeBirthDateError } from './student-grade.policy';
 
 @Injectable()
 export class StudentsService implements OnModuleInit {
@@ -44,6 +45,8 @@ export class StudentsService implements OnModuleInit {
   }
 
   async create(dto: CreateStudentDto, actorId?: number): Promise<Student> {
+    const gradeError = studentGradeBirthDateError(dto.grade, dto.birthDate);
+    if (gradeError) throw new BadRequestException(gradeError);
     return this.uow.run(async () => {
       const row = await this.store.insert<Student>(STUDENTS_SPEC, {
         name: dto.name,
@@ -77,6 +80,9 @@ export class StudentsService implements OnModuleInit {
   async update(id: number, dto: UpdateStudentDto, actorId?: number): Promise<Student> {
     // ⚠ live-reference 함정: findOne은 메모리 행 참조를 그대로 주므로 update가 before까지 바꾼다 — 클론 필수.
     const before = { ...this.findOne(id) };
+    const merged = { ...before, ...dto };
+    const gradeError = studentGradeBirthDateError(merged.grade, merged.birthDate);
+    if (gradeError) throw new BadRequestException(gradeError);
     return this.uow.run(async () => {
       const after = await this.store.update<Student>(STUDENTS_SPEC, id, { ...dto }) as Student;
       // 상태 변경과 일반 프로필 수정을 감사 action에서도 분리한다.

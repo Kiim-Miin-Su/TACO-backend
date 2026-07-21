@@ -11,6 +11,7 @@ import type { Enrollment } from '../enrollments/enrollment.entity';
 import { RegisterStudentDto } from './dto/register-student.dto';
 import { StudentInterestsService } from '../students/student-interests.service';
 import { UpdateStudentAggregateDto } from '../students/dto/update-student-aggregate.dto';
+import { studentGradeBirthDateError } from '../students/student-grade.policy';
 
 export type RegistrationResult = {
   student: Student;
@@ -136,6 +137,8 @@ export class RegistrationsService {
     if (input.residenceType && input.residenceType !== residenceType) {
       throw new BadRequestException('거주 유형과 국가가 일치하지 않습니다.');
     }
+    const gradeError = studentGradeBirthDateError(input.grade, input.birthDate);
+    if (gradeError) throw new BadRequestException(gradeError);
     return { ...input, residenceType };
   }
 

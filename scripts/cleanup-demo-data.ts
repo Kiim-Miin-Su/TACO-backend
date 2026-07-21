@@ -75,6 +75,7 @@ async function main(): Promise<void> {
   // [함정] pool max=1 — tx 내부에서 dataSource.query(pool)를 부르면 자기 자신을 기다리다
   //  connect timeout이 난다. 존재 확인은 tx 진입 전에 끝내고, tx 안은 manager.query만 쓴다.
   const hasProfiles = await exists('instructor_profiles');
+  const hasAuditLog = await exists('audit_log');
   await dataSource.transaction(async (manager) => {
     await manager.query('SELECT pg_advisory_xact_lock($1, $2)', [29, 9]);
     for (const t of present) await manager.query(`DELETE FROM ${t}`);
@@ -86,6 +87,20 @@ async function main(): Promise<void> {
       );
     }
     await manager.query(`DELETE FROM users WHERE role <> 'super_admin' AND web_id = ANY($1)`, [DEMO_WEB_IDS]);
+    // 운영 초기화도 추적 가능한 업무 변경이다. KEEP_LOGS 실행은 삭제 전 집계와 데모 계정 목록을 같은 tx에 남긴다.
+    if (keepLogs && hasAuditLog) {
+      const [actor] = await manager.query(`SELECT id FROM users WHERE role = 'super_admin' AND status = 'active' ORDER BY id LIMIT 1`);
+      if (!actor?.id) throw new Error('bulk cleanup 감사 이력을 남길 활성 super_admin이 없습니다.');
+      await manager.query(
+        `INSERT INTO audit_log (entity, entity_id, action, actor_id, changes, reason)
+         VALUES ('system_cleanup', 0, 'delete', $1, $2, $3)`,
+        [
+          actor.id,
+          JSON.stringify({ rows: { before }, demoUsers: { before: demoUsers.map((user: { web_id: string }) => user.web_id) } }),
+          'TBO-36 production mock/domain reset; audit and auth history preserved',
+        ],
+      );
+    }
   });
 
   const after: Record<string, number> = {};

@@ -45,6 +45,7 @@
     "db:migrate:counsel-round-snapshots": "ts-node scripts/migrate-counsel-round-snapshots.ts",
     "db:migrate:student-profile": "ts-node scripts/migrate-student-profile.ts",
     "db:migrate:staff-pay-calendar": "ts-node scripts/migrate-staff-pay-calendar.ts",
+    "db:migrate:student-required-contract": "ts-node scripts/migrate-student-required-contract.ts",
     "db:cleanup:demo-data": "ts-node scripts/cleanup-demo-data.ts",
     "route-coverage": "node dist/scripts/e2e-route-coverage.js",
     "e2e:coverage": "E2E_ROUTE_LOG=/tmp/e2e-routes.log jest --config test/jest-e2e.json --runInBand && npm run route-coverage -- /tmp/e2e-routes.log",
