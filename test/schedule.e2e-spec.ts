@@ -7,6 +7,7 @@ describe("Schedule API (e2e)", () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let ADMIN = '';
+  let INSTRUCTOR = '';
   const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
   const MON = mondayISO();
   const SUN = addDaysISO(MON, 6);
@@ -21,6 +22,7 @@ describe("Schedule API (e2e)", () => {
     ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     const login = await http.post("/api/auth/login").send({ webId: "admin", password: "demo1234" }).expect(201);
     TOKEN = login.body.accessToken;
+    INSTRUCTOR = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
   });
   afterAll(async () => {
     await app.close();
@@ -71,6 +73,48 @@ describe("Schedule API (e2e)", () => {
     await http.delete(`/api/schedule/${created.id}`).set(TH()).expect(200);
   });
 
+  it("강사는 공개+본인 일정만 읽고 공개 타인 일정의 쓰기 권한은 얻지 않는다", async () => {
+    const headers = { Authorization: `Bearer ${INSTRUCTOR}` };
+    const date = '2098-02-01';
+    const privateRow = (await http.post('/api/schedule').set(TH()).send({
+      courseId: 11, instructorId: 2, sessionDate: date, startTime: '10:00', durationMinutes: 30,
+      isPublic: false, force: true,
+    }).expect(201)).body.row;
+    const publicRow = (await http.post('/api/schedule').set(TH()).send({
+      courseId: 11, instructorId: 2, sessionDate: date, startTime: '11:00', durationMinutes: 30,
+      isPublic: true, force: true,
+    }).expect(201)).body.row;
+    const ownRow = (await http.post('/api/schedule').set(TH()).send({
+      courseId: 10, instructorId: 1, sessionDate: date, startTime: '12:00', durationMinutes: 30,
+      isPublic: false, force: true,
+    }).expect(201)).body.row;
+
+    const visible = (await http.get(`/api/schedule?from=${date}&to=${date}`).set(headers).expect(200)).body;
+    expect(visible.map((row: { id: number }) => row.id)).toEqual(expect.arrayContaining([publicRow.id, ownRow.id]));
+    expect(visible.some((row: { id: number }) => row.id === privateRow.id)).toBe(false);
+    await http.get(`/api/schedule/${publicRow.id}`).set(headers).expect(200);
+    await http.get(`/api/schedule/${privateRow.id}`).set(headers).expect(403);
+    await http.patch(`/api/schedule/${publicRow.id}`).set(headers).send({ topic: '권한 상승 차단' }).expect(403);
+
+    for (const row of [privateRow, publicRow, ownRow]) await http.delete(`/api/schedule/${row.id}`).set(TH()).expect(200);
+  });
+
+  it("활성 대표는 schedule owner지만 강사 출결·정산 대상은 아니다", async () => {
+    const resources = (await http.get('/api/schedule/resources').set(asAdmin()).expect(200)).body;
+    const representative = resources.instructors.find((row: { scheduleOwnerRole?: string }) => row.scheduleOwnerRole === 'super_admin');
+    expect(representative).toBeTruthy();
+    const date = '2098-02-02';
+    const row = (await http.post('/api/schedule').set(TH()).send({
+      courseId: 10, instructorId: representative.id, sessionDate: date, startTime: '09:00', durationMinutes: 60,
+      isPublic: true, force: true,
+    }).expect(201)).body.row;
+    expect(row.instructorId).toBe(representative.id);
+    const attendance = (await http.get(`/api/schedule/instructor-attendance-summary?from=${date}&to=${date}`).set(asAdmin()).expect(200)).body;
+    expect(attendance.rows.some((entry: { instructorId: number }) => entry.instructorId === representative.id)).toBe(false);
+    await http.get(`/api/payouts/preview?instructorId=${representative.id}&from=${date}&to=${date}`).set(asAdmin()).expect(400);
+    await http.delete(`/api/schedule/${row.id}`).set(TH()).expect(200);
+  });
+
   it("GET /schedule/resources — 강사·강의실·학생·코스 옵션", async () => {
     const res = await http.get("/api/schedule/resources").set(asAdmin()).expect(200);
     expect(res.body.instructors.length).toBeGreaterThan(0);
@@ -86,6 +130,7 @@ describe("Schedule API (e2e)", () => {
     const jung = res.body.instructors.find((i: { id: number }) => i.id === 2);
     expect(park).toMatchObject({ countryCode: "KR", timeZone: "Asia/Seoul" });
     expect(jung).toMatchObject({ countryCode: "GB", timeZone: "Europe/London" });
+    expect(res.body.instructors.some((i: { scheduleOwnerRole?: string }) => i.scheduleOwnerRole === 'super_admin')).toBe(true);
     const overseasStudent = res.body.students.find((s: { id: number }) => s.id === 1);
     expect(overseasStudent).toMatchObject({ countryCode: "US" });
     // 코스11(AP Calculus)은 시드 세션이 120분 → 진행시간 120 파생

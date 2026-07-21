@@ -71,6 +71,10 @@ export const toSafe = (a: StaffAccount): SafeAccount => {
 export const isActiveInstructor = (u: StaffAccount | undefined): u is StaffAccount =>
   !!u && u.role === 'instructor' && u.status === 'active' && u.deletedAt == null;
 
+/** 캘린더 배정 대상: 활성 강사 + 활성 대표. 대표는 일정 owner일 뿐 강사 출결/정산 대상은 아니다. */
+export const isActiveScheduleOwner = (u: StaffAccount | undefined): u is StaffAccount =>
+  !!u && u.status === 'active' && u.deletedAt == null && (u.role === 'instructor' || u.role === 'super_admin');
+
 /** authVersion 규약 — 미설정(구 행)=1. */
 export const authVersionOf = (u: Pick<StaffAccount, 'authVersion'>): number => u.authVersion ?? 1;
 export const profileVersionOf = (u: Pick<StaffAccount, 'profileVersion'>): number => u.profileVersion ?? 1;

@@ -33,14 +33,16 @@ export class ScheduleController {
     @Query('studentId') studentId?: string,
   ) {
     await this.schedule.ensureReady();
-    const instructorScope = isInstructorOnly(req.user?.roles) ? req.user?.sub : instructorId ? Number(instructorId) : undefined;
-    return this.schedule.list({
+    const filters = {
       from,
       to,
-      instructorId: instructorScope,
+      instructorId: instructorId ? Number(instructorId) : undefined,
       roomId: roomId ? Number(roomId) : undefined,
       studentId: studentId ? Number(studentId) : undefined,
-    });
+    };
+    return isInstructorOnly(req.user?.roles)
+      ? this.schedule.listVisible({ ...filters, instructorId: undefined }, req.user!.sub)
+      : this.schedule.list(filters);
   }
 
   // GET /api/schedule/resources — 자원 피커(강사·강의실·학생·코스)
@@ -81,8 +83,8 @@ export class ScheduleController {
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     await this.schedule.ensureReady();
     const row = this.schedule.findOneEnriched(id);
-    if (isInstructorOnly(req.user?.roles) && row.instructorId !== req.user?.sub)
-      throw new ForbiddenException('본인 수업만 조회할 수 있습니다.');
+    if (isInstructorOnly(req.user?.roles) && row.instructorId !== req.user?.sub && row.isPublic !== true)
+      throw new ForbiddenException('본인 수업 또는 공개 일정만 조회할 수 있습니다.');
     return row;
   }
 

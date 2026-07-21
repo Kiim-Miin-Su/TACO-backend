@@ -7,7 +7,7 @@ import { AuditService } from '../audit/audit.service';
 import { hasAdminRole } from '../auth/roles.decorator';
 import { Student, STUDENTS } from '../students/student.entity';
 import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
-import { StaffAccount, USERS } from '../users/user.entity';
+import { StaffAccount, USERS, isActiveScheduleOwner } from '../users/user.entity';
 import { AvailabilityBlock, AVAILABILITY, AvailabilityKind, AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
 import { RoomsService } from '../rooms/rooms.service';
@@ -73,8 +73,8 @@ export class AvailabilityService implements OnModuleInit {
     if (ownerType === 'room' && !this.rooms.findAll().some((r) => Number(r.id) === Number(ownerId))) {
       throw new BadRequestException(`roomId ${ownerId} 없음(존재하지 않는 강의실)`);
     }
-    if (ownerType === 'instructor' && this.db.findById<StaffAccount>(USERS, ownerId)?.role !== 'instructor')
-      throw new BadRequestException(`instructorId ${ownerId} 없음(존재하지 않는 강사)`);
+    if (ownerType === 'instructor' && !isActiveScheduleOwner(this.db.findById<StaffAccount>(USERS, ownerId)))
+      throw new BadRequestException(`instructorId ${ownerId} 없음(활성 강사 또는 대표 아님)`);
     const student = ownerType === 'student' ? this.db.findById<Student>(STUDENTS, ownerId) : undefined;
     if (ownerType === 'student' && (!student || !isScheduleVisibleStudentStatus(student.status)))
       throw new BadRequestException(`studentId ${ownerId} 없음(존재하지 않는 학생)`);

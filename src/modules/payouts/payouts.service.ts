@@ -8,7 +8,7 @@ import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { countsForTeachingHours, payoutAmountOf } from '../schedule/session-accounting.policy';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { CoursesService } from '../courses/courses.service';
-import { USERS, type StaffAccount } from '../users/user.entity'; // [TBO-32 C1] 일괄 산정 대상 강사 열거
+import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // 대표 schedule owner는 정산 제외
 import { ReportsService } from '../reports/reports.service';
 import { AuditService } from '../audit/audit.service';
 import { demoSeedEnabled } from '../../config/demo-seed';
@@ -117,6 +117,8 @@ export class PayoutsService implements OnModuleInit {
 
   // 시수 측정(순수 계산) — preview/generate 공통.
   measure(instructorId: number, from: string, to: string): MeasureResult {
+    if (!isActiveInstructor(this.db.findById<StaffAccount>(USERS, instructorId)))
+      throw new BadRequestException('정산 대상은 활성 강사만 가능합니다.');
     if (!from || !to) throw new BadRequestException('정산 기간(from/to)이 필요합니다');
     if (from > to) throw new BadRequestException('정산 기간이 잘못되었습니다(from > to)');
 

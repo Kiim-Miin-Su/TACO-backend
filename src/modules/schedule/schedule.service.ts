@@ -16,7 +16,7 @@ import { Subject, SUBJECTS as SUBJECTS_COL } from '../subjects/subject.entity';
 import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
-import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // [강사 식별자 통일] 강사=users(role=instructor)
+import { USERS, isActiveInstructor, isActiveScheduleOwner, type StaffAccount } from '../users/user.entity'; // 일정 owner=강사+대표
 import { ClassSessionsStore } from './class-sessions.store';
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
 import { selectSeriesScope, type SeriesScope } from './series-scope.policy';
@@ -259,14 +259,14 @@ export class ScheduleService implements OnModuleInit {
   // [강사 식별자 통일] 강사 = users(role='instructor'), 강사 id = users.id.
   // [TBO-28B] 중앙 술어 isActiveInstructor(role=instructor AND status=active AND 미삭제) —
   //  pending/rejected 강사가 리소스 피커·세션 배정에 노출되던 갭 차단(28A 조사 §2).
-  private instructorUsers(): StaffAccount[] {
-    return this.db.findBy<StaffAccount>(USERS, (u) => isActiveInstructor(u));
+  private scheduleOwnerUsers(): StaffAccount[] {
+    return this.db.findBy<StaffAccount>(USERS, (u) => isActiveScheduleOwner(u));
   }
   private instructorName(id?: number): string | undefined {
     return id == null ? undefined : this.db.findById<StaffAccount>(USERS, id)?.name;
   }
-  private isInstructor(id: number): boolean {
-    return isActiveInstructor(this.db.findById<StaffAccount>(USERS, id));
+  private isScheduleOwner(id: number): boolean {
+    return isActiveScheduleOwner(this.db.findById<StaffAccount>(USERS, id));
   }
   // 코호트 = 활성 수강(enrollment.status==='active') ∧ 캘린더 노출 상태 학생.
   //  students.remove(소프트삭제)가 학생·수강 모두 'canceled'로 정리하므로 삭제 즉시 코호트에서 빠진다.
@@ -322,6 +322,13 @@ export class ScheduleService implements OnModuleInit {
       .sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')));
   }
 
+  listVisible(
+    opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number },
+    viewerInstructorId: number,
+  ): ScheduleRow[] {
+    return this.list(opts).filter((row) => row.isPublic === true || Number(row.instructorId) === viewerInstructorId);
+  }
+
   // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터.
   //  · 카운트(출/지/결/보강/미표시)는 **진행 회차(held·makeup)** 기준(마킹 대상).
   //  · 인정 시수는 **시수 정책**(status='held' && 결석 아님 — 보강 제외, payouts와 동일 규칙).
@@ -336,7 +343,9 @@ export class ScheduleService implements OnModuleInit {
     }>;
     totals: { instructors: number; held: number; present: number; late: number; absent: number; makeup: number; unmarked: number; teachingHours: number };
   } {
-    const sessions = this.list(opts).filter((r) => r.status === 'held' || r.status === 'makeup');
+    const sessions = this.list(opts).filter((r) =>
+      (r.status === 'held' || r.status === 'makeup')
+      && isActiveInstructor(this.db.findById<StaffAccount>(USERS, Number(r.instructorId))));
     const byInst = new Map<number, ScheduleRow[]>();
     for (const r of sessions) {
       const k = Number(r.instructorId);
@@ -392,7 +401,7 @@ export class ScheduleService implements OnModuleInit {
             .map((e) => Number(e.studentId)),
         );
     return {
-      instructors: this.instructorUsers().filter((u) => scope?.instructorId == null || Number(u.id) === Number(scope.instructorId)).map((u) => {
+      instructors: this.scheduleOwnerUsers().filter((u) => scope?.instructorId == null || Number(u.id) === Number(scope.instructorId)).map((u) => {
         const c = courses.find((x) => x.instructorId === u.id);
         return {
           type: 'instructor' as const, id: u.id, name: u.name,
@@ -400,6 +409,7 @@ export class ScheduleService implements OnModuleInit {
           sub: c ? this.subjectOf(c.subjectId)?.name : undefined,
           countryCode: u.countryCode ?? undefined,
           timeZone: u.timeZone ?? undefined,
+          scheduleOwnerRole: u.role,
         };
       }),
       rooms: this.rooms.findAll().map((r) => ({
@@ -432,7 +442,7 @@ export class ScheduleService implements OnModuleInit {
     const course = this.courseOf(input.courseId);
     if (!course) throw new BadRequestException(`courseId ${input.courseId} 없음`);
     const instructorId = input.instructorId ?? course.instructorId;
-    if (!this.isInstructor(instructorId)) throw new BadRequestException(`instructorId ${instructorId} 없음`);
+    if (!this.isScheduleOwner(instructorId)) throw new BadRequestException(`instructorId ${instructorId}는 활성 강사 또는 대표가 아닙니다`);
     if (input.roomId != null && !this.rooms.findAll().some((r) => r.id === input.roomId))
       throw new BadRequestException(`roomId ${input.roomId} 없음`);
     if (input.studentIds?.length) {
@@ -773,7 +783,7 @@ export class ScheduleService implements OnModuleInit {
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
     // 참조 무결성(FK) 검증
     if (dto.courseId != null && !this.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
-    if (dto.instructorId != null && !this.isInstructor(dto.instructorId)) throw new BadRequestException(`instructorId ${dto.instructorId} 없음`);
+    if (dto.instructorId != null && !this.isScheduleOwner(dto.instructorId)) throw new BadRequestException(`instructorId ${dto.instructorId}는 활성 강사 또는 대표가 아닙니다`);
     if (dto.roomId != null && !this.rooms.findAll().some((r) => r.id === dto.roomId)) throw new BadRequestException(`roomId ${dto.roomId} 없음`);
 
     // [TBO-29C C3] series 권위 확인 + version CAS — 잠금 후 판정이 권위. stale 클라이언트 명령은 409.
