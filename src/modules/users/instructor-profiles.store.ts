@@ -145,6 +145,50 @@ export class InstructorProfilesStore implements OnModuleInit {
     return this.memory.findBy<InstructorProfile>(INSTRUCTOR_PROFILES, (p) => p.active);
   }
 
+  find(userId: number): InstructorProfile | undefined {
+    return this.memory.findById<InstructorProfile>(INSTRUCTOR_PROFILES, userId);
+  }
+
+  async updateDetails(userId: number, patch: InstructorProfileDetails): Promise<InstructorProfile> {
+    const current = this.findActive(userId);
+    if (!current) throw new Error(`active instructor profile ${userId} not found`);
+    const next: InstructorProfileDetails = {
+      university: patch.university !== undefined ? patch.university : current.university,
+      major: patch.major !== undefined ? patch.major : current.major,
+      birthYear: patch.birthYear !== undefined ? patch.birthYear : current.birthYear,
+      defaultHourlyRate: patch.defaultHourlyRate !== undefined ? patch.defaultHourlyRate : current.defaultHourlyRate,
+      canTeachKinder: patch.canTeachKinder !== undefined ? patch.canTeachKinder : current.canTeachKinder,
+    };
+    if (await this.ensureReady()) {
+      const rows = normalizeQueryRows(await this.postgres.query(
+        `UPDATE instructor_profiles
+            SET university=$1, major=$2, birth_year=$3, default_hourly_rate=$4, can_teach_kinder=$5, updated_at=now()
+          WHERE user_id=$6 AND active=true AND deleted_at IS NULL
+          RETURNING *`,
+        [next.university ?? null, next.major ?? null, next.birthYear ?? null,
+          next.defaultHourlyRate ?? 0, next.canTeachKinder ?? false, userId],
+      ));
+      if (!rows[0]) throw new Error(`active instructor profile ${userId} not found`);
+      const saved = this.fromRow(rows[0]);
+      this.memory.update<InstructorProfile>(INSTRUCTOR_PROFILES, userId, saved);
+      return this.find(userId) ?? saved;
+    }
+    this.memory.update<InstructorProfile>(INSTRUCTOR_PROFILES, userId, next);
+    return this.find(userId)!;
+  }
+
+  async softDelete(userId: number, actorId: number): Promise<void> {
+    if (await this.ensureReady()) {
+      await this.postgres.query(
+        `UPDATE instructor_profiles
+            SET active=false, deleted_at=now(), deleted_by=$1, updated_at=now()
+          WHERE user_id=$2 AND deleted_at IS NULL`,
+        [actorId, userId],
+      );
+    }
+    if (this.find(userId)) this.memory.remove(INSTRUCTOR_PROFILES, userId, actorId);
+  }
+
   private fromRow(row: Record<string, unknown>): InstructorProfile {
     const userId = Number(row.user_id);
     return {

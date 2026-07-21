@@ -136,6 +136,18 @@ export class ClassSessionsStore implements OnModuleInit {
     return rows.length > 0;
   }
 
+  async existsForInstructor(instructorId: number): Promise<boolean> {
+    await this.ensureReady();
+    if (!this.durable) {
+      return this.memory.findByField<ClassSession>(TABLE, 'instructorId', instructorId).length > 0;
+    }
+    const rows = await this.query(
+      `SELECT id FROM ${TABLE} WHERE instructor_id = $1 AND deleted_at IS NULL LIMIT 1`,
+      [instructorId],
+    );
+    return rows.length > 0;
+  }
+
   private async insertDb(data: Record<string, unknown>, withId = false): Promise<ClassSession[]> {
     const payload = this.toDbPayload(data);
     if (!withId) delete payload.id;

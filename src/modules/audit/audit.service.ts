@@ -66,7 +66,7 @@ export class AuditService implements OnModuleInit {
    *  근거: users.service의 maskTarget 규약(연락처는 마스킹된 형태로만 이력에 남긴다)과 동일 원칙. */
   maskContactPii<T>(changes: T): T {
     const isContactKey = (key: string): boolean =>
-      /phone|email|birth_?date|address|kakao_?id|overseas_?country|counsel_?topic|rrn/i.test(key);
+      /phone|email|birth_?(date|year)|address|kakao_?id|overseas_?country|counsel_?topic|rrn/i.test(key);
     const walk = (value: unknown): unknown => {
       if (!value || typeof value !== 'object') return value;
       if (Array.isArray(value)) return value.map(walk);

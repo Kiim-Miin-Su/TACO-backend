@@ -506,6 +506,108 @@ paths:
       summary: 대표 직접 수정 — name/phone/email/role. role·email 변경 시 대상 세션 전부 무효. super_admin 대상 400.
       tags:
       - Users
+  /api/instructors:
+    get:
+      operationId: InstructorsController_list
+      parameters: []
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+      security:
+      - bearer: []
+      summary: 활성 강사 aggregate 목록(계정+프로필+기본 페이+Kinder). 관리자 이상.
+      tags:
+      - instructors
+    post:
+      operationId: InstructorsController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInstructorDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: 강사 직접 생성. 대표 전용, users+profile+audit 원자 처리.
+      tags:
+      - instructors
+  /api/instructors/{id}:
+    get:
+      operationId: InstructorsController_detail
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: 강사 aggregate 상세. 관리자 이상.
+      tags:
+      - instructors
+    patch:
+      operationId: InstructorsController_update
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInstructorDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+      - bearer: []
+      summary: 강사 프로필·기본 페이·Kinder 수정. 대표 전용, audit 기록.
+      tags:
+      - instructors
+    delete:
+      operationId: InstructorsController_remove
+      parameters:
+      - name: id
+        required: true
+        in: path
+        schema:
+          type: number
+      responses:
+        '200':
+          description: ''
+      security:
+      - bearer: []
+      summary: 강사 soft delete. 대표 전용, 활성 수업·스케줄·계약은 409.
+      tags:
+      - instructors
   /api/audit:
     get:
       operationId: AuditController_list
@@ -3450,6 +3552,14 @@ components:
           type: string
           maxLength: 64
           description: IANA timezone override(예 Asia/Seoul)
+        defaultHourlyRate:
+          type: number
+          minimum: 0
+          maximum: 100000000
+          description: 강사별 기본 시급(원)
+        canTeachKinder:
+          type: boolean
+          description: Kinder 수업 가능 여부
       required:
       - webId
       - name
@@ -3478,6 +3588,45 @@ components:
           - admin
           type: string
           description: 역할 — 변경 시 기존 세션 전부 무효
+    UpdateInstructorDto:
+      type: object
+      properties:
+        name:
+          type: string
+          maxLength: 50
+        phone:
+          type: string
+          maxLength: 20
+        email:
+          type: string
+          format: email
+        university:
+          type: string
+          nullable: true
+          maxLength: 100
+        major:
+          type: string
+          nullable: true
+          maxLength: 100
+        birthYear:
+          type: number
+          nullable: true
+          minimum: 1940
+          maximum: 2020
+        countryCode:
+          type: string
+          nullable: true
+          maxLength: 8
+        timeZone:
+          type: string
+          nullable: true
+          maxLength: 64
+        defaultHourlyRate:
+          type: number
+          minimum: 0
+          maximum: 100000000
+        canTeachKinder:
+          type: boolean
     ChangeCredentialsDto:
       type: object
       properties:

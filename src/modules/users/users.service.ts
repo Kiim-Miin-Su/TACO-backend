@@ -6,9 +6,9 @@
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
-import type { WebIdCheckResult } from '@kms545487/contracts';
+import type { InstructorAggregate, UpdateInstructorInput, WebIdCheckResult } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { USERS_SPEC } from '../../database/calendar-asset-specs';
+import { COURSES_SPEC, INSTRUCTOR_CONTRACTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
@@ -18,6 +18,10 @@ import {
 } from '../../common/rrn-crypto.util'; // [TBO-31 C1 D2]
 import { SignupEmailChallengesService } from '../auth/signup-email-challenges.service'; // [TBO-31 C1 D1]
 import { InstructorProfilesStore } from './instructor-profiles.store';
+import type { InstructorProfile } from './instructor-profiles.store';
+import { ClassSessionsStore } from '../schedule/class-sessions.store';
+import type { Course } from '../courses/course.entity';
+import type { InstructorContract } from '../instructor-contracts/instructor-contract.entity';
 import {
   USERS, authVersionOf, isStaffRole, toSafe,
   type AccountStatus, type SafeAccount, type StaffAccount, type StaffRole,
@@ -50,10 +54,139 @@ export class UsersService implements OnModuleInit {
     private readonly uow: CalendarUnitOfWork,
     private readonly audit: AuditService,
     private readonly profiles: InstructorProfilesStore,
+    private readonly sessions: ClassSessionsStore,
     // [TBO-31 C1 D1] 가입 tx에서 이메일 OTP challenge를 일회 소비 — Users↔Auth 기존 forwardRef 순환 위.
     @Inject(forwardRef(() => SignupEmailChallengesService))
     private readonly signupChallenges: SignupEmailChallengesService,
   ) {}
+
+  private instructorAggregateOf(account: StaffAccount, profile: InstructorProfile): InstructorAggregate {
+    return {
+      id: account.id,
+      webId: account.webId,
+      name: account.name,
+      email: account.email ?? null,
+      phone: account.phone ?? null,
+      status: account.status,
+      countryCode: account.countryCode ?? null,
+      timeZone: account.timeZone ?? null,
+      university: profile.university ?? null,
+      major: profile.major ?? null,
+      birthYear: profile.birthYear ?? null,
+      defaultHourlyRate: profile.defaultHourlyRate ?? 0,
+      canTeachKinder: profile.canTeachKinder ?? false,
+      approvedBy: profile.approvedBy,
+      approvedAt: profile.approvedAt,
+    };
+  }
+
+  async listInstructors(): Promise<InstructorAggregate[]> {
+    await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
+    return this.db.findBy<StaffAccount>(USERS, (account) =>
+      account.role === 'instructor' && account.status === 'active' && account.deletedAt == null)
+      .map((account) => {
+        const profile = this.profiles.findActive(account.id);
+        if (!profile) return null;
+        return this.instructorAggregateOf(account, profile);
+      })
+      .filter((row): row is InstructorAggregate => row != null)
+      .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
+  }
+
+  async getInstructor(id: number): Promise<InstructorAggregate> {
+    await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
+    const account = this.findById(id);
+    const profile = this.profiles.findActive(id);
+    if (!account || account.role !== 'instructor' || account.status !== 'active' || !profile)
+      throw new NotFoundException(`강사 ${id} 없음`);
+    return this.instructorAggregateOf(account, profile);
+  }
+
+  async updateInstructor(id: number, actorId: number, patch: UpdateInstructorInput): Promise<InstructorAggregate> {
+    await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'user', id }]);
+      await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
+      const currentAccount = this.findById(id);
+      const currentProfile = this.profiles.findActive(id);
+      if (!currentAccount || currentAccount.role !== 'instructor' || currentAccount.status !== 'active' || !currentProfile)
+        throw new NotFoundException(`강사 ${id} 없음`);
+      const beforeAccount = { ...currentAccount };
+      const beforeProfile = { ...currentProfile };
+
+      const userPatch: Partial<StaffAccount> = {};
+      if (patch.name !== undefined) userPatch.name = patch.name.trim();
+      if (patch.phone !== undefined) userPatch.phone = patch.phone.trim() || null;
+      if (patch.email !== undefined) {
+        const email = patch.email.trim().toLowerCase();
+        const taken = this.db.findBy<StaffAccount>(USERS, (a) => a.id !== id && !!a.email && a.email.toLowerCase() === email).length > 0;
+        if (taken) throw new BadRequestException('이미 사용 중인 이메일입니다.');
+        userPatch.email = email;
+        if (email !== (beforeAccount.email ?? '').toLowerCase()) userPatch.authVersion = authVersionOf(beforeAccount) + 1;
+      }
+      if (patch.countryCode !== undefined) userPatch.countryCode = patch.countryCode?.trim() || null;
+      if (patch.timeZone !== undefined) userPatch.timeZone = patch.timeZone?.trim() || null;
+      const afterAccount = Object.keys(userPatch).length
+        ? await this.store.update<StaffAccount>(USERS_SPEC, id, userPatch as never)
+        : beforeAccount;
+      if (!afterAccount) throw new NotFoundException(`강사 ${id} 없음`);
+
+      const profilePatch = {
+        university: patch.university !== undefined ? patch.university?.trim() || null : undefined,
+        major: patch.major !== undefined ? patch.major?.trim() || null : undefined,
+        birthYear: patch.birthYear,
+        defaultHourlyRate: patch.defaultHourlyRate,
+        canTeachKinder: patch.canTeachKinder,
+      };
+      const afterProfile = Object.values(profilePatch).some((value) => value !== undefined)
+        ? await this.profiles.updateDetails(id, profilePatch)
+        : beforeProfile;
+
+      const userChanges = this.audit.maskContactPii(this.audit.diffOf(beforeAccount, afterAccount));
+      if (Object.keys(userChanges).length) {
+        await this.audit.log({ entity: 'users', entityId: id, action: 'update', actorId, changes: userChanges,
+          reason: '강사 aggregate 수정' });
+      }
+      const profileChanges = this.audit.maskContactPii(this.audit.diffOf(beforeProfile, afterProfile));
+      if (Object.keys(profileChanges).length) {
+        await this.audit.log({ entity: 'instructor_profiles', entityId: id, action: 'update', actorId,
+          changes: profileChanges, reason: '강사 aggregate 수정' });
+      }
+      return this.instructorAggregateOf(afterAccount, afterProfile);
+    });
+  }
+
+  async removeInstructor(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
+    await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'user', id }]);
+      await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
+      const currentAccount = this.findById(id);
+      const currentProfile = this.profiles.findActive(id);
+      if (!currentAccount || currentAccount.role !== 'instructor' || currentAccount.status !== 'active' || !currentProfile)
+        throw new NotFoundException(`강사 ${id} 없음`);
+      const account = { ...currentAccount };
+      const profile = { ...currentProfile };
+      const [courses, contracts, hasSession] = await Promise.all([
+        this.store.findActive<Course>(COURSES_SPEC, { where: { instructorId: id }, limit: 1 }),
+        this.store.findActive<InstructorContract>(INSTRUCTOR_CONTRACTS_SPEC, { where: { instructorId: id, active: true }, limit: 1 }),
+        this.sessions.existsForInstructor(id),
+      ]);
+      const blockers = [courses.length && '수업', contracts.length && '계약', hasSession && '스케줄'].filter(Boolean);
+      if (blockers.length) throw new ConflictException(`활성 참조가 있는 강사는 삭제할 수 없습니다: ${blockers.join('·')}`);
+
+      await this.store.update<StaffAccount>(USERS_SPEC, id, {
+        status: 'rejected', authVersion: authVersionOf(account) + 1,
+      } as never);
+      await this.profiles.softDelete(id, actorId);
+      await this.store.remove(USERS_SPEC, id, actorId);
+      await this.audit.log({ entity: 'instructor_profiles', entityId: id, action: 'delete', actorId,
+        changes: this.audit.maskContactPii(this.audit.snapshotOf(profile)), reason: '대표 강사 삭제' });
+      await this.audit.log({ entity: 'users', entityId: id, action: 'delete', actorId,
+        changes: this.audit.maskContactPii(this.audit.snapshotOf(toSafe(account))), reason: '대표 강사 삭제' });
+      return { id, deleted: true as const };
+    });
+  }
 
   async onModuleInit(): Promise<void> {
     const hydrated = await this.store.hydrate<StaffAccount>(USERS_SPEC);
@@ -700,11 +833,13 @@ export class UsersService implements OnModuleInit {
       // 불변식: active instructor ↔ active instructor_profiles 정확 1행.
       // [E0.5 ④b] 가입 폼 제공 정보(대학·전공·출생연도)를 같은 tx에서 프로필로 승계(COALESCE upsert).
       if (updated.role === 'instructor') {
-        await this.profiles.upsertActive(id, actorId, approvedAt, {
+        const profile = await this.profiles.upsertActive(id, actorId, approvedAt, {
           university: updated.university ?? null,
           major: updated.major ?? null,
           birthYear: updated.birthYear ?? null,
         });
+        await this.audit.log({ entity: 'instructor_profiles', entityId: id, action: 'create', actorId,
+          changes: this.audit.maskContactPii(this.audit.snapshotOf(profile)), reason: '가입 승인 강사 프로필 생성' });
       }
       await this.audit.log({
         entity: 'users', entityId: id, action: 'approve', actorId,
@@ -726,6 +861,7 @@ export class UsersService implements OnModuleInit {
       webId: string; name: string; password: string;
       email?: string; phone?: string; university?: string; major?: string; birthYear?: number;
       countryCode?: string; timeZone?: string;
+      defaultHourlyRate?: number; canTeachKinder?: boolean;
       role?: 'instructor' | 'manager' | 'admin'; // [유저 관리 07-20] 역할 확장(기본 instructor)
     },
     actorId: number,
@@ -753,11 +889,15 @@ export class UsersService implements OnModuleInit {
       });
       if (role === 'instructor') {
         // 강사 프로필은 강사 역할만(E0.5 ④b 승계 규약과 동일 기계).
-        await this.profiles.upsertActive(acc.id, actorId, approvedAt, {
+        const profile = await this.profiles.upsertActive(acc.id, actorId, approvedAt, {
           university: input.university?.trim() || null,
           major: input.major?.trim() || null,
           birthYear: input.birthYear ?? null,
+          defaultHourlyRate: input.defaultHourlyRate ?? 0,
+          canTeachKinder: input.canTeachKinder ?? false,
         });
+        await this.audit.log({ entity: 'instructor_profiles', entityId: acc.id, action: 'create', actorId,
+          changes: this.audit.maskContactPii(this.audit.snapshotOf(profile)), reason: '대표 직접 강사 프로필 생성' });
       }
       await this.audit.log({
         entity: 'users', entityId: acc.id, action: 'create', actorId,

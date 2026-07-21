@@ -1,5 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { IsBoolean, IsEmail, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min, MinLength } from 'class-validator';
+import { MAX_AMOUNT } from '../../../common/validation-limits';
 
 // [운영 흐름 2026-07-14] 대표가 받은 강사 정보(이름·나이·대학교·전공·전화번호·아이디·비번)를
 //  직접 등록하는 입력. 계정은 즉시 active(이메일 인증 생략 — 직접 신원 확인 전제).
@@ -48,4 +49,12 @@ export class CreateInstructorDto {
   @ApiPropertyOptional({ description: 'IANA timezone override(예 Asia/Seoul)', maxLength: 64 })
   @IsOptional() @IsString() @MaxLength(64)
   timeZone?: string;
+
+  @ApiPropertyOptional({ description: '강사별 기본 시급(원)', minimum: 0, maximum: MAX_AMOUNT })
+  @IsOptional() @IsInt() @Min(0) @Max(MAX_AMOUNT)
+  defaultHourlyRate?: number;
+
+  @ApiPropertyOptional({ description: 'Kinder 수업 가능 여부' })
+  @IsOptional() @IsBoolean()
+  canTeachKinder?: boolean;
 }
