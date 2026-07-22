@@ -59,7 +59,7 @@
     "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts"
   },
   "dependencies": {
-    "@kms545487/contracts": "^0.2.12",
+    "@kms545487/contracts": "^0.2.13",
     "@neondatabase/serverless": "^1.1.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
