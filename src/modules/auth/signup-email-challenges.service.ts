@@ -4,9 +4,10 @@
 //  hash·masked 응답 규약만 재사용하고 저장소는 signup_email_challenges로 분리한다.
 //  평문 코드는 저장·로그·응답에 남기지 않는다(예외: 비production+SMTP 부재의 devOtpCode —
 //  devVerifyLink 관례와 동일한 개발 편의. production은 부팅 가드가 SMTP를 강제해 분기 자체가 없다).
-import { BadRequestException, Injectable, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { createHash, randomInt } from 'crypto';
 import type { BaseRow } from '../../common/types/base';
+import { logLine } from '../../common/log-line';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { SIGNUP_EMAIL_CHALLENGES_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
@@ -70,6 +71,8 @@ const GENERIC_INVALID = '유효하지 않거나 만료된 인증입니다.';
 
 @Injectable()
 export class SignupEmailChallengesService implements OnModuleInit {
+  private readonly logger = new Logger(SignupEmailChallengesService.name);
+
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
@@ -132,8 +135,22 @@ export class SignupEmailChallengesService implements OnModuleInit {
         consumedAt: null,
         consumedByUserId: null,
       });
-      return { row, devOtpCode: !sent && !isProduction() ? code : undefined };
+      const deliveryOutcome = purpose === 'signup' && registered
+        ? 'neutral_skipped_existing'
+        : sent
+          ? 'sent'
+          : isProduction()
+            ? 'failed_closed'
+            : 'dev_fallback';
+      return { row, devOtpCode: !sent && !isProduction() ? code : undefined, deliveryOutcome };
     });
+    // 운영자가 "201인데 메일이 없음"을 구분할 수 있는 서버 진단 로그. 이메일·코드·계정 ID는 넣지 않는다.
+    this.logger.log(logLine('app', {
+      event: 'signup_email_challenge_delivery',
+      purpose,
+      outcome: result.deliveryOutcome,
+      challengeId: result.row.id,
+    }));
     return this.toResponse(result.row, result.devOtpCode);
   }
 
