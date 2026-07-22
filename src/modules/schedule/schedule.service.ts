@@ -15,6 +15,7 @@ import { CoursesService } from '../courses/courses.service';
 import { Subject, SUBJECTS as SUBJECTS_COL } from '../subjects/subject.entity';
 import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
+import { studentGradeLabel } from '../students/student-grade.policy';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
 import { USERS, isActiveInstructor, isActiveScheduleOwner, type StaffAccount } from '../users/user.entity'; // 일정 owner=강사+대표
 import { ClassSessionsStore } from './class-sessions.store';
@@ -328,7 +329,7 @@ export class ScheduleService implements OnModuleInit {
         .map((s) => ({
           type: 'student' as const, id: s.id, name: s.name,
           color: PALETTE[(s.id + 2) % PALETTE.length],
-          sub: s.grade != null ? `${s.grade}학년` : undefined,
+          sub: studentGradeLabel(s.grade),
           countryCode: s.country,
         })),
       courses: courses.map((c) => ({

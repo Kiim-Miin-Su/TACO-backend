@@ -23,6 +23,12 @@ export function dateInTimeZone(now = new Date(), timeZone = 'Asia/Seoul'): strin
   return `${value('year')}-${value('month')}-${value('day')}`;
 }
 
+/** 학생 학년 표시는 모든 backend projection에서 같은 계약을 사용한다. */
+export function studentGradeLabel(grade: number | null | undefined): string | undefined {
+  if (grade == null) return undefined;
+  return grade === 0 ? 'Kinder' : `G${grade}`;
+}
+
 /** grade=0(Kinder)은 저장일 기준 만 3~7세만 허용한다. */
 export function studentGradeBirthDateError(
   grade: number | null | undefined,

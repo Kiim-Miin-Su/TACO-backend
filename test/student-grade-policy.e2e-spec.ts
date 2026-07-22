@@ -1,4 +1,4 @@
-import { ageOnDate, studentGradeBirthDateError } from '../src/modules/students/student-grade.policy';
+import { ageOnDate, studentGradeBirthDateError, studentGradeLabel } from '../src/modules/students/student-grade.policy';
 
 describe('student grade and birth-date policy', () => {
   it('computes full age at the birthday boundary', () => {
@@ -12,5 +12,12 @@ describe('student grade and birth-date policy', () => {
     expect(studentGradeBirthDateError(0, '2024-07-21', '2026-07-21')).toContain('3~7세');
     expect(studentGradeBirthDateError(0, '2018-07-21', '2026-07-21')).toContain('3~7세');
     expect(studentGradeBirthDateError(1, '2024-07-21', '2026-07-21')).toBeNull();
+  });
+
+  it('formats Kinder and grade projections consistently', () => {
+    expect(studentGradeLabel(0)).toBe('Kinder');
+    expect(studentGradeLabel(1)).toBe('G1');
+    expect(studentGradeLabel(13)).toBe('G13');
+    expect(studentGradeLabel(null)).toBeUndefined();
   });
 });
