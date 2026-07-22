@@ -23,6 +23,7 @@ export const LOCK_KIND = {
   parentIntake: 10, // [TBO-29D D2] 보호자 전화 기준 등록 직렬화(같은 번호 동시 등록 → 보호자 1행 보장)
   signupChallenge: 11, // [TBO-31 C1 D1] 가입 전 이메일 OTP 확인/소비 직렬화(공개 흐름 — 이중 소비 차단)
   counselForm: 12, // [TBO-33 C1] 상담 회차 번호 발급·폼 삭제 직렬화
+  payout: 13, // [리뷰 P0-4 2026-07-20] 정산서 상태 전이(pay/reverse 등) 직렬화 — 멀티 인스턴스 CAS 보강
   course: 13, // [TBO-33 C2] 코스 수정·참조 검사·삭제 직렬화
   subject: 14, // [TBO-33 C2] 과목 수정·참조 검사·삭제 직렬화
   parent: 15, // [TBO-35 35C] 보호자 원부 수정·삭제 직렬화

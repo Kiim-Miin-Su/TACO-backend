@@ -1,8 +1,9 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { INSTRUCTOR_PAYOUTS_SPEC, TRANSACTIONS_SPEC } from '../../database/calendar-asset-specs';
+import { INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, TRANSACTIONS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
+
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { payoutAmountOf } from '../schedule/session-accounting.policy';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
@@ -123,9 +124,21 @@ export class PayoutsService implements OnModuleInit {
   }
 
   // 정산서 생성(pending) + 세션 연결(payoutId·페이 스냅샷 기록 → 이중 계상 방지).
+  // [리뷰 P0-4 2026-07-20] 잠금 후 재하이드레이트 — 멀티 인스턴스(serverless)에서 스테일 메모리로
+  //  적격성(취소·보고서 반려를 못 본 계상)·상태 전이를 판정하지 않도록, payout 경로도 schedule의
+  //  lock→refreshAfterLock 규약에 편입한다. 세션·보고서·정산서 세 자산이 판정 입력의 전부다.
+  private async refreshAfterLock(): Promise<void> {
+    await this.sessionsStore.ensureReady();
+    await this.store.hydrate(SESSION_REPORTS_SPEC); // 보고서(승인 상태) — 적격 판정 입력
+    await this.store.hydrate<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC);
+  }
+
   async generate(instructorId: number, from: string, to: string, actorId?: number): Promise<InstructorPayoutRow> {
     // [원자성] 정산서 생성 + 세션 payoutId 연결이 함께 성공/실패(이중계상 방지 불변식 보호)
     return this.unitOfWork.run(async () => {
+      // [리뷰 P0-4] 강사 단위 직렬화 + 잠금 후 재하이드레이트 — 스테일 메모리 계상 차단.
+      await this.unitOfWork.lockTargets([{ kind: 'instructor', id: instructorId }]);
+      await this.refreshAfterLock();
       const m = this.measure(instructorId, from, to);
       if (m.sessionCount === 0)
         throw new BadRequestException('정산 대상 세션이 없습니다(진행 완료 + 승인 보고서 필요)');
@@ -343,6 +356,9 @@ export class PayoutsService implements OnModuleInit {
   async reverse(id: number, reason: string, actorId?: number): Promise<{ payout: InstructorPayoutRow; transaction: TransactionRow }> {
     // [원자성] 상태 전환 + 보상 원장 + 세션 전량 회수 + 감사 — 한 tx(부분 회수 잔존 금지)
     return this.unitOfWork.run(async () => {
+      // [리뷰 P0-4] 정산서 단위 직렬화 + 잠금 후 재하이드레이트(스테일 상태로 전이 판정 금지).
+      await this.unitOfWork.lockTargets([{ kind: 'payout', id }]);
+      await this.refreshAfterLock();
       const p = this.findOne(id);
       if (p.status !== 'paid')
         throw new BadRequestException(`회수 불가 상태(${p.status}) — 지급 완료(paid) 정산만 회수합니다. 지급 전 취소는 반려(reject)를 사용하세요.`);
@@ -357,7 +373,9 @@ export class PayoutsService implements OnModuleInit {
         direction: 'in',
         category: 'payout_reversal',
         label: `강사 ${p.instructorId} 페이 회수(${p.periodStart}~${p.periodEnd})`,
-        amount: p.amount, // 전액 보상(부분 회수는 비범위 — B9 §3)
+        // [리뷰 P0-5 2026-07-20] 금액 소스 = CAS 반환 행(DB 권위) — pay와 동일 규약. 종전 p.amount
+        //  (CAS 이전 메모리 읽기)는 스테일 시 출금≠보상입금 원장 불일치를 만들 수 있었다.
+        amount: payout.amount, // 전액 보상(부분 회수는 비범위 — B9 §3)
         occurredAt: now,
         payoutId: id,
       });
@@ -397,6 +415,9 @@ export class PayoutsService implements OnModuleInit {
   async pay(id: number, actorId?: number): Promise<{ payout: InstructorPayoutRow; transaction: TransactionRow }> {
     // [원자성] 지급 상태 + 통합 원장 출금 1줄이 함께 기록(원장 누락/유령 지급 방지)
     return this.unitOfWork.run(async () => {
+      // [리뷰 P0-4] 정산서 단위 직렬화 + 잠금 후 재하이드레이트.
+      await this.unitOfWork.lockTargets([{ kind: 'payout', id }]);
+      await this.refreshAfterLock();
       const p = this.findOne(id);
       if (p.status === 'paid') throw new ConflictException('이미 지급된 정산입니다');
       if (p.status !== 'confirmed') throw new BadRequestException(`지급 불가 상태(${p.status}) — confirmed만 지급 가능`);

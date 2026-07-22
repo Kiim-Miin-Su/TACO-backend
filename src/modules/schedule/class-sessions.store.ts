@@ -82,14 +82,14 @@ export class ClassSessionsStore implements OnModuleInit {
   /** 동시 정산 생성 시 한 세션을 한 정산서만 선점하도록 DB 조건부 UPDATE로 직렬화한다. */
   async claimPayout(id: number, payoutId: number, instructorPayAmount: number): Promise<ClassSession | undefined> {
     if (!this.durable) {
-      const current = this.memory.findById<ClassSession>(TABLE, id) as (ClassSession & { payoutId?: number | null }) | undefined;
-      if (!current || current.payoutId != null) return undefined;
+      const current = this.memory.findById<ClassSession>(TABLE, id) as (ClassSession & { payoutId?: number | null; isPaid?: boolean }) | undefined;
+      if (!current || current.payoutId != null || current.isPaid === true) return undefined; // [리뷰 P1-1] 지급 완료 세션 재선점 차단(fail-safe)
       return this.memory.update<ClassSession>(TABLE, id, { payoutId, instructorPayAmount } as never);
     }
     const [row] = await this.query(
       `UPDATE ${TABLE}
           SET payout_id = $1, instructor_pay_amount = $2, updated_at = now()
-        WHERE id = $3 AND deleted_at IS NULL AND payout_id IS NULL
+        WHERE id = $3 AND deleted_at IS NULL AND payout_id IS NULL AND is_paid = false
         RETURNING *`,
       [payoutId, instructorPayAmount, id],
     );
