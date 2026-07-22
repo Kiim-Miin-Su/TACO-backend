@@ -21,7 +21,7 @@ const dataSource = new DataSource({
   logging: false,
   entities: [],
   migrations: [],
-  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: true },
   extra: {
     max: Number(process.env.DB_POOL_MAX ?? 1),
     connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? 5000),
@@ -67,54 +67,6 @@ const financePayoutWhere = `
   deleted_at IS NULL
   AND period_start >= DATE '2099-01-01'
 `;
-
-const seedRestores = [
-  {
-    id: 1,
-    seriesId: 1,
-    courseId: 10,
-    instructorId: 1,
-    roomId: 1,
-    sessionDate: '2026-07-06',
-    startTime: '16:00',
-    endTime: '17:30',
-    durationMinutes: 90,
-    status: 'scheduled',
-    kind: 'class',
-    mode: 'in_person',
-    topic: 'SAT Reading 정규',
-  },
-  {
-    id: 2,
-    seriesId: 1,
-    courseId: 10,
-    instructorId: 1,
-    roomId: 1,
-    sessionDate: '2026-07-08',
-    startTime: '16:00',
-    endTime: '17:30',
-    durationMinutes: 90,
-    status: 'scheduled',
-    kind: 'class',
-    mode: 'in_person',
-    topic: 'SAT Reading 정규',
-  },
-  {
-    id: 8,
-    seriesId: null,
-    courseId: 12,
-    instructorId: 1,
-    roomId: 2,
-    sessionDate: '2026-07-06',
-    startTime: '13:00',
-    endTime: '14:00',
-    durationMinutes: 60,
-    status: 'scheduled',
-    kind: 'class',
-    mode: 'online',
-    topic: 'TOEFL 정규 — 보강',
-  },
-];
 
 async function query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
   return dataSource.query(sql, params);
@@ -175,51 +127,6 @@ async function countRows(): Promise<Record<string, unknown>> {
         )
     `))[0]?.count ?? 0 : 0,
   };
-}
-
-async function restoreSeedRows(): Promise<void> {
-  for (const row of seedRestores) {
-    await query(
-      `
-        UPDATE class_sessions
-        SET
-          series_id = $2,
-          course_id = $3,
-          instructor_id = $4,
-          room_id = $5,
-          session_date = $6,
-          start_time = $7,
-          end_time = $8,
-          duration_minutes = $9,
-          status = $10,
-          kind = $11,
-          mode = $12,
-          topic = $13,
-          memo = NULL,
-          color = NULL,
-          instructor_attendance = NULL,
-          deleted_at = NULL,
-          deleted_by = NULL,
-          updated_at = now()
-        WHERE id = $1
-      `,
-      [
-        row.id,
-        row.seriesId,
-        row.courseId,
-        row.instructorId,
-        row.roomId,
-        row.sessionDate,
-        row.startTime,
-        row.endTime,
-        row.durationMinutes,
-        row.status,
-        row.kind,
-        row.mode,
-        row.topic,
-      ],
-    );
-  }
 }
 
 async function applyCleanup(): Promise<Record<string, unknown>> {
@@ -310,7 +217,6 @@ async function applyCleanup(): Promise<Record<string, unknown>> {
       `);
     }
   });
-  await restoreSeedRows();
   return countRows();
 }
 
