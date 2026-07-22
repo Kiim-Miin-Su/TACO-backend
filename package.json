@@ -61,7 +61,7 @@
     "verify:runtime-data": "ts-node scripts/verify-runtime-data-boundary.ts"
   },
   "dependencies": {
-    "@kms545487/contracts": "^0.2.14",
+    "@kms545487/contracts": "^0.2.15",
     "@neondatabase/serverless": "^1.1.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
