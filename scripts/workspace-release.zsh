@@ -23,7 +23,8 @@
 #   CLEAN_DB_QA_AFTER_SMOKE=1 RUN_DB_SMOKE=1 ./scripts/release.zsh
 #     Dry-run then apply the scoped QA cleanup after successful DB smokes.
 #   VERIFY_DEPLOYMENT=1 ./scripts/release.zsh
-#     After push, verify frontend, API, Postgres readiness, and login CORS.
+#     After push, require the exact backend/frontend Git SHAs to have successful
+#     Vercel deployments, then verify frontend, API, Postgres, and login CORS.
 #   VERIFY_DEPLOYMENT_ONLY=1 ./scripts/release.zsh
 #     Verify the current deployment without repository preflight, build, publish, or push.
 #   RELEASE_SELF_TEST=1 ./scripts/release.zsh
@@ -52,6 +53,8 @@ FRONTEND_URL="${FRONTEND_URL:-https://taco-frontend-tau.vercel.app}"
 DEPLOY_WAIT_ATTEMPTS="${DEPLOY_WAIT_ATTEMPTS:-30}"
 DEPLOY_WAIT_SECONDS="${DEPLOY_WAIT_SECONDS:-10}"
 DEPLOY_INITIAL_WAIT_SECONDS="${DEPLOY_INITIAL_WAIT_SECONDS:-15}"
+DEPLOY_STATUS_CONTEXT="${DEPLOY_STATUS_CONTEXT:-Vercel}"
+GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
 
 export NPM_CONFIG_CACHE="${NPM_CONFIG_CACHE:-/private/tmp/taco-release-npm-cache}"
 mkdir -p "$NPM_CONFIG_CACHE"
@@ -78,6 +81,21 @@ trap cleanup EXIT
 
 normalize_url() {
   print -r -- "${1%/}"
+}
+
+github_repo_slug() {
+  local remote="$1"
+  node - "$remote" <<'NODE'
+const remote = process.argv[2];
+const patterns = [
+  /^https?:\/\/github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/i,
+  /^git@github\.com:([^/]+)\/([^/]+?)(?:\.git)?$/i,
+  /^ssh:\/\/git@github\.com\/([^/]+)\/([^/]+?)(?:\.git)?$/i,
+];
+const match = patterns.map((pattern) => remote.match(pattern)).find(Boolean);
+if (!match) process.exit(1);
+process.stdout.write(`${match[1]}/${match[2]}`);
+NODE
 }
 
 require_command() {
@@ -172,6 +190,22 @@ if (!matches) {
   console.error(JSON.stringify(body));
   process.exit(1);
 }
+NODE
+}
+
+vercel_status_target() {
+  local file="$1"
+  local expected_sha="$2"
+  local expected_context="$3"
+  node - "$file" "$expected_sha" "$expected_context" <<'NODE'
+const fs = require('node:fs');
+const [file, expectedSha, expectedContext] = process.argv.slice(2);
+const body = JSON.parse(fs.readFileSync(file, 'utf8'));
+if (body.sha !== expectedSha) process.exit(2);
+const status = body.statuses?.find((candidate) => candidate.context === expectedContext);
+if (status?.state === 'failure' || status?.state === 'error') process.exit(3);
+if (status?.state !== 'success' || !status.target_url) process.exit(1);
+process.stdout.write(status.target_url);
 NODE
 }
 
@@ -352,6 +386,51 @@ push_repo() {
   git -C "$ROOT/$repo" push origin "$branch"
 }
 
+wait_for_vercel_commit_deployment() {
+  local repo="$1"
+  local expected_sha="$2"
+  local remote slug url tmp attempt target http_code status_result
+  local -a auth_headers
+
+  remote="$(git -C "$ROOT/$repo" remote get-url origin)"
+  slug="$(github_repo_slug "$remote")" || die "$repo origin is not a supported GitHub remote: $remote"
+  url="$(normalize_url "$GITHUB_API_URL")/repos/$slug/commits/$expected_sha/status"
+  tmp="$(mktemp)"
+  TMP_DIRS+=("$tmp")
+  auth_headers=()
+  if [[ -n "${GITHUB_TOKEN:-}" ]]; then
+    auth_headers=(-H "Authorization: Bearer $GITHUB_TOKEN")
+  fi
+
+  for attempt in {1..$DEPLOY_WAIT_ATTEMPTS}; do
+    http_code="$(curl -L -sS -o "$tmp" -w '%{http_code}' \
+      -H 'Accept: application/vnd.github+json' \
+      -H 'X-GitHub-Api-Version: 2022-11-28' \
+      "${auth_headers[@]}" \
+      --connect-timeout 10 --max-time 30 "$url" || true)"
+
+    if [[ "$http_code" == "200" ]]; then
+      if target="$(vercel_status_target "$tmp" "$expected_sha" "$DEPLOY_STATUS_CONTEXT")"; then
+        ok "$repo deployment identity: ${expected_sha[1,12]} ($target)"
+        return 0
+      else
+        status_result=$?
+        if (( status_result == 3 )); then
+          die "$repo Vercel deployment failed for commit $expected_sha"
+        fi
+      fi
+    elif [[ "$http_code" == "403" || "$http_code" == "429" ]]; then
+      die "$repo deployment status API rate-limited (HTTP $http_code); set GITHUB_TOKEN and retry"
+    elif [[ "$http_code" == "404" && -z "${GITHUB_TOKEN:-}" ]]; then
+      die "$repo deployment status unavailable (HTTP 404); private repositories require GITHUB_TOKEN"
+    fi
+
+    warn "$repo exact deployment not ready ($attempt/$DEPLOY_WAIT_ATTEMPTS, sha=${expected_sha[1,12]}, status=$http_code)"
+    sleep "$DEPLOY_WAIT_SECONDS"
+  done
+  die "$repo Vercel deployment did not succeed for commit $expected_sha"
+}
+
 wait_for_json() {
   local label="$1"
   local url="$2"
@@ -417,13 +496,17 @@ NODE
 }
 
 verify_deployment() {
-  local backend frontend
+  local backend frontend backend_sha frontend_sha
   backend="$(normalize_url "$BACKEND_URL")"
   frontend="$(normalize_url "$FRONTEND_URL")"
+  backend_sha="${EXPECTED_BACKEND_SHA:-$(git -C "$ROOT/backend" rev-parse HEAD)}"
+  frontend_sha="${EXPECTED_FRONTEND_SHA:-$(git -C "$ROOT/frontend" rev-parse HEAD)}"
 
   require_command curl
+  wait_for_vercel_commit_deployment backend "$backend_sha"
+  wait_for_vercel_commit_deployment frontend "$frontend_sha"
   if (( DEPLOY_INITIAL_WAIT_SECONDS > 0 )); then
-    log "wait ${DEPLOY_INITIAL_WAIT_SECONDS}s for deployment propagation"
+    log "wait ${DEPLOY_INITIAL_WAIT_SECONDS}s for production alias propagation"
     sleep "$DEPLOY_INITIAL_WAIT_SECONDS"
   fi
 
@@ -434,6 +517,7 @@ verify_deployment() {
 }
 
 release_self_test() {
+  local status_file
   [[ "$(version_cmp 1.2.3 1.2.2)" == "1" ]] || die "version_cmp newer failed"
   [[ "$(version_cmp 1.2.3 1.2.3)" == "0" ]] || die "version_cmp equal failed"
   [[ "$(version_cmp 1.2.2 1.2.3)" == "-1" ]] || die "version_cmp older failed"
@@ -441,6 +525,19 @@ release_self_test() {
   [[ "$(normalize_url 'https://example.com/')" == "https://example.com" ]] || die "normalize_url failed"
   is_true yes || die "is_true true case failed"
   ! is_true no || die "is_true false case failed"
+  [[ "$(github_repo_slug 'https://github.com/acme/example.git')" == "acme/example" ]] || die "github_repo_slug https failed"
+  [[ "$(github_repo_slug 'git@github.com:acme/example.git')" == "acme/example" ]] || die "github_repo_slug ssh failed"
+  status_file="$(mktemp)"
+  TMP_DIRS+=("$status_file")
+  print -r -- '{"sha":"0123456789012345678901234567890123456789","statuses":[{"context":"Vercel","state":"success","target_url":"https://vercel.com/acme/example/deploy"}]}' > "$status_file"
+  [[ "$(vercel_status_target "$status_file" '0123456789012345678901234567890123456789' 'Vercel')" == "https://vercel.com/acme/example/deploy" ]] || die "vercel_status_target success failed"
+  ! vercel_status_target "$status_file" 'ffffffffffffffffffffffffffffffffffffffff' 'Vercel' >/dev/null 2>&1 || die "vercel_status_target sha mismatch failed"
+  print -r -- '{"sha":"0123456789012345678901234567890123456789","statuses":[{"context":"Vercel","state":"failure","target_url":"https://vercel.com/acme/example/deploy"}]}' > "$status_file"
+  if vercel_status_target "$status_file" '0123456789012345678901234567890123456789' 'Vercel' >/dev/null 2>&1; then
+    die "vercel_status_target failure state accepted"
+  else
+    [[ "$?" == "3" ]] || die "vercel_status_target failure state failed"
+  fi
   ok "release helper self-test passed"
 }
 
@@ -465,7 +562,7 @@ cd "$ROOT"
 assert_release_safety
 
 log "ROOT = $ROOT"
-log "Options: PUSH=$PUSH PUBLISH=$PUBLISH UPDATE_LOCKS=$UPDATE_LOCKS SKIP_TESTS=${SKIP_TESTS:-0} SKIP_E2E=${SKIP_E2E:-0} SKIP_FE_TEST=${SKIP_FE_TEST:-0} RUN_SCHEMA_GATES=$RUN_SCHEMA_GATES RUN_DB_SMOKE=$RUN_DB_SMOKE RUN_DB_CRUD=$RUN_DB_CRUD VERIFY_DEPLOYMENT=$VERIFY_DEPLOYMENT PREFLIGHT_ONLY=${PREFLIGHT_ONLY:-0}"
+log "Options: PUSH=$PUSH PUBLISH=$PUBLISH UPDATE_LOCKS=$UPDATE_LOCKS SKIP_TESTS=${SKIP_TESTS:-0} SKIP_E2E=${SKIP_E2E:-0} SKIP_FE_TEST=${SKIP_FE_TEST:-0} RUN_SCHEMA_GATES=$RUN_SCHEMA_GATES RUN_DB_SMOKE=$RUN_DB_SMOKE RUN_DB_CRUD=$RUN_DB_CRUD VERIFY_DEPLOYMENT=$VERIFY_DEPLOYMENT DEPLOY_STATUS_CONTEXT=$DEPLOY_STATUS_CONTEXT PREFLIGHT_ONLY=${PREFLIGHT_ONLY:-0}"
 
 for repo in "${CHECK_REPOS[@]}"; do
   require_repo "$repo"
