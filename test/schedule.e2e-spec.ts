@@ -73,7 +73,7 @@ describe("Schedule API (e2e)", () => {
     await http.delete(`/api/schedule/${created.id}`).set(TH()).expect(200);
   });
 
-  it("강사는 공통 일정과 본인 일반 일정만 읽고 비공개 타 일정·상담은 읽지 않는다", async () => {
+  it("강사는 공개 여부와 무관하게 본인 일반 일정만 읽고 타 일정·상담은 읽지 않는다", async () => {
     const headers = { Authorization: `Bearer ${INSTRUCTOR}` };
     const date = '2098-02-01';
     const privateRow = (await http.post('/api/schedule').set(TH()).send({
@@ -94,10 +94,10 @@ describe("Schedule API (e2e)", () => {
     }).expect(201)).body.row;
 
     const visible = (await http.get(`/api/schedule?from=${date}&to=${date}`).set(headers).expect(200)).body;
-    expect(visible.map((row: { id: number }) => row.id)).toEqual([publicRow.id, ownRow.id]);
+    expect(visible.map((row: { id: number }) => row.id)).toEqual([ownRow.id]);
     expect(visible.some((row: { id: number }) => row.id === privateRow.id)).toBe(false);
     expect(visible.some((row: { id: number }) => row.id === ownCounselRow.id)).toBe(false);
-    await http.get(`/api/schedule/${publicRow.id}`).set(headers).expect(200);
+    await http.get(`/api/schedule/${publicRow.id}`).set(headers).expect(403);
     await http.get(`/api/schedule/${privateRow.id}`).set(headers).expect(403);
     await http.get(`/api/schedule/${ownCounselRow.id}`).set(headers).expect(403);
     await http.patch(`/api/schedule/${publicRow.id}`).set(headers).send({ topic: '권한 상승 차단' }).expect(403);

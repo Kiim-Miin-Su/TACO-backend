@@ -61,7 +61,10 @@ export class ScheduleRequestsService {
     if (dto.requestKind === 'session_delete') {
       return this.createSessionDeleteRequest(dto, requesterId, requesterRoles);
     }
-    const instructorId = this.schedule.validateSessionInput({ ...dto, courseId: dto.courseId! }); // FK·코호트(함수 통일)
+    const sessionInput = { ...dto, courseId: dto.courseId! };
+    const instructorId = hasAdminRole(requesterRoles)
+      ? this.schedule.validateSessionInput(sessionInput)
+      : this.schedule.validateInstructorRequestInput(sessionInput, requesterId);
     // [TBO-29C C4] 시간 정규화 = session-time.policy 단일 소스 — 경로별 `?? 60`/범위 검사 사본 폐기.
     const { durationMinutes } = normalizeSessionTime({ startTime: dto.startTime!, endTime: dto.endTime, durationMinutes: dto.durationMinutes });
     // 참고용 충돌 드라이런(승인 시점에 재검사가 확정본)
@@ -115,7 +118,8 @@ export class ScheduleRequestsService {
       kind: dto.kind ?? target.kind,
       mode: dto.mode ?? target.mode,
     };
-    this.schedule.validateSessionInput(merged);
+    if (hasAdminRole(requesterRoles)) this.schedule.validateSessionInput(merged);
+    else this.schedule.validateInstructorRequestInput(merged, requesterId);
     const conflicts = this.schedule.checkConflicts({
       sessionDate: merged.sessionDate!, startTime: merged.startTime!, endTime: merged.endTime,
       durationMinutes: merged.durationMinutes, instructorId: merged.instructorId, roomId: merged.roomId,

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type { Conflict, CreateScheduleSeriesResult, ScheduleRow, ScheduleSeries } from '@kms545487/contracts';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
@@ -358,6 +358,25 @@ export class ScheduleService implements OnModuleInit {
       if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
     }
     return instructorId;
+  }
+
+  /** 강사 승인 요청의 DB 권위 경계.
+   *  프론트의 scoped resource picker를 신뢰하지 않고 코스 기본 강사·요청 강사·JWT actor가 모두 같은지
+   *  매 요청마다 실제 course row로 재검증한다. 상담 일정은 관리 역할만 생성한다. */
+  validateInstructorRequestInput(
+    input: { courseId: number; instructorId?: number; roomId?: number; studentIds?: number[]; kind?: ClassSession['kind'] },
+    actorInstructorId: number,
+  ): number {
+    const course = this.courseOf(input.courseId);
+    if (!course) return this.validateSessionInput(input);
+    if (Number(course.instructorId) !== Number(actorInstructorId)
+      || (input.instructorId != null && Number(input.instructorId) !== Number(actorInstructorId))) {
+      throw new ForbiddenException('강사는 본인이 담당하는 코스의 수업만 요청할 수 있습니다.');
+    }
+    if (input.kind === 'counsel') {
+      throw new ForbiddenException('상담 일정은 관리 역할만 생성할 수 있습니다.');
+    }
+    return this.validateSessionInput(input);
   }
 
   async create(dto: {

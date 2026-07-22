@@ -40,6 +40,34 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       .send({ ...SLOT, studentIds: [9999] }).expect(400);
   });
 
+  it('강사 생성 요청은 DB 기준 본인 담당 코스·본인 강사로 고정되고 상담 요청은 차단된다', async () => {
+    await http.post('/api/schedule-requests').set(asInst())
+      .send({ ...SLOT, courseId: 11, sessionDate: '2099-01-11' }).expect(403);
+    await http.post('/api/schedule-requests').set(asInst())
+      .send({ ...SLOT, instructorId: 2, sessionDate: '2099-01-12' }).expect(403);
+    await http.post('/api/schedule-requests').set(asInst())
+      .send({ ...SLOT, kind: 'counsel', sessionDate: '2099-01-13' }).expect(403);
+
+    const allowed = (await http.post('/api/schedule-requests').set(asInst())
+      .send({ ...SLOT, kind: 'level_test', sessionDate: '2099-01-14' }).expect(201)).body.row;
+    expect(allowed).toMatchObject({ courseId: 10, instructorId: 1, kind: 'level_test', status: 'pending' });
+    await http.delete(`/api/schedule-requests/${allowed.id}`).set(asInst()).expect(200);
+  });
+
+  it('강사 변경 요청도 담당 코스·본인 강사·비상담 경계를 벗어날 수 없다', async () => {
+    const target = (await http.post('/api/schedule').set(asAdmin())
+      .send({ courseId: 10, sessionDate: '2099-01-15', startTime: '14:00', endTime: '15:00', force: true })
+      .expect(201)).body.row;
+    const base = {
+      requestKind: 'session_update', targetSessionId: target.id,
+      sessionDate: '2099-01-15', startTime: '14:30', endTime: '15:30', requestReason: '권한 경계 검증', scope: 'this',
+    };
+    await http.post('/api/schedule-requests').set(asInst()).send({ ...base, courseId: 11 }).expect(403);
+    await http.post('/api/schedule-requests').set(asInst()).send({ ...base, instructorId: 2 }).expect(403);
+    await http.post('/api/schedule-requests').set(asInst()).send({ ...base, kind: 'counsel' }).expect(403);
+    await http.delete(`/api/schedule/${target.id}`).set(asAdmin()).expect(200);
+  });
+
   it('수평 권한: 강사 목록=본인 것만 · 승인은 관리자 전용(강사 403)', async () => {
     const mine = (await http.get('/api/schedule-requests').set(asInst()).expect(200)).body;
     expect(mine.every((r: { requesterId: number }) => r.requesterId === mine[0].requesterId)).toBe(true);
