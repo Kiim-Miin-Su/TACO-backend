@@ -1936,7 +1936,7 @@ paths:
                   type: object
       security:
         - bearer: []
-      summary: 스케줄 조회. 강사는 본인 배정 일반 일정만, 상담 일정은 관리 역할만.
+      summary: 스케줄 조회. 강사는 공통 일정과 본인 배정 일반 일정만, 상담 일정은 관리 역할만.
       tags:
         - scheduling
     post:
@@ -2018,7 +2018,7 @@ paths:
           description: ScheduleRow — 강사·과목·강의실명·코호트 포함
       security:
         - bearer: []
-      summary: 세션 단건. 강사는 본인 배정 일반 일정만, 상담은 관리 역할만(404→403).
+      summary: 세션 단건. 강사는 공통 일정과 본인 배정 일반 일정만, 상담은 관리 역할만(404→403).
       tags:
         - scheduling
     patch:
