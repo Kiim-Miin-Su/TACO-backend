@@ -6,7 +6,6 @@ import type { BaseRow } from '../../common/types/base';
 import { NAV_SEEN_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 
 export const NAV_SEEN = 'nav_seen_states';
 
@@ -25,7 +24,6 @@ export class NavSeenService implements OnModuleInit {
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
-    private readonly uow: CalendarUnitOfWork,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -48,16 +46,11 @@ export class NavSeenService implements OnModuleInit {
       throw new BadRequestException(`navKey는 ${NAV_KEYS.join('|')} 중 하나여야 합니다.`);
     }
     const now = new Date().toISOString();
-    return this.uow.run(async () => {
-      const existing = this.db
-        .findByField<NavSeenRow>(NAV_SEEN, 'userId', userId)
-        .find((row) => row.navKey === navKey);
-      if (existing) {
-        await this.store.update<NavSeenRow>(NAV_SEEN_SPEC, existing.id, { lastSeenAt: now });
-      } else {
-        await this.store.insert<NavSeenRow>(NAV_SEEN_SPEC, { userId, navKey, lastSeenAt: now } as Omit<NavSeenRow, keyof BaseRow>);
-      }
-      return { navKey, lastSeenAt: now };
-    });
+    const saved = await this.store.upsertActive<NavSeenRow>(
+      NAV_SEEN_SPEC,
+      ['userId', 'navKey'],
+      { userId, navKey, lastSeenAt: now } as Omit<NavSeenRow, keyof BaseRow>,
+    );
+    return { navKey, lastSeenAt: saved.lastSeenAt };
   }
 }

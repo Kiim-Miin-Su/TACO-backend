@@ -30,6 +30,17 @@ describe('Nav seen states (e2e, B3)', () => {
     expect(Object.keys(map2)).toEqual(['admin']); // upsert — 행 1개 유지
   });
 
+  it('동시 마킹도 unique 충돌 없이 모두 성공하고 활성 행은 한 건이다', async () => {
+    const admin = await login('admin');
+    const calls = await Promise.all([
+      http.put('/api/nav-seen').set('Authorization', `Bearer ${admin}`).send({ navKey: 'calendar' }),
+      http.put('/api/nav-seen').set('Authorization', `Bearer ${admin}`).send({ navKey: 'calendar' }),
+    ]);
+    expect(calls.map((response) => response.status)).toEqual([200, 200]);
+    const mine = (await http.get('/api/nav-seen').set('Authorization', `Bearer ${admin}`).expect(200)).body;
+    expect(Object.keys(mine).filter((key) => key === 'calendar')).toHaveLength(1);
+  });
+
   it('본인 격리 — 다른 계정의 열람이 내 맵에 섞이지 않는다', async () => {
     const manager = await login('manager');
     await http.put('/api/nav-seen').set('Authorization', `Bearer ${manager}`).send({ navKey: 'payments' }).expect(200);

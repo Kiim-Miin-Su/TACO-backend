@@ -127,6 +127,48 @@ export class PostgresCollectionStore {
     return saved;
   }
 
+  /**
+   * 활성 행의 partial unique key를 기준으로 원자 upsert한다.
+   * 서버리스 인스턴스별 메모리 read model이 오래되어도 PostgreSQL unique index가 최종 직렬화한다.
+   */
+  async upsertActive<T extends BaseRow>(
+    spec: PostgresCollectionSpec,
+    conflictFields: Array<keyof T & string>,
+    data: Omit<T, keyof BaseRow>,
+  ): Promise<T> {
+    if (!conflictFields.length) throw new Error('upsertActive requires at least one conflict field');
+    if (!(await this.ensureReady(spec))) {
+      const existing = this.memory.findAll<T>(spec.table).find((row) =>
+        conflictFields.every((field) => row[field] === (data as Record<string, unknown>)[field]),
+      );
+      if (existing) {
+        return this.memory.update<T>(spec.table, existing.id, data) ?? existing;
+      }
+      return this.memory.insert<T>(spec.table, data);
+    }
+
+    const payload = this.toDbPayload(spec, data as Record<string, unknown>);
+    const keys = Object.keys(payload);
+    const columns = keys.map(camelToSnake);
+    const conflictColumns = conflictFields.map(safeColumn);
+    const conflictSet = new Set(conflictColumns);
+    const updateColumns = columns.filter((column) => !conflictSet.has(column) && column !== 'id');
+    if (!updateColumns.length) throw new Error('upsertActive requires at least one update field');
+    const placeholders = keys.map((_, index) => `$${index + 1}`);
+    const values = keys.map((key) => payload[key]);
+    const [row] = await this.query(
+      `INSERT INTO ${spec.table} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+       ON CONFLICT (${conflictColumns.join(', ')}) WHERE deleted_at IS NULL
+       DO UPDATE SET ${updateColumns.map((column) => `${column} = EXCLUDED.${column}`).join(', ')}, updated_at = now()
+       RETURNING *`,
+      values,
+    );
+    if (!row) throw new Error(`${spec.table} upsert did not return a row`);
+    const saved = this.fromDbRow<T>(spec, row);
+    this.memory.seedExact<T>(spec.table, [saved]);
+    return saved;
+  }
+
   async update<T extends BaseRow>(spec: PostgresCollectionSpec, id: number, patch: Partial<Omit<T, keyof BaseRow>>): Promise<T | undefined> {
     if (!(await this.ensureReady(spec))) return this.memory.update<T>(spec.table, id, patch);
     const payload = this.toDbPayload(spec, patch as Record<string, unknown>);
