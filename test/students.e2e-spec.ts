@@ -59,6 +59,30 @@ describe('Students Soft-Delete (e2e)', () => {
     await http.delete('/api/students/99999').set(asAdmin()).expect(404);
   });
 
+  it('퇴원·등록이탈은 조회 가능한 업무 상태이고 원부 soft delete만 목록에서 제외한다', async () => {
+    const withdrawn = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('퇴원상태학생')).expect(201)).body.student;
+    const lost = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('등록이탈학생')).expect(201)).body.student;
+
+    await http.patch(`/api/students/${withdrawn.id}`).set(asAdmin()).send({ status: 'withdrawn' }).expect(200);
+    await http.patch(`/api/students/${lost.id}`).set(asAdmin()).send({ status: 'registration_lost' }).expect(200);
+
+    const afterStatus = (await http.get('/api/students').set(asAdmin()).expect(200)).body;
+    expect(afterStatus).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: withdrawn.id, status: 'withdrawn' }),
+      expect.objectContaining({ id: lost.id, status: 'registration_lost' }),
+    ]));
+    await http.get(`/api/students/${withdrawn.id}/aggregate`).set(asAdmin()).expect(200);
+    await http.get(`/api/students/${lost.id}/aggregate`).set(asAdmin()).expect(200);
+
+    await http.delete(`/api/students/${withdrawn.id}`).set(asAdmin()).expect(200);
+    const afterDelete = (await http.get('/api/students').set(asAdmin()).expect(200)).body;
+    expect(afterDelete.some((row: { id: number }) => row.id === withdrawn.id)).toBe(false);
+    expect(afterDelete.some((row: { id: number }) => row.id === lost.id)).toBe(true);
+    await http.get(`/api/students/${withdrawn.id}/aggregate`).set(asAdmin()).expect(404);
+  });
+
   it('프로필 입력을 컬럼 계약대로 저장하고 유효하지 않은 날짜·성별·상태는 400으로 차단한다', async () => {
     const payload = {
       name: '프로필학생', gender: 'undisclosed', birthDate: '2012-07-21', grade: 8,

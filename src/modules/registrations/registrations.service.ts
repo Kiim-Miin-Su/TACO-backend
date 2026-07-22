@@ -45,6 +45,7 @@ export class RegistrationsService {
       const guardians = this.normalizeGuardians(dto.guardians ?? (dto.guardian ? [dto.guardian] : []));
       const studentInput = this.normalizeCompleteProfile(dto.student);
       // 학생 생성 전에 관심 target/FK/순서를 검증해 실패 요청이 id조차 발급하지 않도록 한다.
+      await this.interests.reloadCommandState();
       this.interests.validate(dto.interests);
       const locks = guardians
         .map((guardian) => (guardian.phone ?? '').replace(/\D/g, ''))
@@ -94,12 +95,14 @@ export class RegistrationsService {
     if (!dto.student && !dto.interests) throw new BadRequestException('student 또는 interests 변경이 필요합니다.');
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
+      await this.students.reloadCommandState();
       const before = this.students.findOne(studentId);
-      const currentInterests = this.interests.findByStudent(studentId);
-      this.interests.validate(dto.interests ?? currentInterests.map((row) => ({
-        ...(row.courseId != null ? { courseId: row.courseId } : { customLabel: row.customLabel ?? undefined }),
-        priority: row.priority,
-      })));
+      // 관심 수업을 실제로 바꿀 때만 해당 aggregate를 DB에서 다시 읽고 검증한다.
+      // 상태-only PATCH가 오래된/무관한 course cache에 의존하지 않게 한다.
+      if (dto.interests) {
+        await this.interests.reloadCommandState();
+        this.interests.validate(dto.interests);
+      }
       if (dto.student) {
         const merged = { ...before, ...dto.student };
         this.normalizeCompleteProfile(merged);

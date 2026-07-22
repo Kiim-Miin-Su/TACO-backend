@@ -3,10 +3,10 @@ import type { StudentInterestInput } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { STUDENT_INTERESTS_SPEC } from '../../database/calendar-asset-specs';
+import { COURSES_SPEC, STUDENTS_SPEC, STUDENT_INTERESTS_SPEC } from '../../database/calendar-asset-specs';
 import { AuditService } from '../audit/audit.service';
 import { Course, COURSES } from '../courses/course.entity';
-import { STUDENTS } from './student.entity';
+import { Student, STUDENTS } from './student.entity';
 import { StudentInterest, STUDENT_INTERESTS } from './student-interest.entity';
 
 type NormalizedInterest = { courseId?: number; customLabel?: string; priority: number };
@@ -22,6 +22,18 @@ export class StudentInterestsService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.store.hydrate<StudentInterest>(STUDENT_INTERESTS_SPEC);
+  }
+
+  /** 관심 수업 command의 FK·중복·최소 개수 판단 전 Postgres source를 readback한다. */
+  async reloadCommandState(studentId?: number): Promise<void> {
+    await this.store.hydrate<Course>(COURSES_SPEC);
+    await this.store.hydrate<StudentInterest>(STUDENT_INTERESTS_SPEC);
+    // 학생 profile read model 전체를 hydrate하면 grade/school projection을 덮을 수 있으므로,
+    // FK 존재 검증은 target row만 Postgres 직행 조회한다.
+    if (studentId != null) {
+      const rows = await this.store.findActive<Student>(STUDENTS_SPEC, { where: { id: studentId } });
+      if (!rows.length) throw new NotFoundException(`Student ${studentId} not found`);
+    }
   }
 
   findByStudent(studentId: number): StudentInterest[] {
@@ -64,7 +76,7 @@ export class StudentInterestsService implements OnModuleInit {
   async replace(studentId: number, inputs: readonly StudentInterestInput[], actorId: number): Promise<StudentInterest[]> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
-      this.assertStudent(studentId);
+      await this.reloadCommandState(studentId);
       return this.replaceInTx(studentId, inputs, actorId);
     });
   }
@@ -94,7 +106,7 @@ export class StudentInterestsService implements OnModuleInit {
   async add(studentId: number, input: StudentInterestInput, actorId: number): Promise<StudentInterest> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
-      this.assertStudent(studentId);
+      await this.reloadCommandState(studentId);
       const current = this.db.findByField<StudentInterest>(STUDENT_INTERESTS, 'studentId', studentId);
       const normalized = this.validate([...current.map(this.toInput), input]);
       const next = normalized.find((item) => item.priority === input.priority)!;
@@ -107,7 +119,7 @@ export class StudentInterestsService implements OnModuleInit {
   async remove(studentId: number, interestId: number, actorId: number): Promise<{ id: number; deleted: true }> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
-      this.assertStudent(studentId);
+      await this.reloadCommandState(studentId);
       const current = this.db.findByField<StudentInterest>(STUDENT_INTERESTS, 'studentId', studentId);
       const target = current.find((row) => row.id === interestId);
       if (!target) throw new NotFoundException(`희망 수업 ${interestId} 없음`);

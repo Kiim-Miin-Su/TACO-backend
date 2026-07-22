@@ -33,8 +33,7 @@ export class StudentsService implements OnModuleInit {
     private readonly audit: AuditService, // [감사 전수 2026-07-16] 직접 CRUD 이력(집계 경로는 registrations가 기록)
   ) {}
 
-  // 데모 학생 시드 — 프론트 목데이터를 백엔드로 이관(고정 id로 관계 정합 유지).
-  // 프론트는 이제 이 데이터를 GET /students로 가져와 store에 적재(단일 소스: 백엔드).
+  // Postgres active rows를 프로세스 read model에 적재한다. 업무 seed는 만들지 않는다.
   async onModuleInit(): Promise<void> {
     await this.store.hydrate<Student>(STUDENTS_SPEC);
     await this.store.hydrate<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC);
@@ -50,6 +49,23 @@ export class StudentsService implements OnModuleInit {
     const student = this.db.findById<Student>(STUDENTS, id);
     if (!student) throw new NotFoundException(`Student ${id} not found`);
     return { ...student };
+  }
+
+  /**
+   * 학생 command 직전 Postgres를 다시 읽어 프로세스 cache를 갱신한다.
+   * 반드시 uow.run + student advisory lock 안에서 호출해 business decision이 오래된 cache를 기준으로
+   * 내려지지 않게 한다. Postgres가 없는 isolated test에서는 기존 in-memory fixture가 권위다.
+   */
+  async reloadCommandState(options: { cascade?: boolean } = {}): Promise<void> {
+    await this.store.hydrate<Student>(STUDENTS_SPEC);
+    await this.store.hydrate<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC);
+    if (options.cascade) {
+      await this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
+      await this.store.hydrate<StudentInterest>(STUDENT_INTERESTS_SPEC);
+      await this.store.hydrate<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC);
+      await this.store.hydrate<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC);
+    }
+    for (const student of this.db.findAll<Student>(STUDENTS)) this.refreshAcademicReadModel(student.id);
   }
 
   findAggregate(id: number): StudentAggregate {
@@ -363,6 +379,8 @@ export class StudentsService implements OnModuleInit {
     //  중간 실패 시 두 표 모두 롤백(부분 정리 잔존 금지 규약을 PG까지 확장).
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id }]);
+      // 삭제 범위(수강·관심·보호자·가족·학사)는 모두 이 transaction에서 DB readback 후 결정한다.
+      await this.reloadCommandState({ cascade: true });
       const student = this.db.findById<Student>(STUDENTS, id);
       if (!student) throw new NotFoundException(`Student ${id} not found`);
       const before = { ...student };
