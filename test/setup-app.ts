@@ -4,9 +4,11 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../src/app.module";
 import { configureTrustProxy } from "../src/common/trust-proxy";
+import { seedBusinessFixtures } from "./fixtures/seed-business-fixtures";
 
 // main.ts와 동일한 부트 설정으로 e2e 앱 인스턴스 생성.
 export async function createTestApp(): Promise<INestApplication> {
+  const shouldSeedFixtures = process.env.TEST_BUSINESS_FIXTURES !== '0';
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
   configureTrustProxy(app);
@@ -32,6 +34,7 @@ export async function createTestApp(): Promise<INestApplication> {
   }
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }) /* 미허용 필드 400(mass-assignment 방어) */);
   await app.init();
+  if (shouldSeedFixtures) seedBusinessFixtures(app);
   return app;
 }
 

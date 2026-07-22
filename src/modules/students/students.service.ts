@@ -36,23 +36,9 @@ export class StudentsService implements OnModuleInit {
   // 데모 학생 시드 — 프론트 목데이터를 백엔드로 이관(고정 id로 관계 정합 유지).
   // 프론트는 이제 이 데이터를 GET /students로 가져와 store에 적재(단일 소스: 백엔드).
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<Student>(STUDENTS_SPEC);
+    await this.store.hydrate<Student>(STUDENTS_SPEC);
     await this.store.hydrate<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC);
     await this.store.hydrate<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC);
-    if (!hydrated.length && !this.db.findAll<Student>(STUDENTS).length) {
-      await this.store.seed<Student>(STUDENTS_SPEC, [
-        { id: 1, name: '김서연', englishName: 'Sophia', birthDate: '2009-03-14', residenceType: 'overseas', country: 'US', status: 'enrolled' },
-        { id: 2, name: '이준호', englishName: 'Daniel', birthDate: '2008-08-21', residenceType: 'domestic', country: 'KR', status: 'enrolled' },
-        { id: 3, name: '박지민', englishName: 'Emma', birthDate: '2010-11-02', residenceType: 'overseas', country: 'VN', status: 'on_leave' },
-        { id: 4, name: '최민준', englishName: 'Lucas', birthDate: '2009-06-09', residenceType: 'domestic', status: 'enrolled' },
-      ]);
-      await this.store.seed<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC, [
-        { id: 1, studentId: 1, grade: 11, schoolName: '미입력', startedOn: '2026-01-01', changedBy: 1, changedAt: new Date().toISOString() },
-        { id: 2, studentId: 2, grade: 12, schoolName: '미입력', startedOn: '2026-01-01', changedBy: 1, changedAt: new Date().toISOString() },
-        { id: 3, studentId: 3, grade: 10, schoolName: '미입력', startedOn: '2026-01-01', changedBy: 1, changedAt: new Date().toISOString() },
-        { id: 4, studentId: 4, grade: 11, schoolName: '미입력', startedOn: '2026-01-01', changedBy: 1, changedAt: new Date().toISOString() },
-      ]);
-    }
     for (const student of this.db.findAll<Student>(STUDENTS)) this.refreshAcademicReadModel(student.id);
   }
 

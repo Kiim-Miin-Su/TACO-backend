@@ -30,8 +30,7 @@ import { studentBelongsToSession } from './session-participant.policy';
 import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
-import { hhmmToMin as toMin, weekdayOf, dateToYmd as fmt, addDaysISO, dayDiff } from '../../common/time.util';
-import { testBusinessFixturesEnabled } from '../../config/test-fixtures';
+import { hhmmToMin as toMin, weekdayOf, addDaysISO, dayDiff } from '../../common/time.util';
 
 // [감사 A, 2026-07-02] 하드코딩 상수(STUDENTS_LBL/COURSE_STUDENTS/COURSES/SUBJECTS) 제거 —
 //  코호트·카탈로그는 실제 컬렉션(students/enrollments/courses/subjects)을 조회한다(단일 소스).
@@ -56,19 +55,6 @@ const SESSION_DEFAULTS = {
 //  (undefined는 PG UPDATE payload에서 skip돼 이전 end_time이 잔존 — 메모리/PG 투영 편차의 근본 원인).
 const addMinutes = addMinutesGuarded;
 const endTimeOf = storedEndTimeOf;
-function mondayOfThisWeekUTC(): Date {
-  const now = new Date();
-  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const dow = d.getUTCDay(); // 0=일
-  const diff = dow === 0 ? -6 : 1 - dow; // 월요일로 이동
-  d.setUTCDate(d.getUTCDate() + diff);
-  return d;
-}
-
-// 주간 반복 시리즈 시드 정의 — 같은 시리즈는 한 seriesId를 공유(반복 편집 데모용).
-// instructorId·topic을 시드에 직접 명시(코스 시드와 정렬) — onModuleInit 실행 순서상
-// courses 컬렉션이 아직 비어 있을 수 있어 시드만큼은 컬렉션을 참조하지 않는다.
-type SeedSeries = { courseId: number; instructorId: number; topic: string; roomId: number; weekdayOffsets: number[]; startTime: string; durationMinutes: number; mode?: ClassSession['mode'] };
 // 병합된 세션 필드(업데이트 적용 단위) — 이동/리사이즈/편집 공통.
 type MergedFields = {
   studentIds?: number[]; // 명시 코호트(v0.1.13)
@@ -102,87 +88,6 @@ export class ScheduleService implements OnModuleInit {
   // 이번 주 데모 수업 시드 — 주간 반복 시리즈 단위(같은 시리즈=한 seriesId). 충돌 없게 구성.
   async onModuleInit(): Promise<void> {
     await this.sessions.ensureReady();
-    if (this.db.findAll<ClassSession>(SESSIONS).length) return;
-    // [시범운영 2026-07-15] 회차는 insert로 시드해 store.seed 관문을 우회 — 명시 게이트 추가.
-    if (!testBusinessFixturesEnabled()) return;
-    const mon = mondayOfThisWeekUTC();
-    const series: SeedSeries[] = [
-      // SAT Reading 정규(강사1·강의실1) — 월·수·금 16:00
-      { courseId: 10, instructorId: 1, topic: 'SAT Reading 정규', roomId: 1, weekdayOffsets: [0, 2, 4], startTime: '16:00', durationMinutes: 90 },
-      // AP Calculus BC(강사2·강의실3) — 화·목 16:00
-      { courseId: 11, instructorId: 2, topic: 'AP Calculus BC', roomId: 3, weekdayOffsets: [1, 3], startTime: '16:00', durationMinutes: 120 },
-      // TOEFL 정규(강사1·강의실2) — 월·수 18:00 · [v0.1.16] 비대면(미국 학생 수강 — 수업방식 필터 데모)
-      { courseId: 12, instructorId: 1, topic: 'TOEFL 정규', roomId: 2, weekdayOffsets: [0, 2], startTime: '18:00', durationMinutes: 90, mode: 'online' },
-    ];
-    // [TBO-29C C2] class_sessions.series_id FK 승격 — 시리즈 자산 행을 회차보다 먼저 시드.
-    let seedSid = 0;
-    const seriesRows = series.map((sr) => {
-      const dates = sr.weekdayOffsets.map((off) => { const d = new Date(mon); d.setUTCDate(d.getUTCDate() + off); return fmt(d); });
-      return {
-        id: ++seedSid,
-        repeatKind: 'custom' as const,
-        weekdays: [...new Set(dates.map((d) => weekdayOf(d)))].sort(),
-        startsOn: dates[0],
-        endsOn: dates[dates.length - 1],
-        startTime: sr.startTime,
-        durationMinutes: sr.durationMinutes,
-        timeZone: 'Asia/Seoul',
-        version: 1,
-      };
-    });
-    await this.collections.seed<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC, seriesRows);
-
-    let seriesId = 0;
-    for (const sr of series) {
-      const sid = ++seriesId;
-      for (const off of sr.weekdayOffsets) {
-        const date = new Date(mon);
-        date.setUTCDate(date.getUTCDate() + off);
-        await this.sessions.insert({
-          seriesId: sid,
-          courseId: sr.courseId,
-          instructorId: sr.instructorId,
-          roomId: sr.roomId,
-          sessionDate: fmt(date),
-          startTime: sr.startTime,
-          endTime: addMinutes(sr.startTime, sr.durationMinutes),
-          durationMinutes: sr.durationMinutes,
-          status: 'scheduled',
-          topic: sr.topic,
-          mode: sr.mode, // [v0.1.16] 미지정=enrich가 in_person 하위호환
-        } as Omit<ClassSession, keyof BaseRow>);
-      }
-    }
-
-    // 보강 픽스처: 강사1(박지훈)의 점심 불가시간(월 12:00-13:00)과 겹치지 않게 둔다.
-    // 불가시간과 실제 수업이 겹치는 시드는 운영 논리상 모순이므로 e2e로 금지한다.
-    const mon0 = fmt(mon);
-    // 표기는 실제 데이터(강사·수업명)로 깔끔하게 — "데모" 문구 금지(피드백 2026-07-02).
-    await this.sessions.insert({
-      courseId: 12, instructorId: 1, roomId: 2,
-      sessionDate: mon0, startTime: '13:00', endTime: '14:00', durationMinutes: 60,
-      status: 'scheduled', topic: 'TOEFL 정규 — 보강', mode: 'online', // [v0.1.16]
-    } as Omit<ClassSession, keyof BaseRow>);
-
-    // ── 과거 히스토리 시드(프론트 mock 이관) — 오늘 기준 상대 날짜. 지난 held/취소/보강 =
-    //   리포트 미작성·강사/학생 출결·보강 필요 대시보드 데모용. 고정 id(20~28)로 attendance/reports FK 정합.
-    //   held·makeup에는 강사 출결(instructorAttendance) 부여. 과거(이번 주 이전)라 이번 주 캘린더/schedule e2e에 미포함.
-    const dOff = (off: number) => { const x = new Date(mon); x.setUTCDate(x.getUTCDate() + off); return fmt(x); };
-    const hist: Array<Omit<ClassSession, 'id' | 'createdAt' | 'updatedAt'> & { id: number }> = [
-      // 2주 전(held) — 강사 출결 present/late
-      { id: 20, courseId: 10, instructorId: 1, roomId: 1, sessionDate: dOff(-12), startTime: '16:00', endTime: '17:30', durationMinutes: 90, status: 'held', instructorAttendance: 'present', topic: 'Reading: 주제·요지' },
-      { id: 21, courseId: 11, instructorId: 2, roomId: 3, sessionDate: dOff(-13), startTime: '18:00', endTime: '20:00', durationMinutes: 120, status: 'held', instructorAttendance: 'present', topic: '미분 응용' },
-      { id: 22, courseId: 12, instructorId: 1, roomId: 2, sessionDate: dOff(-14), startTime: '18:00', endTime: '19:30', durationMinutes: 90, status: 'held', instructorAttendance: 'late', topic: 'TOEFL Reading 스킬' },
-      // 지난주(held)
-      { id: 26, courseId: 10, instructorId: 1, roomId: 1, sessionDate: dOff(-5), startTime: '16:00', endTime: '17:30', durationMinutes: 90, status: 'held', instructorAttendance: 'present', topic: 'Reading: 추론(Inference) 전략' },
-      { id: 27, courseId: 11, instructorId: 2, roomId: 3, sessionDate: dOff(-6), startTime: '18:00', endTime: '20:00', durationMinutes: 120, status: 'held', instructorAttendance: 'present', topic: '적분 응용(부분적분)' },
-      { id: 28, courseId: 12, instructorId: 1, roomId: 2, sessionDate: dOff(-7), startTime: '18:00', endTime: '19:30', durationMinutes: 90, status: 'held', instructorAttendance: 'present', topic: 'TOEFL Writing 통합형' },
-      // 취소(보강 필요) / 보강
-      { id: 23, courseId: 10, instructorId: 1, roomId: 1, sessionDate: dOff(-4), startTime: '16:00', endTime: '17:30', durationMinutes: 90, status: 'canceled', topic: 'Reading: 문장 삽입(취소)' },
-      { id: 24, courseId: 12, instructorId: 1, roomId: 2, sessionDate: dOff(-11), startTime: '18:00', endTime: '19:30', durationMinutes: 90, status: 'canceled', topic: 'TOEFL Listening(취소)' },
-      { id: 25, courseId: 12, instructorId: 1, roomId: 2, sessionDate: dOff(-9), startTime: '18:00', endTime: '19:30', durationMinutes: 90, status: 'makeup', instructorAttendance: 'makeup', topic: 'TOEFL Listening(보강)', makeupForSessionId: 24 },
-    ];
-    await this.sessions.seed(hist);
   }
 
   // [EP2 2026-07-16] 읽기 경로 hydrate 게이트 — 종전엔 캘린더 진입 시 읽기 라우트 **각각**이

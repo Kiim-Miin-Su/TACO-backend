@@ -79,7 +79,7 @@ describe('InMemoryDatabase — transaction & index', () => {
   });
 
   it('findById는 remove 후 미스, seed 고정 id와 insert 시퀀스가 충돌하지 않는다', () => {
-    db.seed<Row>(C, [{ id: 10, name: 'seeded' }]);
+    db.seedReference<Row>(C, [{ id: 10, name: 'seeded' }]);
     expect(db.findById<Row>(C, 10)?.name).toBe('seeded');
     const n = db.insert<Row>(C, { name: 'next' });
     expect(n.id).toBe(11);

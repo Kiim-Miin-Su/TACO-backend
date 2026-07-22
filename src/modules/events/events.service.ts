@@ -25,14 +25,7 @@ export class EventsService implements OnModuleInit {
 
   // 데모 학원 이벤트 시드 — 고정 id 1~4로 하이드레이션 멱등(PG에 있으면 시드 생략).
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<AcademyEvent>(ACADEMY_EVENTS_SPEC);
-    if (hydrated.length || this.db.findAll<AcademyEvent>(ACADEMY_EVENTS).length) return;
-    await this.store.seed<AcademyEvent>(ACADEMY_EVENTS_SPEC, [
-      { id: 1, title: '여름 특강 등록 시작', type: 'notice', priority: 'high', startDate: '2026-06-25', endDate: '2026-06-30' },
-      { id: 2, title: 'SAT 모의고사', type: 'exam', priority: 'high', startDate: '2026-06-28', endDate: '2026-06-28', allDay: true },
-      { id: 3, title: '창립기념일 휴원', type: 'holiday', priority: 'high', startDate: '2026-07-01', endDate: '2026-07-01', allDay: true },
-      { id: 4, title: '자습실 연장 운영', type: 'notice', priority: 'normal', startDate: '2026-06-26', endDate: '2026-06-30' },
-    ]);
+    await this.store.hydrate<AcademyEvent>(ACADEMY_EVENTS_SPEC);
   }
 
   findAll(): AcademyEvent[] {

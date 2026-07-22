@@ -30,8 +30,8 @@ export function assertProductionBootSafety(): void {
 }
 
 // [TBO-29C 계정 청크 2026-07-15] demo 자격증명 방어(심층 방어) — 클라이언트 계정 전환 토글은
-//  TBO-29에서 폐지됐고(다른 계정=로그아웃 후 실제 로그인), demo seed는 production에서 부팅 차단되지만,
-//  과거 데이터/실수로 알려진 테스트 비밀번호 계정이 살아 있어도 운영에서는 로그인 자체를 거부한다.
+//  TBO-29에서 계정 전환 토글과 runtime fixture는 폐지됐다. 과거 데이터/실수로 알려진 테스트 비밀번호
+//  계정이 살아 있어도 운영에서는 로그인 자체를 거부한다.
 //  비밀번호 원문은 비교에만 쓰고 어디에도 기록하지 않는다.
 const DEMO_PASSWORDS = new Set(['demo1234']);
 

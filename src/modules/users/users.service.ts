@@ -2,7 +2,7 @@
 //  가입(pending) → 이메일 인증 → 대표 승인(active) 라이프사이클의 모든 상태 변화가 db에 기록된다.
 //  [자산화 점검 2026-07-02] 서비스 로컬 배열(this.accounts) → db.seed/insert/update 이관.
 //  [TBO-28B 2026-07-14] 승인 = **단일 트랜잭션**(users CAS + instructor_profiles + audit_log),
-//   verification token = sha256 hash + 48h 만료(성공 시 명시 NULL), demo seed = production 전면 금지.
+//   verification token = sha256 hash + 48h 만료(성공 시 명시 NULL), runtime business fixture 없음.
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
@@ -23,7 +23,6 @@ import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import type { Course } from '../courses/course.entity';
 import type { InstructorContract } from '../instructor-contracts/instructor-contract.entity';
 import { canDecideSignupRole, roleHasCapability } from '../auth/role-policy';
-import { testBusinessFixturesEnabled } from '../../config/test-fixtures';
 import {
   USERS, authVersionOf, isStaffRole, toSafe,
   type AccountStatus, type SafeAccount, type StaffAccount, type StaffRole,
@@ -32,12 +31,6 @@ import {
 // 하위 호환 재노출(외부 소비처가 users.service 경유로 import하던 심볼)
 export { isStaffRole, toAccount, toSafe } from './user.entity';
 export type { AccountStatus, SafeAccount, StaffAccount, StaffRole } from './user.entity';
-
-// 데모 시드 — 운영 계정(이미 활성·이메일 인증 완료). 비밀번호: 'demo1234'.
-//  [TBO-28B] production에서는 어떤 경로로도 시드되지 않는다(§4-d fail-fast 계약).
-//  해시는 지연 계산(운영 부팅에서 bcrypt 비용·데모 해시 자체를 만들지 않음).
-let demoPwHash: string | undefined;
-const DEMO_PW = (): string => (demoPwHash ??= bcrypt.hashSync('demo1234', 12));
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
 // [E0] export — 프로필 변경 요청(webId 승인제)의 잠금이 즉시 변경 경로와 같은 lock id를 쓴다
@@ -192,36 +185,7 @@ export class UsersService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     const hydrated = await this.store.hydrate<StaffAccount>(USERS_SPEC);
-
-    // [TBO-28B §4-d] production: demo seed 전면 금지. 빈 DB는 INITIAL_ADMIN_* 부트스트랩(없으면 부팅 차단 —
-    //  로그인 불능 배포 방지). prof_admin 자동 재삽입(ensureDefaultAdminAccount)도 production 금지.
-    if (isProduction()) {
-      if (!hydrated.length) await this.bootstrapInitialAdmin();
-      return;
-    }
-
-    if (hydrated.length) {
-      await this.ensureDefaultAdminAccount();
-      return;
-    }
-    await this.store.seed<StaffAccount>(USERS_SPEC, [
-      // [강사 식별자 통일 2026-07-07] users.id 자체가 강사 식별자다(별도 instructorId 브리지 폐기).
-      //  courses/class_sessions/payouts/reports/availability/counsel의 instructorId·assignedStaffId가 이 id를 참조.
-      //  강사 = id 1·2, 대표/매니저 = 3·4. (정유진은 우선 데모 계정 — 실제 강사는 추후 계정 발급)
-      { id: 1, webId: 'park_inst', name: '박지훈', email: 'park@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, profileVersion: 1, mustChangePassword: false, countryCode: 'KR', timeZone: 'Asia/Seoul' },
-      { id: 2, webId: 'jung_inst', name: '정유진', email: 'jung@tnacademy.test', role: 'instructor', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, profileVersion: 1, mustChangePassword: false, countryCode: 'GB', timeZone: 'Europe/London' },
-      { id: 3, webId: 'admin', name: '김민수', email: 'admin@tnacademy.test', role: 'super_admin', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, profileVersion: 1, mustChangePassword: false },
-      { id: 4, webId: 'manager', name: '이지원', email: 'manager@tnacademy.test', role: 'manager', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, profileVersion: 1, mustChangePassword: false },
-      { id: 5, webId: 'prof_admin', name: '한서윤', email: 'prof.admin@tnacademy.test', role: 'admin', status: 'active', passwordHash: DEMO_PW(), emailVerified: true, authVersion: 1, profileVersion: 1, mustChangePassword: false },
-    ]);
-    // 데모 시드된 활성 강사는 프로필도 동반(승인 경로와 동일 불변식: active instructor ↔ active profile 1행).
-    for (const inst of this.db.findBy<StaffAccount>(USERS, (u) => u.role === 'instructor' && u.status === 'active')) {
-      if (!this.profiles.findActive(inst.id)) {
-        await this.profiles.upsertActive(inst.id, 3, new Date().toISOString(), {
-          defaultHourlyRate: inst.id === 1 ? 50000 : inst.id === 2 ? 60000 : 0,
-        });
-      }
-    }
+    if (isProduction() && !hydrated.length) await this.bootstrapInitialAdmin();
   }
 
   /** production 최초 관리자 부트스트랩. 첫 로그인에서 아이디와 비밀번호를 모두 교체한다. */
@@ -231,7 +195,7 @@ export class UsersService implements OnModuleInit {
     if (!webId || !password || password.length < 8) {
       throw new Error(
         '[users] production 빈 DB — INITIAL_ADMIN_WEB_ID/INITIAL_ADMIN_PASSWORD(8자+)가 필요합니다. ' +
-        '데모 시드는 production에서 금지됩니다(로그인 불능 배포 방지 fail-fast).',
+        '운영 업무 시드는 제공되지 않습니다(로그인 불능 배포 방지 fail-fast).',
       );
     }
     await this.store.insert<StaffAccount>(USERS_SPEC, {
@@ -247,23 +211,6 @@ export class UsersService implements OnModuleInit {
       mustChangePassword: true,
     });
     this.logger.log(`production 최초 관리자 부트스트랩 완료(webId=${webId}) — 자격증명은 로그에 남기지 않음`);
-  }
-
-  private async ensureDefaultAdminAccount(): Promise<void> {
-    if (!testBusinessFixturesEnabled()) return;
-    if (this.findByWebId('prof_admin')) return;
-    await this.store.insert<StaffAccount>(USERS_SPEC, {
-      webId: 'prof_admin',
-      name: '한서윤',
-      email: 'prof.admin@tnacademy.test',
-      role: 'admin',
-      status: 'active',
-      passwordHash: DEMO_PW(),
-      emailVerified: true,
-      authVersion: 1,
-      profileVersion: 1,
-      mustChangePassword: false,
-    });
   }
 
   // [TBO-28F 2026-07-14] 교차 인스턴스 정합 — users 메모리 투영을 권위 DB에서 재조회.

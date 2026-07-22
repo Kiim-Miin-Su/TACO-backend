@@ -17,7 +17,6 @@ import {
   CLASS_SESSION_SERIES_SETVAL_SQL,
   CLASS_SESSION_SERIES_TABLE_SQL,
 } from '../../database/migrations/class-session-series.migration';
-import { testBusinessFixturesEnabled } from '../../config/test-fixtures';
 import { TBO36_CLASS_SESSIONS_SQL } from '../../database/migrations/staff-pay-calendar.migration';
 
 const TABLE = SESSIONS;
@@ -52,19 +51,6 @@ export class ClassSessionsStore implements OnModuleInit {
     if (!this.postgres.ready) return;
     if (!this.ready) await this.ensureSchema();
     await this.refreshMemory();
-  }
-
-  async seed(rows: Array<Omit<ClassSession, keyof BaseRow> & { id: number }>): Promise<ClassSession[]> {
-    if (!testBusinessFixturesEnabled()) return [];
-    if (!this.durable) return this.memory.seed<ClassSession>(TABLE, rows);
-    const inserted: ClassSession[] = [];
-    for (const row of rows) {
-      const [saved] = await this.insertDb({ ...row }, true);
-      if (saved) inserted.push(saved);
-    }
-    await this.syncSequence();
-    this.memory.seedExact<ClassSession>(TABLE, inserted);
-    return inserted;
   }
 
   async insert(data: Omit<ClassSession, keyof BaseRow>): Promise<ClassSession> {
@@ -247,10 +233,6 @@ export class ClassSessionsStore implements OnModuleInit {
     const rows = await this.query(`SELECT * FROM ${TABLE} ORDER BY id ASC`);
     const sessions = rows.map((r) => this.fromDbRow(r));
     this.memory.replaceExact<ClassSession>(TABLE, sessions);
-  }
-
-  private async syncSequence(): Promise<void> {
-    await this.query(`SELECT setval(pg_get_serial_sequence('${TABLE}', 'id'), COALESCE((SELECT MAX(id) FROM ${TABLE}), 1), true)`);
   }
 
   private async query(sql: string, params: unknown[] = []): Promise<PostgresRow[]> {

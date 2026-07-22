@@ -24,17 +24,7 @@ export class PaymentsService implements OnModuleInit {
   // 데모 결제 시드 — 프론트 목데이터 이관. enrollmentId→enrollments, studentId→students(무결성).
   // 미수(pending+dueAt) 2건 → 결제 탭 배지가 백엔드 기준으로 동작.
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<Payment>(PAYMENTS_SPEC);
-    if (hydrated.length) return;
-    await this.store.seed<Payment>(PAYMENTS_SPEC, [
-      { id: 1, enrollmentId: 1, studentId: 1, amount: 480000, paidAmount: 480000, status: 'paid', paymentMethod: 'card', paidAt: '2026-06-24' },
-      { id: 2, enrollmentId: 2, studentId: 2, amount: 520000, paidAmount: 520000, status: 'paid', paymentMethod: 'transfer', paidAt: '2026-06-23' },
-      { id: 3, enrollmentId: 3, studentId: 4, amount: 480000, paidAmount: 0, status: 'pending', dueAt: '2026-06-30' },
-      { id: 4, enrollmentId: 4, studentId: 1, amount: 420000, paidAmount: 0, status: 'pending', dueAt: '2026-06-28' },
-      { id: 5, enrollmentId: 3, studentId: 4, amount: 480000, paidAmount: 480000, status: 'paid', paymentMethod: 'card', paidAt: '2026-06-10' },
-      { id: 6, enrollmentId: 4, studentId: 1, amount: 420000, paidAmount: 420000, status: 'paid', paymentMethod: 'transfer', paidAt: '2026-05-28' },
-      { id: 7, enrollmentId: 2, studentId: 2, amount: 520000, paidAmount: 520000, status: 'paid', paymentMethod: 'card', paidAt: '2026-05-15' },
-    ]);
+    await this.store.hydrate<Payment>(PAYMENTS_SPEC);
   }
 
   findAll(): Payment[] {

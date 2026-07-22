@@ -19,14 +19,7 @@ export class RoomsService implements OnModuleInit {
 
   // 부팅 시 데모 강의실 시드(in-memory)
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<Room>(ROOMS_SPEC);
-    if (hydrated.length || this.db.findAll<Room>(ROOMS).length) return;
-    const seed: Array<Omit<Room, keyof import('../../database/in-memory.database').BaseRow> & { id: number }> = [
-      { id: 1, name: 'A101', capacity: 8, color: '#0969da', isActive: true },
-      { id: 2, name: 'A102', capacity: 6, color: '#1a7f37', isActive: true },
-      { id: 3, name: 'B201 (세미나)', capacity: 16, color: '#8250df', isActive: true },
-    ];
-    await this.store.seed<Room>(ROOMS_SPEC, seed);
+    await this.store.hydrate<Room>(ROOMS_SPEC);
   }
 
   findAll(): Room[] {

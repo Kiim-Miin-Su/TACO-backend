@@ -15,6 +15,7 @@ import {
   type ProviderChallenge,
   type SendChallengeInput,
 } from '../src/modules/profile-verifications/contact-verification.provider';
+import { seedBusinessFixtures } from './fixtures/seed-business-fixtures';
 
 class FakeContactVerificationProvider implements ContactVerificationProvider {
   sent: Array<{ channel: string; target: string; code?: string }> = [];
@@ -67,6 +68,7 @@ describe('Profile contact verification (e2e, TBO-29B-4)', () => {
     app.setGlobalPrefix('api');
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
+    seedBusinessFixtures(app);
     http = request(app.getHttpServer());
     db = app.get(InMemoryDatabase);
     tokens.instructor = await login('park_inst');

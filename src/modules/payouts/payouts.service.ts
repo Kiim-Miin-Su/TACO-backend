@@ -2,17 +2,14 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { INSTRUCTOR_PAYOUTS_SPEC, TRANSACTIONS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { hhmmToMin, minToHhmm } from '../../common/time.util'; // [R-3 함수 통일]
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { payoutAmountOf } from '../schedule/session-accounting.policy';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { CoursesService } from '../courses/courses.service';
 import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // 대표 schedule owner는 정산 제외
-import { ReportsService } from '../reports/reports.service';
 import { AuditService } from '../audit/audit.service';
 import { PayoutReadinessService } from './payout-readiness.service';
-import { testBusinessFixturesEnabled } from '../../config/test-fixtures';
 import {
   InstructorPayoutRow,
   PayoutLine,
@@ -59,64 +56,14 @@ export class PayoutsService implements OnModuleInit {
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
     private readonly sessionsStore: ClassSessionsStore,
-    private readonly reports: ReportsService,
     private readonly unitOfWork: CalendarUnitOfWork,
     private readonly audit: AuditService, // [감사 전수 2026-07-16] 급여 전 상태전환 이력(대표 지시)
     private readonly courses: CoursesService,
     private readonly readiness: PayoutReadinessService,
   ) {}
 
-  // 데모 mock 주입 — 현재 주(週) 범위 밖(6월 중순)에 held 세션 + 승인 보고서를 심어
-  // 프론트 /payouts 화면이 부팅 직후부터 실제 데이터로 동작하게 한다.
-  //  · 강사1: 적격 3건(미정산) + 게이트 데모(보고서 없음·취소) → UI에서 산정/생성 시연
-  //  · 강사2: 적격 3건 → generate→confirm→pay로 '지급완료' 정산서 + 원장 출금 1줄
-  // 현재 주(MON~SUN)·강사1 쿼리와 겹치지 않게 6/8~6/19로 한정(e2e 불간섭).
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC);
-    if (hydrated.length) return; // 이미 DB에 저장됨
-    // [시범운영 2026-07-15] 이 시드는 seed()가 아니라 insert/승인 흐름으로 데모를 만들어
-    //  store.seed 단일 관문을 우회했다(production 부팅 테스트에서 FK 위반으로 검출) — 명시 게이트.
-    if (!testBusinessFixturesEnabled()) return;
-
-    const make = (
-      courseId: number,
-      instructorId: number,
-      date: string,
-      start: string,
-      minutes: number,
-      status: ClassSession['status'],
-    ): Promise<number> => this.sessionsStore.insert({
-        courseId, instructorId, sessionDate: date, startTime: start,
-        endTime: minToHhmm(hhmmToMin(start) + minutes), durationMinutes: minutes, status,
-        topic: '정규 수업', // 캘린더 표기는 실데이터 문구만(피드백 2026-07-02)
-      } as Omit<SessionWithPayout, 'id' | 'createdAt' | 'updatedAt'>).then((row) => row.id);
-    // 세션 + 보고서(작성→승인) 동시 생성. status==='held'·승인이라야 시수 적격.
-    const withApprovedReports = async (sessionId: number, studentIds: number[]) => {
-      for (const studentId of studentIds) {
-        const existing = this.reports.findBySession(sessionId).find((r) => r.studentId === studentId);
-        const r = existing ?? await this.reports.create({ sessionId, studentId, content: '진도·피드백(데모)' });
-        if (r.approvalStatus === 'approved') continue;
-        const submitted = r.approvalStatus === 'submitted' ? r : await this.reports.submit(r.id);
-        await this.reports.approve(submitted.id, 0);
-      }
-    };
-
-    // 강사1(박지훈) — 적격 3건(미정산)
-    await withApprovedReports(await make(10, 1, '2026-06-08', '16:00', 90, 'held'), [1, 4]);
-    await withApprovedReports(await make(10, 1, '2026-06-10', '16:00', 90, 'held'), [1, 4]);
-    await withApprovedReports(await make(12, 1, '2026-06-15', '18:00', 120, 'held'), [1]);
-    // 게이트 데모: held이지만 보고서 없음 → 제외
-    await make(10, 1, '2026-06-09', '16:00', 60, 'held');
-    // 게이트 데모: 보고서 승인됐지만 취소 → 제외
-    await withApprovedReports(await make(10, 1, '2026-06-11', '16:00', 90, 'canceled'), [1, 4]);
-
-    // 강사2(정유진) — 적격 3건 → 즉시 정산·지급(완료 상태 시연)
-    await withApprovedReports(await make(11, 2, '2026-06-09', '16:00', 120, 'held'), [2]);
-    await withApprovedReports(await make(11, 2, '2026-06-11', '16:00', 120, 'held'), [2]);
-    await withApprovedReports(await make(11, 2, '2026-06-16', '16:00', 120, 'held'), [2]);
-    const paid = await this.generate(2, '2026-06-01', '2026-06-30');
-    await this.confirm(paid.id);
-    await this.pay(paid.id);
+    await this.store.hydrate<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC);
   }
 
   // 시수 측정(순수 계산) — preview/generate 공통.

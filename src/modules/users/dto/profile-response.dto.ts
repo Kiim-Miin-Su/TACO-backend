@@ -4,7 +4,7 @@ export class ProfileResponseDto {
   @ApiProperty({ example: 1 })
   id!: number;
 
-  @ApiProperty({ example: 'park_inst' })
+  @ApiProperty({ example: 'instructor01' })
   webId!: string;
 
   @ApiProperty({ example: '박지훈' })

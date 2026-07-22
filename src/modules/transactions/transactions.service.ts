@@ -17,13 +17,7 @@ export class TransactionsService implements OnModuleInit {
   //   enrollment 480,000(코스10 정가/결제), re_enrollment 520,000(코스11), expense 86,000(지출#1).
   // 고정 id 101~103 — 런타임 pay가 nextId(1..)로 넣는 원장과 절대 충돌하지 않게. db.seed가 id별 멱등.
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<Transaction>(TRANSACTIONS_SPEC);
-    if (hydrated.length) return;
-    await this.store.seed<Transaction>(TRANSACTIONS_SPEC, [
-      { id: 101, direction: 'in', category: 'enrollment', label: '신규 수강 입금 · 김서연', amount: 480000, method: 'card', occurredAt: '2026-06-24' },
-      { id: 102, direction: 'in', category: 're_enrollment', label: '재수강 입금 · 이준호', amount: 520000, method: 'transfer', occurredAt: '2026-06-23' },
-      { id: 103, direction: 'out', category: 'expense', label: '비품 구입 · 화이트보드 외', amount: 86000, method: 'cash', occurredAt: '2026-06-22' },
-    ]);
+    await this.store.hydrate<Transaction>(TRANSACTIONS_SPEC);
   }
 
   findAll(): Transaction[] {

@@ -12,14 +12,8 @@ export class InstructorContractsService implements OnModuleInit {
     private readonly store: PostgresCollectionStore,
   ) {}
 
-  // 데모 시드 — 강사 식별자 통일(instructorId=users.id): 1=박지훈, 2=정유진.
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<InstructorContract>(INSTRUCTOR_CONTRACTS_SPEC);
-    if (hydrated.length) return;
-    await this.store.seed<InstructorContract>(INSTRUCTOR_CONTRACTS_SPEC, [
-      { id: 1, instructorId: 1, monthlyHours: 40, hourlyRate: 50000, periodStart: '2026-03-01', active: true },
-      { id: 2, instructorId: 2, monthlyHours: 32, hourlyRate: 60000, periodStart: '2026-03-01', active: true },
-    ]);
+    await this.store.hydrate<InstructorContract>(INSTRUCTOR_CONTRACTS_SPEC);
   }
 
   findAll(): InstructorContract[] {

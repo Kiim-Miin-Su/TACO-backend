@@ -117,8 +117,10 @@ export class InstructorProfilesStore implements OnModuleInit {
       });
       return this.memory.findById<InstructorProfile>(INSTRUCTOR_PROFILES, userId)!;
     }
-    const [saved] = this.memory.seed<InstructorProfile>(INSTRUCTOR_PROFILES, [
-      { id: userId, userId, active: true, approvedBy, approvedAt: approvedAtIso, university, major, birthYear, defaultHourlyRate, canTeachKinder },
+    const now = new Date().toISOString();
+    const [saved] = this.memory.seedExact<InstructorProfile>(INSTRUCTOR_PROFILES, [
+      { id: userId, userId, active: true, approvedBy, approvedAt: approvedAtIso, university, major, birthYear,
+        defaultHourlyRate, canTeachKinder, createdAt: now, updatedAt: now },
     ]);
     return saved;
   }

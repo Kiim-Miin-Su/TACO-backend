@@ -11,7 +11,6 @@ import {
   toIsoString,
   type PostgresRow,
 } from './postgres-row.util';
-import { testBusinessFixturesEnabled } from '../config/test-fixtures';
 
 export type PostgresCollectionSpec = {
   table: string;
@@ -101,11 +100,6 @@ export class PostgresCollectionStore {
       values,
     );
     return rows.map((row) => this.fromDbRow<T>(spec, row));
-  }
-
-  async seed<T extends BaseRow>(spec: PostgresCollectionSpec, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): Promise<T[]> {
-    if (!testBusinessFixturesEnabled()) return [];
-    return this.seedReference<T>(spec, rows);
   }
 
   /** 제품 참조 데이터(countries 등) bootstrap. 업무 데이터에는 사용하지 않는다. */

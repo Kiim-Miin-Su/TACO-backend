@@ -27,17 +27,9 @@ export class CoursesService implements OnModuleInit {
     private readonly profiles: InstructorProfilesStore,
   ) {}
 
-  // E2E fixture. production/development는 testBusinessFixturesEnabled() 경계로 진입하지 않는다.
-  // 페이 SSOT는 instructor_profiles.default_hourly_rate이며 course 12만 명시 override를 가진다.
+  // 페이 SSOT는 instructor_profiles.default_hourly_rate이며 course별 override는 DB 행만 권위로 사용한다.
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<StoredCourse>(COURSES_SPEC);
-    if (hydrated.length) return;
-    await this.store.seed<StoredCourse>(COURSES_SPEC, [
-      // 정가(price)는 결제 시드 금액과 정합(코스10=480,000 등) — 단일 소스 일관성.
-      { id: 10, name: 'SAT Reading 정규', subjectId: 1, instructorId: 1, price: 480000, hourlyRateOverride: null, isKinder: false, color: '#0969da' },
-      { id: 11, name: 'AP Calculus BC', subjectId: 2, instructorId: 2, price: 520000, hourlyRateOverride: null, isKinder: false, color: '#8250df' },
-      { id: 12, name: 'TOEFL 정규', subjectId: 1, instructorId: 1, price: 420000, hourlyRateOverride: 45000, isKinder: false, color: '#1b7c83' },
-    ]);
+    await this.store.hydrate<StoredCourse>(COURSES_SPEC);
   }
 
   findAll(): Course[] {

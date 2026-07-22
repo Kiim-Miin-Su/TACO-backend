@@ -18,7 +18,6 @@ import { sessionEndMin } from '../schedule/conflict.util';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { ENROLLMENTS_SPEC, ROOMS_SPEC, STUDENTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 
-type Seed = Omit<AvailabilityBlock, 'id' | 'createdAt' | 'updatedAt'>;
 type AvailabilityKindEx = AvailabilityKind | 'online_only';
 type AvailabilityBlockEx = Omit<AvailabilityBlock, 'kind'> & { kind: AvailabilityKindEx };
 export type AvailabilityImpact = {
@@ -28,34 +27,6 @@ export type AvailabilityImpact = {
   endTime?: string;
   reason: 'available_removed' | 'unavailable_overlap' | 'online_only_overlap';
 };
-
-const DEMO_AVAILABILITY: Array<Seed & { id: number }> = [
-  // 강사1 점심 차단(월~금 12:00-13:00)
-  ...[1, 2, 3, 4, 5].map((weekday, index) => ({ id: index + 1, ownerType: 'instructor' as AvailabilityOwner, ownerId: 1, kind: 'unavailable' as const, weekday, startTime: '12:00', endTime: '13:00' })),
-  { id: 6, ownerType: 'room', ownerId: 3, kind: 'unavailable', weekday: 5, startTime: '14:00', endTime: '18:00' },
-  { id: 7, ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 2, startTime: '16:00', endTime: '20:00' },
-  { id: 8, ownerType: 'instructor', ownerId: 2, kind: 'available', weekday: 4, startTime: '16:00', endTime: '20:00' },
-  { id: 9, ownerType: 'instructor', ownerId: 2, kind: 'online_only', weekday: 1, startTime: '20:00', endTime: '22:00' },
-  { id: 10, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
-  { id: 11, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 3, startTime: '14:00', endTime: '20:00' },
-  { id: 12, ownerType: 'instructor', ownerId: 1, kind: 'available', weekday: 5, startTime: '14:00', endTime: '20:00' },
-  // 두 강사 모두 불가/가용/온라인 전용 유형을 갖도록 빠진 유형 보완.
-  { id: 101, ownerType: 'instructor', ownerId: 1, kind: 'online_only', weekday: 2, startTime: '20:00', endTime: '22:00' },
-  { id: 102, ownerType: 'instructor', ownerId: 2, kind: 'unavailable', weekday: 5, startTime: '12:00', endTime: '13:00' },
-  // 학생 4명 각각 가용/불가/온라인 전용 1건. 제한 블록은 현재 seed 수업과 겹치지 않는다.
-  { id: 103, ownerType: 'student', ownerId: 1, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
-  { id: 104, ownerType: 'student', ownerId: 1, kind: 'unavailable', weekday: 2, startTime: '22:00', endTime: '23:00' },
-  { id: 105, ownerType: 'student', ownerId: 1, kind: 'online_only', weekday: 4, startTime: '20:00', endTime: '21:00' },
-  { id: 106, ownerType: 'student', ownerId: 2, kind: 'available', weekday: 2, startTime: '14:00', endTime: '20:00' },
-  { id: 107, ownerType: 'student', ownerId: 2, kind: 'unavailable', weekday: 3, startTime: '22:00', endTime: '23:00' },
-  { id: 108, ownerType: 'student', ownerId: 2, kind: 'online_only', weekday: 5, startTime: '20:00', endTime: '21:00' },
-  { id: 109, ownerType: 'student', ownerId: 3, kind: 'available', weekday: 3, startTime: '14:00', endTime: '20:00' },
-  { id: 110, ownerType: 'student', ownerId: 3, kind: 'unavailable', weekday: 4, startTime: '22:00', endTime: '23:00' },
-  { id: 111, ownerType: 'student', ownerId: 3, kind: 'online_only', weekday: 6, startTime: '20:00', endTime: '21:00' },
-  { id: 112, ownerType: 'student', ownerId: 4, kind: 'available', weekday: 1, startTime: '14:00', endTime: '20:00' },
-  { id: 113, ownerType: 'student', ownerId: 4, kind: 'unavailable', weekday: 5, startTime: '22:00', endTime: '23:00' },
-  { id: 114, ownerType: 'student', ownerId: 4, kind: 'online_only', weekday: 0, startTime: '20:00', endTime: '21:00' },
-];
 
 @Injectable()
 export class AvailabilityService implements OnModuleInit {
@@ -115,9 +86,7 @@ export class AvailabilityService implements OnModuleInit {
   //  운영 DB에도 유입(전수 인벤토리 최다 위반). 이제 **표가 비어 있을 때만** 시드한다
   //  (production은 store.seed 단일 관문이 추가 차단).
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<AvailabilityBlock>(AVAILABILITY_SPEC);
-    if (hydrated.length || this.db.findAll<AvailabilityBlock>(AVAILABILITY).length) return;
-    await this.store.seed<AvailabilityBlock>(AVAILABILITY_SPEC, DEMO_AVAILABILITY);
+    await this.store.hydrate<AvailabilityBlock>(AVAILABILITY_SPEC);
   }
 
   async refresh(): Promise<void> {

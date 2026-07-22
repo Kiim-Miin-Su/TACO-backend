@@ -19,15 +19,7 @@ export class ExpensesService implements OnModuleInit {
 
   // 데모 지출 시드 — 프론트 목데이터 이관(FK 없음). 승인 대기 1건 → 지출 탭 배지 동작.
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<Expense>(EXPENSES_SPEC);
-    if (hydrated.length) return;
-    await this.store.seed<Expense>(EXPENSES_SPEC, [
-      { id: 1, category: 'supplies', title: '화이트보드 마커 외', amount: 86000, spentAt: '2026-06-22', vendor: '오피스디포', status: 'approved' },
-      { id: 2, category: 'books', title: 'SAT 교재 30부', amount: 450000, spentAt: '2026-06-18', vendor: '교보문고', status: 'approved' },
-      { id: 3, category: 'equipment', title: '빔프로젝터 1대', amount: 680000, spentAt: '2026-06-15', vendor: '전자랜드', status: 'approved' },
-      { id: 4, category: 'utility', title: '6월 전기·인터넷', amount: 240000, spentAt: '2026-06-10', status: 'approved' },
-      { id: 5, category: 'meal', title: '강사 회식', amount: 180000, spentAt: '2026-06-20', status: 'requested' },
-    ]);
+    await this.store.hydrate<Expense>(EXPENSES_SPEC);
   }
 
   findAll(): Expense[] {

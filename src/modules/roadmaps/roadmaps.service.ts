@@ -26,14 +26,6 @@ export class RoadmapsService implements OnModuleInit {
   async onModuleInit(): Promise<void> {
     await this.store.hydrate<Roadmap>(ROADMAPS_SPEC);
     await this.store.hydrate<RoadmapCourse>(ROADMAP_COURSES_SPEC);
-    if (!this.db.findById<Course>(COURSES, 10) || !this.db.findById<Course>(COURSES, 12)) return;
-    await this.store.seed<Roadmap>(ROADMAPS_SPEC, [
-      { id: 1, title: 'SAT 종합 로드맵', description: 'Reading→TOEFL 병행 코스 묶음', targetGrade: 11, durationWeeks: 24, isActive: true },
-    ]);
-    await this.store.seed<RoadmapCourse>(ROADMAP_COURSES_SPEC, [
-      { id: 1, roadmapId: 1, courseId: 10, sortOrder: 0 },
-      { id: 2, roadmapId: 1, courseId: 12, sortOrder: 1 },
-    ]);
   }
 
   findAll(): Roadmap[] {

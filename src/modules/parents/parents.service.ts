@@ -34,19 +34,8 @@ export class ParentsService implements OnModuleInit {
   ) { void students; }
 
   async onModuleInit(): Promise<void> {
-    const parents = await this.store.hydrate<Parent>(PARENTS_SPEC);
-    const relations = await this.store.hydrate<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC);
-    if (parents.length || relations.length || this.db.findAll<Parent>(PARENTS).length) return;
-    await this.store.seed<Parent>(PARENTS_SPEC, [
-      { id: 1, name: '김미경', phone: '010-1111-2222', kakaoAvailable: true },
-      { id: 2, name: '이상철', phone: '010-3333-4444', kakaoAvailable: true },
-      { id: 3, name: '최영희', phone: '010-5555-6666', kakaoAvailable: false },
-    ]);
-    await this.store.seed<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC, [
-      { id: 1, parentId: 1, studentId: 1, relation: '모', isPayer: true, isPrimary: true },
-      { id: 2, parentId: 2, studentId: 2, relation: '부', isPayer: true, isPrimary: true },
-      { id: 3, parentId: 3, studentId: 4, relation: '모', isPayer: true, isPrimary: true },
-    ]);
+    await this.store.hydrate<Parent>(PARENTS_SPEC);
+    await this.store.hydrate<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC);
   }
 
   findAll(): Parent[] {

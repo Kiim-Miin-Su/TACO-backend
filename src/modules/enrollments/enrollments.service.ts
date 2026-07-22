@@ -23,14 +23,7 @@ export class EnrollmentsService implements OnModuleInit {
   // 데모 수강 시드 — 프론트 목데이터 이관. studentId→students, courseId→courses(무결성).
   // completedSessions는 진행완료(held) 세션 수와 정합(코스10/11/12 각 2회).
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
-    if (hydrated.length || this.db.findAll<Enrollment>(ENROLLMENTS).length) return;
-    await this.store.seed<Enrollment>(ENROLLMENTS_SPEC, [
-      { id: 1, studentId: 1, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 2, enrolledAt: '2026-06-17' },
-      { id: 2, studentId: 2, courseId: 11, status: 'active', totalSessions: 20, completedSessions: 2, enrolledAt: '2026-06-16' },
-      { id: 3, studentId: 4, courseId: 10, status: 'active', totalSessions: 16, completedSessions: 2, enrolledAt: '2026-06-17' },
-      { id: 4, studentId: 1, courseId: 12, status: 'active', totalSessions: 12, completedSessions: 2, enrolledAt: '2026-06-22' },
-    ]);
+    await this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
   }
 
   findAll(): Enrollment[] {

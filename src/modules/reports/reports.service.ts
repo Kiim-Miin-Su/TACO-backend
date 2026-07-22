@@ -36,13 +36,7 @@ export class ReportsService implements OnModuleInit {
   //  → 리포트 현황 대시보드에서 "작성/미작성"이 섞여 보임(전 슬롯 8개 중 3건 작성). 승인(approved) 아님 = 시수/정산 미반영(payouts 불변).
   //  고정 id로 멱등, payouts가 런타임 생성하는 승인 보고서(nextId)와 충돌 없음.
   async onModuleInit(): Promise<void> {
-    const hydrated = await this.store.hydrate<SessionReportRow>(SESSION_REPORTS_SPEC);
-    if (hydrated.length) return;
-    await this.store.seed<SessionReportRow>(SESSION_REPORTS_SPEC, [
-      { id: 1, sessionId: 20, studentId: 1, instructorId: 1, content: '주제·요지 파악 향상. 근거 문장 매칭 연습 필요.', status: 'submitted', approvalStatus: 'submitted', submittedAt: new Date().toISOString() },
-      { id: 2, sessionId: 21, studentId: 2, instructorId: 2, content: '미분 응용 개념 이해. 연쇄법칙 반복.', status: 'submitted', approvalStatus: 'submitted', submittedAt: new Date().toISOString() },
-      { id: 3, sessionId: 26, studentId: 1, instructorId: 1, content: '추론 문제 정답률 상승. 어휘 20개 암기 과제.', status: 'submitted', approvalStatus: 'submitted', submittedAt: new Date().toISOString() },
-    ]);
+    await this.store.hydrate<SessionReportRow>(SESSION_REPORTS_SPEC);
   }
 
   findAll(): SessionReportRow[] {

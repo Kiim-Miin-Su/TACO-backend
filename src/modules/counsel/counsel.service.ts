@@ -10,7 +10,6 @@ import { CreateCounselDto } from './dto/create-counsel.dto';
 import { UpdateCounselDto } from './dto/update-counsel.dto';
 import { CreateCounselRoundDto } from './dto/create-round.dto';
 import type { CounselAggregate, CounselFormSnapshot } from '@kms545487/contracts';
-import type { BaseRow } from '../../common/types/base';
 import { UpdateCounselRoundDto } from './dto/update-round.dto';
 import { StudentsService } from '../students/students.service';
 import { Student, STUDENTS } from '../students/student.entity';
@@ -238,21 +237,8 @@ export class CounselService implements OnModuleInit {
   // 데모 상담 시드 — 프론트 목데이터 이관. rounds.counselFormId→forms.id(무결성).
   // 상담 탭 배지: status≠dropped ∧ nextContactAt 없음(다음 상담일 미정) 기준.
   async onModuleInit(): Promise<void> {
-    const forms = await this.store.hydrate<CounselForm>(COUNSEL_FORMS_SPEC);
-    const rounds = await this.store.hydrate<CounselRound>(COUNSEL_ROUNDS_SPEC);
-    if (forms.length || rounds.length || this.db.findAll<CounselForm>(COUNSEL_FORMS).length) return;
-    const seedForms: Array<Omit<CounselForm, keyof BaseRow> & { id: number }> = [
-      { id: 1, studentId: 1, assignedStaffId: 1, status: 'pending', source: 'internal_form', submitterType: 'parent', referenceNotes: '독해 속도와 어휘량 확인', nextContactAt: '2026-06-29' },
-      { id: 2, studentId: 2, assignedStaffId: 1, status: 'registered', source: 'naver_form', submitterType: 'student', referenceNotes: '서술형 풀이 과정 확인' },
-      { id: 3, studentId: 3, status: 'requested', source: 'manual', submitterType: 'staff' },
-    ];
-    await this.store.seed<CounselForm>(COUNSEL_FORMS_SPEC, seedForms);
-    await this.store.seed<CounselRound>(COUNSEL_ROUNDS_SPEC, [
-      { id: 1, counselFormId: 1, roundNo: 0, counselorId: 1, completedAt: '2026-06-19', isCompleted: true, summary: '초기 전화 상담', detail: '현 성적·목표 파악. 레벨테스트 권유.', result: 'neutral', nextAction: '레벨테스트 일정 조율', nextContactAt: '2026-06-23', formSnapshot: { ...snapshotOfForm(seedForms[0]), nextContactAt: '2026-06-23' } },
-      { id: 2, counselFormId: 1, roundNo: 1, counselorId: 1, completedAt: '2026-06-24', isCompleted: true, summary: '레벨테스트 후 대면 상담', detail: '독해 보강 필요. SAT Reading 정규 제안.', result: 'positive', nextAction: '수강 등록 안내', nextContactAt: '2026-06-29', formSnapshot: snapshotOfForm(seedForms[0]) },
-      { id: 3, counselFormId: 2, roundNo: 0, counselorId: 1, completedAt: '2026-06-13', isCompleted: true, summary: '온라인 상담', detail: 'AP 일정 및 커리큘럼 안내.', result: 'positive', nextAction: '시간표 확정', formSnapshot: snapshotOfForm(seedForms[1]) },
-      { id: 4, counselFormId: 2, roundNo: 1, counselorId: 1, completedAt: '2026-06-16', isCompleted: true, summary: '등록 확정 상담', detail: 'AP Calculus BC 등록 결정.', result: 'registered', nextAction: '결제 및 반 배정', formSnapshot: snapshotOfForm(seedForms[1]) },
-    ]);
+    await this.store.hydrate<CounselForm>(COUNSEL_FORMS_SPEC);
+    await this.store.hydrate<CounselRound>(COUNSEL_ROUNDS_SPEC);
   }
 
   async findAllForms(): Promise<CounselForm[]> {

@@ -13,9 +13,24 @@ function sourceFiles(dir: string): string[] {
 
 for (const file of sourceFiles(join(root, 'src'))) {
   const body = readFileSync(file, 'utf8');
-  for (const forbidden of ['SEED_DEMO', 'demoSeedEnabled', 'config/demo-seed']) {
+  for (const forbidden of [
+    'SEED_DEMO',
+    'demoSeedEnabled',
+    'config/demo-seed',
+    'TEST_BUSINESS_FIXTURES',
+    'business-fixtures',
+    'park_inst',
+    'jung_inst',
+    'prof_admin',
+    '김서연',
+    '최민준',
+  ]) {
     if (body.includes(forbidden)) failures.push(`${relative(root, file)} contains ${forbidden}`);
   }
+}
+
+for (const path of ['test/fixtures/business-fixtures.json', 'test/fixtures/seed-business-fixtures.ts']) {
+  if (!existsSync(join(root, path))) failures.push(`${path} must exist under test/`);
 }
 
 for (const path of [
@@ -31,12 +46,7 @@ for (const name of Object.keys(packageJson.scripts ?? {})) {
   if (name.includes(':demo')) failures.push(`package script ${name} must not expose demo data commands`);
 }
 
-const fixtureBoundary = readFileSync(join(root, 'src/config/test-fixtures.ts'), 'utf8');
-if (!fixtureBoundary.includes("process.env.NODE_ENV === 'test'")) {
-  failures.push('test fixture boundary must require NODE_ENV=test');
-}
-
 if (failures.length) {
   throw new Error(`runtime data boundary failed:\n- ${failures.join('\n- ')}`);
 }
-console.log('runtime data boundary: production demo env/import/CLI 0; test-only fixture gate verified');
+console.log('runtime data boundary: production demo env/import/CLI/fixture imports 0; fixtures live under test/ only');
