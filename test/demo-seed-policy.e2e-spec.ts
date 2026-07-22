@@ -4,20 +4,20 @@ import { createTestApp } from './setup-app';
 
 describe('production data source boundary', () => {
   let app: INestApplication;
-  const previousSeedDemo = process.env.SEED_DEMO;
+  const previousFixtureMode = process.env.TEST_BUSINESS_FIXTURES;
 
   beforeAll(async () => {
-    process.env.SEED_DEMO = '0';
+    process.env.TEST_BUSINESS_FIXTURES = '0';
     app = await createTestApp();
   });
 
   afterAll(async () => {
     await app.close();
-    if (previousSeedDemo === undefined) delete process.env.SEED_DEMO;
-    else process.env.SEED_DEMO = previousSeedDemo;
+    if (previousFixtureMode === undefined) delete process.env.TEST_BUSINESS_FIXTURES;
+    else process.env.TEST_BUSINESS_FIXTURES = previousFixtureMode;
   });
 
-  it('does not create demo users or business rows when demo seeding is disabled', () => {
+  it('keeps a fresh database empty when E2E business fixtures are disabled', () => {
     const db = app.get(InMemoryDatabase);
     for (const table of ['users', 'students', 'courses', 'class_sessions', 'availability_blocks']) {
       expect(db.findAll(table)).toHaveLength(0);

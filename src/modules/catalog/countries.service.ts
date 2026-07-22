@@ -6,7 +6,7 @@ import { COUNTRY_SEED_ROWS } from '../../database/migrations/countries.migration
 import { COUNTRIES, type Country } from './country.entity';
 
 // [E0.5 ④] 국가·시간대 카탈로그 — 자유 입력 폐지(대표 지시 2026-07-15).
-//  · 참조 데이터: demoSeedEnabled 관문의 비대상(seedReference) — production에서도 항상 존재.
+//  · 참조 데이터: test fixture 관문의 비대상(seedReference) — production에서도 항상 존재.
 //    PG에는 마이그레이션 20260715_06이 권위(ON CONFLICT DO NOTHING)·부팅 시드는 미적용 환경 방어.
 //  · 검증 API: isValidCountryCode / isValidTimeZone — profile 변경(countryCode/timeZone)이 사용.
 @Injectable()

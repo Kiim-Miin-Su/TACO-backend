@@ -275,6 +275,7 @@ run_gates() {
   fi
 
   run_in contracts npm run build
+  run_in backend npm run verify:runtime-data
   run_in backend npm run typecheck
   run_in backend npm run build
 

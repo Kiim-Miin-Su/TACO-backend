@@ -63,8 +63,8 @@ const AUDIT_EXCLUDED = new Set([
 
 async function main() {
   loadLocalEnv();
-  // Integrity readback must never bootstrap demo business rows into the target DB.
-  process.env.SEED_DEMO = '0';
+  // Integrity readback must never inject E2E business fixtures into the target DB.
+  process.env.TEST_BUSINESS_FIXTURES = '0';
   const app: INestApplication = await createTestApp();
   const db = app.get(InMemoryDatabase);
   const pg = app.get(PostgresConnectionService);

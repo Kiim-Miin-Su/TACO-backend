@@ -12,7 +12,7 @@ import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.enti
 import { ReportsService } from '../reports/reports.service';
 import { AuditService } from '../audit/audit.service';
 import { PayoutReadinessService } from './payout-readiness.service';
-import { demoSeedEnabled } from '../../config/demo-seed';
+import { testBusinessFixturesEnabled } from '../../config/test-fixtures';
 import {
   InstructorPayoutRow,
   PayoutLine,
@@ -76,7 +76,7 @@ export class PayoutsService implements OnModuleInit {
     if (hydrated.length) return; // 이미 DB에 저장됨
     // [시범운영 2026-07-15] 이 시드는 seed()가 아니라 insert/승인 흐름으로 데모를 만들어
     //  store.seed 단일 관문을 우회했다(production 부팅 테스트에서 FK 위반으로 검출) — 명시 게이트.
-    if (!demoSeedEnabled()) return;
+    if (!testBusinessFixturesEnabled()) return;
 
     const make = (
       courseId: number,

@@ -4,7 +4,7 @@ export const COUNTRIES_MIGRATION_ID = '20260715_06_countries';
 //  대표 지시: "국가코드·시간대는 맘대로 하면 헷갈리니 DB에 유명 국가들을 저장해 두고 toggle로 선택".
 //  · 행 구성은 프론트 lib/domain/tz.ts COUNTRIES(캘린더 시차 엔진·학생 국가 자동완성의 기존 단일
 //    소스)와 1:1 동일 — 다중 시간대 국가는 US/US-W처럼 권역 분할 코드에 대표 IANA tz 1개(기존 규약).
-//  · **참조 데이터**라 데모 시드 관문(demoSeedEnabled)의 대상이 아니다 — production에도 반드시
+//  · **참조 데이터**라 test fixture 관문의 대상이 아니다 — production에도 반드시
 //    존재해야 하는 제품 카탈로그(멱등 INSERT ... ON CONFLICT DO NOTHING).
 //  · 검증 규칙: profile 변경의 countryCode는 활성 카탈로그 code, timeZone은 카탈로그 tz 집합만 허용.
 export const COUNTRIES_TABLE_SQL = `

@@ -487,7 +487,7 @@ export const ACADEMY_EVENTS_SPEC: PostgresCollectionSpec = {
   dateFields: ['startDate', 'endDate'],
 };
 
-// [E0.5 ④] 국가·시간대 카탈로그 — **참조 데이터**(데모 시드 관문 비대상, seedReference 경유).
+// [E0.5 ④] 국가·시간대 카탈로그 — **참조 데이터**(test fixture 관문 비대상, seedReference 경유).
 //  profile countryCode/timeZone 자유 입력 폐지의 권위: FE 토글 옵션·BE 검증이 이 표를 본다(20260715_06과 SQL 공유).
 export const COUNTRIES_SPEC: PostgresCollectionSpec = {
   table: 'countries',

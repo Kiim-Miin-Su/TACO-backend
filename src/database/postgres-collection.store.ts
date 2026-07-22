@@ -11,7 +11,7 @@ import {
   toIsoString,
   type PostgresRow,
 } from './postgres-row.util';
-import { demoSeedEnabled } from '../config/demo-seed';
+import { testBusinessFixturesEnabled } from '../config/test-fixtures';
 
 export type PostgresCollectionSpec = {
   table: string;
@@ -104,12 +104,11 @@ export class PostgresCollectionStore {
   }
 
   async seed<T extends BaseRow>(spec: PostgresCollectionSpec, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): Promise<T[]> {
-    if (!demoSeedEnabled()) return []; // [시범운영] 데모 시드 단일 관문 — production 기본 차단
+    if (!testBusinessFixturesEnabled()) return [];
     return this.seedReference<T>(spec, rows);
   }
 
-  /** [E0.5 ④] **참조 데이터**(제품 카탈로그 — countries 등) 시드: 데모 관문의 비대상이라
-   *  production에서도 항상 보장된다. 업무(데모) 데이터에는 절대 쓰지 말 것 — 그쪽은 seed() 경유. */
+  /** 제품 참조 데이터(countries 등) bootstrap. 업무 데이터에는 사용하지 않는다. */
   async seedReference<T extends BaseRow>(spec: PostgresCollectionSpec, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): Promise<T[]> {
     if (!(await this.ensureReady(spec))) return this.memory.seedReference<T>(spec.table, rows);
     const saved: T[] = [];

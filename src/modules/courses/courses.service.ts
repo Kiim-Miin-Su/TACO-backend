@@ -27,7 +27,7 @@ export class CoursesService implements OnModuleInit {
     private readonly profiles: InstructorProfilesStore,
   ) {}
 
-  // 테스트/개발 시드. 운영은 demoSeedEnabled() gate로 이 경로에 진입하지 않는다.
+  // E2E fixture. production/development는 testBusinessFixturesEnabled() 경계로 진입하지 않는다.
   // 페이 SSOT는 instructor_profiles.default_hourly_rate이며 course 12만 명시 override를 가진다.
   async onModuleInit(): Promise<void> {
     const hydrated = await this.store.hydrate<StoredCourse>(COURSES_SPEC);

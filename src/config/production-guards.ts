@@ -1,5 +1,5 @@
 // [TBO-28B §4] production 부팅 fail-fast — 아래 상태로는 기동하지 않는다(불변식 §5-7):
-//  · demo seed(UsersService가 별도 차단) · in-memory DB 폴백 · raw verification URL 노출.
+//  · in-memory DB 폴백 · raw verification URL 노출.
 //  main.ts와 api/index.ts(서버리스) 양쪽 부트 경로에서 호출한다.
 import { runtimeDatabaseUrl } from '../database/database-url';
 
@@ -31,7 +31,7 @@ export function assertProductionBootSafety(): void {
 
 // [TBO-29C 계정 청크 2026-07-15] demo 자격증명 방어(심층 방어) — 클라이언트 계정 전환 토글은
 //  TBO-29에서 폐지됐고(다른 계정=로그아웃 후 실제 로그인), demo seed는 production에서 부팅 차단되지만,
-//  과거 데이터/실수로 demo 비밀번호 계정이 살아 있어도 운영에서는 로그인 자체를 거부한다.
+//  과거 데이터/실수로 알려진 테스트 비밀번호 계정이 살아 있어도 운영에서는 로그인 자체를 거부한다.
 //  비밀번호 원문은 비교에만 쓰고 어디에도 기록하지 않는다.
 const DEMO_PASSWORDS = new Set(['demo1234']);
 

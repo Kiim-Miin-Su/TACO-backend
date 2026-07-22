@@ -16,7 +16,7 @@
 import { Injectable } from '@nestjs/common';
 import { AsyncLocalStorage } from 'async_hooks';
 import { BaseRow } from '../common/types/base';
-import { demoSeedEnabled } from '../config/demo-seed';
+import { testBusinessFixturesEnabled } from '../config/test-fixtures';
 
 export type { BaseRow };
 
@@ -152,18 +152,17 @@ export class InMemoryDatabase {
   }
 
   /**
-   * 명시적 id로 시드 삽입(데모 카탈로그용). 시퀀스를 max(id)까지 끌어올려
+   * 명시적 id로 테스트 fixture 삽입. 시퀀스를 max(id)까지 끌어올려
    * 이후 insert가 시드 id와 충돌하지 않게 한다. 같은 id가 이미 있으면 건너뜀.
    * 용도: courses/subjects 처럼 다른 컬렉션(class_sessions.courseId)이
    *       FK로 참조하는 카탈로그를 고정 id로 심어 조인 무결성을 보장.
    */
   seed<T extends BaseRow>(name: string, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): T[] {
-    if (!demoSeedEnabled()) return []; // [시범운영] 데모 시드 단일 관문 — production 기본 차단
+    if (!testBusinessFixturesEnabled()) return [];
     return this.seedReference<T>(name, rows);
   }
 
-  /** [E0.5 ④] 참조 데이터(제품 카탈로그) 시드 — 데모 관문 비대상(production 포함 항상 존재 보장).
-   *  업무(데모) 데이터에는 쓰지 말 것 — 반드시 seed()를 지나야 시범운영 차단이 걸린다. */
+  /** 제품 참조 데이터 bootstrap. 업무 데이터에는 사용하지 않는다. */
   seedReference<T extends BaseRow>(name: string, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): T[] {
     const coll = this.collection<T>(name);
     const now = new Date().toISOString();

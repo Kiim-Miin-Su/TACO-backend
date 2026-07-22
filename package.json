@@ -15,8 +15,6 @@
     "db:smoke:schedule-approval": "ts-node scripts/schedule-approval-db-smoke.ts",
     "db:smoke:finance": "ts-node scripts/finance-db-smoke.ts",
     "db:cleanup:qa": "ts-node scripts/cleanup-qa-data.ts",
-    "db:reset:demo": "ts-node scripts/reset-demo-data.ts",
-    "db:seed:calendar-demo": "ts-node scripts/seed-calendar-demo.ts",
     "db:bootstrap:ceo": "ts-node scripts/bootstrap-ceo.ts",
     "db:smoke:credentials": "ts-node scripts/credential-change-db-smoke.ts",
     "db:smoke:profile-changes": "ts-node scripts/profile-change-db-smoke.ts",
@@ -50,13 +48,13 @@
     "db:migrate:counsel-family-academic-expand": "ts-node scripts/migrate-counsel-family-academic-expand.ts",
     "db:migrate:counsel-student-ssot-contract": "ts-node scripts/migrate-counsel-student-ssot-contract.ts",
     "db:check:counsel-family-academic-contract": "ts-node scripts/check-counsel-family-academic-contract.ts",
-    "db:cleanup:demo-data": "ts-node scripts/cleanup-demo-data.ts",
     "db:repair:legacy-unverified-users": "ts-node scripts/repair-legacy-unverified-users.ts",
     "route-coverage": "node dist/scripts/e2e-route-coverage.js",
     "e2e:coverage": "E2E_ROUTE_LOG=/tmp/e2e-routes.log jest --config test/jest-e2e.json --runInBand && npm run route-coverage -- /tmp/e2e-routes.log",
     "db:integrity": "ts-node scripts/db-integrity-check.ts",
     "db:verify-persistence-docs": "ts-node scripts/verify-persistence-docs.ts",
-    "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts"
+    "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts",
+    "verify:runtime-data": "ts-node scripts/verify-runtime-data-boundary.ts"
   },
   "dependencies": {
     "@kms545487/contracts": "^0.2.13",

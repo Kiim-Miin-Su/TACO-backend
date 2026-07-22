@@ -23,7 +23,7 @@ import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import type { Course } from '../courses/course.entity';
 import type { InstructorContract } from '../instructor-contracts/instructor-contract.entity';
 import { canDecideSignupRole, roleHasCapability } from '../auth/role-policy';
-import { demoSeedEnabled } from '../../config/demo-seed';
+import { testBusinessFixturesEnabled } from '../../config/test-fixtures';
 import {
   USERS, authVersionOf, isStaffRole, toSafe,
   type AccountStatus, type SafeAccount, type StaffAccount, type StaffRole,
@@ -250,7 +250,7 @@ export class UsersService implements OnModuleInit {
   }
 
   private async ensureDefaultAdminAccount(): Promise<void> {
-    if (!demoSeedEnabled()) return;
+    if (!testBusinessFixturesEnabled()) return;
     if (this.findByWebId('prof_admin')) return;
     await this.store.insert<StaffAccount>(USERS_SPEC, {
       webId: 'prof_admin',

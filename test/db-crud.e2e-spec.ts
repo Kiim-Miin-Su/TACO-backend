@@ -213,8 +213,8 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
     if (!process.env.DATABASE_URL && !process.env.POSTGRES_URL && !process.env.POSTGRES_PRISMA_URL) {
       throw new Error('DATABASE_URL/POSTGRES_URL is required. Run with RUN_DB_CRUD_E2E=1 DOTENV_CONFIG_PATH=.env.local.');
     }
-    // NODE_ENV=test의 기본 데모 시드를 운영 DB에 절대 반영하지 않는다.
-    process.env.SEED_DEMO = '0';
+    // NODE_ENV=test의 E2E fixture를 운영 DB에 절대 반영하지 않는다.
+    process.env.TEST_BUSINESS_FIXTURES = '0';
 
     const initialApp = await createTestApp();
     openApps.add(initialApp);
