@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
+import { studentAggregateBody } from './fixtures/student-profile';
 
 // ─────────────────────────────────────────────────────────────
 // 보호자(parents) — 실제 접수 담당자 흐름 통합 e2e.
@@ -94,5 +95,19 @@ describe('Parents Flow (e2e)', () => {
     await http.post('/api/parents/link').set(asAdmin()).send({ parentId: 99999, studentId: S3 }).expect(400);
     await http.post('/api/parents/link').set(asAdmin()).send({ parentId: momId, studentId: 99999 }).expect(400);
     await http.post('/api/parents').set(asAdmin()).send({ name: 'X', studentId: 99999 }).expect(400);
+  });
+
+  it('DELETE /parents/relations/:id — 연결 soft delete 커버(게이트: 커버리지 미커버 해소, TBO-32 C2 부수)', async () => {
+    // 전용 학생·보호자 생성 → 연결 → 해제(soft delete) → 목록에서 소거 확인.
+    const student = (await http.post('/api/students').set(asAdmin()).send(studentAggregateBody('관계삭제학생')).expect(201)).body.student;
+    const parent = (await http.post('/api/parents').set(asAdmin()).send({
+      name: '관계삭제보호자', phone: '010-3333-9898', relation: '조부', isPayer: false, isPrimary: false, studentId: student.id,
+    }).expect(201)).body;
+    const relations = (await http.get('/api/parents/relations').set(asAdmin()).expect(200)).body as Array<{ id: number; parentId: number; studentId: number }>;
+    const rel = relations.find((r) => r.studentId === student.id && r.parentId === parent.parent.id);
+    expect(rel).toBeDefined();
+    await http.delete(`/api/parents/relations/${rel!.id}`).set(asAdmin()).expect(200);
+    const after = (await http.get('/api/parents/relations').set(asAdmin()).expect(200)).body as Array<{ id: number }>;
+    expect(after.some((r) => r.id === rel!.id)).toBe(false);
   });
 });

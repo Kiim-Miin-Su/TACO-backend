@@ -64,6 +64,15 @@ export class ReversePayoutDto {
   reason!: string;
 }
 
+// [TBO-32 C2 2026-07-22] POST /payouts/:id/unconfirm — 확정 취소(사유 필수·감사 이력).
+export class UnconfirmPayoutDto {
+  @ApiProperty({ example: '기간 오설정 — 재산정 후 재확정 예정', description: '확정 취소 사유(감사 이력)' })
+  @IsString()
+  @MinLength(5)
+  @MaxLength(TEXT.memo)
+  reason!: string;
+}
+
 export class RejectPayoutDto {
   @ApiPropertyOptional({ example: '근태 확인 필요', description: '반려 사유(강사에게 표시)' })
   @IsOptional()

@@ -2994,6 +2994,34 @@ paths:
       summary: 대표 확정(pending → confirmed) [대표]
       tags:
         - payouts
+  /api/payouts/{id}/unconfirm:
+    post:
+      operationId: PayoutsController_unconfirm
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UnconfirmPayoutDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 정산 확정 취소(confirmed→pending, 사유 필수·감사 이력) [대표]. 지급 후에는 회수(reverse).
+      tags:
+        - payouts
   /api/payouts/{id}/adjust:
     post:
       operationId: PayoutsController_adjust
@@ -5927,6 +5955,17 @@ components:
       required:
         - periodStart
         - periodEnd
+    UnconfirmPayoutDto:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 500
+          example: 기간 오설정 — 재산정 후 재확정 예정
+          description: 확정 취소 사유(감사 이력)
+      required:
+        - reason
     AdjustPayoutDto:
       type: object
       properties:

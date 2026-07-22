@@ -222,14 +222,17 @@ export class PayoutsService implements OnModuleInit {
    * 대상이다. 읽기 전용 — 정산서 존재 여부와 무관하게 잔여 적격만 본다(부분 산정 월도 잡힘).
    */
   uncovered(months = 3): Array<{
-    instructorId: number; instructorName: string; month: string;
+    instructorId: number; instructorName: string; instructorStatus: string; month: string;
     periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
   }> {
     const boundedMonths = Math.min(Math.max(Math.trunc(months) || 3, 1), 12);
-    const instructors = this.db.findBy<StaffAccount>(USERS, (a) => a.role === 'instructor' && a.status === 'active');
+    // [리뷰 P1-2 2026-07-22] 비활성(퇴직 등) 강사의 미지급분도 감지 — 조용한 소실 방지.
+    //  pending/rejected 강사는 수업이 없어 measure 0으로 자연 배제되고, active 외 상태는
+    //  instructorStatus로 표시해 화면에서 구분한다(일괄 산정 기본 대상은 여전히 active만).
+    const instructors = this.db.findBy<StaffAccount>(USERS, (a) => a.role === 'instructor');
     const now = new Date();
     const entries: Array<{
-      instructorId: number; instructorName: string; month: string;
+      instructorId: number; instructorName: string; instructorStatus: string; month: string;
       periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
     }> = [];
     for (let back = 0; back < boundedMonths; back += 1) {
@@ -243,6 +246,7 @@ export class PayoutsService implements OnModuleInit {
         entries.push({
           instructorId: instructor.id,
           instructorName: instructor.name,
+          instructorStatus: instructor.status, // [P1-2] active 외 상태(퇴직 등) 화면 구분용
           month: periodStart.slice(0, 7),
           periodStart,
           periodEnd,
@@ -293,6 +297,32 @@ export class PayoutsService implements OnModuleInit {
   }
 
   // 대표 급여 수정(pending/confirmed) — 자동 산정액은 보존, 실효 지급액만 덮어씀.
+  // [TBO-32 C2 2026-07-22 D2] 확정 취소(confirmed→pending) — 지급 전 "확정 실수"의 출구.
+  //  종전엔 반려(세션 회수→재산정)뿐이라 확정만 되돌릴 수 없었다. 상태 그래프 완결:
+  //  pending⇄confirmed→paid⇄(reverse). 사유 필수·audit·CAS(동시 지급/취소 한쪽만)·잠금+재하이드레이트.
+  async unconfirm(id: number, reason: string, actorId?: number): Promise<InstructorPayoutRow> {
+    return this.unitOfWork.run(async () => {
+      await this.unitOfWork.lockTargets([{ kind: 'payout', id }]);
+      await this.refreshAfterLock();
+      const p = this.findOne(id);
+      if (p.status !== 'confirmed')
+        throw new BadRequestException(`확정 취소 불가 상태(${p.status}) — confirmed만 취소할 수 있습니다. 지급 후에는 회수(reverse)를 사용하세요.`);
+      const updated = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, { status: 'confirmed' }, {
+        status: 'pending',
+        confirmedAt: null as never, // 확정 메타 원복(재확정 시 새로 스탬프)
+      });
+      if (!updated) throw new ConflictException('정산 상태가 다른 요청에서 먼저 변경되었습니다');
+      if (actorId != null) {
+        await this.audit.log({
+          entity: 'instructor_payouts', entityId: id, action: 'status_change', actorId,
+          changes: { status: { before: 'confirmed', after: 'pending' } },
+          reason,
+        });
+      }
+      return updated;
+    });
+  }
+
   async adjust(id: number, amount: number, reason?: string, actorId?: number): Promise<InstructorPayoutRow> {
     return this.unitOfWork.run(async () => {
       const p = this.findOne(id);
@@ -366,7 +396,8 @@ export class PayoutsService implements OnModuleInit {
       const payout = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, { status: 'paid' }, {
         status: 'rejected',
         reversedAt: now,
-        rejectedReason: reason,
+        rejectedReason: reason, // 기존 소비처(FE 표기) 호환
+        reversedReason: reason, // [TBO-32 C2 D2] 회수 사유 전용 영속(반려와 구분)
       });
       if (!payout) throw new ConflictException('정산 상태가 다른 요청에서 먼저 변경되었습니다');
       const transaction = await this.store.insert<TransactionRow>(TRANSACTIONS_SPEC, {

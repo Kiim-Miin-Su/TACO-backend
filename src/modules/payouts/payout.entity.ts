@@ -43,6 +43,8 @@ export type InstructorPayoutRow = {
   //  (owner npm 재발행 불가) 상태는 rejected를 재사용하고, 회수 여부는 이 필드로 판별한다.
   //  회수 = paid → rejected + 보상 원장 거래(in/payout_reversal) + 세션 연결 해제(한 tx).
   reversedAt?: string;
+  /** [TBO-32 C2] 회수 사유(반려 사유와 분리 — 상세 노출용). reverse가 rejectedReason과 함께 기록. */
+  reversedReason?: string;
 } & BaseRow;
 
 // 통합 원장 행 — transactions 모듈이 단일 소스(계약 v0.1.10에 payoutId 역참조 포함).

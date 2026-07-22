@@ -5,7 +5,7 @@ import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedRes
 import { PayoutsService } from './payouts.service';
 import { RolesGuard } from '../auth/roles.guard';
 import { ADMIN_ROLES, Roles } from '../auth/roles.decorator';
-import { GeneratePayoutDto, GenerateBulkPayoutDto, AdjustPayoutDto, RejectPayoutDto, ReversePayoutDto } from './dto/payout.dto';
+import { GeneratePayoutDto, GenerateBulkPayoutDto, AdjustPayoutDto, RejectPayoutDto, ReversePayoutDto, UnconfirmPayoutDto } from './dto/payout.dto';
 import { PayoutReadinessService } from './payout-readiness.service';
 
 @ApiTags('payouts')
@@ -135,6 +135,15 @@ export class PayoutsController {
   @ApiCreatedResponse({ description: '정산서(status=confirmed)' })
   confirm(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.payouts.confirm(id, req.user?.sub);
+  }
+
+  // [TBO-32 C2 2026-07-22] 확정 취소 — 지급 전 확정 실수의 출구(상태 그래프 완결: pending⇄confirmed).
+  @Post(':id/unconfirm')
+  @Roles('super_admin')
+  @ApiOperation({ summary: '정산 확정 취소(confirmed→pending, 사유 필수·감사 이력) [대표]. 지급 후에는 회수(reverse).' })
+  unconfirm(@Param('id', ParseIntPipe) id: number, @Body() dto: UnconfirmPayoutDto, @Req() req: Request) {
+    const actor = (req as Request & { user?: JwtClaims }).user;
+    return this.payouts.unconfirm(id, dto.reason, actor?.sub);
   }
 
   @Post(':id/adjust')

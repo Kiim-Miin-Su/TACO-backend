@@ -933,6 +933,7 @@ export const INSTRUCTOR_PAYOUTS_SPEC: PostgresCollectionSpec = {
       confirmed_at timestamptz,
       paid_at timestamptz,
       reversed_at timestamptz,
+      reversed_reason varchar(200),
       payment_method varchar(32),
       bank_account varchar(80),
       memo text,
@@ -946,7 +947,12 @@ export const INSTRUCTOR_PAYOUTS_SPEC: PostgresCollectionSpec = {
   dateFields: ['periodStart', 'periodEnd'],
   timestampFields: ['confirmedAt', 'paidAt', 'reversedAt'],
   // [B9 E5] 기존 DB 승격 — 지급 회수 시각(additive, 멱등)
-  migrations: ['ALTER TABLE instructor_payouts ADD COLUMN IF NOT EXISTS reversed_at timestamptz'],
+  migrations: [
+    'ALTER TABLE instructor_payouts ADD COLUMN IF NOT EXISTS reversed_at timestamptz',
+    // [TBO-32 C2 2026-07-22 D2] 회수 사유 전용 컬럼 — 반려 사유(rejected_reason)와 분리 영속
+    //  (상세 화면 노출·이력 구분). reverse는 호환 위해 둘 다 기록한다.
+    'ALTER TABLE instructor_payouts ADD COLUMN IF NOT EXISTS reversed_reason varchar(200)',
+  ],
   indexes: [
     activeIndex('instructor_payouts', 'idx_payouts_instructor_period', 'instructor_id, period_start, period_end'),
     activeIndex('instructor_payouts', 'idx_payouts_status', 'status'),
