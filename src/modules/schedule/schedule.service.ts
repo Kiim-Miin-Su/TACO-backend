@@ -291,22 +291,29 @@ export class ScheduleService implements OnModuleInit {
   // 자원 피커(좌측 레일·필터)용 경량 목록 — 강사·강의실·학생.
   resources(scope?: { instructorId?: number }): import('@kms545487/contracts').ScheduleResources {
     const PALETTE = ['#0969da', '#1a7f37', '#8250df', '#bf3989', '#9a6700', '#1b7c83'];
-    // 코스 진행시간은 그 코스의 기존 세션에서 파생(단일 소스). 세션 없으면 기본 90분.
-    const allSessions = this.db.findAll<ClassSession>(SESSIONS);
-    const courseDuration = (courseId: number): number =>
-      allSessions.find((s) => s.courseId === courseId)?.durationMinutes ?? 90;
+    // 코스 진행시간·활성 roster를 한 번씩 색인한다. 응답 course option이 캘린더 생성/과목 split의
+    // 유일한 DB read model이므로 프론트가 /courses·/subjects·/enrollments·/students 전량을 재조회하지 않는다.
+    const courseDurationById = new Map<number, number>();
+    for (const session of this.db.findAll<ClassSession>(SESSIONS)) {
+      if (!courseDurationById.has(Number(session.courseId))) {
+        courseDurationById.set(Number(session.courseId), session.durationMinutes);
+      }
+    }
+    const studentIdsByCourse = new Map<number, number[]>();
+    for (const enrollment of this.db.findAll<Enrollment>(ENROLLMENTS_COL)) {
+      if (enrollment.status !== 'active') continue;
+      const student = this.studentOf(enrollment.studentId);
+      if (!student || !isScheduleVisibleStudentStatus(student.status)) continue;
+      const ids = studentIdsByCourse.get(Number(enrollment.courseId)) ?? [];
+      ids.push(Number(enrollment.studentId));
+      studentIdsByCourse.set(Number(enrollment.courseId), ids);
+    }
     const courses = this.db
       .findAll<Course>(COURSES_COL)
       .filter((c) => scope?.instructorId == null || Number(c.instructorId) === Number(scope.instructorId));
-    const scopedCourseIds = new Set(courses.map((c) => Number(c.id)));
     const scopedStudentIds = scope?.instructorId == null
       ? null
-      : new Set(
-          this.db
-            .findAll<Enrollment>(ENROLLMENTS_COL)
-            .filter((e) => e.status === 'active' && scopedCourseIds.has(Number(e.courseId)))
-            .map((e) => Number(e.studentId)),
-        );
+      : new Set(courses.flatMap((course) => studentIdsByCourse.get(Number(course.id)) ?? []));
     return {
       instructors: this.scheduleOwnerUsers().filter((u) => scope?.instructorId == null || Number(u.id) === Number(scope.instructorId)).map((u) => {
         const c = courses.find((x) => x.instructorId === u.id);
@@ -333,11 +340,12 @@ export class ScheduleService implements OnModuleInit {
           countryCode: s.country,
         })),
       courses: courses.map((c) => ({
-        id: c.id, name: c.name, instructorId: c.instructorId,
+        id: c.id, name: c.name, subjectId: c.subjectId, instructorId: c.instructorId,
         instructorName: this.instructorName(c.instructorId) ?? '',
         subjectName: this.subjectOf(c.subjectId)?.name ?? '',
         color: c.color ?? SUBJECT_FALLBACK_COLOR[c.subjectId],
-        durationMinutes: courseDuration(c.id),
+        durationMinutes: courseDurationById.get(Number(c.id)) ?? 90,
+        studentIds: studentIdsByCourse.get(Number(c.id)) ?? [],
       })),
     };
   }

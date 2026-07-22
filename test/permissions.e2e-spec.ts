@@ -89,6 +89,9 @@ describe("Permission matrix (e2e)", () => {
       expect(res.courses.length).toBeGreaterThan(0);
       expect(res.courses.every((c: { instructorId: number }) => Number(c.instructorId) === 1)).toBe(true);
       expect(res.students.map((s: { id: number }) => Number(s.id)).sort()).toEqual([1, 4]);
+      const visibleStudentIds = new Set(res.students.map((student: { id: number }) => Number(student.id)));
+      expect(res.courses.every((course: { subjectId: number; studentIds: number[] }) =>
+        Number.isInteger(course.subjectId) && course.studentIds.every((studentId) => visibleStudentIds.has(Number(studentId))))).toBe(true);
     });
 
     it("instructor(park) → GET /availability 는 쿼리 우회에도 본인 강사 블록만 반환", async () => {

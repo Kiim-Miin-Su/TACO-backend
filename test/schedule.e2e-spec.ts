@@ -131,7 +131,10 @@ describe("Schedule API (e2e)", () => {
     // 코스 옵션은 강사 FK와 정렬되어 있어야 함 + 진행시간(세션에서 파생) > 0
     for (const c of res.body.courses) {
       expect(res.body.instructors.some((i: { id: number }) => i.id === c.instructorId)).toBe(true);
+      expect(Number.isInteger(c.subjectId)).toBe(true);
       expect(c.durationMinutes).toBeGreaterThan(0);
+      expect(Array.isArray(c.studentIds)).toBe(true);
+      expect(c.studentIds.every((studentId: number) => res.body.students.some((student: { id: number }) => Number(student.id) === Number(studentId)))).toBe(true);
     }
     const park = res.body.instructors.find((i: { id: number }) => i.id === 1);
     const jung = res.body.instructors.find((i: { id: number }) => i.id === 2);
