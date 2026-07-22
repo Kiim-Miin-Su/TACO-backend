@@ -5486,6 +5486,11 @@ components:
           maxLength: 200
           example: Writing 보충
           description: 수업 주제
+        memo:
+          type: string
+          maxLength: 500
+          example: 교재 3장 지참
+          description: 수업 메모 — 요청 DB에 보존하고 승인 시 세션 메모로 전달
         kind:
           enum:
             - class
@@ -5598,6 +5603,11 @@ components:
           type: string
           maxLength: 200
           example: Writing 보충
+        memo:
+          type: string
+          maxLength: 500
+          example: 교재 3장 지참
+          description: 승인 후 세션에 반영할 메모
         kind:
           enum:
             - class

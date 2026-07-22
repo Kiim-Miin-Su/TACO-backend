@@ -49,6 +49,10 @@ export class UpdateScheduleRequestDto {
   @IsOptional() @IsString() @MaxLength(200)
   topic?: string;
 
+  @ApiPropertyOptional({ example: '교재 3장 지참', description: '승인 후 세션에 반영할 메모' })
+  @IsOptional() @IsString() @MaxLength(500)
+  memo?: string;
+
   @ApiPropertyOptional({ enum: SESSION_KINDS, example: 'class' })
   @IsOptional() @IsIn(SESSION_KINDS)
   kind?: SessionKind;

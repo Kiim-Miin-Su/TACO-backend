@@ -153,6 +153,7 @@ export class ScheduleRequestsStore implements OnModuleInit {
         kind varchar(32) NOT NULL DEFAULT 'class',
         mode varchar(32) DEFAULT 'in_person',
         topic varchar(200),
+        memo text,
         student_ids text NOT NULL DEFAULT '[]',
         request_reason text,
         scope varchar(32) DEFAULT 'this' CHECK (scope IS NULL OR scope IN (${sqlList(RECURRENCE_SCOPES)})),

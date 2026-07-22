@@ -37,6 +37,7 @@ type RequestRow = ScheduleRequest & BaseRow & {
   impactSessionIds?: number[];
   changeSummary?: string;
   requestReason?: string;
+  memo?: string;
   scope?: RecurrenceScope;
 };
 
@@ -88,6 +89,7 @@ export class ScheduleRequestsService {
         kind: dto.kind ?? 'class',
         mode: dto.mode, // [C2D] 보존(미지정=승인 시 SESSION_DEFAULTS.in_person)
         topic: dto.topic,
+        memo: dto.memo,
         studentIds: dto.studentIds,
         requestReason: dto.requestReason,
         status: 'pending',
@@ -115,6 +117,7 @@ export class ScheduleRequestsService {
       durationMinutes: dto.durationMinutes ?? target.durationMinutes,
       studentIds: dto.studentIds ?? target.studentIds,
       topic: dto.topic ?? target.topic,
+      memo: dto.memo ?? target.memo,
       kind: dto.kind ?? target.kind,
       mode: dto.mode ?? target.mode,
     };
@@ -140,6 +143,7 @@ export class ScheduleRequestsService {
         kind: merged.kind,
         mode: merged.mode,
         topic: merged.topic,
+        memo: merged.memo,
         studentIds: merged.studentIds,
         requestReason: dto.requestReason,
         scope: dto.scope ?? 'this',
@@ -285,7 +289,7 @@ export class ScheduleRequestsService {
         courseId: req.courseId!, instructorId: req.instructorId, roomId: req.roomId,
         sessionDate: req.sessionDate!, startTime: req.startTime!, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic,
-        studentIds: req.studentIds, kind: req.kind, mode: req.mode, force, // [C2D] mode 보존
+        memo: req.memo, studentIds: req.studentIds, kind: req.kind, mode: req.mode, force, // [C2D] mode 보존
 
       }, decidedBy);
       const updated = this.mustStored(await this.store.update<RequestRow>(id, {
@@ -304,6 +308,7 @@ export class ScheduleRequestsService {
         courseId: req.courseId, instructorId: req.instructorId, roomId: req.roomId,
         sessionDate: req.sessionDate, startTime: req.startTime, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic, studentIds: req.studentIds,
+        memo: req.memo,
         kind: req.kind, mode: req.mode, scope: req.scope, force,
         acknowledgeAccountingImpact: force,
       }, decidedBy);

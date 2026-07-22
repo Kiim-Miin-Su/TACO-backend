@@ -28,8 +28,8 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
 
   it('강사 요청 생성(pending) — 세션과 동일 검증 통과 + 참고용 conflicts 배열', async () => {
     const res = await http.post('/api/schedule-requests').set(asInst())
-      .send({ ...SLOT, endTime: '10:30', topic: '보충 요청', kind: 'class' }).expect(201);
-    expect(res.body.row).toMatchObject({ status: 'pending', courseId: 10, instructorId: 1, requesterId: expect.any(Number), durationMinutes: 90 });
+      .send({ ...SLOT, endTime: '10:30', topic: '보충 요청', memo: '교재 3장 지참', kind: 'class' }).expect(201);
+    expect(res.body.row).toMatchObject({ status: 'pending', courseId: 10, instructorId: 1, requesterId: expect.any(Number), durationMinutes: 90, memo: '교재 3장 지참' });
     expect(Array.isArray(res.body.conflicts)).toBe(true);
   });
 
@@ -91,8 +91,9 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     expect(ok.request.status).toBe('approved');
     expect(ok.request.createdSessionId).toBeGreaterThan(0);
     const rows = (await http.get(`/api/schedule?from=2099-01-04&to=2099-01-04`).set(asAdmin()).expect(200)).body;
-    expect(rows.some((s: { id: number }) => s.id === ok.request.createdSessionId)).toBe(true);
+    expect(rows.find((s: { id: number }) => s.id === ok.request.createdSessionId)).toMatchObject({ memo: '교재 3장 지참' });
     const audit = (await http.get(`/api/audit?entity=schedule_requests&entityId=${pending.id}`).set(asAdmin()).expect(200)).body;
+    expect(audit.find((a: { action: string }) => a.action === 'create')?.changes.__row.before.memo).toBe('교재 3장 지참');
     const approved = audit.find((a: { action: string }) => a.action === 'approve');
     expect(approved.changes.status).toMatchObject({ before: 'pending', after: 'approved' });
     expect(approved.changes.createdSessionId.after).toBe(ok.request.createdSessionId);
@@ -178,6 +179,7 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
         startTime: '17:30',
         endTime: '18:30',
         topic: '드래그 변경 요청',
+        memo: '변경 요청 메모',
         requestReason: '학부모 요청으로 30분 늦춥니다.',
         scope: 'this',
       })
@@ -190,6 +192,7 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       startTime: '17:30',
       endTime: '18:30',
       requestReason: '학부모 요청으로 30분 늦춥니다.',
+      memo: '변경 요청 메모',
       scope: 'this',
     });
     expect(made.changeSummary).toContain('16:00-17:00 -> 17:30-18:30');
@@ -201,7 +204,7 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
 
     const rows = (await http.get('/api/schedule?from=2099-07-01&to=2099-07-01').set(asAdmin()).expect(200)).body;
     const updated = rows.find((s: { id: number }) => s.id === target.id);
-    expect(updated).toMatchObject({ startTime: '17:30', endTime: '18:30', topic: '드래그 변경 요청' });
+    expect(updated).toMatchObject({ startTime: '17:30', endTime: '18:30', topic: '드래그 변경 요청', memo: '변경 요청 메모' });
 
     const sessionAudit = (await http.get(`/api/audit?entity=class_sessions&entityId=${target.id}`).set(asAdmin()).expect(200)).body;
     const sessionUpdate = sessionAudit.find((a: { action: string; changes?: Record<string, { before?: unknown; after?: unknown }> }) =>

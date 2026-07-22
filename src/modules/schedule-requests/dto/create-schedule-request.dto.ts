@@ -70,6 +70,10 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @IsOptional() @IsString() @MaxLength(200)
   topic?: string;
 
+  @ApiPropertyOptional({ example: '교재 3장 지참', description: '수업 메모 — 요청 DB에 보존하고 승인 시 세션 메모로 전달' })
+  @IsOptional() @IsString() @MaxLength(500)
+  memo?: string;
+
   @ApiPropertyOptional({ enum: SESSION_KINDS, example: 'class' })
   @IsOptional() @IsIn(SESSION_KINDS)
   kind?: SessionKind;

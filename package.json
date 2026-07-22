@@ -50,6 +50,7 @@
     "db:migrate:course-pay-ssot": "ts-node scripts/migrate-course-pay-ssot.ts",
     "db:migrate:counsel-family-academic-expand": "ts-node scripts/migrate-counsel-family-academic-expand.ts",
     "db:migrate:counsel-student-ssot-contract": "ts-node scripts/migrate-counsel-student-ssot-contract.ts",
+    "db:migrate:schedule-request-memo": "ts-node scripts/migrate-schedule-request-memo.ts",
     "db:check:counsel-family-academic-contract": "ts-node scripts/check-counsel-family-academic-contract.ts",
     "db:repair:legacy-unverified-users": "ts-node scripts/repair-legacy-unverified-users.ts",
     "route-coverage": "node dist/scripts/e2e-route-coverage.js",

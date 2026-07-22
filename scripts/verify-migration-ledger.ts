@@ -26,6 +26,7 @@ import { STUDENT_REQUIRED_CONTRACT_MIGRATION_ID } from '../src/database/migratio
 import { COURSE_PAY_SSOT_MIGRATION_ID } from '../src/database/migrations/course-pay-ssot.migration';
 import { COUNSEL_FAMILY_ACADEMIC_EXPAND_MIGRATION_ID } from '../src/database/migrations/counsel-family-academic-expand.migration';
 import { COUNSEL_STUDENT_SSOT_CONTRACT_MIGRATION_ID } from '../src/database/migrations/counsel-student-ssot-contract.migration';
+import { SCHEDULE_REQUEST_MEMO_MIGRATION_ID } from '../src/database/migrations/schedule-request-memo.migration';
 
 loadLocalEnv();
 
@@ -54,6 +55,7 @@ export const EXPECTED_MIGRATION_IDS = [
   COURSE_PAY_SSOT_MIGRATION_ID,
   COUNSEL_FAMILY_ACADEMIC_EXPAND_MIGRATION_ID,
   COUNSEL_STUDENT_SSOT_CONTRACT_MIGRATION_ID,
+  SCHEDULE_REQUEST_MEMO_MIGRATION_ID,
 ] as const;
 
 const url = directDatabaseUrl();
