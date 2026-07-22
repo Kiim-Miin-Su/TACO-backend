@@ -8,6 +8,7 @@
     "start": "node dist/main.js",
     "build": "nest build",
     "db:check": "ts-node scripts/db-check.ts",
+    "db:inventory": "ts-node scripts/inventory-production-data.ts",
     "db:smoke:schedule-requests": "ts-node scripts/schedule-requests-db-smoke.ts",
     "db:smoke:calendar-assets": "ts-node scripts/calendar-assets-db-smoke.ts",
     "db:smoke:audit-log": "ts-node scripts/audit-log-db-smoke.ts",
