@@ -101,6 +101,7 @@ export class PayoutsController {
 
   @Get(':id')
   @Roles('super_admin')
+  @ApiOperation({ summary: '정산서 단건과 산정 line 조회 [대표]' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.payouts.findOne(id);
   }

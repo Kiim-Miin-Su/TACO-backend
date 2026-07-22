@@ -1,13 +1,14 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
 import { ValidationPipe } from "@nestjs/common";
-import { DocumentBuilder, SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
+import { SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "../src/app.module";
 import { AllExceptionsFilter } from "../src/common/all-exceptions.filter";
 import { webCorsOrigins } from "../src/common/cors-origin";
 import { LoggingInterceptor } from "../src/common/logging.interceptor";
 import { assertProductionBootSafety } from "../src/config/production-guards";
 import { configureTrustProxy } from "../src/common/trust-proxy";
+import { createOpenApiDocument } from "../src/config/openapi";
 
 // Production cold starts initialize and hydrate the Postgres-backed runtime stores before
 // the first request can be served. Vercel's default function duration can expire during that
@@ -47,15 +48,8 @@ async function bootstrapServer() {
   app.useGlobalInterceptors(new LoggingInterceptor()); // 모든 요청 로깅(docs/logging.md)
   app.useGlobalFilters(new AllExceptionsFilter()); // 예외 응답 표준화 + category=error
 
-  const config = new DocumentBuilder()
-    .setTitle("TACO ERP API")
-    .setDescription("TnAcademy 백오피스 API (in-memory, serverless). 설계 스펙: docs/api/openapi.yaml")
-    .setVersion("0.1.0")
-    .addBearerAuth()
-    .addCookieAuth("access_token")
-    .build();
   // 빌드 타임 스펙 우선(파라미터·스키마 정확). 없으면 런타임 생성으로 폴백.
-  const document = staticOpenapi ?? SwaggerModule.createDocument(app, config);
+  const document = staticOpenapi ?? createOpenApiDocument(app);
   // 서버리스(Vercel)는 Swagger UI 정적 에셋을 서빙하지 못해 흰 화면이 됨.
   // → JS/CSS를 CDN(jsdelivr swagger-ui-dist)에서 로드하도록 지정.
   SwaggerModule.setup("docs", app, document, {

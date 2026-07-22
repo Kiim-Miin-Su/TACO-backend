@@ -63,6 +63,7 @@ export class UsersController {
   // 학생/학부모 web id 존재 확인 (등록 폼 "확인하기" — 스태프 앱 내부에서만 호출)
   @Get('exists')
   @Roles(...STAFF_ROLES) // [코드리뷰 2026-07-03 H2] @Roles 누락 → 무인증 webId 열거 가능했음. 스태프 로그인 필수
+  @ApiOperation({ summary: '학생·보호자 연결용 Web ID 존재 여부 확인 [전 직원]' })
   async exists(@Query('webId') webId?: string) {
     if (!webId?.trim()) throw new BadRequestException('webId required');
     await this.users.refreshFromDb(); // [28F]
@@ -71,6 +72,7 @@ export class UsersController {
 
   @Get()
   @Roles(...ADMIN_ROLES) // 직원 이메일·승인 metadata·마지막 로그인 포함 — 관리자만
+  @ApiOperation({ summary: '직원 계정 목록과 승인 상태 조회 [매니저 이상]' })
   async list() {
     await this.users.refreshFromDb(); // [28F]
     return this.users.findAll();

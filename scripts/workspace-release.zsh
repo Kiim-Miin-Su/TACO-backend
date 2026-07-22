@@ -215,6 +215,7 @@ run_schema_gates() {
   TMP_DIRS+=("$tmp")
 
   run_in backend npm run openapi
+  run_in backend npm run verify:doc-links
   log "docs: generate PostgreSQL SQL from erd.dbml"
   npx -y -p @dbml/cli dbml2sql "$ROOT/docs/erd.dbml" --postgres -o "$tmp/erd.sql"
   [[ -s "$tmp/erd.sql" ]] || die "DBML generated an empty PostgreSQL file"

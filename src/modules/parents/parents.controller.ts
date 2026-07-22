@@ -36,6 +36,7 @@ export class ParentsController {
 
   @Get(':id')
   @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '보호자 단건과 학생 연결 정보 조회 [전 직원]' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.parents.findOne(id);
   }
@@ -66,24 +67,28 @@ export class ParentsController {
 
   @Delete('relations/:id')
   @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '학생과 보호자의 연결 관계 soft delete [매니저 이상]' })
   removeRelation(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.parents.removeRelation(id, this.actor(req));
   }
 
   @Delete('relations/:id/guardian')
   @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '학생 연결과 미참조 보호자를 함께 soft delete [매니저 이상]' })
   removeGuardian(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.parents.removeGuardian(id, this.actor(req));
   }
 
   @Patch(':id')
   @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '보호자 연락처·관계 정보를 수정하고 이력 기록 [매니저 이상]' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateParentDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.parents.update(id, dto, this.actor(req));
   }
 
   @Delete(':id')
   @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '참조 무결성 확인 후 보호자 soft delete [매니저 이상]' })
   remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.parents.remove(id, this.actor(req));
   }

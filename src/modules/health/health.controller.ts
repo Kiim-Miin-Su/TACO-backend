@@ -16,7 +16,7 @@ export class HealthController {
   }
 
   @Get('db')
-  @ApiOperation({ summary: 'Database connection check. In-memory remains runtime store until Postgres cutover.' })
+  @ApiOperation({ summary: '운영 Postgres 연결 및 영속 저장소 준비 상태 확인' })
   async database() {
     const db = await this.postgres.ping();
     return {
