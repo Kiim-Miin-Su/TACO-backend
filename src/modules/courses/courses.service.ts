@@ -44,10 +44,31 @@ export class CoursesService implements OnModuleInit {
     return this.db.findAll<StoredCourse>(COURSES).map((course) => this.effective(course));
   }
 
+  /**
+   * 서버리스의 다른 인스턴스에서 생성·수정한 코스를 HTTP read model에 반영한다.
+   * 명령 경로는 reloadCommandState()가 항상 DB를 다시 읽고, 조회 경로는 이 메서드가
+   * PostgreSQL → 메모리 투영을 갱신한 뒤 응답하므로 인스턴스 로컬 캐시가 권위가 되지 않는다.
+   */
+  async findAllFresh(): Promise<Course[]> {
+    await Promise.all([
+      this.store.hydrate<StoredCourse>(COURSES_SPEC),
+      this.profiles.hydrate(),
+    ]);
+    return this.findAll();
+  }
+
   findOne(id: number): Course {
     const row = this.db.findById<StoredCourse>(COURSES, id);
     if (!row) throw new NotFoundException(`Course ${id} not found`);
     return this.effective(row);
+  }
+
+  async findOneFresh(id: number): Promise<Course> {
+    await Promise.all([
+      this.store.hydrate<StoredCourse>(COURSES_SPEC),
+      this.profiles.hydrate(),
+    ]);
+    return this.findOne(id);
   }
 
   findOptional(id: number): Course | undefined {

@@ -31,10 +31,21 @@ export class SubjectsService implements OnModuleInit {
     return this.db.findAll<Subject>(SUBJECTS);
   }
 
+  /** 서버리스 교차 인스턴스의 과목 변경을 PostgreSQL에서 다시 읽어 HTTP 캐시 투영을 갱신한다. */
+  async findAllFresh(): Promise<Subject[]> {
+    await this.store.hydrate<Subject>(SUBJECTS_SPEC);
+    return this.findAll();
+  }
+
   findOne(id: number): Subject {
     const row = this.db.findById<Subject>(SUBJECTS, id);
     if (!row) throw new NotFoundException(`Subject ${id} not found`);
     return row;
+  }
+
+  async findOneFresh(id: number): Promise<Subject> {
+    await this.store.hydrate<Subject>(SUBJECTS_SPEC);
+    return this.findOne(id);
   }
 
   // actorId 없으면(시드·내부 경로) audit 생략. 쓰기+audit 한 tx(uow).

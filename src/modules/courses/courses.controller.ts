@@ -18,14 +18,14 @@ export class CoursesController {
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '수업 목록 조회 [전 직원]' })
   findAll() {
-    return this.courses.findAll();
+    return this.courses.findAllFresh();
   }
 
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '수업 단건 및 담당 강사별 페이 override 조회 [전 직원]' })
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.courses.findOne(id);
+    return this.courses.findOneFresh(id);
   }
 
   @Post()

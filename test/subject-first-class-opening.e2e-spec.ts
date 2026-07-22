@@ -56,6 +56,18 @@ describe('Subject-first class opening aggregate (e2e)', () => {
       courseId: result.course.id, subjectName: 'Writing Lab', courseName: 'Writing Lab', instructorId: 1,
       studentIds: [1], mode: 'online', topic: 'Essay structure', memo: '교재 2장', durationMinutes: 90,
     });
+    const [scheduleReadback, subjectReadback, courseReadback] = await Promise.all([
+      http.get('/api/schedule').set(auth(admin)).expect(200),
+      http.get(`/api/subjects/${result.subject.id}`).set(auth(admin)).expect(200),
+      http.get(`/api/courses/${result.course.id}`).set(auth(admin)).expect(200),
+    ]);
+    expect(scheduleReadback.body.find((row: { id: number }) => row.id === result.row.id)).toMatchObject({
+      courseName: 'Writing Lab', subjectName: 'Writing Lab', instructorId: 1,
+    });
+    expect(subjectReadback.body).toMatchObject({ id: result.subject.id, name: 'Writing Lab' });
+    expect(courseReadback.body).toMatchObject({
+      id: result.course.id, name: 'Writing Lab', hourlyRateOverride: 47000,
+    });
     for (const [entity, id] of [
       ['subjects', result.subject.id], ['courses', result.course.id], ['enrollments', result.enrollments[0].id], ['class_sessions', result.row.id],
     ] as const) {

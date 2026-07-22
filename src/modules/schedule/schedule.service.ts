@@ -34,7 +34,14 @@ import { addMinutesGuarded, normalizeSessionTime, storedEndTimeOf, SESSION_TIME_
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { CLASS_SESSION_SERIES_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
+import {
+  CLASS_SESSION_SERIES_SPEC,
+  COURSES_SPEC,
+  ENROLLMENTS_SPEC,
+  STUDENTS_SPEC,
+  SUBJECTS_SPEC,
+  USERS_SPEC,
+} from '../../database/calendar-asset-specs';
 import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, isPayoutLocked, payoutIdOf, teachingMinutesOf, type SessionAccountingImpact } from './session-accounting.policy';
 import { studentBelongsToSession } from './session-participant.policy';
 import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
@@ -103,7 +110,9 @@ export class ScheduleService implements OnModuleInit {
   }
 
   // [EP2 2026-07-16] 읽기 경로 hydrate 게이트 — 종전엔 캘린더 진입 시 읽기 라우트 **각각**이
-  //  4테이블(class_sessions·availability·users·series) SELECT * 전량 재적재(Neon WAN 왕복 합산).
+  //  일정 read model(class_sessions·availability·users·series·courses·subjects·enrollments·students)을
+  //  PostgreSQL에서 재적재한다. 서버리스의 다른 인스턴스가 과목/학생/수강을 만든 직후에도
+  //  캘린더와 수업 목록이 인스턴스 로컬 메모리를 권위로 오인하지 않게 하는 SSOT 경계다.
   //  ① in-flight 공유: 동시 읽기(캘린더 병렬 요청 버스트)는 진행 중인 hydrate 1회를 공유.
   //  ② TTL: 직전 hydrate가 TTL 이내면 스킵(교차 인스턴스 staleness ≤ TTL — 같은 인스턴스의
   //     쓰기는 write-through로 메모리에 즉시 반영되므로 read-after-write는 영향 없음).
@@ -126,6 +135,10 @@ export class ScheduleService implements OnModuleInit {
       () => this.availability.refresh(),
       () => this.collections.hydrate<StaffAccount>(USERS_SPEC),
       () => this.collections.hydrate<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC),
+      () => this.collections.hydrate<Course>(COURSES_SPEC),
+      () => this.collections.hydrate<Subject>(SUBJECTS_SPEC),
+      () => this.collections.hydrate<Enrollment>(ENROLLMENTS_SPEC),
+      () => this.collections.hydrate<Student>(STUDENTS_SPEC),
     ];
     if (this.unitOfWork.inPgTransaction) {
       for (const task of tasks) await task();
