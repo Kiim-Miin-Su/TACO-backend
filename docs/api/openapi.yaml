@@ -3752,7 +3752,7 @@ components:
           example: 1
         webId:
           type: string
-          example: park_inst
+          example: instructor01
         name:
           type: string
           example: 박지훈

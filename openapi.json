@@ -6109,7 +6109,7 @@
           },
           "webId": {
             "type": "string",
-            "example": "park_inst"
+            "example": "instructor01"
           },
           "name": {
             "type": "string",
