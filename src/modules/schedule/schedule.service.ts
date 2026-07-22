@@ -1,6 +1,15 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import type { Conflict, CreateScheduleSeriesResult, ScheduleRow, ScheduleSeries } from '@kms545487/contracts';
+import type {
+  Conflict,
+  CreateScheduleSeriesResult,
+  OpenClassInput,
+  OpenClassResult,
+  OpenClassSeriesInput,
+  OpenClassSeriesResult,
+  ScheduleRow,
+  ScheduleSeries,
+} from '@kms545487/contracts';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { RoomsService } from '../rooms/rooms.service';
 import { AvailabilityService } from '../availability/availability.service';
@@ -29,6 +38,7 @@ import { CLASS_SESSION_SERIES_SPEC, USERS_SPEC } from '../../database/calendar-a
 import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, isPayoutLocked, payoutIdOf, teachingMinutesOf, type SessionAccountingImpact } from './session-accounting.policy';
 import { studentBelongsToSession } from './session-participant.policy';
 import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
+import { EnrollmentsService } from '../enrollments/enrollments.service';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
 import { hhmmToMin as toMin, weekdayOf, addDaysISO, dayDiff } from '../../common/time.util';
@@ -84,6 +94,7 @@ export class ScheduleService implements OnModuleInit {
     private readonly reports: ReportsService,
     private readonly collections: PostgresCollectionStore, // [TBO-28F] users 투영 재조회(교차 인스턴스 정합)
     private readonly courses: CoursesService,
+    private readonly enrollments: EnrollmentsService,
   ) {}
 
   // 이번 주 데모 수업 시드 — 주간 반복 시리즈 단위(같은 시리즈=한 seriesId). 충돌 없게 구성.
@@ -387,6 +398,93 @@ export class ScheduleService implements OnModuleInit {
     return this.validateSessionInput(input);
   }
 
+  /** 과목 text input → subject/course/enrollment/session 단일 transaction. */
+  async openClass(dto: OpenClassInput, actorId?: number): Promise<OpenClassResult> {
+    await this.ensureReady();
+    const studentIds = [...new Set((dto.studentIds ?? []).map(Number))];
+    return this.unitOfWork.run(async () => {
+      await this.unitOfWork.lockTargets([
+        this.courses.subjectNameLockKey(dto.subjectName),
+        { kind: 'user', id: dto.instructorId },
+        ...this.calendarLockKeys({ instructorIds: [dto.instructorId], roomIds: [dto.roomId], studentIds }),
+      ]);
+      await this.refreshAfterLock();
+      const { subject, course } = await this.courses.resolveSubjectCourse({
+        subjectName: dto.subjectName,
+        instructorId: dto.instructorId,
+        hourlyRateOverride: dto.hourlyRateOverride,
+        coursePrice: dto.coursePrice,
+        isKinder: dto.isKinder,
+        color: dto.color,
+      }, actorId);
+      const enrollments = await this.enrollments.ensureActiveForCourse(studentIds, course.id, actorId);
+      const { row, conflicts } = await this.create({
+        courseId: course.id,
+        instructorId: dto.instructorId,
+        roomId: dto.roomId,
+        sessionDate: dto.sessionDate,
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        durationMinutes: dto.durationMinutes,
+        studentIds,
+        topic: dto.topic,
+        memo: dto.memo,
+        color: dto.color,
+        status: dto.status,
+        force: dto.force,
+        kind: dto.kind,
+        price: dto.price,
+        mode: dto.mode,
+        isPublic: dto.isPublic,
+      }, actorId);
+      return { subject, course, enrollments, row, conflicts };
+    });
+  }
+
+  /** 과목 text input → subject/course/enrollment + 기존 원자 bulk series command 재사용. */
+  async openClassSeries(dto: OpenClassSeriesInput, actorId?: number): Promise<OpenClassSeriesResult> {
+    await this.ensureReady();
+    const studentIds = [...new Set((dto.studentIds ?? []).map(Number))];
+    return this.unitOfWork.run(async () => {
+      await this.unitOfWork.lockTargets([
+        this.courses.subjectNameLockKey(dto.subjectName),
+        { kind: 'user', id: dto.instructorId },
+        ...this.calendarLockKeys({ instructorIds: [dto.instructorId], roomIds: [dto.roomId], studentIds }),
+      ]);
+      await this.refreshAfterLock();
+      const { subject, course } = await this.courses.resolveSubjectCourse({
+        subjectName: dto.subjectName,
+        instructorId: dto.instructorId,
+        hourlyRateOverride: dto.hourlyRateOverride,
+        coursePrice: dto.coursePrice,
+        isKinder: dto.isKinder,
+        color: dto.color,
+      }, actorId);
+      const enrollments = await this.enrollments.ensureActiveForCourse(studentIds, course.id, actorId);
+      const result = await this.createSeries({
+        courseId: course.id,
+        instructorId: dto.instructorId,
+        roomId: dto.roomId,
+        studentIds,
+        repeat: dto.repeat,
+        startTime: dto.startTime,
+        endTime: dto.endTime,
+        durationMinutes: dto.durationMinutes,
+        timeZone: dto.timeZone,
+        topic: dto.topic,
+        memo: dto.memo,
+        color: dto.color,
+        status: dto.status,
+        kind: dto.kind,
+        price: dto.price,
+        mode: dto.mode,
+        isPublic: dto.isPublic,
+        force: dto.force,
+      }, actorId);
+      return { subject, course, enrollments, ...result };
+    });
+  }
+
   async create(dto: {
     courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
     startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
@@ -400,7 +498,7 @@ export class ScheduleService implements OnModuleInit {
     await this.ensureReady();
     const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
     const course = this.courseOf(dto.courseId)!;
-    const studentIds = dto.studentIds?.length ? dto.studentIds : this.activeStudentIds(dto.courseId);
+    const studentIds = dto.studentIds !== undefined ? dto.studentIds : this.activeStudentIds(dto.courseId);
 
     // [C4] 시간 정규화 단일 진입점 — endTime<startTime=익일 종료, 크로스=endTime null(duration 파생 저장)
     const { startTime, durationMinutes, endTime } = normalizeSessionTime(
@@ -490,7 +588,7 @@ export class ScheduleService implements OnModuleInit {
     await this.ensureReady();
     const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(단건 create와 같은 함수)
     const course = this.courseOf(dto.courseId)!;
-    const studentIds = dto.studentIds?.length ? dto.studentIds : this.activeStudentIds(dto.courseId);
+    const studentIds = dto.studentIds !== undefined ? dto.studentIds : this.activeStudentIds(dto.courseId);
     const timeZone = dto.timeZone ?? 'Asia/Seoul';
     if (timeZone !== 'Asia/Seoul') throw new BadRequestException('반복 규칙 시간대는 MVP에서 Asia/Seoul만 지원합니다');
 

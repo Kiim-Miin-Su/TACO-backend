@@ -1,15 +1,17 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { ENROLLMENTS_SPEC } from '../../database/calendar-asset-specs';
+import { COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
 import { Enrollment, ENROLLMENTS } from './enrollment.entity';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { STUDENTS } from '../students/student.entity';
-import { COURSES } from '../courses/course.entity';
+import { Student } from '../students/student.entity';
+import { COURSES, StoredCourse } from '../courses/course.entity';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { buildCohortIndex, studentBelongsToSessionIndexed } from '../schedule/session-participant.policy';
+import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
 
 @Injectable()
 export class EnrollmentsService implements OnModuleInit {
@@ -43,12 +45,20 @@ export class EnrollmentsService implements OnModuleInit {
 
   // 결제 없이도 등록 가능 (status=active). actorId 없으면(시드·내부 경로) audit 생략.
   async create(dto: CreateEnrollmentDto, actorId?: number): Promise<Enrollment> {
-    // [감사 H3] FK 존재 검증 — 고아 수강이 스케줄 코호트(activeStudentIds)에 유령 학생을 만드는 것 방지.
-    if (!this.db.findById(STUDENTS, dto.studentId))
-      throw new BadRequestException(`존재하지 않는 학생입니다 (studentId=${dto.studentId})`);
-    if (!this.db.findById(COURSES, dto.courseId))
-      throw new BadRequestException(`존재하지 않는 코스입니다 (courseId=${dto.courseId})`);
     return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'student', id: dto.studentId }, { kind: 'course', id: dto.courseId }]);
+      await this.store.hydrate<Student>(STUDENTS_SPEC);
+      await this.store.hydrate<StoredCourse>(COURSES_SPEC);
+      await this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
+      // FK·중복 판정은 lock 뒤 실제 DB readback이 권위다.
+      if (!this.db.findById(STUDENTS, dto.studentId))
+        throw new BadRequestException(`존재하지 않는 학생입니다 (studentId=${dto.studentId})`);
+      if (!this.db.findById(COURSES, dto.courseId))
+        throw new BadRequestException(`존재하지 않는 코스입니다 (courseId=${dto.courseId})`);
+      const duplicate = this.db.findBy<Enrollment>(ENROLLMENTS, (row) =>
+        Number(row.studentId) === Number(dto.studentId) && Number(row.courseId) === Number(dto.courseId),
+      )[0];
+      if (duplicate) throw new ConflictException('이미 연결된 학생과 과목입니다.');
       const row = await this.store.insert<Enrollment>(ENROLLMENTS_SPEC, {
         studentId: dto.studentId,
         courseId: dto.courseId,
@@ -60,8 +70,65 @@ export class EnrollmentsService implements OnModuleInit {
         enrolledAt: new Date().toISOString().slice(0, 10),
       });
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
-      if (actorId != null) await this.audit.log({ entity: 'enrollments', entityId: row.id, action: 'create', actorId });
+      if (actorId != null) await this.audit.log({ entity: 'enrollments', entityId: row.id, action: 'create', actorId, changes: this.audit.snapshotOf(row) });
       return row;
+    });
+  }
+
+  /**
+   * 과목명 기반 수업 개설의 roster command. 선택 학생을 같은 course의 활성 enrollment로 보장한다.
+   * caller의 outer UoW가 있으면 subject/course/session과 함께 rollback된다.
+   */
+  async ensureActiveForCourse(studentIds: number[], courseId: number, actorId?: number): Promise<Enrollment[]> {
+    const ids = [...new Set(studentIds.map(Number))];
+    if (!ids.length) return [];
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'course', id: courseId }, ...ids.map((id) => ({ kind: 'student' as const, id }))]);
+      await this.store.hydrate<StoredCourse>(COURSES_SPEC);
+      await this.store.hydrate<Student>(STUDENTS_SPEC);
+      await this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
+      if (!this.db.findById<StoredCourse>(COURSES, courseId)) {
+        throw new BadRequestException(`존재하지 않는 코스입니다 (courseId=${courseId})`);
+      }
+
+      const ensured: Enrollment[] = [];
+      for (const studentId of ids) {
+        const student = this.db.findById<Student>(STUDENTS, studentId);
+        if (!student || !isScheduleVisibleStudentStatus(student.status)) {
+          throw new BadRequestException(`수업에 연결할 수 없는 학생입니다 (studentId=${studentId})`);
+        }
+        const existing = this.db.findBy<Enrollment>(ENROLLMENTS, (row) =>
+          Number(row.studentId) === studentId && Number(row.courseId) === courseId,
+        )[0];
+        if (!existing) {
+          const created = await this.store.insert<Enrollment>(ENROLLMENTS_SPEC, {
+            studentId,
+            courseId,
+            status: 'active',
+            completedSessions: 0,
+            enrolledAt: new Date().toISOString().slice(0, 10),
+          });
+          if (actorId != null) {
+            await this.audit.log({ entity: 'enrollments', entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) });
+          }
+          ensured.push(created);
+          continue;
+        }
+        if (existing.status === 'active') {
+          ensured.push(existing);
+          continue;
+        }
+        const before = { ...existing };
+        const updated = await this.store.update<Enrollment>(ENROLLMENTS_SPEC, existing.id, {
+          status: 'active',
+          enrolledAt: new Date().toISOString().slice(0, 10),
+        }) as Enrollment;
+        if (actorId != null) {
+          await this.audit.log({ entity: 'enrollments', entityId: updated.id, action: 'update', actorId, changes: this.audit.diffOf(before, updated) });
+        }
+        ensured.push(updated);
+      }
+      return ensured;
     });
   }
 

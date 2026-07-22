@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { createHash } from 'crypto';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
   COURSES_SPEC,
@@ -9,7 +10,7 @@ import {
   USERS_SPEC,
 } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { AuditService } from '../audit/audit.service';
 import { Subject, SUBJECTS } from '../subjects/subject.entity';
@@ -52,6 +53,89 @@ export class CoursesService implements OnModuleInit {
   findOptional(id: number): Course | undefined {
     const row = this.db.findById<StoredCourse>(COURSES, id);
     return row ? this.effective(row) : undefined;
+  }
+
+  /** 과목명 기반 composite 수업 개설이 인스턴스 간 같은 과목을 중복 생성하지 않도록 쓰는 안정 잠금 키. */
+  subjectNameLockKey(subjectName: string): CalendarLockKey {
+    const normalized = this.normalizeSubjectName(subjectName);
+    const raw = createHash('sha256').update(normalized.toLocaleLowerCase('ko-KR')).digest().readUInt32BE(0);
+    return { kind: 'subject', id: (raw & 0x7fffffff) || 1 };
+  }
+
+  /**
+   * 사용자에게는 과목 하나로 보이지만 내부적으로 subject catalog와 instructor별 course 운영 단위를 보존한다.
+   * 호출자가 더 큰 UoW 안에 있으면 nested transaction은 passthrough되어 session/enrollment와 원자 커밋된다.
+   */
+  async resolveSubjectCourse(input: {
+    subjectName: string;
+    instructorId: number;
+    hourlyRateOverride?: number | null;
+    coursePrice?: number;
+    isKinder?: boolean;
+    color?: string;
+  }, actorId?: number): Promise<{ subject: Subject; course: Course }> {
+    const requestedName = this.normalizeSubjectName(input.subjectName);
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([this.subjectNameLockKey(requestedName), { kind: 'instructor', id: input.instructorId }]);
+      await this.reloadCommandState();
+      const profile = this.assertRefs({ instructorId: input.instructorId });
+
+      let subject = this.db.findAll<Subject>(SUBJECTS).find(
+        (row) => row.name.trim().toLocaleLowerCase('ko-KR') === requestedName.toLocaleLowerCase('ko-KR'),
+      );
+      if (!subject) {
+        const digest = createHash('sha256').update(requestedName.toLocaleLowerCase('ko-KR')).digest('hex').slice(0, 14).toUpperCase();
+        subject = await this.store.insert<Subject>(SUBJECTS_SPEC, {
+          code: `AUTO_${digest}_${Date.now().toString(36).toUpperCase()}`,
+          name: requestedName,
+        });
+        if (actorId != null) {
+          await this.audit.log({
+            entity: 'subjects',
+            entityId: subject.id,
+            action: 'create',
+            actorId,
+            changes: this.audit.snapshotOf(subject),
+          });
+        }
+      }
+
+      const stored = this.db.findBy<StoredCourse>(COURSES, (row) =>
+        Number(row.subjectId) === Number(subject!.id) && Number(row.instructorId) === Number(input.instructorId),
+      )[0];
+      if (!stored) {
+        const course = await this.create({
+          name: subject.name,
+          subjectId: subject.id,
+          instructorId: input.instructorId,
+          price: input.coursePrice ?? 0,
+          hourlyRateOverride: input.hourlyRateOverride ?? null,
+          isKinder: input.isKinder ?? false,
+          color: input.color,
+        }, actorId);
+        return { subject, course };
+      }
+
+      const nextOverride = input.hourlyRateOverride !== undefined ? input.hourlyRateOverride : stored.hourlyRateOverride ?? null;
+      const nextKinder = input.isKinder ?? stored.isKinder;
+      const effectiveRate = nextOverride ?? profile!.defaultHourlyRate ?? 0;
+      if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
+      if (nextKinder && !profile!.canTeachKinder) throw new BadRequestException('Kinder 수업이 불가능한 강사입니다.');
+      const patch = {
+        name: subject.name,
+        subjectId: subject.id,
+        instructorId: input.instructorId,
+        ...(input.coursePrice !== undefined ? { price: input.coursePrice } : {}),
+        ...(input.hourlyRateOverride !== undefined ? { hourlyRateOverride: input.hourlyRateOverride } : {}),
+        ...(input.isKinder !== undefined ? { isKinder: input.isKinder } : {}),
+        ...(input.color !== undefined ? { color: input.color } : {}),
+      };
+      const changed = Object.entries(patch).some(([key, value]) =>
+        (stored as unknown as Record<string, unknown>)[key] !== value,
+      );
+      const course = changed ? await this.update(stored.id, patch, actorId) : this.effective(stored);
+      return { subject, course };
+    });
   }
 
   // actorId 없으면(시드·내부 경로) audit 생략. 쓰기+audit 한 tx(uow).
@@ -149,6 +233,13 @@ export class CoursesService implements OnModuleInit {
     await this.store.hydrate<StaffAccount>(USERS_SPEC);
     await this.profiles.hydrate();
     await this.store.hydrate<RoadmapCourse>(ROADMAP_COURSES_SPEC);
+  }
+
+  private normalizeSubjectName(value: string): string {
+    const normalized = value.trim().replace(/\s+/g, ' ');
+    if (!normalized) throw new BadRequestException('과목명을 입력해 주세요.');
+    if (normalized.length > 50) throw new BadRequestException('과목명은 50자 이하여야 합니다.');
+    return normalized;
   }
 
   private assertRefs(dto: { subjectId?: number; instructorId?: number }) {

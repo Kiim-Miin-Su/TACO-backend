@@ -10,6 +10,7 @@ import { ConflictCheckDto } from './dto/conflict-check.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES, isInstructorOnly } from '../auth/roles.decorator';
 import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
+import { OpenClassDto, OpenClassSeriesDto } from './dto/open-class.dto';
 
 @ApiTags('scheduling')
 @ApiBearerAuth()
@@ -108,6 +109,22 @@ export class ScheduleController {
       if (!ownsIgnoredSession) throw new ForbiddenException('타 강사 수업은 충돌 검사에서 제외할 수 없습니다.');
     }
     return this.schedule.checkConflicts({ ...body, instructorId });
+  }
+
+  @Post('open-class')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '과목명 직접 입력 수업 개설 — 과목/강사별 운영단위/수강/세션/audit 원자 커밋 [매니저 이상]' })
+  @ApiCreatedResponse({ description: 'subject + course + enrollments + row + conflicts' })
+  openClass(@Body() dto: OpenClassDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.schedule.openClass(dto, req.user?.sub);
+  }
+
+  @Post('open-class-series')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '과목명 직접 입력 반복 수업 개설 — 과목/수강/시리즈 전체 원자 커밋 [매니저 이상]' })
+  @ApiCreatedResponse({ description: 'subject + course + enrollments + series + rows + conflicts' })
+  openClassSeries(@Body() dto: OpenClassSeriesDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.schedule.openClassSeries(dto, req.user?.sub);
   }
 
   // POST /api/schedule — 세션 생성(추천→배정·수동 추가). 충돌 시 409(force=true면 적용).

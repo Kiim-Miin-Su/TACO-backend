@@ -42,6 +42,7 @@ const APP_FK: Array<{ child: string; field: string; parent: string }> = [
 
 // 활성 중복 검사(partial unique 실측) — DB 인덱스가 있는 것도 실측(인덱스 누락 배포 감시 겸용).
 const ACTIVE_UNIQUE: Array<{ table: string; keys: string[]; ci?: boolean }> = [
+  { table: 'enrollments', keys: ['studentId', 'courseId'] },
   { table: 'attendance', keys: ['sessionId', 'studentId'] },
   { table: 'session_reports', keys: ['sessionId', 'studentId'] },
   { table: 'nav_seen_states', keys: ['userId', 'navKey'] },

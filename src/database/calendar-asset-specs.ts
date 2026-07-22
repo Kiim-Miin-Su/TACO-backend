@@ -628,6 +628,8 @@ export const ENROLLMENTS_SPEC: PostgresCollectionSpec = {
   `,
   dateFields: ['enrolledAt', 'startDate', 'endDate'],
   indexes: [
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_enrollments_student_course_active
+       ON enrollments (student_id, course_id) WHERE deleted_at IS NULL`,
     activeIndex('enrollments', 'idx_enrollments_course_status', 'course_id, status'),
     activeIndex('enrollments', 'idx_enrollments_student_status', 'student_id, status'),
   ],
