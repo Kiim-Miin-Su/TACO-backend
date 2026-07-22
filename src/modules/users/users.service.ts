@@ -846,6 +846,17 @@ export class UsersService implements OnModuleInit {
     if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.'); // [M1] TOCTOU 재검증
     const role: 'instructor' | 'manager' | 'admin' = input.role ?? 'instructor';
     return this.uow.run(async () => {
+      // 최종 중복/actor 판정은 bcrypt 이전 cache가 아니라 identity lock 뒤 Postgres readback이 권위다.
+      await this.uow.lockTargets([
+        { kind: 'loginIdentity', id: identityLockId(webId) },
+        { kind: 'user', id: actorId },
+      ]);
+      await this.refreshFromDb();
+      if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.');
+      if (email && this.db.findBy<StaffAccount>(USERS, (account) =>
+        !!account.email && account.email.toLowerCase() === email).length) {
+        throw new BadRequestException('이미 사용 중인 이메일입니다.');
+      }
       const approvedAt = new Date().toISOString();
       const acc = await this.store.insert<StaffAccount>(USERS_SPEC, {
         webId, name: input.name.trim(), email, phone: input.phone?.trim() || null,

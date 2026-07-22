@@ -1,6 +1,13 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { COURSES_SPEC, ENROLLMENTS_SPEC, STUDENT_INTERESTS_SPEC } from '../../database/calendar-asset-specs';
+import {
+  COURSES_SPEC,
+  ENROLLMENTS_SPEC,
+  ROADMAP_COURSES_SPEC,
+  STUDENT_INTERESTS_SPEC,
+  SUBJECTS_SPEC,
+  USERS_SPEC,
+} from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
@@ -49,14 +56,19 @@ export class CoursesService implements OnModuleInit {
 
   // actorId 없으면(시드·내부 경로) audit 생략. 쓰기+audit 한 tx(uow).
   async create(dto: CreateCourseDto, actorId?: number): Promise<Course> {
-    const profile = this.assertRefs(dto);
-    const explicitOverride = dto.hourlyRateOverride !== undefined
-      ? dto.hourlyRateOverride
-      : dto.hourlyRate !== undefined ? dto.hourlyRate : null;
-    const effectiveRate = explicitOverride ?? profile?.defaultHourlyRate ?? 0;
-    if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
-    if (dto.isKinder && !profile!.canTeachKinder) throw new BadRequestException('Kinder 수업이 불가능한 강사입니다.');
     return this.uow.run(async () => {
+      await this.uow.lockTargets([
+        ...(dto.subjectId != null ? [{ kind: 'subject' as const, id: dto.subjectId }] : []),
+        ...(dto.instructorId != null ? [{ kind: 'user' as const, id: dto.instructorId }] : []),
+      ]);
+      await this.reloadCommandState();
+      const profile = this.assertRefs(dto);
+      const explicitOverride = dto.hourlyRateOverride !== undefined
+        ? dto.hourlyRateOverride
+        : dto.hourlyRate !== undefined ? dto.hourlyRate : null;
+      const effectiveRate = explicitOverride ?? profile?.defaultHourlyRate ?? 0;
+      if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
+      if (dto.isKinder && !profile!.canTeachKinder) throw new BadRequestException('Kinder 수업이 불가능한 강사입니다.');
       const row = await this.store.insert<StoredCourse>(COURSES_SPEC, {
         name: dto.name,
         subjectId: dto.subjectId,
@@ -74,21 +86,26 @@ export class CoursesService implements OnModuleInit {
   }
 
   async update(id: number, dto: UpdateCourseDto, actorId?: number): Promise<Course> {
-    const current = this.db.findById<StoredCourse>(COURSES, id);
-    if (!current) throw new NotFoundException(`Course ${id} not found`);
-    const before = this.effective(current);
-    const instructorId = dto.instructorId ?? current.instructorId;
-    const profile = this.assertRefs({ ...dto, instructorId });
-    const explicitOverride = dto.hourlyRateOverride !== undefined
-      ? dto.hourlyRateOverride
-      : dto.hourlyRate !== undefined ? dto.hourlyRate : current.hourlyRateOverride ?? null;
-    const profileRate = profile?.defaultHourlyRate ?? 0;
-    const effectiveRate = explicitOverride ?? profileRate;
-    const isKinder = dto.isKinder ?? current.isKinder;
-    if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
-    if (isKinder && !profile!.canTeachKinder) throw new BadRequestException('Kinder 수업이 불가능한 강사입니다.');
     return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'course', id }]);
+      await this.uow.lockTargets([
+        { kind: 'course', id },
+        ...(dto.subjectId != null ? [{ kind: 'subject' as const, id: dto.subjectId }] : []),
+        ...(dto.instructorId != null ? [{ kind: 'user' as const, id: dto.instructorId }] : []),
+      ]);
+      await this.reloadCommandState();
+      const current = this.db.findById<StoredCourse>(COURSES, id);
+      if (!current) throw new NotFoundException(`Course ${id} not found`);
+      const before = this.effective(current);
+      const instructorId = dto.instructorId ?? current.instructorId;
+      const profile = this.assertRefs({ ...dto, instructorId });
+      const explicitOverride = dto.hourlyRateOverride !== undefined
+        ? dto.hourlyRateOverride
+        : dto.hourlyRate !== undefined ? dto.hourlyRate : current.hourlyRateOverride ?? null;
+      const profileRate = profile?.defaultHourlyRate ?? 0;
+      const effectiveRate = explicitOverride ?? profileRate;
+      const isKinder = dto.isKinder ?? current.isKinder;
+      if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
+      if (isKinder && !profile!.canTeachKinder) throw new BadRequestException('Kinder 수업이 불가능한 강사입니다.');
       const { hourlyRate: _legacyInput, ...fields } = dto;
       void _legacyInput;
       const stored = await this.store.update<StoredCourse>(COURSES_SPEC, id, {
@@ -107,6 +124,7 @@ export class CoursesService implements OnModuleInit {
   async remove(id: number, actorId?: number): Promise<Course> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'course', id }]);
+      await this.reloadCommandState();
       const before = { ...this.findOne(id) };
       const [enrollment, interest] = await Promise.all([
         this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, { where: { courseId: id }, limit: 1 }),
@@ -122,6 +140,15 @@ export class CoursesService implements OnModuleInit {
       }
       return before;
     });
+  }
+
+  /** 수업 C/U/D의 FK·단가·Kinder·삭제 blocker 판단을 transaction 안의 Postgres readback으로 고정한다. */
+  private async reloadCommandState(): Promise<void> {
+    await this.store.hydrate<StoredCourse>(COURSES_SPEC);
+    await this.store.hydrate<Subject>(SUBJECTS_SPEC);
+    await this.store.hydrate<StaffAccount>(USERS_SPEC);
+    await this.profiles.hydrate();
+    await this.store.hydrate<RoadmapCourse>(ROADMAP_COURSES_SPEC);
   }
 
   private assertRefs(dto: { subjectId?: number; instructorId?: number }) {
