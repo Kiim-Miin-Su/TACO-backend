@@ -27,7 +27,6 @@ import { ReportTemplatesModule } from './modules/report-templates/report-templat
 import { EventsModule } from './modules/events/events.module';
 import { InstructorContractsModule } from './modules/instructor-contracts/instructor-contracts.module'; // [TBO-19 Sprint4]
 import { AttendanceModule } from './modules/attendance/attendance.module';
-import { RoadmapsModule } from './modules/roadmaps/roadmaps.module';
 import { ParentsModule } from './modules/parents/parents.module';
 import { RegistrationsModule } from './modules/registrations/registrations.module';
 import { ProfileChangeRequestsModule } from './modules/profile-change-requests/profile-change-requests.module';
@@ -71,7 +70,6 @@ import { NavSeenModule } from './modules/nav-seen/nav-seen.module'; // [B3] 알�
     EventsModule,
     InstructorContractsModule, // [TBO-19 Sprint4] 강사 계약
     AttendanceModule,
-    RoadmapsModule,
     ParentsModule,
     RegistrationsModule,
     NavSeenModule, // [B3 2026-07-16] 알림 뱃지 읽음(last-seen)

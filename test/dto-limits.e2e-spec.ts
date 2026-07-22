@@ -38,9 +38,4 @@ describe('DTO 상한 하드닝 (e2e) [무결성]', () => {
     await http.post('/api/parents').set(AH())
       .send({ name: 'n'.repeat(101), studentId: 1 }).expect(400);
   });
-
-  it('roadmaps: description 상한(2000) 초과 → 400', async () => {
-    await http.post('/api/roadmaps').set(AH())
-      .send({ title: 'ok', description: 'd'.repeat(2001) }).expect(400);
-  });
 });

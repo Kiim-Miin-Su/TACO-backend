@@ -3984,6 +3984,72 @@
         ]
       }
     },
+    "/api/schedule/open-class": {
+      "post": {
+        "operationId": "ScheduleController_openClass",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenClassDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "subject + course + enrollments + row + conflicts"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "과목명 직접 입력 수업 개설 — 과목/강사별 운영단위/수강/세션/audit 원자 커밋 [매니저 이상]",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
+    "/api/schedule/open-class-series": {
+      "post": {
+        "operationId": "ScheduleController_openClassSeries",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OpenClassSeriesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "subject + course + enrollments + series + rows + conflicts"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "과목명 직접 입력 반복 수업 개설 — 과목/수강/시리즈 전체 원자 커밋 [매니저 이상]",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/api/schedule/series": {
       "post": {
         "operationId": "ScheduleController_createSeries",
@@ -6059,83 +6125,6 @@
         ]
       }
     },
-    "/api/roadmaps": {
-      "get": {
-        "operationId": "RoadmapsController_findAll",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "Roadmap[] — title·targetGrade·durationWeeks·isActive"
-          }
-        },
-        "summary": "로드맵 목록(Roadmap[])",
-        "tags": [
-          "roadmaps"
-        ],
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "access_token": []
-          }
-        ]
-      },
-      "post": {
-        "operationId": "RoadmapsController_create",
-        "parameters": [],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/CreateRoadmapDto"
-              }
-            }
-          }
-        },
-        "responses": {
-          "201": {
-            "description": "생성된 Roadmap"
-          }
-        },
-        "summary": "로드맵 생성 — courseIds(코스 FK) 순서대로 링크",
-        "tags": [
-          "roadmaps"
-        ],
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "access_token": []
-          }
-        ]
-      }
-    },
-    "/api/roadmaps/courses": {
-      "get": {
-        "operationId": "RoadmapsController_findAllCourses",
-        "parameters": [],
-        "responses": {
-          "200": {
-            "description": "RoadmapCourse[] — roadmapId·courseId·sortOrder"
-          }
-        },
-        "summary": "로드맵↔코스 링크(RoadmapCourse[]) — M:N 조인(sortOrder)",
-        "tags": [
-          "roadmaps"
-        ],
-        "security": [
-          {
-            "bearer": []
-          },
-          {
-            "access_token": []
-          }
-        ]
-      }
-    },
     "/api/parents": {
       "get": {
         "operationId": "ParentsController_findAll",
@@ -8140,6 +8129,336 @@
           "startTime"
         ]
       },
+      "OpenClassDto": {
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": "number",
+            "example": 2,
+            "description": "강의실 FK"
+          },
+          "sessionDate": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-06-30"
+          },
+          "startTime": {
+            "type": "string",
+            "example": "16:00"
+          },
+          "endTime": {
+            "type": "string",
+            "example": "17:30",
+            "description": "미지정 시 start+duration 파생. startTime보다 이르면 익일 종료(자정 크로스)"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "minimum": 10,
+            "maximum": 480,
+            "example": 90,
+            "description": "endTime 없을 때 사용(기본 60)"
+          },
+          "topic": {
+            "type": "string",
+            "maxLength": 200,
+            "example": "Reading: 추론 문제 전략",
+            "description": "수업 주제"
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 500,
+            "example": "교재 3장 지참",
+            "description": "메모"
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "#0969da",
+            "description": "캘린더 색상 라벨(미지정 시 코스 색)"
+          },
+          "status": {
+            "enum": [
+              "scheduled",
+              "held",
+              "canceled",
+              "no_show",
+              "makeup"
+            ],
+            "type": "string",
+            "example": "scheduled"
+          },
+          "force": {
+            "type": "boolean",
+            "example": false,
+            "description": "충돌이 있어도 강제 적용(기본 false → 충돌 시 409)"
+          },
+          "kind": {
+            "enum": [
+              "class",
+              "level_test",
+              "counsel"
+            ],
+            "type": "string",
+            "example": "class",
+            "description": "[v0.1.14] 세션 종류(기본 class) — 진단고사/상담 분류(캘린더 필터 축)"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100000000,
+            "example": 50000,
+            "description": "[v0.1.14] 세션 단건 가격(원) — 상담(kind=counsel) 등. 코스 정가와 별개"
+          },
+          "mode": {
+            "enum": [
+              "in_person",
+              "online"
+            ],
+            "type": "string",
+            "example": "in_person",
+            "description": "[v0.1.16] 수업방식(기본 in_person) — 대면/비대면. 강의실 유무와 독립"
+          },
+          "isPublic": {
+            "type": "boolean",
+            "example": false,
+            "description": "공통 일정 여부. true면 전 직원 조회 가능하나 수정 권한은 확장되지 않음"
+          },
+          "subjectName": {
+            "type": "string",
+            "maxLength": 50,
+            "pattern": "\\S",
+            "example": "Writing"
+          },
+          "instructorId": {
+            "type": "number",
+            "minimum": 1,
+            "example": 7
+          },
+          "studentIds": {
+            "uniqueItems": true,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 1
+            }
+          },
+          "hourlyRateOverride": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 100000000,
+            "example": 45000
+          },
+          "coursePrice": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100000000,
+            "example": 320000
+          },
+          "isKinder": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "sessionDate",
+          "startTime",
+          "subjectName",
+          "instructorId"
+        ]
+      },
+      "ScheduleSeriesRepeatDto": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "enum": [
+              "weekly",
+              "custom"
+            ],
+            "type": "string",
+            "example": "weekly",
+            "description": "weekly=시작일 요일 1개 · custom=선택 요일들"
+          },
+          "weekdays": {
+            "uniqueItems": true,
+            "minItems": 1,
+            "maxItems": 7,
+            "example": [
+              1,
+              3,
+              5
+            ],
+            "description": "0(일)~6(토) — 중복 없음. weekly는 1개",
+            "type": "array",
+            "items": {
+              "type": "number",
+              "maximum": 6,
+              "minimum": 0
+            }
+          },
+          "startsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-07-20",
+            "description": "첫 occurrence 후보일(KST)"
+          },
+          "endsOn": {
+            "type": "string",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
+            "example": "2026-08-24",
+            "description": "마지막 occurrence 후보일(KST) — startsOn <= endsOn"
+          }
+        },
+        "required": [
+          "kind",
+          "weekdays",
+          "startsOn",
+          "endsOn"
+        ]
+      },
+      "OpenClassSeriesDto": {
+        "type": "object",
+        "properties": {
+          "roomId": {
+            "type": "number",
+            "example": 2,
+            "description": "강의실 FK"
+          },
+          "repeat": {
+            "description": "반복 규칙 — 서버가 occurrence 날짜를 정규화·발급",
+            "allOf": [
+              {
+                "$ref": "#/components/schemas/ScheduleSeriesRepeatDto"
+              }
+            ]
+          },
+          "startTime": {
+            "type": "string",
+            "example": "16:00"
+          },
+          "endTime": {
+            "type": "string",
+            "example": "17:30",
+            "description": "미지정 시 durationMinutes 사용. startTime보다 이르면 익일 종료(자정 크로스)"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "minimum": 10,
+            "maximum": 480,
+            "example": 90,
+            "description": "endTime 없을 때 사용(기본 60)"
+          },
+          "timeZone": {
+            "type": "string",
+            "maxLength": 64,
+            "example": "Asia/Seoul",
+            "description": "규칙 해석 기준 시간대(MVP는 Asia/Seoul 고정)"
+          },
+          "topic": {
+            "type": "string",
+            "maxLength": 200,
+            "example": "Reading: 추론 문제 전략"
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 500,
+            "example": "교재 3장 지참"
+          },
+          "color": {
+            "type": "string",
+            "maxLength": 20,
+            "example": "#0969da"
+          },
+          "status": {
+            "enum": [
+              "scheduled",
+              "held",
+              "canceled",
+              "no_show",
+              "makeup"
+            ],
+            "type": "string",
+            "example": "scheduled"
+          },
+          "kind": {
+            "enum": [
+              "class",
+              "level_test",
+              "counsel"
+            ],
+            "type": "string",
+            "example": "class"
+          },
+          "price": {
+            "type": "number",
+            "minimum": 0,
+            "example": 50000,
+            "description": "세션 단건 가격(상담 등)"
+          },
+          "mode": {
+            "enum": [
+              "in_person",
+              "online"
+            ],
+            "type": "string",
+            "example": "in_person"
+          },
+          "isPublic": {
+            "type": "boolean",
+            "example": false,
+            "description": "반복 회차 전체의 공통 일정 공개 여부"
+          },
+          "force": {
+            "type": "boolean",
+            "example": false,
+            "description": "충돌이 있어도 강제 적용(기본 false → 전체 충돌 목록과 함께 409)"
+          },
+          "subjectName": {
+            "type": "string",
+            "maxLength": 50,
+            "pattern": "\\S",
+            "example": "Writing"
+          },
+          "instructorId": {
+            "type": "number",
+            "minimum": 1,
+            "example": 7
+          },
+          "studentIds": {
+            "uniqueItems": true,
+            "maxItems": 20,
+            "type": "array",
+            "items": {
+              "type": "number",
+              "minimum": 1
+            }
+          },
+          "hourlyRateOverride": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 0,
+            "maximum": 100000000,
+            "example": 45000
+          },
+          "coursePrice": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 100000000,
+            "example": 320000
+          },
+          "isKinder": {
+            "type": "boolean",
+            "example": false
+          }
+        },
+        "required": [
+          "repeat",
+          "startTime",
+          "subjectName",
+          "instructorId"
+        ]
+      },
       "CreateScheduleDto": {
         "type": "object",
         "properties": {
@@ -8268,55 +8587,6 @@
           "courseId",
           "sessionDate",
           "startTime"
-        ]
-      },
-      "ScheduleSeriesRepeatDto": {
-        "type": "object",
-        "properties": {
-          "kind": {
-            "enum": [
-              "weekly",
-              "custom"
-            ],
-            "type": "string",
-            "example": "weekly",
-            "description": "weekly=시작일 요일 1개 · custom=선택 요일들"
-          },
-          "weekdays": {
-            "uniqueItems": true,
-            "minItems": 1,
-            "maxItems": 7,
-            "example": [
-              1,
-              3,
-              5
-            ],
-            "description": "0(일)~6(토) — 중복 없음. weekly는 1개",
-            "type": "array",
-            "items": {
-              "type": "number",
-              "maximum": 6,
-              "minimum": 0
-            }
-          },
-          "startsOn": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "example": "2026-07-20",
-            "description": "첫 occurrence 후보일(KST)"
-          },
-          "endsOn": {
-            "type": "string",
-            "pattern": "^\\d{4}-\\d{2}-\\d{2}$",
-            "example": "2026-08-24",
-            "description": "마지막 occurrence 후보일(KST) — startsOn <= endsOn"
-          }
-        },
-        "required": [
-          "kind",
-          "weekdays",
-          "startsOn",
-          "endsOn"
         ]
       },
       "CreateScheduleSeriesDto": {
@@ -9616,33 +9886,6 @@
             "maxLength": 500
           }
         }
-      },
-      "CreateRoadmapDto": {
-        "type": "object",
-        "properties": {
-          "title": {
-            "type": "string",
-            "maxLength": 100
-          },
-          "description": {
-            "type": "string",
-            "maxLength": 2000
-          },
-          "targetGrade": {
-            "type": "number",
-            "minimum": 0
-          },
-          "courseIds": {
-            "uniqueItems": true,
-            "type": "array",
-            "items": {
-              "type": "number"
-            }
-          }
-        },
-        "required": [
-          "title"
-        ]
       },
       "CreateParentDto": {
         "type": "object",
