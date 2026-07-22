@@ -19,6 +19,7 @@
     "db:bootstrap:ceo": "ts-node scripts/bootstrap-ceo.ts",
     "db:smoke:credentials": "ts-node scripts/credential-change-db-smoke.ts",
     "db:smoke:profile-changes": "ts-node scripts/profile-change-db-smoke.ts",
+    "db:smoke:persistence-restart": "ts-node scripts/persistence-restart-db-smoke.ts",
     "db:migrate:tbo29-auth": "ts-node scripts/migrate-tbo29-auth.ts",
     "db:migrate:profile-changes": "ts-node scripts/migrate-profile-change-requests.ts",
     "openapi": "nest build -p tsconfig.build.json && node dist/scripts/generate-openapi.js && node dist/scripts/verify-openapi-artifacts.js",
