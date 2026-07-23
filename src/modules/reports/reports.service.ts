@@ -3,6 +3,7 @@ import { InMemoryDatabase } from '../../database/in-memory.database';
 import { SESSION_REPORTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { AuditService } from '../audit/audit.service';
 import { ADMIN_ROLES } from '../auth/roles.decorator';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
@@ -22,6 +23,11 @@ const actorIsAdmin = (actor?: ReportActor) => !!actor && actor.roles.some((r) =>
  * 수업 보고서 — 강사 제출 → 관리자 승인/반려.
  * 시수/페이 산정은 '대상 학생 전원의 보고서가 승인된 held 세션'만 대상으로 하므로,
  * 여기서 세션 FK·중복(세션×학생)·강사 일치 등 참조 무결성을 먼저 지킨다.
+ *
+ * [TBO-53 C1 2026-07-23] 상태 전이의 DB 권위 완결 — TBO-50 P0-3 이행.
+ *  submit/updateContent/approve/reject 전부: report advisory lock → **DB 재조회** → 가드 →
+ *  `approval_status` CAS(updateIf) — approve-vs-reject/approve-vs-update 경쟁에서 정확히
+ *  1승자(패자 409)·모순 audit 0. reject의 정산 연결 판정(session.payoutId)도 session lock+DB 재조회.
  */
 @Injectable()
 export class ReportsService implements OnModuleInit {
@@ -29,8 +35,18 @@ export class ReportsService implements OnModuleInit {
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
     private readonly uow: CalendarUnitOfWork,
+    private readonly sessionsStore: ClassSessionsStore, // [TBO-53 C1] reject의 payoutId DB 재조회
     private readonly audit: AuditService, // [감사 전수 2026-07-16] 정산 적격 근거(보고서 상태) 이력
   ) {}
+
+  /** [TBO-53 C1] lock 뒤 판정용 DB 재조회 — PG 미가용(메모리 모드)일 땐 메모리 행이 그대로 권위. */
+  private async reportFromDb(id: number): Promise<SessionReportRow> {
+    const [row] = await this.store.findActive<SessionReportRow>(SESSION_REPORTS_SPEC, {
+      where: { id } as Partial<SessionReportRow>, limit: 1,
+    });
+    if (!row) throw new NotFoundException(`Report ${id} not found`);
+    return row;
+  }
 
   // 데모 보고서 시드 — 과거 held 세션(schedule 히스토리 20~28)의 일부만 제출(submitted).
   //  → 리포트 현황 대시보드에서 "작성/미작성"이 섞여 보임(전 슬롯 8개 중 3건 작성). 승인(approved) 아님 = 시수/정산 미반영(payouts 불변).
@@ -154,15 +170,18 @@ export class ReportsService implements OnModuleInit {
     dto: { content?: string; homework?: string },
     actor?: ReportActor,
   ): Promise<SessionReportRow> {
-    const r = this.findOne(id, actor);
-    // 소유권(H2 IDOR 차단) — 비관리자는 본인 명의 보고서만 수정 가능(submit과 동일 규칙).
-    if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
-      throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 수정할 수 있습니다.');
-    if (r.approvalStatus === 'approved') throw new BadRequestException('이미 승인된 보고서는 수정할 수 없습니다.');
+    this.findOne(id, actor); // 조회 스코프(IDOR 404/403) 선판정 — READ 전환은 C2
     if (dto.content === undefined && dto.homework === undefined)
       throw new BadRequestException('수정할 내용(content/homework)이 필요합니다.');
     return this.uow.run(async () => {
-      const after = await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+      await this.uow.lockTargets([{ kind: 'report', id }]);
+      const r = await this.reportFromDb(id); // [C1] lock 뒤 DB 재조회 — 낡은 메모리 판정 금지
+      // 소유권(H2 IDOR 차단) — 비관리자는 본인 명의 보고서만 수정 가능(submit과 동일 규칙).
+      if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
+        throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 수정할 수 있습니다.');
+      if (r.approvalStatus === 'approved') throw new BadRequestException('이미 승인된 보고서는 수정할 수 없습니다.');
+      // [C1] approval_status CAS — 수정과 승인이 겹치면 한쪽만 성공(승인된 본문 무단 변경 차단).
+      const after = await this.store.updateIf<SessionReportRow>(SESSION_REPORTS_SPEC, id, { approvalStatus: r.approvalStatus }, {
         ...(dto.content !== undefined ? { content: dto.content } : {}),
         // 빈 문자열 = 숙제 비움(명시 null 저장 — undefined는 skip되는 UPDATE 함정 방지).
         //  contracts SessionReport.homework가 optional(string)뿐이라 null 캐스팅 — DB 컬럼은 nullable
@@ -170,7 +189,8 @@ export class ReportsService implements OnModuleInit {
         ...(dto.homework !== undefined
           ? { homework: (dto.homework.trim() ? dto.homework : null) as unknown as string }
           : {}),
-      }) as SessionReportRow;
+      });
+      if (!after) throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
       // [감사 전수 2026-07-16] 본문 수정 이력 — 원문 대신 수정 필드명만(내용 프라이버시).
       if (actor?.id != null && actor.id > 0) {
         await this.audit.log({
@@ -184,19 +204,23 @@ export class ReportsService implements OnModuleInit {
 
   // 강사: 작성완료 제출(draft → submitted)
   async submit(id: number, actor?: ReportActor): Promise<SessionReportRow> {
-    const r = this.findOne(id, actor);
-    // 소유권(H2 IDOR 차단) — 비관리자는 본인 명의 보고서만 제출 가능.
-    if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
-      throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 제출할 수 있습니다.');
-    if (r.approvalStatus === 'approved') throw new BadRequestException('이미 승인된 보고서');
-    const beforeStatus = r.approvalStatus ?? r.status; // live-reference — update 전에 캡처
+    this.findOne(id, actor); // 조회 스코프(IDOR 404/403) 선판정 — READ 전환은 C2
     return this.uow.run(async () => {
-      const after = await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+      await this.uow.lockTargets([{ kind: 'report', id }]);
+      const r = await this.reportFromDb(id); // [C1] lock 뒤 DB 재조회
+      // 소유권(H2 IDOR 차단) — 비관리자는 본인 명의 보고서만 제출 가능.
+      if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
+        throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 제출할 수 있습니다.');
+      if (r.approvalStatus === 'approved') throw new BadRequestException('이미 승인된 보고서');
+      const beforeStatus = r.approvalStatus ?? r.status;
+      // [C1] approval_status CAS — 다른 인스턴스의 승인과 겹치면 409(승인 뒤 재제출 덮어쓰기 차단).
+      const after = await this.store.updateIf<SessionReportRow>(SESSION_REPORTS_SPEC, id, { approvalStatus: r.approvalStatus }, {
         status: 'submitted',
         approvalStatus: 'submitted',
         submittedAt: new Date().toISOString(),
         rejectedReason: undefined,
-      }) as SessionReportRow;
+      });
+      if (!after) throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
       // [감사 전수 2026-07-16] 제출 이력.
       if (actor?.id != null && actor.id > 0) {
         await this.audit.log({
@@ -209,16 +233,20 @@ export class ReportsService implements OnModuleInit {
   }
 
   // 관리자 승인(submitted → approved) — 승인 시 시수 적격 세션으로 편입
+  //  [C1] 존재 판정도 DB(reportFromDb 404) — 다른 인스턴스가 만든 보고서도 즉시 승인 가능(메모리 404 제거).
   async approve(id: number, approvedBy?: number): Promise<SessionReportRow> {
-    const r = this.findOne(id);
-    if (r.approvalStatus !== 'submitted')
-      throw new BadRequestException(`승인 불가 상태(${r.approvalStatus ?? r.status}) — submitted만 승인 가능`);
     return this.uow.run(async () => {
-      const after = await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+      await this.uow.lockTargets([{ kind: 'report', id }]);
+      const r = await this.reportFromDb(id); // [C1] lock 뒤 DB 재조회
+      if (r.approvalStatus !== 'submitted')
+        throw new BadRequestException(`승인 불가 상태(${r.approvalStatus ?? r.status}) — submitted만 승인 가능`);
+      // [C1] CAS: submitted에서만 approved 전이 — approve-vs-reject 경쟁 시 정확히 1승자(패자 409).
+      const after = await this.store.updateIf<SessionReportRow>(SESSION_REPORTS_SPEC, id, { approvalStatus: 'submitted' }, {
         approvalStatus: 'approved',
         approvedAt: new Date().toISOString(),
         approvedBy,
-      }) as SessionReportRow;
+      });
+      if (!after) throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
       // [감사 전수 2026-07-16] 승인 = 시수 적격 편입 근거(0=시스템 시드는 생략).
       if (approvedBy != null && approvedBy > 0) {
         await this.audit.log({
@@ -231,22 +259,29 @@ export class ReportsService implements OnModuleInit {
   }
 
   // 관리자 반려(→ rejected, 사유 보존). 재제출 가능.
+  //  [C1] 존재 판정도 DB — 다른 인스턴스가 만든 보고서도 즉시 반려 가능(메모리 404 제거).
   async reject(id: number, reason?: string, actorId?: number): Promise<SessionReportRow> {
-    const r = this.findOne(id);
-    // [B9 E5 2026-07-16] 종전엔 승인 보고서를 무조건 400("정산 회수 후 처리 필요")으로 막았지만
-    //  회수 자체가 미구현이라 사실상 영구 잠금이었다. 이제 payout reversal이 있으므로 게이트를
-    //  실제 조건으로 정정: **세션이 정산에 연결돼 있을 때만** 차단(회수하면 연결이 풀려 반려 가능).
-    if (r.approvalStatus === 'approved') {
-      const session = this.db.findById<ClassSession>(SESSIONS, r.sessionId) as (ClassSession & { payoutId?: number | null }) | undefined;
-      if (session?.payoutId != null)
-        throw new BadRequestException('이미 승인됨 + 정산 연결 — 반려하려면 지급 회수(reverse) 후 처리하세요');
-    }
-    const beforeStatus = r.approvalStatus ?? r.status; // live-reference — update 전에 캡처
     return this.uow.run(async () => {
-      const after = await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+      const scoped = await this.reportFromDb(id); // sessionId(불변) 확보 — 404 판정 포함
+      // [C1] report + session lock — 반려와 정산 생성(claimPayout)의 적격성 경쟁 보호.
+      await this.uow.lockTargets([{ kind: 'report', id }, { kind: 'session', id: scoped.sessionId }]);
+      const r = await this.reportFromDb(id); // lock 뒤 DB 재조회
+      // [B9 E5 2026-07-16] 종전엔 승인 보고서를 무조건 400("정산 회수 후 처리 필요")으로 막았지만
+      //  회수 자체가 미구현이라 사실상 영구 잠금이었다. 이제 payout reversal이 있으므로 게이트를
+      //  실제 조건으로 정정: **세션이 정산에 연결돼 있을 때만** 차단(회수하면 연결이 풀려 반려 가능).
+      //  [C1] 판정 소스 = 세션 DB 재조회(다른 인스턴스의 정산 연결도 즉시 반영 — 메모리 판정 금지).
+      if (r.approvalStatus === 'approved') {
+        const session = (await this.sessionsStore.findByIdDb(r.sessionId)) as (ClassSession & { payoutId?: number | null }) | undefined;
+        if (session?.payoutId != null)
+          throw new BadRequestException('이미 승인됨 + 정산 연결 — 반려하려면 지급 회수(reverse) 후 처리하세요');
+      }
+      const beforeStatus = r.approvalStatus ?? r.status;
+      // [C1] approval_status CAS — approve-vs-reject 경쟁 시 정확히 1승자(모순 audit 0).
+      const after = await this.store.updateIf<SessionReportRow>(SESSION_REPORTS_SPEC, id, { approvalStatus: r.approvalStatus }, {
         approvalStatus: 'rejected',
         rejectedReason: reason ?? '사유 미기재',
-      }) as SessionReportRow;
+      });
+      if (!after) throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
       // [감사 전수 2026-07-16] 반려 이력(사유 포함).
       if (actorId != null && actorId > 0) {
         await this.audit.log({

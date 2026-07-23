@@ -109,6 +109,13 @@ export class ClassSessionsStore implements OnModuleInit {
     return this.memory.remove(TABLE, id, deletedBy);
   }
 
+  /** [TBO-53 C1] lock 뒤 판정용 단건 DB 재조회 — 다른 인스턴스의 정산 연결(payout_id)도 즉시 반영. */
+  async findByIdDb(id: number): Promise<ClassSession | undefined> {
+    if (!this.durable) return this.memory.findById<ClassSession>(TABLE, id);
+    const [row] = await this.query(`SELECT * FROM ${TABLE} WHERE id = $1 AND deleted_at IS NULL LIMIT 1`, [id]);
+    return row ? this.fromDbRow(row) : undefined;
+  }
+
   /** 카탈로그 삭제 무결성용 — 다른 인스턴스가 만든 활성 세션도 PostgreSQL에서 직접 확인한다. */
   async existsForCourse(courseId: number): Promise<boolean> {
     await this.ensureReady();

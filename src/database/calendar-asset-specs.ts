@@ -35,6 +35,7 @@ import {
   STUDENT_FAMILY_RELATIONS_INDEX_SQL,
   STUDENT_FAMILY_RELATIONS_TABLE_SQL,
 } from './migrations/counsel-family-academic-expand.migration';
+import { PAYMENTS_MONEY_CONSTRAINTS_MIGRATION_SQL, TRANSACTIONS_PAYMENT_FK_SQL } from './migrations/payments-money-constraints.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -845,6 +846,9 @@ export const PAYMENTS_SPEC: PostgresCollectionSpec = {
   `,
   dateFields: ['dueAt'],
   timestampFields: ['paidAt'],
+  // [TBO-53 C1] FK/CHECK — 참조·금액·상태를 DB가 강제(앱 lock+CAS의 최후 방어선).
+  //  운영(Neon) 적용 권위는 migration ledger(20260723_01) — 여기서는 비운영 환경 멱등 반영.
+  migrations: [...PAYMENTS_MONEY_CONSTRAINTS_MIGRATION_SQL, TRANSACTIONS_PAYMENT_FK_SQL],
   indexes: [
     activeIndex('payments', 'idx_payments_status', 'status'),
     activeIndex('payments', 'idx_payments_student', 'student_id'),
@@ -903,6 +907,7 @@ export const TRANSACTIONS_SPEC: PostgresCollectionSpec = {
     )
   `,
   timestampFields: ['occurredAt'],
+  migrations: [TRANSACTIONS_PAYMENT_FK_SQL], // [TBO-53 C1] 원장 역참조 FK(payments 존재 시 적용 — 멱등)
   indexes: [
     activeIndex('transactions', 'idx_tx_dir_occurred', 'direction, occurred_at'),
     activeIndex('transactions', 'idx_tx_category', 'category'),
