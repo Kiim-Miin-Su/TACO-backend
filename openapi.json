@@ -5400,6 +5400,29 @@
         ]
       }
     },
+    "/api/graphql": {
+      "post": {
+        "operationId": "GraphqlGatewayController_execute",
+        "parameters": [],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "GraphQL 매출·경영 조회(읽기 전용·대표 전용) — revenueReport/financeSummary/counselFunnel/counselCorrelation/uncoveredPayouts. Mutation 없음, production introspection 차단. [대표]",
+        "tags": [
+          "graphql"
+        ]
+      }
+    },
     "/api/counsel": {
       "get": {
         "operationId": "CounselController_findForms",

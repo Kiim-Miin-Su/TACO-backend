@@ -4,6 +4,7 @@ import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { COUNSEL_FORMS_SPEC, COUNSEL_ROUNDS_SPEC } from '../../database/calendar-asset-specs';
 import { AuditService } from '../audit/audit.service';
+import { assertDayRange } from '../../common/day-range'; // [TBO-46 G1]
 import { type StaffAccount, USERS, isStaffRole } from '../users/user.entity';
 import { CounselForm, CounselRound, COUNSEL_FORMS } from './counsel.entity';
 import { CreateCounselDto } from './dto/create-counsel.dto';
@@ -284,12 +285,9 @@ export class CounselService implements OnModuleInit {
     };
   }
 
+  // [TBO-46 G1] 기간 검증은 공용 assertDayRange 소비(GraphQL 게이트웨이와 같은 규칙 — 사본 제거).
   private assertRange(range: CounselAnalyticsRange): void {
-    const dayPattern = /^\d{4}-\d{2}-\d{2}$/;
-    for (const value of [range.from, range.to]) {
-      if (value != null && !dayPattern.test(value)) throw new BadRequestException('기간은 YYYY-MM-DD 형식이어야 합니다.');
-    }
-    if (range.from && range.to && range.from > range.to) throw new BadRequestException('시작일이 종료일보다 늦을 수 없습니다.');
+    assertDayRange(range);
   }
 
   async funnel(range: CounselAnalyticsRange = {}): Promise<CounselFunnel> {
