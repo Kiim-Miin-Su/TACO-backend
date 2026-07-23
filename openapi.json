@@ -5895,6 +5895,338 @@
         ]
       }
     },
+    "/api/roadmaps": {
+      "get": {
+        "operationId": "RoadmapsController_findAll",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "로드맵 목록(코스 조인 aggregate — sortOrder 정렬) [전 직원]",
+        "tags": [
+          "roadmaps"
+        ]
+      },
+      "post": {
+        "operationId": "RoadmapsController_create",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateRoadmapDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "로드맵 생성 — courseIds 순서대로 일괄 연결(한 tx)·audit [매니저 이상]",
+        "tags": [
+          "roadmaps"
+        ]
+      }
+    },
+    "/api/roadmaps/{id}": {
+      "get": {
+        "operationId": "RoadmapsController_findOne",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "로드맵 단건(코스 조인 aggregate). 없는 id=404. [전 직원]",
+        "tags": [
+          "roadmaps"
+        ]
+      },
+      "patch": {
+        "operationId": "RoadmapsController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateRoadmapDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "로드맵 수정(제목·설명·대상 학년·기간·활성) — audit diff [매니저 이상]",
+        "tags": [
+          "roadmaps"
+        ]
+      },
+      "delete": {
+        "operationId": "RoadmapsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "로드맵 soft delete — 연결 코스 링크 캐스케이드(한 tx)·audit [매니저 이상]",
+        "tags": [
+          "roadmaps"
+        ]
+      }
+    },
+    "/api/roadmaps/{id}/courses": {
+      "post": {
+        "operationId": "RoadmapsController_addCourse",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddRoadmapCourseDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "로드맵에 코스 연결(말단 순서) — 중복 409·없는 코스 400 [매니저 이상]",
+        "tags": [
+          "roadmaps"
+        ]
+      }
+    },
+    "/api/roadmaps/{id}/courses/{courseId}": {
+      "delete": {
+        "operationId": "RoadmapsController_removeCourse",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          },
+          {
+            "name": "courseId",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "로드맵 코스 연결 해제 — 잔여 sortOrder 연속 재정렬 [매니저 이상]",
+        "tags": [
+          "roadmaps"
+        ]
+      }
+    },
+    "/api/roadmaps/{id}/courses/reorder": {
+      "patch": {
+        "operationId": "RoadmapsController_reorder",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReorderRoadmapCoursesDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "로드맵 코스 전체 재정렬 — 부분 목록 400(조용한 누락 금지) [매니저 이상]",
+        "tags": [
+          "roadmaps"
+        ]
+      }
+    },
     "/api/transactions": {
       "get": {
         "operationId": "TransactionsController_findAll",
@@ -9842,6 +10174,94 @@
             "$ref": "#/components/schemas/CounselFormSnapshotDto"
           }
         }
+      },
+      "CreateRoadmapDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "targetGrade": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 13
+          },
+          "durationWeeks": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 104
+          },
+          "courseIds": {
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "title"
+        ]
+      },
+      "UpdateRoadmapDto": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "description": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "targetGrade": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 13
+          },
+          "durationWeeks": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 104
+          },
+          "isActive": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AddRoadmapCourseDto": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "number",
+            "minimum": 1
+          }
+        },
+        "required": [
+          "courseId"
+        ]
+      },
+      "ReorderRoadmapCoursesDto": {
+        "type": "object",
+        "properties": {
+          "courseIds": {
+            "description": "로드맵의 전체 courseId를 원하는 순서로 — 부분 목록은 400(조용한 누락 금지).",
+            "minItems": 1,
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          }
+        },
+        "required": [
+          "courseIds"
+        ]
       },
       "CreateViewPresetDto": {
         "type": "object",

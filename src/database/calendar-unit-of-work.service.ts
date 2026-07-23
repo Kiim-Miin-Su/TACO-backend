@@ -27,6 +27,9 @@ export const LOCK_KIND = {
   course: 13, // [TBO-33 C2] 코스 수정·참조 검사·삭제 직렬화
   subject: 14, // [TBO-33 C2] 과목 수정·참조 검사·삭제 직렬화
   parent: 15, // [TBO-35 35C] 보호자 원부 수정·삭제 직렬화
+  roadmap: 16, // [TBO-47] 로드맵 수정·코스 연결/재정렬·삭제 직렬화
+  // ⚠ 관찰(기존): payout·course가 둘 다 13을 공유 — 오염은 아니나 과직렬화(payout N ↔ course N 상호 대기 가능).
+  //  분리는 배포 전 구간에서 별도 결정(락 번호 변경은 롤링 배포 중 상호배제 공백을 만들 수 있음).
 } as const;
 
 export type CalendarLockKey = { kind: keyof typeof LOCK_KIND; id: number };

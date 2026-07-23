@@ -21,6 +21,7 @@ import { ScheduleModule } from './modules/schedule/schedule.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { PayoutsModule } from './modules/payouts/payouts.module';
 import { GraphqlGatewayModule } from './modules/graphql/graphql.module'; // [TBO-46 G1] 읽기 전용 조회 게이트웨이
+import { RoadmapsModule } from './modules/roadmaps/roadmaps.module'; // [TBO-47] 수강 로드맵
 import { CounselModule } from './modules/counsel/counsel.module';
 import { TransactionsModule } from './modules/transactions/transactions.module';
 import { ViewPresetsModule } from './modules/view-presets/view-presets.module';
@@ -64,6 +65,7 @@ import { NavSeenModule } from './modules/nav-seen/nav-seen.module'; // [B3] 알�
     ReportsModule,
     PayoutsModule,
     GraphqlGatewayModule,
+    RoadmapsModule,
     // 상담(counsel)·원장(transactions)·학원이벤트(events) — B2 목→백엔드 이관
     CounselModule,
     TransactionsModule,
