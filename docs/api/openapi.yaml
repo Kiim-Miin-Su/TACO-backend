@@ -2928,7 +2928,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 정산서 단건과 산정 line 조회 [대표]
+      summary: 정산서 단건과 산정 line 조회 [대표·강사 본인] — 강사는 타인 정산 403(B7 스코프 규약).
       tags:
         - payouts
   /api/payouts/generate:

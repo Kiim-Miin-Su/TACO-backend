@@ -12,6 +12,7 @@ import { createTestApp } from '../test/setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { checkAccountingIntegrity, type AccountingIntegritySnapshot } from '../src/modules/payouts/accounting-integrity';
+import { checkPayoutIntegrity } from '../src/modules/payouts/payout-integrity';
 import type { BaseRow } from '../src/common/types/base';
 import { loadLocalEnv } from '../src/config/load-env';
 
@@ -177,6 +178,18 @@ async function main() {
       if (priorities.some((priority, index) => priority !== index + 1))
         push(issues, 'STUDENT_INTEREST_PRIORITY_GAP', 'students', student.id, `priority=${priorities.join(',')}`);
     }
+  }
+
+  // ⑨ [TBO-32 C3 2026-07-22] 정산 무결성 검사군 (a)~(f) — 순수 함수(payout-integrity.ts) 단일
+  //    진실원을 소비(음성 검증 e2e와 동일 코드 경로). 기간 중첩은 경고(정당 사례 존재).
+  {
+    const result = checkPayoutIntegrity({
+      payouts: rows('instructor_payouts') as never,
+      transactions: rows('transactions') as never,
+      sessions: rows('class_sessions') as never,
+    });
+    issues.push(...result.issues);
+    warnings.push(...result.warnings);
   }
 
   // ⑨(선행분) [TBO-32 C1 2026-07-20] 세션 지급 플래그 정합 — is_paid ⇔ 연결 정산서 paid.

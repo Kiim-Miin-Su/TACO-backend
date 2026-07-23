@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, TRANSACTIONS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -267,6 +267,17 @@ export class PayoutsService implements OnModuleInit {
     return this.db
       .findByField<InstructorPayoutRow>(PAYOUTS, 'instructorId', instructorId)
       .sort((a, b) => (b.periodStart + b.createdAt).localeCompare(a.periodStart + a.createdAt));
+  }
+
+  // [TBO-32 C4 2026-07-22] 단건 스코프 조회 — 강사는 본인 정산만(타인 403 — B7 reports IDOR 수정과
+  //  동일 규약: 404 은닉이 아니라 403 명시. 존재 자체는 강사 자기 목록으로 이미 알 수 있는 정보).
+  findOneScoped(id: number, roles: string[], actorId?: number): InstructorPayoutRow {
+    const row = this.findOne(id);
+    const isPrivileged = roles.includes('super_admin');
+    if (!isPrivileged && row.instructorId !== actorId) {
+      throw new ForbiddenException('본인 정산서만 조회할 수 있습니다.');
+    }
+    return row;
   }
 
   findOne(id: number): InstructorPayoutRow {

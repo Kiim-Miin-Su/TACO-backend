@@ -12,6 +12,7 @@ describe('Route coverage gaps (e2e, B8 E4)', () => {
   let db: InMemoryDatabase;
   let admin = '';
   let inst = '';
+  let inst2 = ''; // [TBO-32 C4] 타인 강사(jung_inst=강사2) — 단건 스코프 403 검증용
   let adminId = 0;
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
 
@@ -21,6 +22,7 @@ describe('Route coverage gaps (e2e, B8 E4)', () => {
     db = app.get(InMemoryDatabase);
     admin = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     inst = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
+    inst2 = (await http.post('/api/auth/login').send({ webId: 'jung_inst', password: 'demo1234' }).expect(201)).body.accessToken;
     adminId = Number(db.findAll<{ id: number; webId: string }>('users').find((u) => u.webId === 'admin')?.id ?? 0);
     expect(adminId).toBeGreaterThan(0);
   });
@@ -59,14 +61,22 @@ describe('Route coverage gaps (e2e, B8 E4)', () => {
     await http.get('/api/expenses/999999').set(auth(admin)).expect(404);
   });
 
-  it('GET /payouts/:id — 생성(시드 적격 세션) 후 단건 200 · 강사 403 · 없는 id 404', async () => {
+  it('GET /payouts/:id — 대표 200 · 강사 본인 200 · 타인 강사 403(B7 스코프) · 없는 id 404', async () => {
     // 데모 시드: 강사 1은 6월에 적격 세션(미정산)이 있다(audit-coverage와 동일 전제).
-    const payout = (await http.post('/api/payouts/generate').set(auth(admin))
-      .send({ instructorId: 1, from: '2026-06-01', to: '2026-06-30' }).expect(201)).body;
+    //  retryTimes(1) 대비 — 재시도에선 세션이 이미 연결돼 generate 400이므로 목록에서 재사용(멱등).
+    const gen = await http.post('/api/payouts/generate').set(auth(admin))
+      .send({ instructorId: 1, from: '2026-06-01', to: '2026-06-30' });
+    const payout = gen.status === 201
+      ? gen.body
+      : (await http.get('/api/payouts').set(auth(admin)).expect(200)).body
+          .find((p: { instructorId: number; periodStart: string }) => p.instructorId === 1 && p.periodStart === '2026-06-01');
+    expect(payout).toBeDefined();
     const got = (await http.get(`/api/payouts/${payout.id}`).set(auth(admin)).expect(200)).body;
     expect(got.id).toBe(payout.id);
     expect(got.instructorId).toBe(1);
-    await http.get(`/api/payouts/${payout.id}`).set(auth(inst)).expect(403); // 전체 정산 조회는 대표 전용
+    // [TBO-32 C4] findOneScoped — 강사 본인(park_inst=강사1)은 자기 정산서 열람 200, 타인(jung_inst)은 403
+    expect((await http.get(`/api/payouts/${payout.id}`).set(auth(inst)).expect(200)).body.id).toBe(payout.id);
+    await http.get(`/api/payouts/${payout.id}`).set(auth(inst2)).expect(403);
     await http.get('/api/payouts/999999').set(auth(admin)).expect(404);
   });
 
