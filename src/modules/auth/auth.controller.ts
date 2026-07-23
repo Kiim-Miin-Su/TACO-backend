@@ -30,6 +30,7 @@ import { SignupEmailChallengesService } from './signup-email-challenges.service'
 import { ApproveDto } from './dto/approve.dto';
 import { RejectDto } from './dto/reject.dto';
 import { SuperAdminGuard } from './super-admin.guard';
+import { SudoGuard } from './sudo.guard'; // [TBO-34 C2-C]
 import { LoginThrottlerGuard } from './login-throttler.guard';
 import { AuthEventsService } from './auth-events.service';
 import { UsersService } from '../users/users.service';
@@ -44,6 +45,7 @@ import {
   readCookie,
   setAccessCookie,
   setRefreshCookie,
+  setSudoCookie,
 } from './browser-session';
 
 const isProduction = (): boolean => process.env.NODE_ENV === 'production';
@@ -361,8 +363,12 @@ export class AuthController {
   @Roles(...STAFF_ROLES)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiBearerAuth()
-  @ApiOperation({ summary: '비밀번호 재확인(로그인 상태) — 민감 화면 진입 게이트. 5회/분.' })
-  async reauth(@Body() dto: ReauthDto, @Req() req: Request & { user?: JwtClaims }): Promise<{ ok: true }> {
+  @ApiOperation({ summary: '비밀번호 재확인(로그인 상태) — 민감 화면·명령 게이트. 성공 시 10분 sudo 쿠키 발급(서버측 강제). 5회/분.' })
+  async reauth(
+    @Body() dto: ReauthDto,
+    @Req() req: Request & { user?: JwtClaims },
+    @Res({ passthrough: true }) res: Response,
+  ): Promise<{ ok: true }> {
     const sub = req.user?.sub;
     if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
     await this.users.refreshFromDb();
@@ -370,6 +376,8 @@ export class AuthController {
     if (!account || !(await this.users.validatePassword(account, dto.currentPassword))) {
       throw new BadRequestException('비밀번호가 올바르지 않습니다.');
     }
+    // [TBO-34 C2-C] 서버측 sudo 창 — 단명 HttpOnly 쿠키 발급(SudoGuard가 민감 명령에서 강제).
+    setSudoCookie(res, this.auth.signSudo(sub));
     return { ok: true };
   }
 
@@ -425,9 +433,9 @@ export class AuthController {
   // [핫픽스 2026-07-20] 가입 신청 삭제 — pending/rejected만. 식별자 해제(같은 아이디·이메일 재가입
   //  허용)+RRN 파기+soft delete+audit. 하드 UNIQUE 때문에 반려만으론 재가입이 영구 차단되던 문제 해소.
   @Delete('pending/:id')
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(SuperAdminGuard, SudoGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '가입 신청 삭제(pending·rejected만) — 식별자 해제·RRN 파기·audit. 대표 전용.' })
+  @ApiOperation({ summary: '가입 신청 삭제(pending·rejected만·재인증 필수) — 식별자 해제·RRN 파기·audit. 대표 전용, cookie 세션은 reauth 후 10분 내만 허용.' })
   async deletePending(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.users.deletePendingAccount(id, this.actorOf(req), dto.reason);
   }

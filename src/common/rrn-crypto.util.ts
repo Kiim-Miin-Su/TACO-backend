@@ -67,22 +67,53 @@ function encryptionKey(): Buffer {
 const IV_BYTES = 12; // GCM 권장 96-bit nonce
 const TAG_BYTES = 16;
 
-/** AES-256-GCM 암호화 — 저장 포맷 base64(iv 12B ‖ authTag 16B ‖ ciphertext). */
+// [TBO-34 C2-C 2026-07-23] 키 버전 태그·회전(리뷰 보안 ④) — 신규 암호문은 `v1:` 접두(현행 키).
+//  복호화는 ① v1: 현행 키 → 이전 키(RRN_ENC_KEY_PREVIOUS) 순 시도 ② 무접두(레거시) 동일 순서.
+//  회전 절차: RUNBOOK 문서 — 새 키를 RRN_ENC_KEY로, 구 키를 RRN_ENC_KEY_PREVIOUS로 배치 →
+//  scripts/rotate-rrn-key.ts 재암호화 → PREVIOUS 제거. GCM authTag가 키 불일치를 판정한다.
+const VERSION_PREFIX = 'v1:';
+
+function previousKey(): Buffer | null {
+  const raw = process.env.RRN_ENC_KEY_PREVIOUS;
+  if (!raw) return null;
+  const key = Buffer.from(raw, 'base64');
+  if (key.length !== 32) throw new Error('[rrn] RRN_ENC_KEY_PREVIOUS는 base64 인코딩된 32바이트 키여야 합니다.');
+  return key;
+}
+
+/** AES-256-GCM 암호화 — 저장 포맷 `v1:` + base64(iv 12B ‖ authTag 16B ‖ ciphertext). */
 export function encryptRrn(plainRrn: string): string {
   const iv = randomBytes(IV_BYTES);
   const cipher = createCipheriv('aes-256-gcm', encryptionKey(), iv);
   const ciphertext = Buffer.concat([cipher.update(plainRrn, 'utf8'), cipher.final()]);
-  return Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString('base64');
+  return VERSION_PREFIX + Buffer.concat([iv, cipher.getAuthTag(), ciphertext]).toString('base64');
 }
 
-/** 복호화 — 승인센터 마스킹 산출 등 서버 내부 전용. 결과 평문을 응답·로그에 그대로 싣지 말 것. */
-export function decryptRrn(payload: string): string {
-  const buf = Buffer.from(payload, 'base64');
-  if (buf.length <= IV_BYTES + TAG_BYTES) throw new Error('[rrn] 잘못된 암호문 포맷입니다.');
+function decryptWith(key: Buffer, buf: Buffer): string {
   const iv = buf.subarray(0, IV_BYTES);
   const tag = buf.subarray(IV_BYTES, IV_BYTES + TAG_BYTES);
   const ciphertext = buf.subarray(IV_BYTES + TAG_BYTES);
-  const decipher = createDecipheriv('aes-256-gcm', encryptionKey(), iv);
+  const decipher = createDecipheriv('aes-256-gcm', key, iv);
   decipher.setAuthTag(tag);
   return Buffer.concat([decipher.update(ciphertext), decipher.final()]).toString('utf8');
+}
+
+/** 이 암호문이 현행 포맷(v1)인가 — 회전 스크립트의 재암호화 대상 판정에 사용. */
+export function isCurrentRrnFormat(payload: string): boolean {
+  return payload.startsWith(VERSION_PREFIX);
+}
+
+/** 복호화 — 승인센터 마스킹 산출 등 서버 내부 전용. 결과 평문을 응답·로그에 그대로 싣지 말 것.
+ *  v1 접두·레거시(무접두) 모두 수용, 현행 키 → 이전 키 순서로 시도(회전 창 무중단). */
+export function decryptRrn(payload: string): string {
+  const raw = isCurrentRrnFormat(payload) ? payload.slice(VERSION_PREFIX.length) : payload;
+  const buf = Buffer.from(raw, 'base64');
+  if (buf.length <= IV_BYTES + TAG_BYTES) throw new Error('[rrn] 잘못된 암호문 포맷입니다.');
+  try {
+    return decryptWith(encryptionKey(), buf);
+  } catch (primaryError) {
+    const previous = previousKey();
+    if (!previous) throw primaryError;
+    return decryptWith(previous, buf); // 이전 키도 실패하면 원 오류 형태로 전파
+  }
 }

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { resolvePgSsl } from '../src/database/pg-ssl';
 import { DataSource } from 'typeorm';
 import { loadLocalEnv } from '../src/config/load-env';
 import { directDatabaseUrl } from '../src/database/database-url';
@@ -11,7 +12,7 @@ if (!url) throw new Error('DATABASE_URL_UNPOOLED 또는 DATABASE_URL이 필요�
 
 const dataSource = new DataSource({
   type: 'postgres', url, synchronize: false, migrationsRun: false, logging: false, entities: [], migrations: [],
-  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' },
+  ssl: resolvePgSsl() /* [TBO-34 C2-C] TLS 단일 진실원 — production 검증 강제 */,
   extra: { max: 1, connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? 5000) },
 });
 

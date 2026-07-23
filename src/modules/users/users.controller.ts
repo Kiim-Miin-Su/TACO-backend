@@ -5,6 +5,7 @@ import { UsersService } from './users.service';
 import { RolesGuard } from '../auth/roles.guard';
 import { ADMIN_ROLES, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
+import { SudoGuard } from '../auth/sudo.guard'; // [TBO-34 C2-C] 재인증 서버측 강제(리뷰 보안 ①)
 import { CreateInstructorDto } from './dto/create-instructor.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
 import type { JwtClaims } from '../auth/auth.service';
@@ -48,9 +49,9 @@ export class UsersController {
 
   // [운영 흐름 2026-07-14] 대표 직접 강사 등록 — 즉시 active(계정+프로필+audit 단일 tx).
   @Post('instructors')
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(SuperAdminGuard, SudoGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '강사 직접 등록(대표 전용) — 즉시 active, users+instructor_profiles+audit 원자 tx.' })
+  @ApiOperation({ summary: '강사 직접 등록(대표 전용·재인증 필수) — 즉시 active, users+instructor_profiles+audit 원자 tx. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
   async createInstructor(@Body() dto: CreateInstructorDto, @Req() req: Request & { user?: JwtClaims }) {
     const sub = req.user?.sub;
     if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
@@ -90,9 +91,9 @@ export class UsersController {
   }
 
   @Patch(':id')
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(SuperAdminGuard, SudoGuard)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '대표 직접 수정 — name/phone/email/role. role·email 변경 시 대상 세션 전부 무효. super_admin 대상 400.' })
+  @ApiOperation({ summary: '대표 직접 수정(재인증 필수) — name/phone/email/role. role·email 변경 시 대상 세션 전부 무효. super_admin 대상 400. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
   async adminUpdate(@Param('id', ParseIntPipe) id: number, @Body() dto: AdminUpdateUserDto, @Req() req: Request & { user?: JwtClaims }) {
     const sub = req.user?.sub;
     if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');

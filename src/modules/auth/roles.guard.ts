@@ -16,7 +16,7 @@ import { AuthService, type JwtClaims } from './auth.service';
 import { ROLES_KEY, type AppRole } from './roles.decorator';
 import { AccountStateService } from '../../database/account-state.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
-import { ACCESS_COOKIE, readCookie } from './browser-session';
+import { extractAccessToken } from './access-token'; // [TBO-34 C2-C] 추출 단일 진실원
 
 /** 임시 비밀번호 상태에서 허용하는 최소 복구 경로. 프론트 숨김과 무관하게 서버가 강제한다.
  *  [대표 추가요청 2026-07-16] 첫 로그인 통합 설정에 **이메일 인증(OTP)**·국가/시간대 카탈로그가
@@ -61,8 +61,7 @@ export class RolesGuard implements CanActivate {
     ]);
     const req = ctx.switchToHttp().getRequest<Request & { user?: JwtClaims }>();
     const route = `${req.method} ${req.path}`;
-    const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '');
-    const token = bearer || readCookie(req, ACCESS_COOKIE);
+    const token = extractAccessToken(req);
     if (!token) {
       this.log.warn(`거부(비로그인): ${route}`); // 토큰 없음 — 로그인 필요
       throw new UnauthorizedException('인증 토큰이 없습니다.');

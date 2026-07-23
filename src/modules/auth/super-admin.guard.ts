@@ -2,6 +2,7 @@ import { CanActivate, ExecutionContext, ForbiddenException, Injectable, Unauthor
 import type { Request } from 'express';
 import { AuthService, type JwtClaims } from './auth.service';
 import { AccountStateService } from '../../database/account-state.service';
+import { extractAccessToken } from './access-token'; // [TBO-34 C2-C] 추출 단일 진실원(cookie 세션 결함 수정)
 
 // 대표(super_admin) 전용 가드 — 승인 등 고유 권한 API 보호.
 // Authorization: Bearer <token> 를 백엔드에서 서명 검증하고 roles에 super_admin 포함 여부 확인.
@@ -16,7 +17,9 @@ export class SuperAdminGuard implements CanActivate {
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
     const req = ctx.switchToHttp().getRequest<Request & { user?: JwtClaims }>();
-    const token = req.headers.authorization?.replace(/^Bearer\s+/i, '');
+    // [TBO-34 C2-C] C1 HttpOnly 전환 때 이 가드만 Bearer 전용으로 남아 cookie-only 세션이 401 —
+    //  추출을 extractAccessToken 하나로 수렴해 결함 수정(가드 간 사본 0).
+    const token = extractAccessToken(req);
     if (!token) throw new UnauthorizedException('인증 토큰이 없습니다.');
     let claims: JwtClaims;
     try {

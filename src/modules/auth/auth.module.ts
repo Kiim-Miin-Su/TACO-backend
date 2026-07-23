@@ -3,6 +3,7 @@ import { ThrottlerModule } from '@nestjs/throttler';
 import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { SuperAdminGuard } from './super-admin.guard';
+import { SudoGuard } from './sudo.guard'; // [TBO-34 C2-C] 재인증 서버측 강제
 import { RolesGuard } from './roles.guard';
 import { LoginThrottlerGuard } from './login-throttler.guard';
 import { AuthEventsService } from './auth-events.service';
@@ -37,6 +38,7 @@ import { PostgresThrottleStorage } from './postgres-throttle.storage';
   providers: [
     AuthService,
     SuperAdminGuard,
+    SudoGuard,
     BrowserOriginGuard,
     { provide: APP_GUARD, useExisting: BrowserOriginGuard },
     RolesGuard,
@@ -48,6 +50,6 @@ import { PostgresThrottleStorage } from './postgres-throttle.storage';
   ],
   // SignupEmailChallengesService export: UsersService.signup이 가입 tx에서 consumeForSignup을 호출
   //  (UsersModule ↔ AuthModule 기존 forwardRef 순환 위에 얹힘 — 주입부는 @Inject(forwardRef)).
-  exports: [AuthService, RolesGuard, AuthEventsService, SignupEmailChallengesService],
+  exports: [AuthService, RolesGuard, AuthEventsService, SignupEmailChallengesService, SuperAdminGuard, SudoGuard],
 })
 export class AuthModule {}

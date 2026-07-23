@@ -61,4 +61,30 @@ export function clearRefreshCookie(res: Response): void {
 export function clearBrowserSession(res: Response): void {
   clearAccessCookie(res);
   clearRefreshCookie(res);
+  clearSudoCookie(res); // [TBO-34 C2-C] 로그아웃 시 sudo 창도 함께 종료
+}
+
+// [TBO-34 C2-C 2026-07-23] sudo(재인증) 쿠키 — reauth 성공 시 서버가 발급하는 단명 HttpOnly 쿠키.
+//  민감 계정 명령(SudoGuard)이 서버측에서 재인증 창을 강제한다(종전엔 FE 게이트뿐 — 리뷰 보안 ①).
+export const SUDO_COOKIE = 'sudo_token';
+export const SUDO_TTL_MS = 10 * 60_000; // 10분 — 유저 관리 작업 한 세션 분량
+
+export function setSudoCookie(res: Response, raw: string): void {
+  res.cookie(SUDO_COOKIE, raw, {
+    httpOnly: true,
+    secure: productionCookie(),
+    sameSite: 'lax',
+    path: '/',
+    maxAge: SUDO_TTL_MS,
+  });
+}
+
+export function clearSudoCookie(res: Response): void {
+  res.cookie(SUDO_COOKIE, '', {
+    httpOnly: true,
+    secure: productionCookie(),
+    sameSite: 'lax',
+    path: '/',
+    maxAge: 0,
+  });
 }

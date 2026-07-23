@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { resolvePgSsl } from '../src/database/pg-ssl';
 import { DataSource } from 'typeorm';
 import { loadLocalEnv } from '../src/config/load-env';
 import { directDatabaseUrl } from '../src/database/database-url';
@@ -22,7 +23,7 @@ const dataSource = new DataSource({
   logging: false,
   entities: [],
   migrations: [],
-  ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+  ssl: resolvePgSsl() /* [TBO-34 C2-C] TLS 단일 진실원 — production 검증 강제 */,
   extra: {
     max: Number(process.env.DB_POOL_MAX ?? 1),
     connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? 5000),
@@ -41,6 +42,15 @@ function describeUrl(raw: string): string {
 async function main() {
   await dataSource.initialize();
   const rows = await dataSource.query('select current_database() as database, current_user as user, version() as version, now() as now');
+  // [TBO-34 C2-C] 권한 센서 — runtime 접속 계정이 스키마 CREATE 권한을 가지면 role 미분리 상태.
+  //  production에서 owner 자격으로 서비스가 돌면 NO-GO 신호를 명시적으로 낸다(값·URL은 미출력).
+  const [priv] = await dataSource.query(
+    "select has_schema_privilege(current_user, 'public', 'CREATE') as can_create");
+  const roleVerdict = priv.can_create
+    ? (process.env.NODE_ENV === 'production'
+      ? '🔴 runtime 계정에 CREATE 권한 — migration/runtime role 미분리(NO-GO, provision-runtime-role 적용 필요)'
+      : '🟡 CREATE 권한 보유(개발 owner 접속 — production은 DML 전용 role로 교체)')
+    : '🟢 DML 전용(스키마 CREATE 없음 — role 분리 적용됨)';
   const elapsed = Date.now() - started;
   console.log(JSON.stringify({
     ok: true,
@@ -50,6 +60,7 @@ async function main() {
     user: rows[0]?.user,
     now: rows[0]?.now,
     version: String(rows[0]?.version ?? '').split(' on ')[0],
+    runtimeRole: roleVerdict, // [TBO-34 C2-C] role 분리 판정 센서
   }, null, 2));
 }
 

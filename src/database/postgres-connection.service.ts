@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { assertPgUrlPolicy, resolvePgSsl } from './pg-ssl'; // [TBO-34 C2-C]
 import { AsyncLocalStorage } from 'async_hooks';
 import { DataSource, type EntityManager } from 'typeorm';
 import { runtimeDatabaseUrl } from './database-url';
@@ -30,9 +31,20 @@ function safeUrlInfo(url: string): Pick<DatabaseConnectionStatus, 'host' | 'data
 }
 
 export function runtimeSchemaDdlEnabled(): boolean {
+  assertRuntimeDdlPolicy();
   const explicit = process.env.RUNTIME_SCHEMA_DDL?.trim().toLowerCase();
   if (explicit != null && explicit !== '') return explicit === 'true';
   return process.env.NODE_ENV !== 'production';
+}
+
+/** [TBO-34 C2-C] production에서 runtime DDL을 env로 재활성화하는 뒷문을 막는다(스키마 변경 = versioned migration 전용).
+ *  ddl() 단일 깔때기의 skip에 더해, 재활성화 시도 자체를 부팅·호출 시점에 fail-fast로 끊는다. */
+export function assertRuntimeDdlPolicy(): void {
+  if (process.env.NODE_ENV !== 'production') return;
+  const explicit = process.env.RUNTIME_SCHEMA_DDL?.trim().toLowerCase();
+  if (explicit === 'true') {
+    throw new Error('[db] production에서 RUNTIME_SCHEMA_DDL=true는 허용되지 않습니다 — 스키마 변경은 versioned migration 전용입니다(TBO-34 C2-C).');
+  }
 }
 
 @Injectable()
@@ -61,6 +73,8 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
 
   async ensureInitialized(): Promise<void> {
     const url = runtimeDatabaseUrl();
+    assertPgUrlPolicy(url); // [TBO-34 C2-C] production sslmode=disable 금지 — 부팅 fail-fast
+    assertRuntimeDdlPolicy(); // [TBO-34 C2-C] production RUNTIME_SCHEMA_DDL 재활성화 금지 — 부팅 fail-fast
     if (!url) {
       this.logger.log('DATABASE_URL/POSTGRES_URL not set — running with in-memory store');
       return;
@@ -83,7 +97,7 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
       logging: process.env.DB_LOGGING === 'true',
       entities: [],
       migrations: [],
-      ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: false },
+      ssl: resolvePgSsl(), // [TBO-34 C2-C] TLS 단일 진실원 — production은 인증서·hostname 검증 강제
       extra: {
         max: numberEnv('DB_POOL_MAX', 5),
         connectionTimeoutMillis: numberEnv('DB_CONNECT_TIMEOUT_MS', 5000),

@@ -279,7 +279,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 비밀번호 재확인(로그인 상태) — 민감 화면 진입 게이트. 5회/분.
+      summary: 비밀번호 재확인(로그인 상태) — 민감 화면·명령 게이트. 성공 시 10분 sudo 쿠키 발급(서버측 강제). 5회/분.
       tags:
         - auth
   /api/auth/pending:
@@ -396,7 +396,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 가입 신청 삭제(pending·rejected만) — 식별자 해제·RRN 파기·audit. 대표 전용.
+      summary: 가입 신청 삭제(pending·rejected만·재인증 필수) — 식별자 해제·RRN 파기·audit. 대표 전용, cookie 세션은 reauth 후 10분 내만 허용.
       tags:
         - auth
   /api/auth/me:
@@ -449,7 +449,9 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 강사 직접 등록(대표 전용) — 즉시 active, users+instructor_profiles+audit 원자 tx.
+      summary: >-
+        강사 직접 등록(대표 전용·재인증 필수) — 즉시 active, users+instructor_profiles+audit 원자 tx. cookie 세션은 reauth 후 10분 내만 허용(403
+        SUDO_REQUIRED).
       tags:
         - Users
   /api/users/exists:
@@ -539,7 +541,9 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 대표 직접 수정 — name/phone/email/role. role·email 변경 시 대상 세션 전부 무효. super_admin 대상 400.
+      summary: >-
+        대표 직접 수정(재인증 필수) — name/phone/email/role. role·email 변경 시 대상 세션 전부 무효. super_admin 대상 400. cookie 세션은 reauth 후
+        10분 내만 허용(403 SUDO_REQUIRED).
       tags:
         - Users
   /api/instructors:

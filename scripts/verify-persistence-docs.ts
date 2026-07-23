@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { resolvePgSsl } from '../src/database/pg-ssl';
 import { readFileSync } from 'fs';
 import { resolve } from 'path';
 import { DataSource } from 'typeorm';
@@ -70,7 +71,7 @@ async function main(): Promise<void> {
     logging: false,
     entities: [],
     migrations: [],
-    ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: true },
+    ssl: resolvePgSsl() /* [TBO-34 C2-C] TLS 단일 진실원 — production 검증 강제 */,
     extra: { max: 1, connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? 5000) },
   });
 

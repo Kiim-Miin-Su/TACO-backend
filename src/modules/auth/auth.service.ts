@@ -47,4 +47,22 @@ export class AuthService {
       throw new UnauthorizedException('Invalid or expired token');
     }
   }
+
+  // [TBO-34 C2-C 2026-07-23] sudo(재인증) 토큰 — access와 분리된 purpose 클레임의 단명 JWT.
+  //  reauth 성공 시에만 발급, SudoGuard가 검증. access 토큰을 sudo로 오용할 수 없다(purpose 불일치).
+  signSudo(sub: number): string {
+    return jwt.sign({ sub, purpose: 'sudo' }, this.secret, { expiresIn: '10m', algorithm: 'HS256' });
+  }
+
+  verifySudo(token: string): { sub: number } {
+    try {
+      const payload = jwt.verify(token, this.secret, { algorithms: ['HS256'] }) as jwt.JwtPayload & { purpose?: string };
+      if (payload.purpose !== 'sudo' || typeof payload.sub !== 'number' && typeof payload.sub !== 'string') {
+        throw new Error('purpose mismatch');
+      }
+      return { sub: Number(payload.sub) };
+    } catch {
+      throw new UnauthorizedException('재인증이 만료되었거나 유효하지 않습니다.');
+    }
+  }
 }

@@ -1,4 +1,5 @@
 import 'reflect-metadata';
+import { resolvePgSsl } from '../src/database/pg-ssl';
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import { config } from 'dotenv';
@@ -22,7 +23,7 @@ async function main(): Promise<void> {
   const password = `Profile-${randomBytes(12).toString('base64url')}`;
   const dataSource = new DataSource({
     type: 'postgres', url, synchronize: false, migrationsRun: false, logging: false, entities: [], migrations: [],
-    ssl: process.env.DB_SSL === 'false' ? false : { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== 'false' },
+    ssl: resolvePgSsl() /* [TBO-34 C2-C] TLS 단일 진실원 — production 검증 강제 */,
     extra: { max: 1, connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS ?? 5000) },
   });
   let requesterId = 0;
