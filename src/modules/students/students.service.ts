@@ -23,6 +23,9 @@ import { StudentFamilyRelation, STUDENT_FAMILY_RELATIONS } from './student-famil
 import { StudentAcademicHistory, STUDENT_ACADEMIC_HISTORIES } from './student-academic-history.entity';
 import { CreateStudentFamilyRelationDto, UpdateStudentFamilyRelationDto } from './dto/student-family-relation.dto';
 import { CreateStudentAcademicHistoryDto, UpdateStudentAcademicHistoryDto } from './dto/student-academic-history.dto';
+// [TBO-30G] 가족 조인 파생 — counsel_forms는 읽기 전용 조인(entity 상수만 — 서비스 순환 없음).
+import { CounselForm, COUNSEL_FORMS } from '../counsel/counsel.entity';
+import type { StudentFamilyAggregate, StudentFamilyMember } from './student-family.types';
 
 @Injectable()
 export class StudentsService implements OnModuleInit {
@@ -91,6 +94,47 @@ export class StudentsService implements OnModuleInit {
       .sort((a, b) => a.id - b.id);
   }
 
+  /**
+   * [TBO-30G 2026-07-23 대표 지시] 가족(형제·자매) **테이블 조인 단일 진실원**.
+   *  student_family_relations→students→parent_student_relations→parents→enrollments→counsel_forms를
+   *  서버에서 조인해 파생한다 — 읽기 전용(원본 무변형·사본 저장 0). 학생 상세와 상담 화면이
+   *  같은 응답만 소비해 "이름만 아는 full-list client join"을 제거한다(B7 규약의 가족 적용).
+   */
+  findFamilyAggregate(studentId: number): StudentFamilyAggregate {
+    this.findOne(studentId);
+    const guardiansOf = (id: number) =>
+      this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'studentId', id)
+        .map((relation) => ({ parent: this.db.findById<Parent>(PARENTS, relation.parentId), relation }))
+        .filter((entry): entry is { parent: Parent; relation: ParentStudent } => entry.parent != null)
+        .sort((a, b) => Number(b.relation.isPrimary) - Number(a.relation.isPrimary) || a.relation.id - b.relation.id);
+    const baseParentIds = new Set(guardiansOf(studentId).map((g) => g.parent.id));
+    const members = this.findFamilyRelations(studentId)
+      .map((relation): StudentFamilyMember | null => {
+        const relatedId = relation.studentIdA === studentId ? relation.studentIdB : relation.studentIdA;
+        const student = this.db.findById<Student>(STUDENTS, relatedId);
+        if (!student) return null; // 방어 — 삭제 캐스케이드가 관계를 정리하므로 정상 경로에선 없음
+        const guardians = guardiansOf(relatedId);
+        return {
+          relationId: relation.id,
+          relationType: relation.relationType,
+          relationLabel: relation.relationLabel ?? null,
+          student: { ...student },
+          guardians,
+          activeEnrollmentCount: this.db.findBy<Enrollment>(ENROLLMENTS, (e) =>
+            e.studentId === relatedId && e.status === 'active').length,
+          counselForms: this.db.findByField<CounselForm>(COUNSEL_FORMS, 'studentId', relatedId)
+            .sort((a, b) => b.id - a.id)
+            .map((form) => ({
+              id: form.id, status: form.status, source: form.source,
+              createdAt: form.createdAt, nextContactAt: form.nextContactAt ?? null,
+            })),
+          sharedGuardianParentIds: guardians.map((g) => g.parent.id).filter((pid) => baseParentIds.has(pid)),
+        };
+      })
+      .filter((member): member is StudentFamilyMember => member != null);
+    return { studentId, members };
+  }
+
   async createFamilyRelation(studentId: number, dto: CreateStudentFamilyRelationDto, actorId: number): Promise<StudentFamilyRelation> {
     if (studentId === dto.relatedStudentId) throw new BadRequestException('학생은 자기 자신과 가족 관계를 맺을 수 없습니다.');
     this.findOne(studentId);
@@ -109,8 +153,33 @@ export class StudentsService implements OnModuleInit {
         entity: STUDENT_FAMILY_RELATIONS, entityId: row.id, action: 'create', actorId,
         changes: this.audit.diffOf({}, row),
       });
+      // [TBO-30G] 보호자 조인 합집합 — 같은 tx에서 두 학생의 보호자를 관계 행으로 상호 연결.
+      //  parents 원부 복사 0(연결만), 신규 링크는 비대표·비납부(기존 대표 불변 유지 — 강등 없음),
+      //  이미 연결된 보호자는 건너뜀(멱등). 실패 시 가족 관계 생성까지 함께 롤백.
+      if (dto.linkGuardians) {
+        await this.unionGuardianLinks(studentIdA, studentIdB, row.id, actorId);
+        await this.unionGuardianLinks(studentIdB, studentIdA, row.id, actorId);
+      }
       return row;
     });
+  }
+
+  /** tx 내부 전용 — fromId 학생의 보호자를 toId 학생에도 관계 행으로 연결(중복 skip). */
+  private async unionGuardianLinks(fromId: number, toId: number, familyRelationId: number, actorId: number): Promise<void> {
+    const existing = new Set(
+      this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'studentId', toId).map((r) => r.parentId));
+    for (const source of this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'studentId', fromId)) {
+      if (existing.has(source.parentId)) continue;
+      const linked = await this.store.insert<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC, {
+        parentId: source.parentId, studentId: toId,
+        relation: source.relation, // 관계 명칭(모/부 등)은 보호자 기준이므로 그대로 승계
+        isPayer: false, isPrimary: false,
+      });
+      await this.audit.log({
+        entity: PARENT_STUDENTS, entityId: linked.id, action: 'create', actorId,
+        changes: this.audit.diffOf({}, linked), reason: `family-guardian-union:${familyRelationId}`,
+      });
+    }
   }
 
   async updateFamilyRelation(

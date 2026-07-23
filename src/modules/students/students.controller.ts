@@ -39,6 +39,14 @@ export class StudentsController {
     return this.students.findFamilyRelations(id);
   }
 
+  // [TBO-30G 2026-07-23] 가족 조인 단일 진실원 — 관계→학생→보호자→수강→상담 서버 조인 파생(읽기 전용).
+  @Get(':id/family')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '가족(형제·자매) 조인 aggregate — 구성원별 학생·보호자·활성 수강·상담 이력·공유 보호자(테이블 조인 파생, 단일 진실원) [매니저 이상]' })
+  findFamilyAggregate(@Param('id', ParseIntPipe) id: number) {
+    return this.students.findFamilyAggregate(id);
+  }
+
   @Post(':id/family-relations')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '학생과 기존 학생의 가족 관계 생성 및 이력 기록 [매니저 이상]' })

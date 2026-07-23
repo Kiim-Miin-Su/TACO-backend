@@ -1764,6 +1764,45 @@
         ]
       }
     },
+    "/api/students/{id}/family": {
+      "get": {
+        "operationId": "StudentsController_findFamilyAggregate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "가족(형제·자매) 조인 aggregate — 구성원별 학생·보호자·활성 수강·상담 이력·공유 보호자(테이블 조인 파생, 단일 진실원) [매니저 이상]",
+        "tags": [
+          "students"
+        ],
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ]
+      }
+    },
     "/api/students/{id}/family-relations/{relationId}": {
       "patch": {
         "operationId": "StudentsController_updateFamilyRelation",
@@ -7637,6 +7676,10 @@
           "relationLabel": {
             "type": "string",
             "maxLength": 50
+          },
+          "linkGuardians": {
+            "type": "boolean",
+            "description": "[TBO-30G] true면 같은 tx에서 두 학생의 보호자를 관계 행(join)으로 합집합 연결 —\n 보호자 원부 복사 0, 신규 링크는 비대표·비납부(기존 대표 불변), 중복 연결은 건너뜀."
           }
         },
         "required": [
