@@ -1,4 +1,5 @@
 import type { Request, Response } from 'express';
+import { isProduction } from '../../common/env'; // [TBO-34 C3]
 
 export const ACCESS_COOKIE = 'access_token';
 export const REFRESH_COOKIE = 'refresh_token';
@@ -11,7 +12,7 @@ export function readCookie(req: Pick<Request, 'headers'>, name: string): string 
     ?.slice(name.length + 1);
 }
 
-const productionCookie = (): boolean => process.env.NODE_ENV === 'production';
+const productionCookie = isProduction; // [TBO-34 C3] 환경 판정 단일 진실원
 
 /**
  * Access JWT는 브라우저 JavaScript에 절대 노출하지 않는다. production 브라우저는 Next `/api`

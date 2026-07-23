@@ -4,6 +4,7 @@
 //  [TBO-28B 2026-07-14] 승인 = **단일 트랜잭션**(users CAS + instructor_profiles + audit_log),
 //   verification token = sha256 hash + 48h 만료(성공 시 명시 NULL), runtime business fixture 없음.
 import { BadRequestException, ConflictException, ForbiddenException, forwardRef, Inject, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
 import type { InstructorAggregate, UpdateInstructorInput, WebIdCheckResult } from '@kms545487/contracts';
@@ -37,7 +38,6 @@ const sha256 = (value: string): string => createHash('sha256').update(value).dig
 //  (case-insensitive 동시 선점을 한 직렬화 지점에서 판정 — TBO-29B 규약 유지).
 export const identityLockId = (webId: string): number => Number.parseInt(sha256(webId.trim().toLowerCase()).slice(0, 7), 16);
 
-const isProduction = (): boolean => process.env.NODE_ENV === 'production';
 
 @Injectable()
 export class UsersService implements OnModuleInit {

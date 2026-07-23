@@ -1,4 +1,5 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import * as jwt from 'jsonwebtoken';
 
 export type JwtClaims = {
@@ -23,7 +24,7 @@ export class AuthService {
   private readonly secret: string = (() => {
     const s = process.env.JWT_SECRET;
     if (s) return s;
-    if (process.env.NODE_ENV === 'production') {
+    if (isProduction()) {
       throw new Error('[auth] JWT_SECRET 환경변수가 설정되지 않았습니다 — 운영 배포에는 필수입니다(고정 개발키 서명 차단).');
     }
     // eslint-disable-next-line no-console

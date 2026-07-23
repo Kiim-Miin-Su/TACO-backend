@@ -15,6 +15,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { Throttle } from '@nestjs/throttler';
 import { RolesGuard } from './roles.guard';
 import { ADMIN_ROLES, Roles, STAFF_ROLES } from './roles.decorator';
@@ -48,7 +49,6 @@ import {
   setSudoCookie,
 } from './browser-session';
 
-const isProduction = (): boolean => process.env.NODE_ENV === 'production';
 
 @ApiTags('auth')
 @Controller('auth')

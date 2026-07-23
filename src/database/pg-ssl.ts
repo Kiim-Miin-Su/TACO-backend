@@ -8,8 +8,8 @@
 //   - 사설 CA가 필요하면 DB_SSL_CA(PEM 원문)로 주입 — 파일 경로·URL 로그 금지.
 //  비production은 기존 동작 보존: DB_SSL=false → 평문(로컬 PG), 그 외 → 관용 TLS(자가서명 허용).
 import { readFileSync } from 'node:fs';
+import { isProduction } from '../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 
-const isProduction = (): boolean => process.env.NODE_ENV === 'production';
 
 export type PgSslOption = false | { rejectUnauthorized: boolean; ca?: string };
 

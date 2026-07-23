@@ -30,7 +30,7 @@ export type FinanceSummary = {
   revenue: number; expenses: number; payouts: number; net: number;
 };
 
-const dayOf = (iso: string): string => iso.slice(0, 10);
+import { dayOf } from '../../common/day-range'; // [TBO-34 C3] 날짜 파생 단일 진실원
 const inRange = (iso: string | null | undefined, range: RevenueRange): boolean => {
   if (!iso) return false;
   const day = dayOf(iso);

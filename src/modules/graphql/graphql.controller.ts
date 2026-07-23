@@ -1,4 +1,5 @@
 import { BadRequestException, Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   GraphQLError, NoSchemaIntrospectionCustomRule, graphql, parse, specifiedRules, validate,
@@ -21,7 +22,6 @@ import { Student, STUDENTS } from '../students/student.entity';
 import { PAYOUTS, type InstructorPayoutRow } from '../payouts/payout.entity';
 
 const MAX_DEPTH = 6;
-const isProduction = (): boolean => process.env.NODE_ENV === 'production';
 
 /** SelectionSet 중첩 깊이 — 남용(과도 중첩) 방어. 스키마가 얕아 정상 쿼리는 3~4 수준. */
 function maxDepthOf(doc: DocumentNode): number {

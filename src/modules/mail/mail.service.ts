@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy } from '@nestjs/common';
+import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import * as nodemailer from 'nodemailer';
 
 /**
@@ -25,7 +26,7 @@ export class MailService implements OnModuleDestroy {
   //  SMTP 미설정 production은 부팅 자체가 차단되지만(assertProductionBootSafety) 이중 방어로 여기서도 막는다.
   async sendVerifyEmail(to: string, link: string): Promise<{ sent: boolean; devLink?: string }> {
     if (!this.transporter) {
-      if (process.env.NODE_ENV === 'production') {
+      if (isProduction()) {
         throw new Error('[mail] production에서 SMTP 미설정 — 인증 메일을 보낼 수 없습니다(devLink 폴백 금지).');
       }
       this.logger.warn(`[MAIL:dev] 이메일 인증 링크 (${to}): ${link}`);
@@ -45,7 +46,7 @@ export class MailService implements OnModuleDestroy {
   // [TBO-29C C5] 아이디 찾기 — 가입 이메일로 아이디 안내. dev(무SMTP·비production)는 콘솔+devWebId 반환.
   async sendRecoverIdEmail(to: string, webId: string): Promise<{ sent: boolean; devWebId?: string }> {
     if (!this.transporter) {
-      if (process.env.NODE_ENV === 'production') {
+      if (isProduction()) {
         throw new Error('[mail] production에서 SMTP 미설정 — 아이디 안내 메일을 보낼 수 없습니다.');
       }
       this.logger.warn(`[MAIL:dev] 아이디 안내 (${to}): webId=${webId}`);
@@ -65,7 +66,7 @@ export class MailService implements OnModuleDestroy {
   // [TBO-29C C5] 비밀번호 재설정 링크 — 토큰은 sha256만 저장·1시간 만료. dev는 콘솔+devLink 반환.
   async sendPasswordResetEmail(to: string, link: string): Promise<{ sent: boolean; devLink?: string }> {
     if (!this.transporter) {
-      if (process.env.NODE_ENV === 'production') {
+      if (isProduction()) {
         throw new Error('[mail] production에서 SMTP 미설정 — 재설정 메일을 보낼 수 없습니다.');
       }
       this.logger.warn(`[MAIL:dev] 비밀번호 재설정 링크 (${to}): ${link}`);

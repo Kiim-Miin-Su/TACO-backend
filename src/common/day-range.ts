@@ -12,3 +12,6 @@ export function assertDayRange(range: DayRange): void {
   }
   if (range.from && range.to && range.from > range.to) throw new BadRequestException('시작일이 종료일보다 늦을 수 없습니다.');
 }
+
+/** ISO 문자열 → YYYY-MM-DD — 분석 순수 함수들이 공유(사본 금지). */
+export const dayOf = (iso: string): string => iso.slice(0, 10);

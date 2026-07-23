@@ -1,3 +1,4 @@
+import { isProduction } from './env'; // [TBO-34 C3] 환경 판정 단일 진실원
 const LOCAL_WEB_ORIGIN = 'http://localhost:3000';
 const PRODUCTION_WEB_ORIGIN = 'https://taco-frontend-tau.vercel.app';
 
@@ -6,7 +7,7 @@ export function trustedWebOrigins(): string[] {
     .split(',')
     .map((origin) => origin.trim())
     .filter(Boolean);
-  const defaults = process.env.NODE_ENV === 'production'
+  const defaults = isProduction()
     ? [PRODUCTION_WEB_ORIGIN]
     : [LOCAL_WEB_ORIGIN];
   return Array.from(new Set([...configured, ...defaults]));

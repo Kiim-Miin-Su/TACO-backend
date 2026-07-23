@@ -1,4 +1,5 @@
 import { Logger } from '@nestjs/common';
+import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import {
   ThrottlerStorageService,
   type ThrottlerStorage,
@@ -25,7 +26,7 @@ export class PostgresThrottleStorage implements ThrottlerStorage {
   private successfulIncrements = 0;
   // 앱 부팅 시점 posture를 고정한다. 일부 e2e가 요청 한 건만 NODE_ENV를 production으로 바꾸더라도
   // test 앱을 실제 production 인스턴스로 오판하지 않는다.
-  private readonly requireSharedStore = process.env.NODE_ENV === 'production';
+  private readonly requireSharedStore = isProduction();
 
   constructor(private readonly pg: PostgresConnectionService) {}
 

@@ -5,6 +5,7 @@
 //  평문 코드는 저장·로그·응답에 남기지 않는다(예외: 비production+SMTP 부재의 devOtpCode —
 //  devVerifyLink 관례와 동일한 개발 편의. production은 부팅 가드가 SMTP를 강제해 분기 자체가 없다).
 import { BadRequestException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { createHash, randomInt } from 'crypto';
 import type { BaseRow } from '../../common/types/base';
 import { logLine } from '../../common/log-line';
@@ -64,7 +65,6 @@ const sha256 = (value: string): string => createHash('sha256').update(value).dig
 const codeHashOf = (purpose: EmailChallengePurpose, email: string, code: string): string =>
   sha256(`${purpose}:${email}:${code}:${hashSecret()}`);
 
-const isProduction = (): boolean => process.env.NODE_ENV === 'production';
 
 // 실패 메시지 일반화 — challenge 존재/상태 열거 방지(profile-verifications GENERIC 규약과 동일).
 const GENERIC_INVALID = '유효하지 않거나 만료된 인증입니다.';

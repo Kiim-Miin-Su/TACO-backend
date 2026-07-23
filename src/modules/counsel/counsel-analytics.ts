@@ -33,7 +33,7 @@ export type CounselFunnel = {
   avgDaysToConversion: number | null;   // 접수일 → result='registered' 회차 완료일 평균(일)
 };
 
-const dateOnly = (iso: string): string => iso.slice(0, 10);
+import { dayOf as dateOnly } from '../../common/day-range'; // [TBO-34 C3] 날짜 파생 단일 진실원
 const daysBetween = (fromIso: string, toIso: string): number =>
   Math.round((Date.parse(dateOnly(toIso)) - Date.parse(dateOnly(fromIso))) / 86_400_000);
 
