@@ -37,6 +37,26 @@ export class CounselController {
     return this.counsel.findAllRounds(counselFormId ? Number(counselFormId) : undefined);
   }
 
+  // [TBO-30D 2026-07-23] 퍼널 집계 — 순수 함수(counsel-analytics) 파생, DB 원본 무변형. ':id'보다 앞 선언.
+  @Get('analytics/funnel')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '상담 퍼널 집계 — 상태·회차 도달·이탈 회차·전환율·평균 소요(순수 함수 파생, 기간 필터) [관리 역할]' })
+  @ApiQuery({ name: 'from', required: false, description: '접수일 시작(YYYY-MM-DD)' })
+  @ApiQuery({ name: 'to', required: false, description: '접수일 끝(YYYY-MM-DD)' })
+  funnel(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.counsel.funnel({ from: from || null, to: to || null });
+  }
+
+  // [TBO-30E 2026-07-23] 상담↔수강 상관관계 — 희망(student_interests)×등록(enrollments) 과목 조인 매트릭스.
+  @Get('analytics/correlation')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '상담↔수강 과목 상관관계 — 희망 과목(관심 SSOT)×실제 등록 과목(enrollments) 조인 매트릭스·전환율 [관리 역할]' })
+  @ApiQuery({ name: 'from', required: false, description: '접수일 시작(YYYY-MM-DD)' })
+  @ApiQuery({ name: 'to', required: false, description: '접수일 끝(YYYY-MM-DD)' })
+  correlation(@Query('from') from?: string, @Query('to') to?: string) {
+    return this.counsel.correlation({ from: from || null, to: to || null });
+  }
+
   // [B7 E3 2026-07-16] GET /api/counsel/:id — 상담 폼 단건(상세 화면 전량 로드 후 find 제거).
   //  없는 id=404(서비스 findForm). 정적 GET('rounds')보다 뒤에 선언(':id' 가로채기 방지).
   @Get(':id')

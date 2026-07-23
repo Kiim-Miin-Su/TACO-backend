@@ -13,6 +13,16 @@ import type { CounselAggregate, CounselFormSnapshot } from '@kms545487/contracts
 import { UpdateCounselRoundDto } from './dto/update-round.dto';
 import { StudentsService } from '../students/students.service';
 import { Student, STUDENTS } from '../students/student.entity';
+// [TBO-30D/30E] 집계는 순수 함수(counsel-analytics — API·e2e 공용 단일 진실원)에 위임하고,
+//  서비스는 읽기모델 스냅샷 조립만 담당한다(entity 상수만 참조 — 서비스 순환 없음).
+import {
+  computeCounselCorrelation, computeCounselFunnel,
+  type CounselAnalyticsRange, type CounselAnalyticsSnapshot, type CounselCorrelation, type CounselFunnel,
+} from './counsel-analytics';
+import { StudentInterest, STUDENT_INTERESTS } from '../students/student-interest.entity';
+import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
+import { Course, COURSES } from '../courses/course.entity';
+import { Subject, SUBJECTS } from '../subjects/subject.entity';
 
 const snapshotOfForm = (form: CounselFormSnapshot): CounselFormSnapshot => ({
   studentId: form.studentId,
@@ -250,6 +260,46 @@ export class CounselService implements OnModuleInit {
       where: counselFormId == null ? undefined : { counselFormId },
       orderBy: { field: 'roundNo' },
     });
+  }
+
+  // [TBO-30D/30E] 분석 스냅샷 — 활성 읽기모델을 파생 전용으로 조립(원본 무변형·사본 저장 0).
+  //  퍼널은 forms/rounds, 상관관계는 student_interests(희망 권위)×enrollments(등록 권위) 조인.
+  private async analyticsSnapshot(): Promise<CounselAnalyticsSnapshot> {
+    return {
+      forms: (await this.findAllForms()).map((form) => ({
+        id: form.id, studentId: form.studentId, status: form.status, createdAt: form.createdAt,
+      })),
+      rounds: (await this.findAllRounds()).map((round) => ({
+        counselFormId: round.counselFormId, roundNo: round.roundNo,
+        result: round.result ?? null, completedAt: round.completedAt ?? null,
+      })),
+      interests: this.db.findAll<StudentInterest>(STUDENT_INTERESTS).map((interest) => ({
+        studentId: interest.studentId, courseId: interest.courseId ?? null, customLabel: interest.customLabel ?? null,
+      })),
+      enrollments: this.db.findAll<Enrollment>(ENROLLMENTS).map((enrollment) => ({
+        studentId: enrollment.studentId, courseId: enrollment.courseId, status: enrollment.status,
+      })),
+      courses: this.db.findAll<Course>(COURSES).map((course) => ({ id: course.id, subjectId: course.subjectId })),
+      subjects: this.db.findAll<Subject>(SUBJECTS).map((subject) => ({ id: subject.id, name: subject.name })),
+    };
+  }
+
+  private assertRange(range: CounselAnalyticsRange): void {
+    const dayPattern = /^\d{4}-\d{2}-\d{2}$/;
+    for (const value of [range.from, range.to]) {
+      if (value != null && !dayPattern.test(value)) throw new BadRequestException('기간은 YYYY-MM-DD 형식이어야 합니다.');
+    }
+    if (range.from && range.to && range.from > range.to) throw new BadRequestException('시작일이 종료일보다 늦을 수 없습니다.');
+  }
+
+  async funnel(range: CounselAnalyticsRange = {}): Promise<CounselFunnel> {
+    this.assertRange(range);
+    return computeCounselFunnel(await this.analyticsSnapshot(), range);
+  }
+
+  async correlation(range: CounselAnalyticsRange = {}): Promise<CounselCorrelation> {
+    this.assertRange(range);
+    return computeCounselCorrelation(await this.analyticsSnapshot(), range);
   }
 
   // 상담 폼과 활성 회차를 함께 soft delete — 고아 회차·목록 재노출 방지.

@@ -5489,6 +5489,104 @@
         ]
       }
     },
+    "/api/counsel/analytics/funnel": {
+      "get": {
+        "operationId": "CounselController_funnel",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "접수일 시작(YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "접수일 끝(YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "상담 퍼널 집계 — 상태·회차 도달·이탈 회차·전환율·평균 소요(순수 함수 파생, 기간 필터) [관리 역할]",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
+    "/api/counsel/analytics/correlation": {
+      "get": {
+        "operationId": "CounselController_correlation",
+        "parameters": [
+          {
+            "name": "from",
+            "required": false,
+            "in": "query",
+            "description": "접수일 시작(YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "to",
+            "required": false,
+            "in": "query",
+            "description": "접수일 끝(YYYY-MM-DD)",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "상담↔수강 과목 상관관계 — 희망 과목(관심 SSOT)×실제 등록 과목(enrollments) 조인 매트릭스·전환율 [관리 역할]",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
     "/api/counsel/{id}": {
       "get": {
         "operationId": "CounselController_findForm",
