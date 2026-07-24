@@ -111,6 +111,29 @@ describe('POST /graphql (e2e)', () => {
     await gql(deep).expect(400);
   });
 
+  it('[TBO-60] ceoDashboard — 한 쿼리로 D1 재무+D2 aging+D3 증감+D6 수익성(단일 스냅샷 파생)', async () => {
+    const res = await gql(`{
+      ceoDashboard(from: "2026-06-01", to: "2026-06-30") {
+        finance { revenue expenses payouts net }
+        receivables { bucket amount count }
+        enrollmentTrend { month started ended net }
+        courseProfit { courseId courseName revenue cost profit }
+      }
+    }`).expect(201);
+    const dash = res.body.data.ceoDashboard;
+    // D1 = 기존 financeSummary와 동일 파생(단일 진실원 — 같은 함수 소비)
+    const fin = (await gql(`{ financeSummary(from: "2026-06-01", to: "2026-06-30") { revenue expenses payouts net } }`).expect(201))
+      .body.data.financeSummary;
+    expect(dash.finance).toEqual(fin);
+    // D2 — 고정 4구간(0-30/31-60/61-90/90+), 금액·건수 음수 없음
+    expect(dash.receivables.map((b: { bucket: string }) => b.bucket)).toEqual(['0-30일', '31-60일', '61-90일', '90일+']);
+    for (const b of dash.receivables) { expect(b.amount).toBeGreaterThanOrEqual(0); expect(b.count).toBeGreaterThanOrEqual(0); }
+    // D3 — 순증 = 시작 − 종료 항등식
+    for (const row of dash.enrollmentTrend) expect(row.net).toBe(row.started - row.ended);
+    // D6 — 이익 = 매출 − 비용 항등식
+    for (const row of dash.courseProfit) expect(row.profit).toBe(row.revenue - row.cost);
+  });
+
   it('production introspection 거부(요청 시점 판정) · 개발은 허용', async () => {
     const query = '{ __schema { queryType { name } } }';
     await gql(query).expect(201); // 개발·테스트 허용

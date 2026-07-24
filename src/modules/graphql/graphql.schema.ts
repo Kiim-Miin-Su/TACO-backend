@@ -9,7 +9,13 @@ type Query {
   counselFunnel(from: String, to: String): CounselFunnel!
   counselCorrelation(from: String, to: String): CounselCorrelation!
   uncoveredPayouts(months: Int): [UncoveredPayout!]!
+  ceoDashboard(from: String, to: String): CeoDashboard!
 }
+type CeoDashboard { from: String to: String finance: FinanceSummary!
+  receivables: [AgingBucket!]! enrollmentTrend: [EnrollmentTrendRow!]! courseProfit: [CourseProfitRow!]! }
+type AgingBucket { bucket: String! amount: Int! count: Int! }
+type EnrollmentTrendRow { month: String! started: Int! ended: Int! net: Int! }
+type CourseProfitRow { courseId: Int! courseName: String! revenue: Int! cost: Int! profit: Int! }
 type RevenueReport { from: String to: String realizedTotal: Int! unpaidTotal: Int! unpaidCount: Int!
   byMonth: [KeyAmount!]! bySubject: [KeyAmount!]! byCourse: [KeyAmount!]! byStudent: [KeyAmount!]! }
 type KeyAmount { key: String! amount: Int! count: Int! }

@@ -128,6 +128,23 @@ export class ClassSessionsStore implements OnModuleInit {
     return this.memory.remove(TABLE, id, deletedBy);
   }
 
+  /** [TBO-63 2026-07-24] soft delete 복구(undo) — 삭제 행만, 정산 미연결만. */
+  async restore(id: number): Promise<ClassSession | undefined> {
+    if (!this.durable) {
+      const ok = this.memory.restore(TABLE, id);
+      return ok ? this.memory.findById<ClassSession>(TABLE, id) : undefined;
+    }
+    const [row] = await this.query(
+      `UPDATE ${TABLE} SET deleted_at = NULL, deleted_by = NULL, updated_at = now()
+        WHERE id = $1 AND deleted_at IS NOT NULL AND payout_id IS NULL RETURNING *`,
+      [id],
+    );
+    if (!row) return undefined;
+    const saved = this.fromDbRow(row);
+    this.memory.seedExact<ClassSession>(TABLE, [saved]);
+    return saved;
+  }
+
   /** [TBO-53 C1] lock 뒤 판정용 단건 DB 재조회 — 다른 인스턴스의 정산 연결(payout_id)도 즉시 반영. */
   async findByIdDb(id: number): Promise<ClassSession | undefined> {
     if (!this.durable) return this.memory.findById<ClassSession>(TABLE, id);

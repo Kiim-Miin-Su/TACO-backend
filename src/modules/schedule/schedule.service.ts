@@ -813,6 +813,23 @@ export class ScheduleService implements OnModuleInit {
     }
   }
 
+  /** [TBO-63 2026-07-24] 삭제 복구(캘린더 undo) — 삭제된 회차만, 정산 미연결만. audit 기록. */
+  async restoreSession(id: number, actorId?: number): Promise<{ row: ClassSession }> {
+    await this.ensureReady();
+    return this.unitOfWork.run(async () => {
+      await this.unitOfWork.lockTargets([{ kind: 'session', id }]);
+      const restored = await this.sessions.restore(id);
+      if (!restored) throw new NotFoundException(`복구할 삭제 회차가 없습니다(id ${id}) — 이미 활성이거나 정산 연결됨.`);
+      if (actorId != null) {
+        await this.audit.log({
+          entity: 'class_sessions', entityId: id, action: 'update', actorId,
+          changes: { deletedAt: { before: 'deleted', after: null } }, reason: '캘린더 undo 복구(TBO-63)',
+        });
+      }
+      return { row: restored };
+    });
+  }
+
   /** [TBO-64 2026-07-24] 회차 가격 책정(시수 워크시트) — 매니저/대표 전용. lock → DB 재조회 →
    *  가드(held·결석 아님·정산 미연결) → 조건부 UPDATE + audit. null = 책정 해제(자동/빈칸 복귀). */
   async setSessionPayAmount(id: number, amount: number | null, actorId?: number): Promise<{ row: ClassSession }> {

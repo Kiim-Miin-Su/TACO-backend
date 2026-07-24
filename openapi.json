@@ -4255,6 +4255,39 @@
         ]
       }
     },
+    "/api/schedule/{id}/restore": {
+      "post": {
+        "operationId": "ScheduleController_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "description": "세션 id",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "삭제 회차 복구(soft delete 해제) — 캘린더 undo 전용, 정산 연결 회차 불가. [매니저 이상]",
+        "tags": [
+          "scheduling"
+        ]
+      }
+    },
     "/api/schedule/{id}/pay-amount": {
       "put": {
         "operationId": "ScheduleController_setPayAmount",

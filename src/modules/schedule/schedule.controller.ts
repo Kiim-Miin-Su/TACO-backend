@@ -176,6 +176,15 @@ export class ScheduleController {
     return this.schedule.markInstructorAttendance(id, dto.status, req.user?.sub, req.user?.roles ?? []);
   }
 
+  // [TBO-63 2026-07-24] 삭제 복구(캘린더 undo) — cmd/ctrl+Z 스택의 삭제 역연산.
+  @Post(':id/restore')
+  @Roles(...ADMIN_ROLES)
+  @ApiParam({ name: 'id', description: '세션 id' })
+  @ApiOperation({ summary: '삭제 회차 복구(soft delete 해제) — 캘린더 undo 전용, 정산 연결 회차 불가. [매니저 이상]' })
+  restore(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.schedule.restoreSession(id, req.user?.sub);
+  }
+
   // [TBO-64 2026-07-24] 회차 가격 책정(시수 워크시트) — 지각·리포트 미작성 회차의 수동 금액 확정.
   @Put(':id/pay-amount')
   @Roles(...ADMIN_ROLES)

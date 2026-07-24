@@ -92,6 +92,18 @@ describe('[TBO-62] 긴급 수정 (e2e)', () => {
     expect(clear.body.message).toContain('비울 수 없습니다');
   });
 
+  it('[TBO-63] 삭제 복구(undo) — 삭제 회차 restore 200·활성/중복 복구 404·강사 403', async () => {
+    const row = await makeSession({ sessionDate: addDaysISO(MON, 28), startTime: '11:30' });
+    await http.delete(`/api/schedule/${row.id}`).set(auth('admin')).expect(200);
+    const restored = (await http.post(`/api/schedule/${row.id}/restore`).set(auth('manager')).expect(201)).body;
+    expect(restored.row.id).toBe(row.id);
+    const back = (await http.get(`/api/schedule?from=${addDaysISO(MON, 28)}&to=${addDaysISO(MON, 28)}`)
+      .set(auth('admin')).expect(200)).body.find((r: { id: number }) => r.id === row.id);
+    expect(back).toBeDefined(); // 캘린더에 재등장
+    await http.post(`/api/schedule/${row.id}/restore`).set(auth('manager')).expect(404); // 이미 활성
+    await http.post(`/api/schedule/${row.id}/restore`).set(auth('park_inst')).expect(403);
+  });
+
   it('⑥ 강사 payouts = paid만 — me 필터·단건 403·산정 라우트 404', async () => {
     // 픽스처 정산 1건은 jung_inst(강사2) 소유 pending — 강사2 me 목록은 paid만이라 빈 배열
     const mine = (await http.get('/api/payouts/me').set(auth('jung_inst')).expect(200)).body;

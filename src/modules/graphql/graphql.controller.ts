@@ -1,4 +1,4 @@
-import { BadRequestException, Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Logger, BadRequestException, Body, Controller, Post, UseGuards } from '@nestjs/common';
 import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
@@ -12,7 +12,7 @@ import { CounselService } from '../counsel/counsel.service';
 import { PayoutsService } from '../payouts/payouts.service';
 import { assertDayRange } from '../../common/day-range';
 import { schema } from './graphql.schema';
-import { computeFinanceSummary, computeRevenueReport } from './revenue-analytics';
+import { computeCeoDashboard, computeFinanceSummary, computeRevenueReport } from './revenue-analytics';
 
 const MAX_DEPTH = 6;
 
@@ -31,6 +31,8 @@ function maxDepthOf(doc: DocumentNode): number {
   }
   return max;
 }
+
+const ceoLogger = new Logger('analytics'); // [TBO-60] 기간 파라미터 로그(§4 관측성)
 
 /**
  * [TBO-46 G1 2026-07-23] GraphQL 매출·경영 조회 게이트웨이 — **읽기 전용**(스키마에 Mutation 없음),
@@ -104,6 +106,14 @@ export class GraphqlGatewayController {
         };
       },
       uncoveredPayouts: (args: { months?: number }) => this.payouts.uncoveredFresh(args.months ?? undefined), // [TBO-56 C2b]
+      // [TBO-60 2026-07-24] 대표 대시보드 — 한 snapshot(REPEATABLE READ)에서 D1(finance)+D2+D3+D6 파생.
+      //  [analytics] 로그에 기간 파라미터 포함(TBO-58 §4 일부 선해소)은 저장소 스냅샷 로그와 함께 아래에서.
+      ceoDashboard: async (args: { from?: string; to?: string }) => {
+        const value = range(args);
+        const snapshot = await this.analytics.revenue();
+        ceoLogger.log(`query=ceoDashboard from=${value.from ?? '-'} to=${value.to ?? '-'}`); // [analytics] 기간 파라미터
+        return computeCeoDashboard(snapshot, value, new Date().toISOString().slice(0, 10));
+      },
     };
 
     const result = await graphql({
