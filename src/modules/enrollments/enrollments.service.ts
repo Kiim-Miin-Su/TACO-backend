@@ -43,6 +43,22 @@ export class EnrollmentsService implements OnModuleInit {
     return this.withDerivedCompletedSessions([row])[0];
   }
 
+  /** [TBO-54 C2] 목록/상세 READ = DB 권위(행 원부). 파생 completedSessions는 세션
+   *  읽기모델(EP2 TTL hydrate — staleness 유계) 기반 — 세션 전환은 후속 청크. */
+  async listDb(studentId?: number): Promise<Enrollment[]> {
+    const rows = await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, {
+      where: studentId == null ? undefined : ({ studentId } as Partial<Enrollment>),
+      orderBy: { field: 'id' },
+    });
+    return this.withDerivedCompletedSessions(rows);
+  }
+
+  async getDb(id: number): Promise<Enrollment> {
+    const [row] = await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, { where: { id } as Partial<Enrollment>, limit: 1 });
+    if (!row) throw new NotFoundException(`Enrollment ${id} not found`);
+    return this.withDerivedCompletedSessions([row])[0];
+  }
+
   // 결제 없이도 등록 가능 (status=active). actorId 없으면(시드·내부 경로) audit 생략.
   async create(dto: CreateEnrollmentDto, actorId?: number): Promise<Enrollment> {
     return this.uow.run(async () => {

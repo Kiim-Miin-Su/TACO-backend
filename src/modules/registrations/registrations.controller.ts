@@ -37,8 +37,8 @@ export class RegistrationsController {
   @Get(':id/aggregate')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '학생 프로필·희망 수업·보호자·수강·학사 이력 aggregate 조회 [역할별 최소화]' })
-  getAggregate(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
-    const aggregate = this.registrations.getAggregate(id);
+  async getAggregate(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    const aggregate = await this.registrations.getAggregate(id); // [TBO-54 C2] DB 권위 READ
     if (!isInstructorOnly(req.user?.roles)) return aggregate;
     const { student, interests, guardians } = aggregate;
     return { student, interests, guardians };

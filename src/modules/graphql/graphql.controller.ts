@@ -7,19 +7,12 @@ import {
 } from 'graphql';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
-import { InMemoryDatabase } from '../../database/in-memory.database';
+import { DbAnalyticsSnapshotRepository } from '../../database/db-analytics-snapshot.repository';
 import { CounselService } from '../counsel/counsel.service';
 import { PayoutsService } from '../payouts/payouts.service';
 import { assertDayRange } from '../../common/day-range';
 import { schema } from './graphql.schema';
-import { computeFinanceSummary, computeRevenueReport, type RevenueSnapshot } from './revenue-analytics';
-import { Payment, PAYMENTS } from '../payments/payment.entity';
-import { Expense, EXPENSES } from '../expenses/expense.entity';
-import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
-import { Course, COURSES } from '../courses/course.entity';
-import { Subject, SUBJECTS } from '../subjects/subject.entity';
-import { Student, STUDENTS } from '../students/student.entity';
-import { PAYOUTS, type InstructorPayoutRow } from '../payouts/payout.entity';
+import { computeFinanceSummary, computeRevenueReport } from './revenue-analytics';
 
 const MAX_DEPTH = 6;
 
@@ -51,22 +44,10 @@ function maxDepthOf(doc: DocumentNode): number {
 @Controller('graphql')
 export class GraphqlGatewayController {
   constructor(
-    private readonly db: InMemoryDatabase,
+    private readonly analytics: DbAnalyticsSnapshotRepository, // [TBO-54 C2] P0-4 — DB 단일 snapshot
     private readonly counsel: CounselService,
     private readonly payouts: PayoutsService,
   ) {}
-
-  private revenueSnapshot(): RevenueSnapshot {
-    return {
-      payments: this.db.findAll<Payment>(PAYMENTS),
-      enrollments: this.db.findAll<Enrollment>(ENROLLMENTS),
-      courses: this.db.findAll<Course>(COURSES),
-      subjects: this.db.findAll<Subject>(SUBJECTS),
-      students: this.db.findAll<Student>(STUDENTS),
-      expenses: this.db.findAll<Expense>(EXPENSES),
-      payouts: this.db.findAll<InstructorPayoutRow>(PAYOUTS),
-    };
-  }
 
   @Post()
   @Roles('super_admin')
@@ -99,10 +80,11 @@ export class GraphqlGatewayController {
     };
 
     const rootValue = {
-      revenueReport: (args: { from?: string; to?: string }) =>
-        computeRevenueReport(this.revenueSnapshot(), range(args)),
-      financeSummary: (args: { from?: string; to?: string }) =>
-        computeFinanceSummary(this.revenueSnapshot(), range(args)),
+      // [TBO-54 C2] 스냅샷 = DB 저장소(REPEATABLE READ 한 tx) — 프로세스 메모리 projection 금지(P0-4).
+      revenueReport: async (args: { from?: string; to?: string }) =>
+        computeRevenueReport(await this.analytics.revenue(), range(args)),
+      financeSummary: async (args: { from?: string; to?: string }) =>
+        computeFinanceSummary(await this.analytics.revenue(), range(args)),
       counselFunnel: async (args: { from?: string; to?: string }) => {
         const funnel = await this.counsel.funnel(range(args)); // REST와 같은 서비스 경로
         return {

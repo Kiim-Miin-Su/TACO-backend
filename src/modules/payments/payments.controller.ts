@@ -30,14 +30,14 @@ export class PaymentsController {
   @Roles('super_admin') // [TBO-21 RBAC] 결제·수납은 돈 관련 정보 → 대표 전용
   @ApiOperation({ summary: '결제·수납 목록 [대표]' })
   findAll() {
-    return this.payments.findAll();
+    return this.payments.listDb(); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get(':id')
   @Roles('super_admin')
   @ApiOperation({ summary: '결제·수납 상세 [대표]' })
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.payments.findOne(id);
+    return this.payments.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 
   @Post()

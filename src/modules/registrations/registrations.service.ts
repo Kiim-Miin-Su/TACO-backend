@@ -87,8 +87,8 @@ export class RegistrationsService {
     });
   }
 
-  getAggregate(studentId: number): StudentAggregate {
-    return this.students.findAggregate(studentId);
+  getAggregate(studentId: number): Promise<StudentAggregate> {
+    return this.students.findAggregateDb(studentId); // [TBO-54 C2] DB 권위 READ
   }
 
   async updateAggregate(studentId: number, dto: UpdateStudentAggregateDto, actorId: number): Promise<StudentAggregate> {

@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
   ENROLLMENTS_SPEC, PARENTS_SPEC, PARENT_STUDENT_RELATIONS_SPEC, PAYMENTS_SPEC, STUDENTS_SPEC, TRANSACTIONS_SPEC,
@@ -24,6 +24,9 @@ import { Parent, ParentStudent } from '../parents/parent.entity';
  */
 @Injectable()
 export class PaymentsService implements OnModuleInit {
+  // [TBO-54 C2 대표 지시 콘솔 로깅] 머니 전이 관측 — allowlist(action·id·actor·금액·결과)만, PII 0.
+  private readonly moneyLog = new Logger('money');
+
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
@@ -43,6 +46,15 @@ export class PaymentsService implements OnModuleInit {
     const row = this.db.findById<Payment>(PAYMENTS, id);
     if (!row) throw new NotFoundException(`Payment ${id} not found`);
     return row;
+  }
+
+  /** [TBO-54 C2] 목록/상세 READ = DB 권위(다른 인스턴스의 청구·수납·환불 즉시 반영). */
+  listDb(): Promise<Payment[]> {
+    return this.store.findActive<Payment>(PAYMENTS_SPEC, { orderBy: { field: 'id' } });
+  }
+
+  getDb(id: number): Promise<Payment> {
+    return this.paymentFromDb(id);
   }
 
   /** [TBO-53 C1] lock 뒤 판정용 DB 재조회 — PG 미가용(메모리 모드)일 땐 메모리 행이 그대로 권위. */
@@ -111,7 +123,13 @@ export class PaymentsService implements OnModuleInit {
       }
       // 상태 CAS — 정정과 수납이 겹치면 한쪽만 성공(수납 뒤 금액 정정이 원장을 오염시키지 않도록).
       const after = await this.store.updateIf<Payment>(PAYMENTS_SPEC, id, { status: row.status }, { ...dto });
-      if (!after) throw new ConflictException('청구 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      if (!after) {
+        this.moneyLog.warn(`action=update payment=${id} actor=${actorId ?? 0} result=conflict(cas)`);
+        throw new ConflictException('청구 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      }
+      if (dto.amount !== undefined && dto.amount !== row.amount) {
+        this.moneyLog.log(`action=update payment=${id} actor=${actorId ?? 0} amount=${row.amount}->${after.amount} result=amended`);
+      }
       // [감사 전수 2026-07-16] 청구 정정 diff 이력 — DB before/after 기준.
       if (actorId != null) {
         await this.audit.log({ entity: 'payments', entityId: id, action: 'update', actorId, changes: this.audit.diffOf(row, after) });
@@ -138,7 +156,10 @@ export class PaymentsService implements OnModuleInit {
         paidAmount: row.amount,
         paidAt: now,
       });
-      if (!updated) throw new ConflictException('청구 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      if (!updated) {
+        this.moneyLog.warn(`action=markPaid payment=${id} actor=${actorId ?? 0} result=conflict(cas)`);
+        throw new ConflictException('청구 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      }
       // [자산화 점검 2026-07-02] 수납 = 통합 원장(transactions)에 입금 1줄 — payouts.pay와 동일 패턴.
       //  [C1] 원장 금액은 CAS **반환 행**(DB 권위)만 사용 — payment·ledger 동일 스냅샷 보장.
       const tx = await this.store.insert<Transaction>(TRANSACTIONS_SPEC, {
@@ -160,6 +181,7 @@ export class PaymentsService implements OnModuleInit {
           changes: { direction: { after: 'in' }, category: { after: 'enrollment' }, amount: { after: tx.amount } },
         });
       }
+      this.moneyLog.log(`action=markPaid payment=${id} actor=${actorId ?? 0} amount=${updated.paidAmount} ledgerTx=${tx.id} result=paid`);
       return updated;
     });
   }
@@ -174,7 +196,10 @@ export class PaymentsService implements OnModuleInit {
       const now = new Date().toISOString();
       // [C1] {status, paidAmount} CAS — 환불 금액은 실제 수납 금액(DB)과 반드시 일치.
       const updated = await this.store.updateIf<Payment>(PAYMENTS_SPEC, id, { status: 'paid', paidAmount: row.paidAmount }, { status: 'refunded' });
-      if (!updated) throw new ConflictException('청구 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      if (!updated) {
+        this.moneyLog.warn(`action=refund payment=${id} actor=${actorId ?? 0} result=conflict(cas)`);
+        throw new ConflictException('청구 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      }
       const tx = await this.store.insert<Transaction>(TRANSACTIONS_SPEC, {
         direction: 'out',
         category: 'refund',
@@ -194,6 +219,7 @@ export class PaymentsService implements OnModuleInit {
           changes: { direction: { after: 'out' }, category: { after: 'refund' }, amount: { after: tx.amount } },
         });
       }
+      this.moneyLog.log(`action=refund payment=${id} actor=${actorId ?? 0} amount=${tx.amount} ledgerTx=${tx.id} result=refunded`);
       return updated;
     });
   }

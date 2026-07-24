@@ -36,6 +36,12 @@ export class EventsService implements OnModuleInit {
       .sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : a.id - b.id));
   }
 
+  /** [TBO-54 C2] 목록 READ = DB 권위(정렬 계약 동일 — startDate asc, tie는 id). */
+  async listDb(): Promise<AcademyEvent[]> {
+    const rows = await this.store.findActive<AcademyEvent>(ACADEMY_EVENTS_SPEC, { orderBy: { field: 'startDate' } });
+    return rows.sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : a.id - b.id));
+  }
+
   // 무결성 게이트: 캘린더 구간이 유효해야 함(종료일 ≥ 시작일). 위반 시 400.
   async create(dto: CreateEventDto, actorId: number): Promise<AcademyEvent> {
     if (dto.endDate < dto.startDate) {

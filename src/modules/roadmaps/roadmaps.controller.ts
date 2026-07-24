@@ -23,14 +23,14 @@ export class RoadmapsController {
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '로드맵 목록(코스 조인 aggregate — sortOrder 정렬) [전 직원]' })
   findAll() {
-    return this.roadmaps.findAll();
+    return this.roadmaps.listDb(); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get(':id')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '로드맵 단건(코스 조인 aggregate). 없는 id=404. [전 직원]' })
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.roadmaps.findOne(id);
+    return this.roadmaps.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 
   @Post()

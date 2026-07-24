@@ -24,7 +24,7 @@ export class EventsController {
   @ApiOperation({ summary: '학원 이벤트/공지 목록(AcademyEvent[]) — 캘린더 표시(시작일 오름차순)' })
   @ApiOkResponse({ description: 'AcademyEvent[] — title·type·priority·startDate·endDate·allDay·memo' })
   findAll() {
-    return this.events.findAll();
+    return this.events.listDb(); // [TBO-54 C2] DB 권위 READ
   }
 
   // [TBO-29D 요구 ⑥] CUD는 매니저 이상(ADMIN_ROLES) — 조회는 강사 포함 전 직원(위 GET).

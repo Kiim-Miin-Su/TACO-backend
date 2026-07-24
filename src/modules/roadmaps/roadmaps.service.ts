@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { ROADMAPS_SPEC, ROADMAP_COURSES_SPEC } from '../../database/calendar-asset-specs';
+import { COURSES_SPEC as COURSES_SPEC_REF, ROADMAPS_SPEC, ROADMAP_COURSES_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
@@ -59,6 +59,37 @@ export class RoadmapsService implements OnModuleInit {
     return this.db.findAll<Roadmap>(ROADMAPS)
       .sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.id - b.id)
       .map((roadmap) => this.toAggregate(roadmap));
+  }
+
+  /** [TBO-54 C2] 목록/단건 READ = DB 권위 — 로드맵·링크·코스명 조인을 전부 findActive로 조립. */
+  async listDb(): Promise<RoadmapAggregate[]> {
+    const [roadmaps, links, courses] = await Promise.all([
+      this.store.findActive<Roadmap>(ROADMAPS_SPEC),
+      this.store.findActive<RoadmapCourse>(ROADMAP_COURSES_SPEC),
+      this.store.findActive<Course>(COURSES_SPEC_REF),
+    ]);
+    const courseById = new Map(courses.map((course) => [course.id, course]));
+    const aggregate = (roadmap: Roadmap): RoadmapAggregate => ({
+      ...roadmap,
+      courses: links.filter((link) => link.roadmapId === roadmap.id)
+        .sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id)
+        .map((link) => {
+          const course = courseById.get(link.courseId);
+          return {
+            linkId: link.id, courseId: link.courseId, sortOrder: link.sortOrder,
+            courseName: course?.name ?? `코스 #${link.courseId}`, subjectId: course?.subjectId ?? 0,
+          };
+        }),
+    });
+    return roadmaps
+      .sort((a, b) => Number(b.isActive) - Number(a.isActive) || a.id - b.id)
+      .map(aggregate);
+  }
+
+  async getDb(id: number): Promise<RoadmapAggregate> {
+    const row = (await this.listDb()).find((roadmap) => roadmap.id === id);
+    if (!row) throw new NotFoundException(`Roadmap ${id} not found`);
+    return row;
   }
 
   findOne(id: number): RoadmapAggregate {

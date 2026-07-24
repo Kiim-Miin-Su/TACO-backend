@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { DbAnalyticsSnapshotRepository } from '../../database/db-analytics-snapshot.repository';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { COUNSEL_FORMS_SPEC, COUNSEL_ROUNDS_SPEC } from '../../database/calendar-asset-specs';
@@ -43,6 +44,7 @@ export class CounselService implements OnModuleInit {
     private readonly uow: CalendarUnitOfWork,
     private readonly audit: AuditService,
     private readonly students: StudentsService,
+    private readonly analytics: DbAnalyticsSnapshotRepository, // [TBO-54 C2] 분석 조인 4표 DB snapshot
   ) {}
 
   // 상담의 학생 프로필·보호자·관심 수업은 student aggregate만 권위다.
@@ -274,14 +276,22 @@ export class CounselService implements OnModuleInit {
         counselFormId: round.counselFormId, roundNo: round.roundNo,
         result: round.result ?? null, completedAt: round.completedAt ?? null,
       })),
-      interests: this.db.findAll<StudentInterest>(STUDENT_INTERESTS).map((interest) => ({
+      ...(await this.joinTables()),
+    };
+  }
+
+  // [TBO-54 C2] 조인 4표 = DB 단일 snapshot 저장소(P0-4) — 메모리 projection 금지.
+  private async joinTables(): Promise<Pick<CounselAnalyticsSnapshot, 'interests' | 'enrollments' | 'courses' | 'subjects'>> {
+    const tables = await this.analytics.counselJoins();
+    return {
+      interests: tables.interests.map((interest) => ({
         studentId: interest.studentId, courseId: interest.courseId ?? null, customLabel: interest.customLabel ?? null,
       })),
-      enrollments: this.db.findAll<Enrollment>(ENROLLMENTS).map((enrollment) => ({
+      enrollments: tables.enrollments.map((enrollment) => ({
         studentId: enrollment.studentId, courseId: enrollment.courseId, status: enrollment.status,
       })),
-      courses: this.db.findAll<Course>(COURSES).map((course) => ({ id: course.id, subjectId: course.subjectId })),
-      subjects: this.db.findAll<Subject>(SUBJECTS).map((subject) => ({ id: subject.id, name: subject.name })),
+      courses: tables.courses.map((course) => ({ id: course.id, subjectId: course.subjectId })),
+      subjects: tables.subjects.map((subject) => ({ id: subject.id, name: subject.name })),
     };
   }
 

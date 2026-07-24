@@ -19,14 +19,14 @@ export class ExpensesController {
   @Roles('super_admin') // [TBO-21 RBAC] 지출은 돈 관련 정보 → 대표 전용
   @ApiOperation({ summary: '지출 목록 [대표]' })
   findAll() {
-    return this.expenses.findAll();
+    return this.expenses.listDb(); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get(':id')
   @Roles('super_admin')
   @ApiOperation({ summary: '지출 상세 [대표]' })
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.expenses.findOne(id);
+    return this.expenses.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 
   @Post()

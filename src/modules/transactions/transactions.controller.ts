@@ -16,6 +16,6 @@ export class TransactionsController {
   @ApiOperation({ summary: '입·출금 통합 원장(Transaction[]) — 대시보드 매출/지출 집계용 [대표]' })
   @ApiOkResponse({ description: 'Transaction[] — direction(in/out)·category·label·amount·method·occurredAt' })
   findAll() {
-    return this.transactions.findAll();
+    return this.transactions.listDb(); // [TBO-54 C2] DB 권위 READ
   }
 }

@@ -26,6 +26,17 @@ export class ExpensesService implements OnModuleInit {
     return this.db.findAll<Expense>(EXPENSES);
   }
 
+  /** [TBO-54 C2] 목록/상세 READ = DB 권위. */
+  listDb(): Promise<Expense[]> {
+    return this.store.findActive<Expense>(EXPENSES_SPEC, { orderBy: { field: 'id' } });
+  }
+
+  async getDb(id: number): Promise<Expense> {
+    const [row] = await this.store.findActive<Expense>(EXPENSES_SPEC, { where: { id } as Partial<Expense>, limit: 1 });
+    if (!row) throw new NotFoundException(`Expense ${id} not found`);
+    return row;
+  }
+
   findOne(id: number): Expense {
     const row = this.db.findById<Expense>(EXPENSES, id);
     if (!row) throw new NotFoundException(`Expense ${id} not found`);

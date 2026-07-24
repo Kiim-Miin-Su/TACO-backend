@@ -23,4 +23,9 @@ export class TransactionsService implements OnModuleInit {
   findAll(): Transaction[] {
     return this.db.findAll<Transaction>(TRANSACTIONS);
   }
+
+  /** [TBO-54 C2] 목록 READ = DB 권위(다른 인스턴스의 수납·환불 원장도 즉시 반영). */
+  listDb(): Promise<Transaction[]> {
+    return this.store.findActive<Transaction>(TRANSACTIONS_SPEC, { orderBy: { field: 'id' } });
+  }
 }

@@ -29,7 +29,7 @@ export class StudentsController {
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '학생 원부 목록 조회(soft delete 제외, 퇴원·등록이탈 포함) [전 직원]' })
   findAll() {
-    return this.students.findAll();
+    return this.students.listDb(); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get(':id/family-relations')
@@ -126,7 +126,7 @@ export class StudentsController {
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '학생 단건 프로필 조회 [전 직원]' })
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.students.findOne(id);
+    return this.students.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 
   @Delete(':id')

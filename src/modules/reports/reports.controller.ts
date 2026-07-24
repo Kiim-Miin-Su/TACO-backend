@@ -22,16 +22,14 @@ export class ReportsController {
   @ApiQuery({ name: 'sessionId', required: false })
   findAll(@Req() req: Request & { user?: JwtClaims }, @Query('sessionId') sessionId?: string) {
     const actor = req.user ? { id: req.user.sub, roles: req.user.roles } : undefined;
-    return sessionId
-      ? this.reports.findBySessionForActor(Number(sessionId), actor)
-      : this.reports.findAllForActor(actor);
+    return this.reports.listDbForActor(actor, sessionId ? Number(sessionId) : undefined); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '보고서 단건 — 강사는 본인 보고서만(404→403 표준). [B7 E3 스코프 갭 수정]' })
   findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
-    return this.reports.findOne(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
+    return this.reports.getDbForActor(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined); // [TBO-54 C2]
   }
 
   @Post()

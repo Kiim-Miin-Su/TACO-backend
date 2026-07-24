@@ -3,6 +3,7 @@ import type { StudentAggregate } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
   ENROLLMENTS_SPEC,
+  PARENTS_SPEC,
   PARENT_STUDENT_RELATIONS_SPEC,
   STUDENT_ACADEMIC_HISTORIES_SPEC,
   STUDENT_FAMILY_RELATIONS_SPEC,
@@ -52,6 +53,44 @@ export class StudentsService implements OnModuleInit {
     const student = this.db.findById<Student>(STUDENTS, id);
     if (!student) throw new NotFoundException(`Student ${id} not found`);
     return { ...student };
+  }
+
+  /** [TBO-54 C2] 목록/상세/aggregate READ = DB 권위(다른 인스턴스의 등록·퇴원 즉시 반영). */
+  listDb(): Promise<Student[]> {
+    return this.store.findActive<Student>(STUDENTS_SPEC, { orderBy: { field: 'id' } });
+  }
+
+  async getDb(id: number): Promise<Student> {
+    const [row] = await this.store.findActive<Student>(STUDENTS_SPEC, { where: { id } as Partial<Student>, limit: 1 });
+    if (!row) throw new NotFoundException(`Student ${id} not found`);
+    return row;
+  }
+
+  /** aggregate 구성 표 5종을 전부 findActive로 조립 — 조인·정렬 계약은 메모리판과 동일. */
+  async findAggregateDb(id: number): Promise<StudentAggregate> {
+    const student = await this.getDb(id);
+    const relations = await this.store.findActive<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC, {
+      where: { studentId: id } as Partial<ParentStudent>,
+    });
+    const guardians = (await Promise.all(relations.map(async (relation) => ({
+      parent: (await this.store.findActive<Parent>(PARENTS_SPEC, { where: { id: relation.parentId } as Partial<Parent>, limit: 1 }))[0],
+      relation,
+    }))))
+      .filter((entry): entry is { parent: Parent; relation: ParentStudent } => entry.parent != null)
+      .sort((a, b) => Number(b.relation.isPrimary) - Number(a.relation.isPrimary) || a.relation.id - b.relation.id);
+    const [familyA, familyB] = await Promise.all([
+      this.store.findActive<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC, { where: { studentIdA: id } as Partial<StudentFamilyRelation> }),
+      this.store.findActive<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC, { where: { studentIdB: id } as Partial<StudentFamilyRelation> }),
+    ]);
+    return {
+      student,
+      interests: (await this.store.findActive<StudentInterest>(STUDENT_INTERESTS_SPEC, { where: { studentId: id } as Partial<StudentInterest> }))
+        .sort((a, b) => a.priority - b.priority || a.id - b.id),
+      guardians,
+      familyRelations: [...familyA, ...familyB].sort((a, b) => a.id - b.id),
+      academicHistories: (await this.store.findActive<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC, { where: { studentId: id } as Partial<StudentAcademicHistory> }))
+        .sort((a, b) => a.startedOn.localeCompare(b.startedOn) || a.id - b.id),
+    };
   }
 
   /**

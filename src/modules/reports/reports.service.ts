@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { SESSION_REPORTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -31,6 +31,9 @@ const actorIsAdmin = (actor?: ReportActor) => !!actor && actor.roles.some((r) =>
  */
 @Injectable()
 export class ReportsService implements OnModuleInit {
+  // [TBO-54 C2 대표 지시 콘솔 로깅] 전이 관측 — allowlist(action·id·actor·상태 전이·결과)만, 본문·PII 0.
+  private readonly transitionLog = new Logger('report-transition');
+
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
@@ -65,6 +68,36 @@ export class ReportsService implements OnModuleInit {
       const session = this.db.findById<ClassSession>(SESSIONS, report.sessionId);
       return !!session && isSessionVisibleToInstructor(session, actor.id);
     });
+  }
+
+  /** [TBO-54 C2] 목록 READ = DB 권위(행 원부). 강사 가시성 필터는 세션 읽기모델
+   *  (EP2 TTL hydrate — staleness 유계) 기반 — 세션 전환은 후속 청크. */
+  async listDbForActor(actor?: ReportActor, sessionId?: number): Promise<SessionReportRow[]> {
+    const rows = await this.store.findActive<SessionReportRow>(SESSION_REPORTS_SPEC, {
+      where: sessionId == null ? undefined : ({ sessionId } as Partial<SessionReportRow>),
+      orderBy: { field: 'id' },
+    });
+    if (sessionId != null && actor && !actorIsAdmin(actor)) {
+      const session = this.db.findById<ClassSession>(SESSIONS, sessionId);
+      if (session && !isSessionVisibleToInstructor(session, actor.id))
+        throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
+    }
+    if (!actor || actorIsAdmin(actor)) return rows;
+    return rows.filter((report) => {
+      const session = this.db.findById<ClassSession>(SESSIONS, report.sessionId);
+      return !!session && isSessionVisibleToInstructor(session, actor.id);
+    });
+  }
+
+  /** [TBO-54 C2] 단건 READ = DB 권위 + 기존 스코프 규칙(404→403 표준) 유지. */
+  async getDbForActor(id: number, actor?: ReportActor): Promise<SessionReportRow> {
+    const row = await this.reportFromDb(id);
+    if (actor && !actorIsAdmin(actor)) {
+      const session = this.db.findById<ClassSession>(SESSIONS, row.sessionId);
+      if (!session || !isSessionVisibleToInstructor(session, actor.id))
+        throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
+    }
+    return row;
   }
 
   // [B7 E3 2026-07-16] 단건 GET 스코프 갭 수정 — 종전엔 오너 체크가 쓰기(create/update/submit)에만
@@ -246,7 +279,11 @@ export class ReportsService implements OnModuleInit {
         approvedAt: new Date().toISOString(),
         approvedBy,
       });
-      if (!after) throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      if (!after) {
+        this.transitionLog.warn(`action=approve report=${id} actor=${approvedBy ?? 0} result=conflict(cas)`);
+        throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      }
+      this.transitionLog.log(`action=approve report=${id} actor=${approvedBy ?? 0} transition=submitted->approved`);
       // [감사 전수 2026-07-16] 승인 = 시수 적격 편입 근거(0=시스템 시드는 생략).
       if (approvedBy != null && approvedBy > 0) {
         await this.audit.log({
@@ -281,7 +318,11 @@ export class ReportsService implements OnModuleInit {
         approvalStatus: 'rejected',
         rejectedReason: reason ?? '사유 미기재',
       });
-      if (!after) throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      if (!after) {
+        this.transitionLog.warn(`action=reject report=${id} actor=${actorId ?? 0} result=conflict(cas)`);
+        throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
+      }
+      this.transitionLog.log(`action=reject report=${id} actor=${actorId ?? 0} transition=${beforeStatus}->rejected`);
       // [감사 전수 2026-07-16] 반려 이력(사유 포함).
       if (actorId != null && actorId > 0) {
         await this.audit.log({

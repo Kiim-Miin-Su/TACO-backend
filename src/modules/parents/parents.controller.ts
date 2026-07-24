@@ -23,7 +23,7 @@ export class ParentsController {
   @ApiOperation({ summary: '보호자 목록(Parent[])' })
   @ApiOkResponse({ description: 'Parent[] — name·phone·kakaoAvailable' })
   findAll() {
-    return this.parents.findAll();
+    return this.parents.listDb(); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get('relations')
@@ -31,14 +31,14 @@ export class ParentsController {
   @ApiOperation({ summary: '학생↔보호자 관계(ParentStudent[]) — M:N(대표/납부자)' })
   @ApiOkResponse({ description: 'ParentStudent[] — parentId·studentId·relation·isPayer·isPrimary' })
   findAllRelations() {
-    return this.parents.findAllRelations();
+    return this.parents.listRelationsDb(); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get(':id')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '보호자 단건과 학생 연결 정보 조회 [전 직원]' })
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.parents.findOne(id);
+    return this.parents.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 
   @Post()

@@ -52,6 +52,21 @@ export class ParentsService implements OnModuleInit {
     return parent;
   }
 
+  /** [TBO-54 C2] 목록/관계/상세 READ = DB 권위(다른 인스턴스 등록·해제 즉시 반영). */
+  listDb(): Promise<Parent[]> {
+    return this.store.findActive<Parent>(PARENTS_SPEC, { orderBy: { field: 'id' } });
+  }
+
+  listRelationsDb(): Promise<ParentStudent[]> {
+    return this.store.findActive<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC, { orderBy: { field: 'id' } });
+  }
+
+  async getDb(id: number): Promise<Parent> {
+    const [row] = await this.store.findActive<Parent>(PARENTS_SPEC, { where: { id } as Partial<Parent>, limit: 1 });
+    if (!row) throw new NotFoundException(`보호자 ${id} 없음`);
+    return row;
+  }
+
   guardiansForStudent(studentId: number): Array<{ parent: Parent; relation: ParentStudent }> {
     return this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'studentId', studentId)
       .map((relation) => ({ parent: this.db.findById<Parent>(PARENTS, relation.parentId), relation }))

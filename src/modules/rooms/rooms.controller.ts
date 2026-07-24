@@ -18,14 +18,14 @@ export class RoomsController {
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '강의실과 정원 목록 조회 [전 직원]' })
   findAll() {
-    return this.rooms.findAll();
+    return this.rooms.listDb(); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '강의실 단건 조회 [전 직원]' })
   findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.rooms.findOne(id);
+    return this.rooms.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 
   @Post()

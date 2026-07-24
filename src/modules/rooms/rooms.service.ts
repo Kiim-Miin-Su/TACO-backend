@@ -32,6 +32,17 @@ export class RoomsService implements OnModuleInit {
     return row;
   }
 
+  /** [TBO-54 C2] 목록/상세 READ = DB 권위. */
+  listDb(): Promise<Room[]> {
+    return this.store.findActive<Room>(ROOMS_SPEC, { orderBy: { field: 'id' } });
+  }
+
+  async getDb(id: number): Promise<Room> {
+    const [row] = await this.store.findActive<Room>(ROOMS_SPEC, { where: { id } as Partial<Room>, limit: 1 });
+    if (!row) throw new NotFoundException(`Room ${id} not found`);
+    return row;
+  }
+
   // actorId 없으면(시드·내부 경로) audit 생략. 쓰기+audit 한 tx(uow).
   async create(dto: CreateRoomDto, actorId?: number): Promise<Room> {
     return this.uow.run(async () => {
