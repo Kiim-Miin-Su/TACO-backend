@@ -28,6 +28,8 @@ import { LoginDto } from './dto/login.dto';
 import { SignupDto } from './dto/signup.dto';
 import { CompleteRecoverIdDto, ConfirmSignupEmailChallengeDto, CreateSignupEmailChallengeDto, ReauthDto, ResetPasswordOtpDto } from './dto/signup-email-challenge.dto';
 import { SignupEmailChallengesService } from './signup-email-challenges.service';
+import { ConfirmSignupPhoneChallengeDto, CreateSignupPhoneChallengeDto } from './dto/signup-phone-challenge.dto';
+import { SignupPhoneChallengesService } from './signup-phone-challenges.service';
 import { ApproveDto } from './dto/approve.dto';
 import { RejectDto } from './dto/reject.dto';
 import { SuperAdminGuard } from './super-admin.guard';
@@ -60,6 +62,7 @@ export class AuthController {
     private readonly events: AuthEventsService,
     private readonly refreshTokens: RefreshTokensService,
     private readonly signupChallenges: SignupEmailChallengesService,
+    private readonly signupPhoneChallenges: SignupPhoneChallengesService, // [TBO-57]
   ) {}
 
   // ── 가입 전 이메일 OTP → 가입 신청 → 대표 승인 → 로그인 ──
@@ -100,11 +103,45 @@ export class AuthController {
     return { available: !this.users.findByWebId(trimmed) };
   }
 
+  // 0-d) [TBO-57] 가입 전 휴대전화 OTP 발송 — 공개(비로그인). SENS 미설정: 비production은
+  //  devOtpCode 폴백(이메일판 관례), production은 503 fail-closed. 전화는 계정 유니크가 아니라
+  //  열거 방지 발송 생략 분기 없음(항상 발송).
+  @Post('signup-phone-challenge')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @ApiOperation({ summary: '가입 전 휴대전화 OTP 발송(공개) — 5회/분, 쿨다운 60초.' })
+  createSignupPhoneChallenge(@Body() dto: CreateSignupPhoneChallengeDto) {
+    return this.signupPhoneChallenges.create(dto.phone);
+  }
+
+  // 0-e) [TBO-57] 휴대전화 OTP 확인 — 실패 5회 잠금·만료 10분. 실패는 GENERIC 400(존재 은닉).
+  @Post('signup-phone-challenge/:id/confirm')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '가입 전 휴대전화 OTP 확인(공개) — 10회/분, 실패 5회 잠금, 성공 시 verified.' })
+  confirmSignupPhoneChallenge(@Param('id', ParseIntPipe) id: number, @Body() dto: ConfirmSignupPhoneChallengeDto) {
+    return this.signupPhoneChallenges.confirm(id, dto.phone, dto.code);
+  }
+
+  // 0-f) [TBO-57] 가입 폼 구성(공개) — 휴대전화 인증 필수 여부만 노출(SENS env 완비 판정).
+  //  FE 스테퍼 표시·submit 게이트와 BE 소비 게이트가 같은 판정을 본다(코드 수정 없는 활성화).
+  @Get('signup-config')
+  @Public()
+  @UseGuards(LoginThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @ApiOperation({ summary: '가입 폼 구성(공개) — { phoneVerificationRequired } 단일 필드, 10회/분.' })
+  signupConfig(): { phoneVerificationRequired: boolean } {
+    return { phoneVerificationRequired: this.signupPhoneChallenges.required() };
+  }
+
   // 1) 가입 신청 — [TBO-31 C1 D1] verified 이메일 OTP(emailChallengeId)를 가입 tx에서 일회 소비하고
   //  계정을 **emailVerified=true로 생성**한다(48h 인증 링크 단계 소멸 — sendVerifyEmail·devVerifyLink 제거).
+  //  [TBO-57] SENS 설정 시 휴대전화 OTP(phoneChallengeId)도 같은 tx에서 필수 소비.
   @Post('signup')
   @Public()
-  @ApiOperation({ summary: '가입 신청(대표 승인 대기) — 이메일 OTP 소비, emailVerified=true 생성.' })
+  @ApiOperation({ summary: '가입 신청(대표 승인 대기) — 이메일 OTP(+SENS 설정 시 휴대전화 OTP) 소비, emailVerified=true 생성.' })
   async signup(@Body() dto: SignupDto) {
     const { account } = await this.users.signup(dto);
     return {

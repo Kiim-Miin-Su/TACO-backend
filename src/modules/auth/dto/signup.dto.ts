@@ -30,10 +30,16 @@ export class SignupDto {
   @IsInt()
   emailChallengeId!: number;
 
+  // [TBO-57] 가입 전 휴대전화 OTP — SENS 설정 시 서버가 **필수**로 강제(같은 tx 일회 소비).
+  //  DTO에서는 optional: 필수 여부가 env(발신번호 승인) 단일 판정(signup-config와 동일 소스)이라
+  //  UsersService.signup 게이트가 권위다.
+  @IsOptional() @IsInt()
+  phoneChallengeId?: number;
+
   @IsOptional() @IsIn(SIGNUP_ROLES)
   role?: string;
 
-  // 전화 형식은 프로필 변경 규약과 동일(SMS 인증 유예 §13.87 — xxx-xxxx-xxxx만 우선 허용)
+  // 전화 형식은 프로필 변경 규약과 동일(SMS 인증 유예 해제 — TBO-57이 SENS 설정 시 OTP 필수화)
   @IsOptional() @Matches(/^\d{2,3}-\d{3,4}-\d{4}$/, { message: '전화번호는 010-1234-5678 형식으로 입력해 주세요.' })
   phone?: string;
 

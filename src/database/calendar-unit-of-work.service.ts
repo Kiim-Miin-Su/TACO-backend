@@ -30,6 +30,7 @@ export const LOCK_KIND = {
   roadmap: 16, // [TBO-47] 로드맵 수정·코스 연결/재정렬·삭제 직렬화
   payment: 17, // [TBO-53 C1] 수납·환불·정정 전이 직렬화 — lock 후 DB 재조회+CAS(원장 동일 스냅샷 보장)
   report: 18, // [TBO-53 C1] 보고서 제출·승인·반려·수정 전이 직렬화 — approval_status CAS의 choke point
+  signupPhoneChallenge: 19, // [TBO-57] 가입 전 휴대전화 OTP 확인/소비 직렬화(공개 흐름 — 이중 소비 차단)
   // ⚠ 관찰(기존): payout·course가 13을 공유 — 과직렬화(payout N ↔ course N 상호 대기 가능).
   //  분리는 TBO-50 §6 P2 방침대로 롤링 배포 상호배제 공백 없는 **단계적 전환**(C7)으로 수행한다.
 } as const;

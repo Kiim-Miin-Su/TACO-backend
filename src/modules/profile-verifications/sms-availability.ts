@@ -5,8 +5,14 @@
 //  · ⚠ 발신번호 사전등록이 승인되기 전에는 env를 넣지 말 것 — 넣는 순간 인증이 '필수'가 되는데
 //    발송이 실패해 전화번호 변경이 막힌다(2026-07-16 대표: 발신번호 승인 대기중 → env 주석 권고).
 export function smsChallengeAvailable(): boolean {
-  const sens = process.env.NCP_SENS_ACCESS_KEY && process.env.NCP_SENS_SECRET_KEY
-    && process.env.NCP_SENS_SERVICE_ID && process.env.NCP_SENS_FROM;
   const twilio = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN && process.env.TWILIO_VERIFY_SERVICE_SID;
-  return Boolean(sens || twilio);
+  return sensChallengeAvailable() || Boolean(twilio);
+}
+
+// [TBO-57 2026-07-24] 가입 폼 휴대전화 OTP 가용성 — **SENS 전용** 판정. Twilio Verify(legacy,
+//  provider 코드 소유)는 마이페이지 재인증 fallback으로만 남기고, 공개 가입 흐름은 서비스 코드
+//  소유(hash 대조) 규약이 강제되는 SENS만 지원한다(signup-phone-challenges.service 상단 주석).
+export function sensChallengeAvailable(): boolean {
+  return Boolean(process.env.NCP_SENS_ACCESS_KEY && process.env.NCP_SENS_SECRET_KEY
+    && process.env.NCP_SENS_SERVICE_ID && process.env.NCP_SENS_FROM);
 }

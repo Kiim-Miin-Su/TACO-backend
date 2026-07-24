@@ -54,6 +54,7 @@
     "db:migrate:schedule-request-memo": "ts-node scripts/migrate-schedule-request-memo.ts",
     "db:migrate:enrollment-course-unique": "ts-node scripts/migrate-enrollment-course-unique.ts",
     "db:migrate:payments-money-constraints": "ts-node scripts/migrate-payments-money-constraints.ts",
+    "db:migrate:signup-phone-challenges": "ts-node scripts/migrate-signup-phone-challenges.ts",
     "db:check:counsel-family-academic-contract": "ts-node scripts/check-counsel-family-academic-contract.ts",
     "db:repair:legacy-unverified-users": "ts-node scripts/repair-legacy-unverified-users.ts",
     "route-coverage": "node dist/scripts/e2e-route-coverage.js",

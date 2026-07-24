@@ -18,6 +18,7 @@ import {
   RRN_FORMAT_MESSAGE, birthYearFromRrn, decryptRrn, encryptRrn, maskRrn, normalizeRrn, validateRrnFormat,
 } from '../../common/rrn-crypto.util'; // [TBO-31 C1 D2]
 import { SignupEmailChallengesService } from '../auth/signup-email-challenges.service'; // [TBO-31 C1 D1]
+import { SignupPhoneChallengesService } from '../auth/signup-phone-challenges.service'; // [TBO-57]
 import { InstructorProfilesStore } from './instructor-profiles.store';
 import type { InstructorProfile } from './instructor-profiles.store';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
@@ -53,6 +54,9 @@ export class UsersService implements OnModuleInit {
     // [TBO-31 C1 D1] 가입 tx에서 이메일 OTP challenge를 일회 소비 — Users↔Auth 기존 forwardRef 순환 위.
     @Inject(forwardRef(() => SignupEmailChallengesService))
     private readonly signupChallenges: SignupEmailChallengesService,
+    // [TBO-57] 가입 tx에서 휴대전화 OTP challenge를 일회 소비(SENS 설정 시 필수) — 동일 forwardRef.
+    @Inject(forwardRef(() => SignupPhoneChallengesService))
+    private readonly signupPhoneChallenges: SignupPhoneChallengesService,
   ) {}
 
   private instructorAggregateOf(account: StaffAccount, profile: InstructorProfile): InstructorAggregate {
@@ -244,6 +248,8 @@ export class UsersService implements OnModuleInit {
   async signup(input: {
     webId: string; name: string; email: string; password: string; role?: string;
     rrn: string; emailChallengeId: number;
+    // [TBO-57] SENS 설정 시 필수(서비스 게이트) — verified 휴대전화 challenge를 같은 tx 소비.
+    phoneChallengeId?: number;
     // [E0.5 ④b] 대표 기대 필드 — 승인 판단 근거(승인센터 상세 표시 → 승인 tx에서 프로필 승계).
     phone?: string; university?: string; major?: string;
   }): Promise<{ account: SafeAccount }> {
@@ -287,6 +293,21 @@ export class UsersService implements OnModuleInit {
     });
     // [D1] challenge 소비 — verified·이메일 일치·미소비 검증. 실패 예외 → 계정 insert까지 롤백.
     await this.signupChallenges.consumeForSignup(input.emailChallengeId, email, acc.id);
+    // [TBO-57] 휴대전화 OTP 소비 — SENS 설정(required) 환경에서만 필수. 판정 단일 진실원 =
+    //  signupPhoneChallenges.required() (GET /auth/signup-config와 같은 소스 — FE 스테퍼·submit
+    //  게이트와 불일치 불가). 실패 예외 → 계정 insert까지 롤백(부분 상태 0).
+    {
+      const rawPhone = input.phone?.trim();
+      if (this.signupPhoneChallenges.required()) {
+        if (!rawPhone) throw new BadRequestException('휴대전화 번호를 입력해 주세요.');
+        if (input.phoneChallengeId == null) throw new BadRequestException('휴대전화 인증이 필요합니다. 인증을 먼저 완료해 주세요.');
+      }
+      // 비필수 환경에서도 제출된 challenge는 소비한다(개발·e2e에서 전체 흐름 검증 가능 — 판정만 env 게이트).
+      if (input.phoneChallengeId != null) {
+        if (!rawPhone) throw new BadRequestException('휴대전화 번호를 입력해 주세요.');
+        await this.signupPhoneChallenges.consumeForSignup(input.phoneChallengeId, rawPhone, acc.id);
+      }
+    }
     // [감사 전수 2026-07-16] 자기 가입 생성 이력 — actor=생성된 본인(추적 기점). PII·RRN은 기록 안 함
     //  (D2: rrn은 마스킹조차 남기지 않는다 — 기록 자체 생략).
     await this.audit.log({

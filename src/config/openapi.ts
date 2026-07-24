@@ -14,6 +14,10 @@ export const PUBLIC_OPENAPI_OPERATION_KEYS = new Set([
   'POST /api/auth/signup',
   'POST /api/auth/signup-email-challenge',
   'POST /api/auth/signup-email-challenge/{id}/confirm',
+  // [TBO-57] 가입 전 휴대전화 OTP + 가입 폼 구성 — 비로그인 공개(이메일 OTP 규약과 동일 스로틀)
+  'POST /api/auth/signup-phone-challenge',
+  'POST /api/auth/signup-phone-challenge/{id}/confirm',
+  'GET /api/auth/signup-config',
   'GET /api/auth/web-id-available',
   'GET /api/auth/verify-email',
   'POST /api/auth/login',

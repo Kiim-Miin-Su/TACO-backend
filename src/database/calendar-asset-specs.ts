@@ -332,6 +332,47 @@ export const SIGNUP_EMAIL_CHALLENGES_SPEC: PostgresCollectionSpec = {
   timestampFields: ['expiresAt', 'resendAvailableAt', 'verifiedAt', 'consumedAt'],
 };
 
+// [TBO-57 2026-07-24] 가입 전 휴대전화 OTP challenge — signup_email_challenges 미러(공개 흐름
+//  전용·분리 표). phone_normalized = E.164(libphonenumber KR 정규화 — profile-verifications 규약
+//  동일). 평문 코드는 저장·로그·응답 금지(salted sha256 hash만, 예외: 비production+SMS provider
+//  부재의 devOtpCode). 소비(consumed)는 가입 tx 안에서만 일어난다. Neon 적용은 migration
+//  20260724_01 owner-paste(런북) — createSql은 비운영 런타임 멱등 전용.
+export const SIGNUP_PHONE_CHALLENGES_SPEC: PostgresCollectionSpec = {
+  table: 'signup_phone_challenges',
+  createSql: `
+    CREATE TABLE IF NOT EXISTS signup_phone_challenges (
+      id serial PRIMARY KEY,
+      phone_normalized varchar(20) NOT NULL,
+      purpose varchar(16) NOT NULL DEFAULT 'signup' CHECK (purpose IN ('signup','recovery')),
+      code_hash varchar(64) NOT NULL,
+      status varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','verified','expired','locked','consumed')),
+      attempt_count integer NOT NULL DEFAULT 0 CHECK (attempt_count BETWEEN 0 AND 5),
+      resend_count integer NOT NULL DEFAULT 0 CHECK (resend_count BETWEEN 0 AND 5),
+      expires_at timestamptz NOT NULL,
+      resend_available_at timestamptz NOT NULL,
+      verified_at timestamptz,
+      consumed_at timestamptz,
+      consumed_by_user_id integer,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now(),
+      deleted_at timestamptz,
+      deleted_by integer,
+      CONSTRAINT signup_phone_challenge_expiry_check CHECK (expires_at > created_at),
+      CONSTRAINT signup_phone_challenge_state_check CHECK (
+        (status = 'pending' AND verified_at IS NULL AND consumed_at IS NULL AND consumed_by_user_id IS NULL)
+        OR (status = 'verified' AND verified_at IS NOT NULL AND consumed_at IS NULL AND consumed_by_user_id IS NULL)
+        OR (status = 'consumed' AND verified_at IS NOT NULL AND consumed_at IS NOT NULL)
+        OR (status IN ('expired','locked'))
+      )
+    )
+  `,
+  indexes: [
+    activeIndex('signup_phone_challenges', 'idx_signup_phone_challenges_phone_status', 'phone_normalized, status'),
+    activeIndex('signup_phone_challenges', 'idx_signup_phone_challenges_expires_at', 'expires_at'),
+  ],
+  timestampFields: ['expiresAt', 'resendAvailableAt', 'verifiedAt', 'consumedAt'],
+};
+
 // [TBO-28B] 인증 보안 이벤트(append-only) — 업무 audit_log와 분리(erd.dbml auth_events).
 //  password/password_hash/JWT/refresh token/raw IP/DB URL 저장 금지(불변식 §5-3).
 //  실패 로그인은 user_id 없이 attempted_web_id_hash만. update/remove 경로를 제공하지 않는다.

@@ -94,6 +94,90 @@
         "security": []
       }
     },
+    "/api/auth/signup-phone-challenge": {
+      "post": {
+        "operationId": "AuthController_createSignupPhoneChallenge",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateSignupPhoneChallengeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "가입 전 휴대전화 OTP 발송(공개) — 5회/분, 쿨다운 60초.",
+        "tags": [
+          "auth"
+        ],
+        "security": []
+      }
+    },
+    "/api/auth/signup-phone-challenge/{id}/confirm": {
+      "post": {
+        "operationId": "AuthController_confirmSignupPhoneChallenge",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "number"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfirmSignupPhoneChallengeDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": ""
+          }
+        },
+        "summary": "가입 전 휴대전화 OTP 확인(공개) — 10회/분, 실패 5회 잠금, 성공 시 verified.",
+        "tags": [
+          "auth"
+        ],
+        "security": []
+      }
+    },
+    "/api/auth/signup-config": {
+      "get": {
+        "operationId": "AuthController_signupConfig",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "summary": "가입 폼 구성(공개) — { phoneVerificationRequired } 단일 필드, 10회/분.",
+        "tags": [
+          "auth"
+        ],
+        "security": []
+      }
+    },
     "/api/auth/signup": {
       "post": {
         "operationId": "AuthController_signup",
@@ -113,7 +197,7 @@
             "description": ""
           }
         },
-        "summary": "가입 신청(대표 승인 대기) — 이메일 OTP 소비, emailVerified=true 생성.",
+        "summary": "가입 신청(대표 승인 대기) — 이메일 OTP(+SENS 설정 시 휴대전화 OTP) 소비, emailVerified=true 생성.",
         "tags": [
           "auth"
         ],
@@ -7242,6 +7326,46 @@
           "code"
         ]
       },
+      "CreateSignupPhoneChallengeDto": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "type": "string",
+            "minLength": 9,
+            "maxLength": 20,
+            "pattern": "^[\\d+\\-\\s]+$",
+            "example": "010-1234-5678",
+            "description": "가입에 사용할 휴대전화(소유 인증 대상)"
+          }
+        },
+        "required": [
+          "phone"
+        ]
+      },
+      "ConfirmSignupPhoneChallengeDto": {
+        "type": "object",
+        "properties": {
+          "phone": {
+            "type": "string",
+            "minLength": 9,
+            "maxLength": 20,
+            "pattern": "^[\\d+\\-\\s]+$",
+            "example": "010-1234-5678",
+            "description": "발송을 요청한 휴대전화(일치 필수)"
+          },
+          "code": {
+            "type": "string",
+            "minLength": 4,
+            "maxLength": 10,
+            "pattern": "^\\d+$",
+            "description": "수신한 인증 코드(6자리 숫자)"
+          }
+        },
+        "required": [
+          "phone",
+          "code"
+        ]
+      },
       "SignupDto": {
         "type": "object",
         "properties": {
@@ -7268,6 +7392,9 @@
             "type": "string"
           },
           "emailChallengeId": {
+            "type": "number"
+          },
+          "phoneChallengeId": {
             "type": "number"
           },
           "role": {

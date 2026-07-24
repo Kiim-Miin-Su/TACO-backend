@@ -60,7 +60,7 @@ const ACTIVE_UNIQUE: Array<{ table: string; keys: string[]; ci?: boolean }> = [
 // 감사 원칙 대상에서 제외되는 테이블(erd.dbml audit_log Note 단일 소스와 동일).
 const AUDIT_EXCLUDED = new Set([
   'audit_log', 'auth_events', 'auth_refresh_tokens', 'auth_rate_limits', 'profile_verification_challenges',
-  'countries', 'instructor_contracts', 'nav_seen_states', 'signup_email_challenges',
+  'countries', 'instructor_contracts', 'nav_seen_states', 'signup_email_challenges', 'signup_phone_challenges',
 ]);
 
 async function main() {
