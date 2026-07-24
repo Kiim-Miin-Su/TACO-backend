@@ -16,6 +16,7 @@
     "db:smoke:schedule-approval": "ts-node scripts/schedule-approval-db-smoke.ts",
     "db:smoke:finance": "ts-node scripts/finance-db-smoke.ts",
     "db:cleanup:qa": "ts-node scripts/cleanup-qa-data.ts",
+    "db:mock-data": "ts-node scripts/mock-data.ts",
     "db:bootstrap:ceo": "ts-node scripts/bootstrap-ceo.ts",
     "db:smoke:credentials": "ts-node scripts/credential-change-db-smoke.ts",
     "db:smoke:profile-changes": "ts-node scripts/profile-change-db-smoke.ts",
