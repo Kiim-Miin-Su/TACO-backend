@@ -11,6 +11,15 @@ import * as nodemailer from 'nodemailer';
 @Injectable()
 export class MailService implements OnModuleDestroy {
   private readonly logger = new Logger(MailService.name);
+
+  // [TBO-58 P2 PII 정리] dev 콘솔에도 이메일 원문 금지(형식 규약 준수) — 링크/webId는 dev 흐름에
+  //  필요(무SMTP 로컬에서 인증을 완료할 유일한 경로)하므로 유지한다. production은 이 분기 자체가
+  //  차단(위 가드)이라 운영 로그 노출 없음.
+  private maskEmail(to: string): string {
+    const [local, domain] = to.split('@');
+    if (!domain) return '[invalid-email]';
+    return `${(local ?? '').slice(0, 2)}***@${domain}`;
+  }
   private readonly enabled = !!process.env.SMTP_HOST;
   private transporter = this.enabled
     ? nodemailer.createTransport({
@@ -29,7 +38,7 @@ export class MailService implements OnModuleDestroy {
       if (isProduction()) {
         throw new Error('[mail] production에서 SMTP 미설정 — 인증 메일을 보낼 수 없습니다(devLink 폴백 금지).');
       }
-      this.logger.warn(`[MAIL:dev] 이메일 인증 링크 (${to}): ${link}`);
+      this.logger.warn(`[MAIL:dev] 이메일 인증 링크 (${this.maskEmail(to)}): ${link}`);
       return { sent: false, devLink: link };
     }
     await this.transporter.sendMail({
@@ -49,7 +58,7 @@ export class MailService implements OnModuleDestroy {
       if (isProduction()) {
         throw new Error('[mail] production에서 SMTP 미설정 — 아이디 안내 메일을 보낼 수 없습니다.');
       }
-      this.logger.warn(`[MAIL:dev] 아이디 안내 (${to}): webId=${webId}`);
+      this.logger.warn(`[MAIL:dev] 아이디 안내 (${this.maskEmail(to)}): webId=${webId}`);
       return { sent: false, devWebId: webId };
     }
     await this.transporter.sendMail({
@@ -69,7 +78,7 @@ export class MailService implements OnModuleDestroy {
       if (isProduction()) {
         throw new Error('[mail] production에서 SMTP 미설정 — 재설정 메일을 보낼 수 없습니다.');
       }
-      this.logger.warn(`[MAIL:dev] 비밀번호 재설정 링크 (${to}): ${link}`);
+      this.logger.warn(`[MAIL:dev] 비밀번호 재설정 링크 (${this.maskEmail(to)}): ${link}`);
       return { sent: false, devLink: link };
     }
     await this.transporter.sendMail({

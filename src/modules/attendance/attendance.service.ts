@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { ATTENDANCE_SPEC } from '../../database/calendar-asset-specs';
@@ -7,11 +7,11 @@ import { PostgresCollectionStore } from '../../database/postgres-collection.stor
 import { AuditService } from '../audit/audit.service'; // [출결 이력 2026-07-07] 학생 출결 변경도 audit_log에 기록
 import { hasAdminRole } from '../auth/roles.decorator';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
-import { Student, STUDENTS } from '../students/student.entity';
+import { Student } from '../students/student.entity';
 import { Attendance, ATTENDANCE } from './attendance.entity';
 import { UpsertAttendanceDto } from './dto/upsert-attendance.dto';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
-import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
+import { Enrollment } from '../enrollments/enrollment.entity';
 import { studentBelongsToSession } from '../schedule/session-participant.policy';
 import { isSessionVisibleToInstructor } from '../schedule/schedule-visibility.policy';
 
@@ -23,6 +23,9 @@ import { isSessionVisibleToInstructor } from '../schedule/schedule-visibility.po
  */
 @Injectable()
 export class AttendanceService implements OnModuleInit {
+  // [TBO-58 P2] 도메인 command 1줄 로그 — [money] 패턴 확장(allowlist: id·상태만, 이름 없음)
+  private readonly domainLog = new Logger('attendance');
+
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
@@ -41,25 +44,6 @@ export class AttendanceService implements OnModuleInit {
 
   findBySession(sessionId: number): Attendance[] {
     return this.db.findByField<Attendance>(ATTENDANCE, 'sessionId', sessionId); // 인덱스 조회
-  }
-
-  findAllForActor(actorId?: number, actorRoles?: string[]): Attendance[] {
-    if (actorId == null || hasAdminRole(actorRoles)) return this.findAll();
-    const ownSessionIds = new Set(
-      this.db.findByField<ClassSession>(SESSIONS, 'instructorId', actorId)
-        .filter((session) => isSessionVisibleToInstructor(session, actorId))
-        .map((s) => Number(s.id)),
-    );
-    return this.findAll().filter((a) => ownSessionIds.has(Number(a.sessionId)));
-  }
-
-  findBySessionForActor(sessionId: number, actorId?: number, actorRoles?: string[]): Attendance[] {
-    if (actorId != null && !hasAdminRole(actorRoles)) {
-      const session = this.db.findById<ClassSession>(SESSIONS, sessionId);
-      if (session && !isSessionVisibleToInstructor(session, actorId))
-        throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 조회할 수 있습니다.');
-    }
-    return this.findBySession(sessionId);
   }
 
   /** [TBO-56 C2b] 목록 READ = DB 권위(행) + 강사 스코프는 세션 재수화 후 판정(교차 인스턴스 즉시 반영). */
@@ -111,7 +95,9 @@ export class AttendanceService implements OnModuleInit {
       //  남아 시수·완료가 안 잡히고, 종료 경과 scheduled는 FE가 '미진행(펑크)→보강 필요'로 오분류).
       //  경계: canceled/no_show/makeup/held는 절대 덮지 않고, 미래 세션(시작 전)은 전이하지 않는다.
       const startMs = Date.parse(`${session.sessionDate}T${session.startTime ?? '00:00'}:00+09:00`);
+      let autoHeld = false; // [TBO-58 P2] 자동 전이 여부 — 로그 1줄에 함께 남긴다(전이 추적)
       if (session.status === 'scheduled' && Number.isFinite(startMs) && startMs <= Date.now()) {
+        autoHeld = true;
         await this.sessionsStore.update(session.id, { status: 'held' } as never);
         if (actorId != null) {
           await this.audit.log({
@@ -133,6 +119,7 @@ export class AttendanceService implements OnModuleInit {
           if (Object.keys(diff).length)
             await this.audit.log({ entity: ATTENDANCE, entityId: updated.id, action: 'update', actorId, changes: diff });
         }
+        this.domainLog.log(`action=upsert session=${dto.sessionId} student=${dto.studentId} status=${dto.status} actor=${actorId ?? 0} autoHeld=${autoHeld ? 1 : 0} result=updated`); // [TBO-58 P2]
         return updated;
       }
       const created = await this.store.insert<Attendance>(ATTENDANCE_SPEC, {
@@ -142,6 +129,7 @@ export class AttendanceService implements OnModuleInit {
       });
       if (actorId != null)
         await this.audit.log({ entity: ATTENDANCE, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
+      this.domainLog.log(`action=upsert session=${dto.sessionId} student=${dto.studentId} status=${dto.status} actor=${actorId ?? 0} autoHeld=${autoHeld ? 1 : 0} result=created`); // [TBO-58 P2]
       return created;
     });
   }

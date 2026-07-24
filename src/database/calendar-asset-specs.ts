@@ -740,6 +740,7 @@ export const VIEW_PRESETS_SPEC: PostgresCollectionSpec = {
       kst_fixed boolean NOT NULL DEFAULT true,
       compact_cols boolean NOT NULL DEFAULT false,
       manual_panes text NOT NULL DEFAULT '[]',
+      created_by integer, -- [TBO-58 P2] 소유자(IDOR 가드) — NULL=레거시 공용(매니저 이상만 수정/삭제)
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now(),
       deleted_at timestamptz,
@@ -748,6 +749,10 @@ export const VIEW_PRESETS_SPEC: PostgresCollectionSpec = {
   `,
   jsonFields: ['instructorIds', 'studentIds', 'roomIds', 'subjects', 'statuses', 'kinds', 'modeFilters', 'manualPanes'],
   dateFields: ['periodFrom', 'periodTo'],
+  migrations: [
+    // [TBO-58 P2] 기존 dev 표 자가 치유 — 운영은 versioned migration(owner-paste, RUNBOOK) 경로
+    'ALTER TABLE calendar_view_presets ADD COLUMN IF NOT EXISTS created_by integer',
+  ],
   indexes: [
     'ALTER TABLE calendar_view_presets DROP CONSTRAINT IF EXISTS calendar_view_presets_name_key',
     'CREATE UNIQUE INDEX IF NOT EXISTS uq_calendar_view_presets_active_name ON calendar_view_presets (name) WHERE deleted_at IS NULL',

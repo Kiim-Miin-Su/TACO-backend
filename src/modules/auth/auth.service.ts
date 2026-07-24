@@ -27,7 +27,6 @@ export class AuthService {
     if (isProduction()) {
       throw new Error('[auth] JWT_SECRET 환경변수가 설정되지 않았습니다 — 운영 배포에는 필수입니다(고정 개발키 서명 차단).');
     }
-    // eslint-disable-next-line no-console
     console.warn('[auth] JWT_SECRET 미설정 — 개발 기본키 사용 중(운영에서는 반드시 설정).');
     return 'dev-secret-change-me';
   })();

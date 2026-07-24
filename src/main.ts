@@ -10,6 +10,7 @@ import { LoggingInterceptor } from './common/logging.interceptor';
 import { assertProductionBootSafety } from './config/production-guards';
 import { configureTrustProxy } from './common/trust-proxy';
 import { createOpenApiDocument } from './config/openapi';
+import { RidConsoleLogger, requestContextMiddleware } from './common/request-context'; // [TBO-58 P2]
 
 // [env 2026-07-03] .env 로드 — 네이티브(Node 20.12+/22, 의존성 없음). AuthService 등이 process.env를
 //  읽기 전(=NestFactory.create 인스턴스화 전)에 채워야 하므로 여기서 먼저 로드한다.
@@ -21,8 +22,10 @@ for (const f of ['.env', '.env.local']) {
 async function bootstrap() {
   loadLocalEnv();
   assertProductionBootSafety(); // [TBO-28B] production 필수 env fail-fast(§4 — DB·JWT·SMTP)
-  const app = await NestFactory.create(AppModule);
+  // [TBO-58 P2] RidConsoleLogger — 전 Logger 출력(HTTP·ERROR·money 등 도메인 스코프)에 rid 자동 첨부
+  const app = await NestFactory.create(AppModule, { logger: new RidConsoleLogger() });
   configureTrustProxy(app);
+  app.use(requestContextMiddleware); // [TBO-58 P2] 요청마다 requestId 발급(X-Request-Id 수용·반환)
 
   // 프론트(Next.js)와 분리 운영 — CORS 허용.
   // 로컬은 QA 포트가 바뀔 수 있어 전체 origin 허용(origin=true), production은 WEB_ORIGIN/Vercel allowlist.
@@ -44,7 +47,6 @@ async function bootstrap() {
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen(port);
-  // eslint-disable-next-line no-console
   console.log(`TACO API ready on http://localhost:${port}/api · docs: /docs`);
 }
 bootstrap();

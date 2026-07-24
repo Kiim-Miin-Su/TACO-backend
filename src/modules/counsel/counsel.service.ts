@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { DbAnalyticsSnapshotRepository } from '../../database/db-analytics-snapshot.repository';
 import { STUDENTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
@@ -7,7 +7,7 @@ import { PostgresCollectionStore } from '../../database/postgres-collection.stor
 import { COUNSEL_FORMS_SPEC, COUNSEL_ROUNDS_SPEC } from '../../database/calendar-asset-specs';
 import { AuditService } from '../audit/audit.service';
 import { assertDayRange } from '../../common/day-range'; // [TBO-46 G1]
-import { type StaffAccount, USERS, isStaffRole } from '../users/user.entity';
+import { type StaffAccount, isStaffRole } from '../users/user.entity';
 import { CounselForm, CounselRound, COUNSEL_FORMS } from './counsel.entity';
 import { CreateCounselDto } from './dto/create-counsel.dto';
 import { UpdateCounselDto } from './dto/update-counsel.dto';
@@ -15,17 +15,13 @@ import { CreateCounselRoundDto } from './dto/create-round.dto';
 import type { CounselAggregate, CounselFormSnapshot } from '@kms545487/contracts';
 import { UpdateCounselRoundDto } from './dto/update-round.dto';
 import { StudentsService } from '../students/students.service';
-import { Student, STUDENTS } from '../students/student.entity';
+import { Student } from '../students/student.entity';
 // [TBO-30D/30E] 집계는 순수 함수(counsel-analytics — API·e2e 공용 단일 진실원)에 위임하고,
 //  서비스는 읽기모델 스냅샷 조립만 담당한다(entity 상수만 참조 — 서비스 순환 없음).
 import {
   computeCounselCorrelation, computeCounselFunnel,
   type CounselAnalyticsRange, type CounselAnalyticsSnapshot, type CounselCorrelation, type CounselFunnel,
 } from './counsel-analytics';
-import { StudentInterest, STUDENT_INTERESTS } from '../students/student-interest.entity';
-import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
-import { Course, COURSES } from '../courses/course.entity';
-import { Subject, SUBJECTS } from '../subjects/subject.entity';
 
 const snapshotOfForm = (form: CounselFormSnapshot): CounselFormSnapshot => ({
   studentId: form.studentId,
@@ -39,6 +35,9 @@ const snapshotOfForm = (form: CounselFormSnapshot): CounselFormSnapshot => ({
 
 @Injectable()
 export class CounselService implements OnModuleInit {
+  // [TBO-58 P2] 도메인 command 1줄 로그 — allowlist(id·상태·회차번호만, 상담 내용·이름 금지)
+  private readonly domainLog = new Logger('counsel');
+
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
@@ -99,6 +98,7 @@ export class CounselService implements OnModuleInit {
           changes: this.audit.maskContactPii(this.audit.diffOf({}, row)),
         });
       }
+      this.domainLog.log(`action=createForm form=${row.id} actor=${actorId ?? 0} status=${row.status} result=created`); // [TBO-58 P2]
       return row;
     });
   }
@@ -118,6 +118,7 @@ export class CounselService implements OnModuleInit {
           changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
         });
       }
+      this.domainLog.log(`action=updateForm form=${id} actor=${actorId ?? 0} status=${after.status} result=updated`); // [TBO-58 P2]
       return after;
     });
   }
@@ -170,6 +171,7 @@ export class CounselService implements OnModuleInit {
           changes: this.audit.maskContactPii(this.audit.diffOf({}, round)),
         });
       }
+      this.domainLog.log(`action=createRound form=${formId} round=${round.id} roundNo=${round.roundNo} actor=${actorId ?? 0} result=created`); // [TBO-58 P2]
       return round;
     });
   }
@@ -217,6 +219,7 @@ export class CounselService implements OnModuleInit {
         entity: 'counsel_rounds', entityId: roundId, action: 'update', actorId,
         changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
       });
+      this.domainLog.log(`action=updateRound form=${formId} round=${roundId} actor=${actorId} result=updated`); // [TBO-58 P2]
       return after;
     });
   }
@@ -241,6 +244,7 @@ export class CounselService implements OnModuleInit {
           changes: this.audit.diffOf(beforeForm, afterForm as CounselForm), reason: `round-delete:${roundId}`,
         });
       }
+      this.domainLog.log(`action=removeRound form=${formId} round=${roundId} actor=${actorId} result=deleted`); // [TBO-58 P2]
       return { id: roundId, deleted: true };
     });
   }
@@ -333,6 +337,7 @@ export class CounselService implements OnModuleInit {
         changes: this.audit.maskContactPii(this.audit.snapshotOf(before)),
         reason: `cascade-rounds:${rounds.length}`,
       });
+      this.domainLog.log(`action=removeForm form=${id} actor=${actorId} cascadeRounds=${rounds.length} result=deleted`); // [TBO-58 P2]
       return before;
     });
   }

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { hasAdminRole } from '../auth/role-policy'; // [감사 M3]
 import type { StudentAggregate } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
@@ -108,7 +109,7 @@ export class StudentsService implements OnModuleInit {
 
   /** 목록 READ — 관리자는 전체(full), 강사는 본인 스코프 + 안전 필드만(P0-5). */
   async listDbForActor(actorId?: number, roles: string[] = []): Promise<Array<Student | Partial<Student>>> {
-    const isPrivileged = roles.some((role) => role === 'super_admin' || role === 'manager' || role === 'admin');
+    const isPrivileged = hasAdminRole(roles) /* [감사 M3] role-policy 단일 진실원 */;
     if (isPrivileged) return this.listDb();
     if (actorId == null) throw new ForbiddenException('학생 원부 조회 권한이 없습니다.');
     const allowed = await this.instructorStudentIds(actorId);
@@ -118,7 +119,7 @@ export class StudentsService implements OnModuleInit {
 
   /** 단건 READ — 강사는 본인 스코프 밖 403(원부 존재 여부와 무관한 사내 표준 응답). */
   async getDbForActor(id: number, actorId?: number, roles: string[] = []): Promise<Student | Partial<Student>> {
-    const isPrivileged = roles.some((role) => role === 'super_admin' || role === 'manager' || role === 'admin');
+    const isPrivileged = hasAdminRole(roles) /* [감사 M3] role-policy 단일 진실원 */;
     if (isPrivileged) return this.getDb(id);
     if (actorId == null) throw new ForbiddenException('학생 원부 조회 권한이 없습니다.');
     const allowed = await this.instructorStudentIds(actorId);

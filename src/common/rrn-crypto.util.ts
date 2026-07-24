@@ -57,7 +57,6 @@ function encryptionKey(): Buffer {
     return key;
   }
   if (!warnedDevKey) {
-    // eslint-disable-next-line no-console
     console.warn('[rrn] RRN_ENC_KEY 미설정 — 개발용 파생 키(JWT 시크릿 sha256)를 사용합니다. 운영 사용 금지.');
     warnedDevKey = true;
   }

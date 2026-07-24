@@ -81,21 +81,30 @@ export class GraphqlGatewayController {
       return value;
     };
 
+    // [TBO-58 P2 §4] 전 분석 쿼리 파라미터 로그 단일 지점 — "잘못된 입력 vs 집계 버그" 구분.
+    //  allowlist(쿼리명·기간·months만 — 결과·PII 없음). rid는 RidConsoleLogger가 자동 첨부.
+    const logged = <A extends { from?: string | null; to?: string | null; months?: number }, R>(
+      name: string, fn: (args: A) => R,
+    ) => (args: A): R => {
+      ceoLogger.log(`query=${name} from=${args?.from ?? '-'} to=${args?.to ?? '-'}${args?.months != null ? ` months=${args.months}` : ''}`);
+      return fn(args);
+    };
+
     const rootValue = {
       // [TBO-54 C2] 스냅샷 = DB 저장소(REPEATABLE READ 한 tx) — 프로세스 메모리 projection 금지(P0-4).
-      revenueReport: async (args: { from?: string; to?: string }) =>
-        computeRevenueReport(await this.analytics.revenue(), range(args)),
-      financeSummary: async (args: { from?: string; to?: string }) =>
-        computeFinanceSummary(await this.analytics.revenue(), range(args)),
-      counselFunnel: async (args: { from?: string; to?: string }) => {
+      revenueReport: logged('revenueReport', async (args: { from?: string; to?: string }) =>
+        computeRevenueReport(await this.analytics.revenue(), range(args))),
+      financeSummary: logged('financeSummary', async (args: { from?: string; to?: string }) =>
+        computeFinanceSummary(await this.analytics.revenue(), range(args))),
+      counselFunnel: logged('counselFunnel', async (args: { from?: string; to?: string }) => {
         const funnel = await this.counsel.funnel(range(args)); // REST와 같은 서비스 경로
         return {
           ...funnel,
           statusCounts: keyCount(funnel.statusCounts as unknown as Record<string, number>),
           roundReach: funnel.roundReach.map((row) => ({ rounds: row.minRounds, count: row.count })),
         };
-      },
-      counselCorrelation: async (args: { from?: string; to?: string }) => {
+      }),
+      counselCorrelation: logged('counselCorrelation', async (args: { from?: string; to?: string }) => {
         const correlation = await this.counsel.correlation(range(args));
         return {
           ...correlation,
@@ -104,16 +113,14 @@ export class GraphqlGatewayController {
             enrolledBySubject: row.enrolledBySubject.map((cell) => ({ key: cell.subject, count: cell.count })),
           })),
         };
-      },
-      uncoveredPayouts: (args: { months?: number }) => this.payouts.uncoveredFresh(args.months ?? undefined), // [TBO-56 C2b]
+      }),
+      uncoveredPayouts: logged('uncoveredPayouts', (args: { months?: number }) => this.payouts.uncoveredFresh(args.months ?? undefined)), // [TBO-56 C2b]
       // [TBO-60 2026-07-24] 대표 대시보드 — 한 snapshot(REPEATABLE READ)에서 D1(finance)+D2+D3+D6 파생.
-      //  [analytics] 로그에 기간 파라미터 포함(TBO-58 §4 일부 선해소)은 저장소 스냅샷 로그와 함께 아래에서.
-      ceoDashboard: async (args: { from?: string; to?: string }) => {
+      ceoDashboard: logged('ceoDashboard', async (args: { from?: string; to?: string }) => {
         const value = range(args);
         const snapshot = await this.analytics.revenue();
-        ceoLogger.log(`query=ceoDashboard from=${value.from ?? '-'} to=${value.to ?? '-'}`); // [analytics] 기간 파라미터
         return computeCeoDashboard(snapshot, value, new Date().toISOString().slice(0, 10));
-      },
+      }),
     };
 
     const result = await graphql({

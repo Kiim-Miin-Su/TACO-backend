@@ -1946,6 +1946,50 @@ paths:
       summary: 지출 상세 [대표]
       tags:
         - expenses
+    patch:
+      operationId: ExpensesController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateExpenseDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 지출 수정(requested만 — 오기입 정정) [대표]
+      tags:
+        - expenses
+    delete:
+      operationId: ExpensesController_withdraw
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: number
+      responses:
+        '200':
+          description: ''
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 지출 철회(soft delete, requested만) [대표]
+      tags:
+        - expenses
   /api/expenses/{id}/approve:
     post:
       operationId: ExpensesController_approve
@@ -3800,7 +3844,7 @@ paths:
             application/json:
               schema:
                 type: object
-      summary: 캘린더 뷰 프리셋 수정 [전 직원]
+      summary: 캘린더 뷰 프리셋 수정 [소유자·매니저 이상]
       tags:
         - view-presets
       security:
@@ -3821,7 +3865,7 @@ paths:
             application/json:
               schema:
                 type: object
-      summary: 캘린더 뷰 프리셋 soft delete [전 직원]
+      summary: 캘린더 뷰 프리셋 soft delete [소유자·매니저 이상]
       tags:
         - view-presets
       security:
@@ -5287,6 +5331,39 @@ components:
         - title
         - amount
         - spentAt
+    UpdateExpenseDto:
+      type: object
+      properties:
+        category:
+          enum:
+            - supplies
+            - equipment
+            - books
+            - rent
+            - utility
+            - marketing
+            - meal
+            - etc
+          type: string
+        title:
+          type: string
+          maxLength: 100
+        amount:
+          type: number
+          minimum: 0
+          maximum: 100000000
+        spentAt:
+          type: string
+          maxLength: 30
+        vendor:
+          type: string
+          maxLength: 100
+        memo:
+          type: string
+          maxLength: 500
+        receiptUrl:
+          type: string
+          maxLength: 500
     RejectExpenseDto:
       type: object
       properties:

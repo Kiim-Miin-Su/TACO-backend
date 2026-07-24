@@ -138,7 +138,6 @@ export class CoursesService implements OnModuleInit {
       }
 
       const nextOverride = input.hourlyRateOverride !== undefined ? input.hourlyRateOverride : stored.hourlyRateOverride ?? null;
-      const nextKinder = input.isKinder ?? stored.isKinder;
       const effectiveRate = nextOverride ?? profile!.defaultHourlyRate ?? 0;
       if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
       // [TBO-61 2026-07-24] Kinder 가능 여부 게이트 제거(대표 지시 '유연하게') — 프로필 canTeachKinder는 정보 표시용으로만 유지.

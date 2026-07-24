@@ -1,4 +1,5 @@
 import { CanActivate, ExecutionContext, ForbiddenException, Injectable } from '@nestjs/common';
+import { isProduction } from '../../common/env'; // [감사 M4]
 import type { Request } from 'express';
 import { trustedWebOrigins } from '../../common/cors-origin';
 import { AuthEventsService } from './auth-events.service';
@@ -29,7 +30,7 @@ export class BrowserOriginGuard implements CanActivate {
   constructor(private readonly events: AuthEventsService) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    if (process.env.NODE_ENV !== 'production') return true;
+    if (!isProduction()) return true; // [감사 M4] 환경 판정 단일 진실원(보안 경계 — 산개 금지)
     const req = context.switchToHttp().getRequest<Request>();
     if (SAFE_METHODS.has(req.method.toUpperCase())) return true;
     if (/^Bearer\s+\S+/i.test(String(req.headers.authorization ?? ''))) return true;

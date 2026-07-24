@@ -8,10 +8,10 @@ import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { AuditService } from '../audit/audit.service';
 import { ADMIN_ROLES } from '../auth/roles.decorator';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
-import { Course, COURSES } from '../courses/course.entity';
+import { Course } from '../courses/course.entity';
 import { SessionReportRow, SESSION_REPORTS } from './report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
-import { Student, STUDENTS } from '../students/student.entity';
+import { Student } from '../students/student.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { buildCohortIndex, participantIdsForSession, studentBelongsToSession } from '../schedule/session-participant.policy';
 import { isSessionVisibleToInstructor } from '../schedule/schedule-visibility.policy';
@@ -63,14 +63,6 @@ export class ReportsService implements OnModuleInit {
     return this.db.findAll<SessionReportRow>(SESSION_REPORTS);
   }
 
-  findAllForActor(actor?: ReportActor): SessionReportRow[] {
-    if (!actor || actorIsAdmin(actor)) return this.findAll();
-    return this.findAll().filter((report) => {
-      const session = this.db.findById<ClassSession>(SESSIONS, report.sessionId);
-      return !!session && isSessionVisibleToInstructor(session, actor.id);
-    });
-  }
-
   /** [TBO-54 C2] 목록 READ = DB 권위(행 원부). 강사 가시성 필터는 세션 읽기모델
    *  (EP2 TTL hydrate — staleness 유계) 기반 — 세션 전환은 후속 청크. */
   async listDbForActor(actor?: ReportActor, sessionId?: number): Promise<SessionReportRow[]> {
@@ -116,15 +108,6 @@ export class ReportsService implements OnModuleInit {
 
   findBySession(sessionId: number): SessionReportRow[] {
     return this.db.findByField<SessionReportRow>(SESSION_REPORTS, 'sessionId', sessionId); // 인덱스 조회
-  }
-
-  findBySessionForActor(sessionId: number, actor?: ReportActor): SessionReportRow[] {
-    if (actor && !actorIsAdmin(actor)) {
-      const session = this.db.findById<ClassSession>(SESSIONS, sessionId);
-      if (session && !isSessionVisibleToInstructor(session, actor.id))
-        throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
-    }
-    return this.findBySession(sessionId);
   }
 
   /** 회계 영향 미리보기용 보고서 완전성. payout 적격성 자체는 PayoutReadinessPolicy가 최종 권위다. */

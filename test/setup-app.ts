@@ -4,6 +4,7 @@ import { INestApplication, ValidationPipe } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../src/app.module";
 import { configureTrustProxy } from "../src/common/trust-proxy";
+import { requestContextMiddleware } from "../src/common/request-context"; // [TBO-58 P2] main.ts 패리티
 import { seedBusinessFixtures } from "./fixtures/seed-business-fixtures";
 
 // main.ts와 동일한 부트 설정으로 e2e 앱 인스턴스 생성.
@@ -12,6 +13,7 @@ export async function createTestApp(): Promise<INestApplication> {
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
   configureTrustProxy(app);
+  app.use(requestContextMiddleware); // [TBO-58 P2] requestId 발급 — X-Request-Id e2e 검증 대상
   app.setGlobalPrefix("api");
   // [B8 E4 2026-07-16] 라우트 커버리지 계측 — E2E_ROUTE_LOG=<file>일 때만, 응답마다
   //  "METHOD express-route-pattern status"를 append(테스트 하네스 전용 — 프로덕션 코드 무변경).

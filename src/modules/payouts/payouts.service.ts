@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { ATTENDANCE_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC, INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, STUDENTS_SPEC, TRANSACTIONS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -59,6 +59,9 @@ export type MeasureResult = {
  */
 @Injectable()
 export class PayoutsService implements OnModuleInit {
+  // [TBO-58 P2] 도메인 command 1줄 로그 — payments [money] 패턴 확장(allowlist: id·상태·금액만)
+  private readonly moneyLog = new Logger('money');
+
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
@@ -291,11 +294,16 @@ export class PayoutsService implements OnModuleInit {
         lines: m.lines,
       });
 
+      // [TBO-58 P2 치명 갭 ②] 진행 로그 — 부분 실패 시 "어디까지 갔는지" 로그만으로 재구성.
+      this.moneyLog.log(`action=generate payout=${payout.id} instructor=${instructorId} period=${from}..${to} sessions=${m.lines.length} amount=${payout.amount} result=begin`);
       // 세션 ← 정산서 연결(FK). 이후 measure에서 payoutId!=null 로 제외됨.
       for (const l of m.lines) {
         const claimed = await this.sessionsStore.claimPayout(l.sessionId, payout.id, l.amount);
-        if (!claimed)
+        if (!claimed) {
+          this.moneyLog.warn(`action=generate.claim payout=${payout.id} session=${l.sessionId} result=conflict(rollback)`);
           throw new ConflictException(`세션 ${l.sessionId}이 다른 정산서에 먼저 연결되었습니다. 다시 산정해 주세요.`);
+        }
+        this.moneyLog.log(`action=generate.claim payout=${payout.id} session=${l.sessionId} amount=${l.amount ?? 0} result=linked`);
       }
       // [감사 전수 2026-07-16] 정산서 생성 + 세션 payout 연결(⚠ class_sessions 누락 경로) 이력.
       if (actorId != null) {
@@ -304,6 +312,7 @@ export class PayoutsService implements OnModuleInit {
           changes: { amount: { after: payout.amount }, sessionIds: { after: m.lines.map((l) => l.sessionId) } },
         });
       }
+      this.moneyLog.log(`action=generate payout=${payout.id} instructor=${instructorId} sessions=${m.lines.length} amount=${payout.amount} result=created`);
       return payout;
     });
   }
@@ -345,10 +354,13 @@ export class PayoutsService implements OnModuleInit {
         if (caught instanceof BadRequestException && message.includes('정산 대상 세션이 없습니다')) {
           skipped.push({ instructorId, reason: 'no_eligible_sessions' });
         } else {
+          this.moneyLog.warn(`action=generateBulk.item instructor=${instructorId} result=failed`); // [TBO-58 P2] 실패도 1줄(조용한 누락 금지)
           failed.push({ instructorId, error: message });
         }
       }
     }
+    // [TBO-58 P2] 일괄 산정 요약 — 몇 명 중 몇 명 생성/스킵/실패인지 로그만으로 재구성
+    this.moneyLog.log(`action=generateBulk actor=${actorId ?? 0} period=${periodStart}..${periodEnd} targets=${targets.length} generated=${generated.length} skipped=${skipped.length} failed=${failed.length}`);
     return { generated, skipped, failed };
   }
 
@@ -439,6 +451,7 @@ export class PayoutsService implements OnModuleInit {
           changes: { status: { before: 'pending', after: 'confirmed' } },
         });
       }
+      this.moneyLog.log(`action=confirm payout=${id} actor=${actorId ?? 0} amount=${updated.amount} result=confirmed`); // [TBO-58 P2]
       return updated;
     });
   }
@@ -466,6 +479,7 @@ export class PayoutsService implements OnModuleInit {
           reason,
         });
       }
+      this.moneyLog.log(`action=unconfirm payout=${id} actor=${actorId ?? 0} result=pending`); // [TBO-58 P2]
       return updated;
     });
   }
@@ -589,6 +603,7 @@ export class PayoutsService implements OnModuleInit {
           changes: { direction: { after: 'in' }, category: { after: 'payout_reversal' }, amount: { after: transaction.amount } },
         });
       }
+      this.moneyLog.log(`action=reverse payout=${id} actor=${actorId ?? 0} amount=${transaction.amount} ledgerTx=${transaction.id} releasedSessions=${p.lines.length} result=reversed`); // [TBO-58 P2]
       return { payout, transaction };
     });
   }
@@ -636,6 +651,7 @@ export class PayoutsService implements OnModuleInit {
           changes: { direction: { after: 'out' }, category: { after: 'instructor_payout' }, amount: { after: transaction.amount } },
         });
       }
+      this.moneyLog.log(`action=pay payout=${id} actor=${actorId ?? 0} amount=${transaction.amount} ledgerTx=${transaction.id} paidSessions=${p.lines.length} result=paid`); // [TBO-58 P2]
       return { payout, transaction };
     });
   }

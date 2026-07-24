@@ -16,7 +16,7 @@ export function trustedWebOrigins(): string[] {
 export function webCorsOrigins(): true | string[] {
   // 로컬 QA는 포트가 자주 바뀐다(Next dev/start, preview, browser QA).
   // credentials=true와 함께 쓰려면 '*'가 아니라 요청 Origin을 반사하는 origin=true가 안전한 CORS 표현이다.
-  if (process.env.NODE_ENV !== 'production' && process.env.CORS_STRICT_LOCAL !== '1') return true;
+  if (!isProduction() && process.env.CORS_STRICT_LOCAL !== '1') return true; // [감사 M4] 환경 판정 단일 진실원
 
   return trustedWebOrigins();
 }
