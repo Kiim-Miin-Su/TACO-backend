@@ -32,12 +32,21 @@ const flag = (name: string): string | undefined => {
 };
 const has = (name: string): boolean => args.includes(`--${name}`);
 
+// [TBO-62 후속 2026-07-24] 실측 버그: directDatabaseUrl()을 loadLocalEnv()보다 먼저 호출해
+//  .env.local(DOTENV_CONFIG_PATH)이 반영되지 않았음 — 대표 첫 실행이 "DATABASE_URL required"로
+//  실패. cleanup-qa-data.ts와 동일하게 env 로드를 최우선으로.
+// DOTENV_CONFIG_PATH 명시 시 그 파일 우선 로드(loadLocalEnv는 cwd .env.local/.env만 읽음).
+if (process.env.DOTENV_CONFIG_PATH) {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  require('dotenv').config({ path: process.env.DOTENV_CONFIG_PATH, override: false, quiet: true });
+}
+loadLocalEnv();
 const url = directDatabaseUrl();
 if (!url) {
   console.error('DATABASE_URL_UNPOOLED, DATABASE_URL, POSTGRES_URL_NON_POOLING, or POSTGRES_URL is required');
+  console.error('backend/.env.local에 DB URL을 두거나 DOTENV_CONFIG_PATH로 env 파일을 지정하세요.');
   process.exit(1);
 }
-loadLocalEnv();
 
 const ds = new DataSource({
   type: 'postgres', url, synchronize: false, migrationsRun: false, logging: false, entities: [], migrations: [],

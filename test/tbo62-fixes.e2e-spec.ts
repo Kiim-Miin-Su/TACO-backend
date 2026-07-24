@@ -79,6 +79,19 @@ describe('[TBO-62] 긴급 수정 (e2e)', () => {
     expect(stillCanceled.status).toBe('canceled'); // 종결 상태는 절대 덮지 않음
   });
 
+  it('③-후속 부분 patch = 부분 검증 — 레거시 미비 원부도 매니저 퇴원 처리 200(필수 비우기만 400)', async () => {
+    // 픽스처 학생 1은 gender·address·counselTopic 등이 비어 있는 레거시 형태 — 종전엔 status만
+    //  바꿔도 완전-필수 검증 400("필수 학생 정보가 누락되었습니다")으로 퇴원 처리가 불가했다(운영 실측).
+    const w = (await http.patch('/api/students/1').set(auth('manager')).send({ status: 'withdrawn' }).expect(200)).body;
+    expect(w.status).toBe('withdrawn');
+    const back = (await http.patch('/api/students/1').set(auth('manager')).send({ status: 'enrolled' }).expect(200)).body;
+    expect(back.status).toBe('enrolled');
+    // 필수 필드를 빈 값으로 지우는 patch는 여전히 400(계약 유지)
+    const clear = await http.patch('/api/students/1').set(auth('manager')).send({ name: ' ' });
+    expect(clear.status).toBe(400);
+    expect(clear.body.message).toContain('비울 수 없습니다');
+  });
+
   it('⑥ 강사 payouts = paid만 — me 필터·단건 403·산정 라우트 404', async () => {
     // 픽스처 정산 1건은 jung_inst(강사2) 소유 pending — 강사2 me 목록은 paid만이라 빈 배열
     const mine = (await http.get('/api/payouts/me').set(auth('jung_inst')).expect(200)).body;
