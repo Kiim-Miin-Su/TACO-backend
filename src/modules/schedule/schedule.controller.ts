@@ -1,9 +1,10 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Patch,
+  Put, Post, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiOkResponse, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { ScheduleService } from './schedule.service';
-import { MarkInstructorAttendanceDto, UpdateScheduleDto } from './dto/update-schedule.dto';
+import { MarkInstructorAttendanceDto, SetSessionPayAmountDto, UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
@@ -173,6 +174,19 @@ export class ScheduleController {
     @Req() req: Request & { user?: JwtClaims },
   ) {
     return this.schedule.markInstructorAttendance(id, dto.status, req.user?.sub, req.user?.roles ?? []);
+  }
+
+  // [TBO-64 2026-07-24] 회차 가격 책정(시수 워크시트) — 지각·리포트 미작성 회차의 수동 금액 확정.
+  @Put(':id/pay-amount')
+  @Roles(...ADMIN_ROLES)
+  @ApiParam({ name: 'id', description: '세션 id' })
+  @ApiOperation({ summary: '회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 연결된 회차 409. [매니저 이상]' })
+  setPayAmount(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetSessionPayAmountDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.schedule.setSessionPayAmount(id, dto.amount ?? null, req.user?.sub);
   }
 
   // 세션 삭제

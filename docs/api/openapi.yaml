@@ -2490,6 +2490,31 @@ paths:
       summary: 강사 출결 체크 — 강사는 본인 세션 최초 1회만, 관리자는 제한 없음. 수정·초기화는 매니저 이상 PATCH. [전 직원]
       tags:
         - scheduling
+  /api/schedule/{id}/pay-amount:
+    put:
+      operationId: ScheduleController_setPayAmount
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 세션 id
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SetSessionPayAmountDto'
+      responses:
+        '200':
+          description: ''
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 연결된 회차 409. [매니저 이상]
+      tags:
+        - scheduling
   /api/attendance:
     get:
       operationId: AttendanceController_findAll
@@ -2958,6 +2983,38 @@ paths:
         - bearer: []
         - access_token: []
       summary: 미정산 감지 — 적격 세션이 정산서에 미연결인 (강사×월) 목록(당월 포함 N개월). [대표]
+      tags:
+        - payouts
+  /api/payouts/worksheet:
+    get:
+      operationId: PayoutsController_worksheet
+      parameters:
+        - name: instructorId
+          required: true
+          in: query
+          schema:
+            type: number
+        - name: from
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: to
+          required: true
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 시수 워크시트 — 회차별 출결·리포트·가격 분류(자동/책정 필요/제외)·기간 합계 [매니저 이상]
       tags:
         - payouts
   /api/payouts/{id}:
@@ -5953,6 +6010,15 @@ components:
           type: string
           example: present
           description: 강사 출결(출석/지각/결석/보강)
+    SetSessionPayAmountDto:
+      type: object
+      properties:
+        amount:
+          type: number
+          nullable: true
+          minimum: 0
+          example: 60000
+          description: 회차 확정 금액(원, 0 이상 정수) — null이면 책정 해제
     UpsertAttendanceDto:
       type: object
       properties:

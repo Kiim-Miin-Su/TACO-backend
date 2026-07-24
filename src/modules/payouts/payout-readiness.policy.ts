@@ -4,6 +4,7 @@ import type { SessionReportRow } from '../reports/report.entity';
 import type { ClassSession } from '../schedule/schedule.entity';
 import { buildCohortIndex, participantIdsForSession } from '../schedule/session-participant.policy';
 import { countsForTeachingHours } from '../schedule/session-accounting.policy';
+import { classifySessionForPayout } from './payout-worksheet.policy'; // [TBO-64] 적격 = auto 분류(단일 진실원)
 
 type ReadinessSession = ClassSession & {
   payoutId?: number | null;
@@ -116,8 +117,16 @@ export function evaluatePayoutReadiness(input: PayoutReadinessInput): PayReadine
     const rate = input.effectiveRateOf(session.courseId);
     if (rate == null || rate <= 0) sessionIssues.push(issue('rate_missing', session));
 
-    if (sessionIssues.length === 0) eligibleSessionIds.push(session.id);
-    else issues.push(...sessionIssues);
+    // [TBO-64 2026-07-24] 적격 판정 = 워크시트 분류의 auto(단일 진실원) — 지각(late)은 이제
+    //  자동 적격이 아니라 "책정 필요(manual)"라 eligible에서 빠진다(알림 issue는 종전 유지 —
+    //  리포트·roster·단가 누락 센서. 지각 자체는 워크시트가 책정 대상으로 노출).
+    const classification = classifySessionForPayout(session, {
+      participantIds,
+      reportOf: (studentId) => reportsByKey.get(`${session.id}:${studentId}`),
+      hourlyRate: input.effectiveRateOf(session.courseId),
+    });
+    if (classification.kind === 'auto') eligibleSessionIds.push(session.id);
+    issues.push(...sessionIssues);
   }
 
   return {

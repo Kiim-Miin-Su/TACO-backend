@@ -10,6 +10,13 @@ const INSTRUCTOR_ATT: InstructorAttendanceStatus[] = ['present', 'late', 'absent
 
 // PATCH /schedule/:id — 이동·리사이즈·상세편집 공용 부분수정 DTO. 모든 필드 선택.
 // [v0.1.14] implements UpdateClassSessionInput — contracts 필드 drift를 tsc가 강제(감사 A1 해소).
+// [TBO-64 2026-07-24] 회차 가격 책정 — 시수 워크시트에서 매니저/대표가 금액 확정(null=해제).
+export class SetSessionPayAmountDto {
+  @ApiPropertyOptional({ example: 60000, description: '회차 확정 금액(원, 0 이상 정수) — null이면 책정 해제', nullable: true })
+  @IsOptional() @IsInt() @Min(0)
+  amount?: number | null;
+}
+
 // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크 전용 — status 하나만 받는다(수정·삭제는 매니저 이상 PATCH).
 export class MarkInstructorAttendanceDto {
   @ApiPropertyOptional({ enum: INSTRUCTOR_ATT, example: 'present', description: '강사 출결(출석/지각/결석/보강)' })

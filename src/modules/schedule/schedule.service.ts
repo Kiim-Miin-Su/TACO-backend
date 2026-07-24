@@ -813,6 +813,35 @@ export class ScheduleService implements OnModuleInit {
     }
   }
 
+  /** [TBO-64 2026-07-24] 회차 가격 책정(시수 워크시트) — 매니저/대표 전용. lock → DB 재조회 →
+   *  가드(held·결석 아님·정산 미연결) → 조건부 UPDATE + audit. null = 책정 해제(자동/빈칸 복귀). */
+  async setSessionPayAmount(id: number, amount: number | null, actorId?: number): Promise<{ row: ClassSession }> {
+    await this.ensureReady();
+    if (amount != null && (!Number.isInteger(amount) || amount < 0))
+      throw new BadRequestException('금액은 0 이상의 정수여야 합니다.');
+    return this.unitOfWork.run(async () => {
+      await this.unitOfWork.lockTargets([{ kind: 'session', id }]);
+      const cur = (await this.sessions.findByIdDb(id)) as (ClassSession & { payoutId?: number | null; instructorPayAmount?: number | null }) | undefined;
+      if (!cur) throw new NotFoundException(`Session ${id} not found`);
+      if (cur.payoutId != null)
+        throw new ConflictException('이미 정산서에 연결된 회차는 금액을 바꿀 수 없습니다(정산 반려/회수 후 재산정).');
+      if (cur.status !== 'held')
+        throw new BadRequestException('진행 완료(held)된 회차만 금액을 책정할 수 있습니다.');
+      if (cur.instructorAttendance === 'absent')
+        throw new BadRequestException('강사 결석 회차는 시수 제외라 금액을 책정할 수 없습니다.');
+      const updated = await this.sessions.setPayAmount(id, amount);
+      if (!updated) throw new ConflictException('다른 요청이 회차를 먼저 변경했습니다. 새로고침 후 다시 시도해 주세요.');
+      if (actorId != null) {
+        await this.audit.log({
+          entity: 'class_sessions', entityId: id, action: 'update', actorId,
+          changes: { instructorPayAmount: { before: cur.instructorPayAmount ?? null, after: amount } },
+          reason: '시수 워크시트 가격 책정(TBO-64)',
+        });
+      }
+      return { row: updated };
+    });
+  }
+
   /** [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크 — 대표 지시 "강사 본인 출결은 체크 가능,
    *  수정·삭제만 매니저 이상". 강사는 ① 본인 담당 세션 ② 현재 미표시(null)일 때만 1회 기록.
    *  이미 표시된 출결의 변경·초기화는 관리자 PATCH 전용(403). 관리자는 제한 없이 이 라우트 사용 가능.

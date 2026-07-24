@@ -1,11 +1,17 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { COURSES_SPEC, ENROLLMENTS_SPEC, INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, TRANSACTIONS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
+import { ATTENDANCE_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC, INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, STUDENTS_SPEC, TRANSACTIONS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
-import { payoutAmountOf } from '../schedule/session-accounting.policy';
+import { buildCohortIndex, participantIdsForSession } from '../schedule/session-participant.policy';
+import { classifySessionForPayout } from './payout-worksheet.policy'; // [TBO-64] 가격 분류 단일 진실원
+import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
+import { Attendance, ATTENDANCE } from '../attendance/attendance.entity';
+import { Student, STUDENTS } from '../students/student.entity';
+import type { PayoutWorksheet, PayoutWorksheetRow } from './payout-worksheet.policy';
+import { SessionReportRow, SESSION_REPORTS } from '../reports/report.entity';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { CoursesService } from '../courses/courses.service';
 import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // 대표 schedule owner는 정산 제외
@@ -74,33 +80,37 @@ export class PayoutsService implements OnModuleInit {
     if (!from || !to) throw new BadRequestException('정산 기간(from/to)이 필요합니다');
     if (from > to) throw new BadRequestException('정산 기간이 잘못되었습니다(from > to)');
 
-    const eligible = new Set(this.readiness.evaluate(instructorId, from, to).eligibleSessionIds);
+    // [TBO-64 2026-07-24] 산정 = 워크시트 가격 분류(단일 진실원 — classifySessionForPayout) 소비.
+    //  · auto(정상 진행+승인 리포트+단가) = 시급×시간 기본값(책정가 있으면 책정가 우선)
+    //  · manual(지각·리포트 미완·roster/단가 누락) = 책정가가 있어야만 포함(빈칸은 합계·정산 제외)
+    //  · excluded(결석·미진행·기연결) = 제외. 종전 "지각 자동 포함" 정책은 대표 지시 ⑤·⑧로 폐지.
+    const cohortIndex = buildCohortIndex(this.db.findAll<Enrollment>(ENROLLMENTS));
+    const reportsByKey = new Map(
+      this.db.findAll<SessionReportRow>(SESSION_REPORTS).map((r) => [`${r.sessionId}:${r.studentId}`, r]),
+    );
     const sessions = this.db.findBy<SessionWithPayout>(
       SESSIONS,
-      (s) =>
-        s.instructorId === instructorId &&
-        s.sessionDate >= from &&
-        s.sessionDate <= to &&
-        eligible.has(s.id) && // (1~3) 진행·전체 코호트 보고서 승인·유효 단가 — readiness 단일 정책
-        s.payoutId == null && // (4) 미연결(이중 계상 방지)
-        s.isPaid !== true, // (5) [TBO-32 C1] 지급 완료 플래그 fail-safe — 정상 흐름에선 payoutId가
-        //  먼저 막지만, 드리프트(is_paid=true인데 payout_id NULL)가 생겨도 재계상만은 차단한다
+      (s) => s.instructorId === instructorId && s.sessionDate >= from && s.sessionDate <= to,
     );
 
     const lines: PayoutLine[] = [];
     for (const s of sessions) {
       const course = this.courses.findOptional(s.courseId);
-      // (3) 코스 FK 무결성 — 시급 조인 불가면 산정 중단(데이터 오류를 조용히 넘기지 않음)
-      if (!course) throw new BadRequestException(`courseId ${s.courseId} 없음 — 시급 조인 실패(세션 ${s.id})`);
-      const amount = payoutAmountOf(s.durationMinutes, course.hourlyRate); // [C4] 환산식 단일 소스(policy)
+      const participantIds = participantIdsForSession(s, cohortIndex);
+      const classification = classifySessionForPayout(s, {
+        participantIds,
+        reportOf: (studentId) => reportsByKey.get(`${s.id}:${studentId}`),
+        hourlyRate: course?.hourlyRate,
+      });
+      if (classification.effectiveAmount == null) continue; // manual 미책정·excluded — 정산 라인 제외
       lines.push({
         sessionId: s.id,
         courseId: s.courseId,
-        courseName: course.name,
+        courseName: course?.name ?? `코스 ${s.courseId}`,
         sessionDate: s.sessionDate,
         durationMinutes: s.durationMinutes,
-        hourlyRate: course.hourlyRate,
-        amount,
+        hourlyRate: course?.hourlyRate ?? 0,
+        amount: classification.effectiveAmount,
       });
     }
     lines.sort((a, b) => a.sessionDate.localeCompare(b.sessionDate));
@@ -135,6 +145,9 @@ export class PayoutsService implements OnModuleInit {
     await this.store.hydrate(USERS_SPEC);
     await this.store.hydrate(ENROLLMENTS_SPEC);
     await this.store.hydrate(COURSES_SPEC);
+    // [TBO-64] 워크시트 입력(참가자 출결·학생명)도 DB 기준.
+    await this.store.hydrate(ATTENDANCE_SPEC);
+    await this.store.hydrate(STUDENTS_SPEC);
   }
 
   /** [TBO-56 C2b] 읽기 전용 산정(preview/readiness/uncovered)도 요청마다 입력 표 재수화 —
@@ -173,6 +186,74 @@ export class PayoutsService implements OnModuleInit {
     });
     if (!row) throw new NotFoundException(`Payout ${id} not found`);
     return row;
+  }
+
+  /** [TBO-64 2026-07-24] 시수 워크시트 — 강사·기간의 전 회차를 가격 분류와 함께(매니저/대표 화면).
+   *  measure와 같은 분류 함수를 공유(단일 진실원)하되, 표시용으로 excluded 회차까지 전부 담는다. */
+  async worksheetFresh(instructorId: number, from: string, to: string): Promise<PayoutWorksheet> {
+    await this.refreshReadInputs();
+    if (!isActiveInstructor(this.db.findById<StaffAccount>(USERS, instructorId)))
+      throw new BadRequestException('활성 강사만 조회할 수 있습니다.');
+    if (!from || !to) throw new BadRequestException('기간(from/to)이 필요합니다');
+    if (from > to) throw new BadRequestException('기간이 잘못되었습니다(from > to)');
+
+    const cohortIndex = buildCohortIndex(this.db.findAll<Enrollment>(ENROLLMENTS));
+    const reportsByKey = new Map(
+      this.db.findAll<SessionReportRow>(SESSION_REPORTS).map((r) => [`${r.sessionId}:${r.studentId}`, r]),
+    );
+    const attendanceByKey = new Map(
+      this.db.findAll<Attendance>(ATTENDANCE).map((a) => [`${a.sessionId}:${a.studentId}`, a.status]),
+    );
+    const studentNameOf = (id: number) => this.db.findById<Student>(STUDENTS, id)?.name ?? `학생 ${id}`;
+
+    const sessions = this.db
+      .findBy<SessionWithPayout>(SESSIONS, (x) => x.instructorId === instructorId && x.sessionDate >= from && x.sessionDate <= to)
+      .sort((a, b) => `${a.sessionDate}:${a.startTime}:${a.id}`.localeCompare(`${b.sessionDate}:${b.startTime}:${b.id}`));
+
+    const rows: PayoutWorksheetRow[] = sessions.map((session) => {
+      const course = this.courses.findOptional(session.courseId);
+      const participantIds = participantIdsForSession(session, cohortIndex);
+      const classification = classifySessionForPayout(session, {
+        participantIds,
+        reportOf: (studentId) => reportsByKey.get(`${session.id}:${studentId}`),
+        hourlyRate: course?.hourlyRate,
+      });
+      return {
+        sessionId: session.id,
+        sessionDate: session.sessionDate,
+        startTime: session.startTime ?? null,
+        durationMinutes: session.durationMinutes,
+        courseId: session.courseId,
+        courseName: course?.name ?? `코스 ${session.courseId}`,
+        hourlyRate: course?.hourlyRate ?? null,
+        status: session.status,
+        instructorAttendance: session.instructorAttendance ?? null,
+        payoutId: session.payoutId ?? null,
+        participants: participantIds.map((studentId) => {
+          const report = reportsByKey.get(`${session.id}:${studentId}`);
+          return {
+            studentId,
+            name: studentNameOf(studentId),
+            attendance: attendanceByKey.get(`${session.id}:${studentId}`) ?? null,
+            reportApproval: report ? report.approvalStatus ?? 'draft' : null, // null = 미작성
+          };
+        }),
+        pricing: classification,
+      };
+    });
+
+    const included = rows.filter((row) => row.pricing.effectiveAmount != null);
+    const totals = {
+      sessionCount: rows.length,
+      includedCount: included.length,
+      totalMinutes: included.reduce((acc, row) => acc + row.durationMinutes, 0),
+      autoAmount: included.filter((r) => r.pricing.kind === 'auto').reduce((acc, r) => acc + (r.pricing.effectiveAmount ?? 0), 0),
+      manualAmount: included.filter((r) => r.pricing.kind === 'manual').reduce((acc, r) => acc + (r.pricing.effectiveAmount ?? 0), 0),
+      totalAmount: included.reduce((acc, r) => acc + (r.pricing.effectiveAmount ?? 0), 0),
+      unpricedCount: rows.filter((r) => r.pricing.kind === 'manual' && r.pricing.effectiveAmount == null).length,
+      excludedCount: rows.filter((r) => r.pricing.kind === 'excluded').length,
+    };
+    return { instructorId, periodStart: from, periodEnd: to, rows, totals };
   }
 
   async getScopedDb(id: number, roles: string[], actorId?: number): Promise<InstructorPayoutRow> {

@@ -78,6 +78,22 @@ export class PayoutsController {
     return this.payouts.uncoveredFresh(months ? Number(months) : undefined); // [TBO-56 C2b]
   }
 
+  // [TBO-64 2026-07-24] 시수 워크시트 — 강사·기간의 전 회차(출결·리포트·가격 분류·합계).
+  //  ⚠ 라우트 순서: ':id' 앞. 산정 정책은 preview/generate와 동일 분류 함수(단일 진실원).
+  @Get('worksheet')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '시수 워크시트 — 회차별 출결·리포트·가격 분류(자동/책정 필요/제외)·기간 합계 [매니저 이상]' })
+  @ApiQuery({ name: 'instructorId', required: true })
+  @ApiQuery({ name: 'from', required: true })
+  @ApiQuery({ name: 'to', required: true })
+  worksheet(
+    @Query('instructorId', ParseIntPipe) instructorId: number,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    return this.payouts.worksheetFresh(instructorId, from, to);
+  }
+
   @Get(':id')
   @Roles('super_admin', 'instructor')
   @ApiOperation({ summary: '정산서 단건과 산정 line 조회 [대표·강사 본인] — 강사는 타인 정산 403(B7 스코프 규약).' })

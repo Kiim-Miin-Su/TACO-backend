@@ -99,6 +99,25 @@ export class ClassSessionsStore implements OnModuleInit {
     return this.memory.findById<ClassSession>(TABLE, id) ?? saved;
   }
 
+  /** [TBO-64 2026-07-24] 회차 가격 책정(정산 연결 전 override) — payout_id IS NULL 조건부 UPDATE로
+   *  연결 경쟁과 직렬화(연결된 회차는 확정 스냅샷이라 불변). null = 책정 해제. */
+  async setPayAmount(id: number, amount: number | null): Promise<ClassSession | undefined> {
+    if (!this.durable) {
+      const cur = this.memory.findById<ClassSession>(TABLE, id) as (ClassSession & { payoutId?: number | null }) | undefined;
+      if (!cur || cur.payoutId != null) return undefined;
+      return this.memory.update<ClassSession>(TABLE, id, { instructorPayAmount: amount } as never);
+    }
+    const [row] = await this.query(
+      `UPDATE ${TABLE} SET instructor_pay_amount = $1, updated_at = now()
+        WHERE id = $2 AND deleted_at IS NULL AND payout_id IS NULL RETURNING *`,
+      [amount, id],
+    );
+    if (!row) return undefined;
+    const saved = this.fromDbRow(row);
+    this.memory.update<ClassSession>(TABLE, id, this.withoutBase(saved));
+    return this.memory.findById<ClassSession>(TABLE, id) ?? saved;
+  }
+
   async remove(id: number, deletedBy?: number): Promise<boolean> {
     if (!this.durable) return this.memory.remove(TABLE, id, deletedBy);
     const rows = await this.query(
