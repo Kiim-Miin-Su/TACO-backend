@@ -100,14 +100,14 @@ describe('시수·페이 준비 API 권한', () => {
 
   afterAll(async () => app.close());
 
-  it('매니저는 전체 준비 상태를, 강사는 본인 준비 상태만 조회한다', async () => {
+  it('준비 상태(readiness)는 매니저 이상 전용 — 강사는 전량 차단(TBO-62 ⑥)', async () => {
     await http.get('/api/payouts/readiness?from=2026-06-01&to=2026-06-30')
       .set('Authorization', `Bearer ${tokens.manager}`).expect(200);
     await http.get('/api/payouts/readiness?from=2026-06-01&to=2026-06-30')
       .set('Authorization', `Bearer ${tokens.park_inst}`).expect(403);
-    const mine = await http.get('/api/payouts/me/readiness?from=2026-06-01&to=2026-06-30')
-      .set('Authorization', `Bearer ${tokens.park_inst}`).expect(200);
-    expect(mine.body.instructorId).toBe(1);
+    // [TBO-62 ⑥ 2026-07-24] 강사용 me/readiness 라우트 자체 제거(대표 지시: 강사는 받은 내역만) → 404.
+    await http.get('/api/payouts/me/readiness?from=2026-06-01&to=2026-06-30')
+      .set('Authorization', `Bearer ${tokens.park_inst}`).expect(404);
   });
 
   it('잘못된 달력 날짜는 readiness 조회 전에 400으로 거부한다', async () => {

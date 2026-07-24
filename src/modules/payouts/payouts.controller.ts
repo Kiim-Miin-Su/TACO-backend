@@ -43,22 +43,11 @@ export class PayoutsController {
 
   @Get('me')
   @Roles('instructor')
-  @ApiOperation({ summary: '내 정산서 목록 [강사 본인]' })
+  @ApiOperation({ summary: '내 지급 완료 정산 내역 [강사 본인] — paid만. 시수 산정·지급 전 정산은 관리자 전용(TBO-62 ⑥).' })
   findMine(@Req() req: Request & { user?: JwtClaims }) {
-    return this.payouts.listByInstructorDb(req.user!.sub); // [TBO-56 C2b] DB 권위 READ
-  }
-
-  @Get('me/preview')
-  @Roles('instructor')
-  @ApiOperation({ summary: '내 시수×시급 산정 미리보기 [강사 본인]' })
-  @ApiQuery({ name: 'from', required: true })
-  @ApiQuery({ name: 'to', required: true })
-  previewMine(
-    @Req() req: Request & { user?: JwtClaims },
-    @Query('from') from: string,
-    @Query('to') to: string,
-  ) {
-    return this.payouts.measureFresh(req.user!.sub, from, to); // [TBO-56 C2b]
+    // [TBO-62 ⑥ 2026-07-24] 대표 지시: 강사는 "지금까지 받은 것"만 — 시수 측정·예상 페이·지급 전
+    //  상태(pending/confirmed)는 비노출(paid만). preview/readiness 강사 라우트는 제거됨.
+    return this.payouts.listByInstructorDb(req.user!.sub, { paidOnly: true });
   }
 
   @Get('readiness')
@@ -77,17 +66,6 @@ export class PayoutsController {
       throw new BadRequestException('instructorId는 양의 정수여야 합니다.');
     }
     return this.readiness.evaluateFresh(parsed, from, to); // [TBO-56 C2b] 입력 표 재수화 후 판정
-  }
-
-  @Get('me/readiness')
-  @Roles('instructor')
-  @ApiOperation({ summary: '내 시수·페이 누락 항목(학생별 보고서 포함) [강사 본인]' })
-  readinessMine(
-    @Req() req: Request & { user?: JwtClaims },
-    @Query('from') from?: string,
-    @Query('to') to?: string,
-  ) {
-    return this.readiness.evaluateFresh(req.user!.sub, from, to); // [TBO-56 C2b]
   }
 
   // [TBO-32 C1 2026-07-20] 미정산 감지 — 최근 N개월 중 적격 세션이 남아 있는 (강사×월) 목록.

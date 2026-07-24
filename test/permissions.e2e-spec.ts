@@ -5,7 +5,7 @@ import { createTestApp } from "./setup-app";
 // 권한 매트릭스 e2e (#6) — 데모 역할별 토큰으로 주요 엔드포인트 호출 → 기대 응답 검증.
 // 가드 현황(2026-07-21): /auth/pending·approve·reject = 관리자 역할 진입 후 서비스가 target role 범위 강제.
 // schedule·reports 읽기 = 로그인(STAFF). money/payouts 전체 읽기 = super_admin 전용.
-// instructor payout은 /payouts/me 계열에서 본인 정산/시수 미리보기만 허용.
+// instructor payout은 /payouts/me에서 지급 완료(paid) 내역만 — 시수 산정·readiness는 관리자 전용(TBO-62 ⑥).
 // conflicts 드라이런·users/exists = 로그인 필수(H1·H2 — @Roles 누락 무인증 개방 수정).
 describe("Permission matrix (e2e)", () => {
   let app: INestApplication;
@@ -130,18 +130,17 @@ describe("Permission matrix (e2e)", () => {
     it("instructor → GET /payouts 403 (수평 권한 차단)", async () => {
       await http.get("/api/payouts").set(auth("instructor")).expect(403);
     });
-    it("instructor → GET /payouts/me 200 + 본인 강사 정산만 반환", async () => {
+    it("instructor → GET /payouts/me 200 + 본인 지급 완료(paid)만 반환(TBO-62 ⑥)", async () => {
       const rows = (await http.get("/api/payouts/me").set(auth("instructor")).expect(200)).body;
       expect(Array.isArray(rows)).toBe(true);
-      expect(rows.every((p: { instructorId: number }) => Number(p.instructorId) === 1)).toBe(true);
+      expect(rows.every((p: { instructorId: number; status: string }) => Number(p.instructorId) === 1 && p.status === "paid")).toBe(true);
     });
-    it("instructor → GET /payouts/me/preview 200 + JWT subject로 산정", async () => {
-      const res = (await http
+    it("instructor → GET /payouts/me/preview 라우트 제거(404) — 시수 산정은 관리자 전용(TBO-62 ⑥)", async () => {
+      await http
         .get("/api/payouts/me/preview")
         .query({ from: "2026-07-01", to: "2026-07-31" })
         .set(auth("instructor"))
-        .expect(200)).body;
-      expect(res.instructorId).toBe(1);
+        .expect(404);
     });
     it("instructor → GET /payouts/preview 403", async () => {
       await http

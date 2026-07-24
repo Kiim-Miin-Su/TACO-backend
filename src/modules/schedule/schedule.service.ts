@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { randomUUID } from 'crypto';
 import type {
   Conflict,
+  InstructorAttendanceStatus,
   CreateScheduleSeriesResult,
   OpenClassInput,
   OpenClassResult,
@@ -27,6 +28,7 @@ import { isScheduleVisibleStudentStatus } from '../students/student-status.polic
 import { studentGradeLabel } from '../students/student-grade.policy';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
 import { USERS, isActiveInstructor, isActiveScheduleOwner, type StaffAccount } from '../users/user.entity'; // 일정 owner=강사+대표
+import { hasAdminRole } from '../auth/roles.decorator'; // [TBO-62 ④] 강사 본인 출결 체크 판정
 import { ClassSessionsStore } from './class-sessions.store';
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
 import { selectSeriesScope, type SeriesScope } from './series-scope.policy';
@@ -809,6 +811,24 @@ export class ScheduleService implements OnModuleInit {
     if (owner?.role === 'super_admin' && actorId !== ownerId) {
       throw new ForbiddenException('대표 소유 스케줄은 대표 본인만 변경·삭제할 수 있습니다.');
     }
+  }
+
+  /** [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크 — 대표 지시 "강사 본인 출결은 체크 가능,
+   *  수정·삭제만 매니저 이상". 강사는 ① 본인 담당 세션 ② 현재 미표시(null)일 때만 1회 기록.
+   *  이미 표시된 출결의 변경·초기화는 관리자 PATCH 전용(403). 관리자는 제한 없이 이 라우트 사용 가능.
+   *  실제 반영은 기존 update 파이프라인 재사용(lock·audit·read-model write-through 동일). */
+  async markInstructorAttendance(
+    id: number, status: InstructorAttendanceStatus, actorId?: number, roles: string[] = [],
+  ): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }> {
+    await this.ensureReady();
+    const isAdmin = hasAdminRole(roles);
+    if (!isAdmin) {
+      const cur = await this.sessions.findByIdDb(id);
+      if (!cur) throw new NotFoundException(`Session ${id} not found`);
+      if (cur.instructorId !== actorId) throw new ForbiddenException('본인 담당 수업만 출결을 체크할 수 있습니다.');
+      if (cur.instructorAttendance != null) throw new ForbiddenException('이미 체크된 출결의 수정은 매니저 이상만 가능합니다.');
+    }
+    return this.update(id, { instructorAttendance: status } as UpdateScheduleDto, actorId);
   }
 
   async update(id: number, dto: UpdateScheduleDto, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }> {

@@ -3,7 +3,7 @@ import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiOkResponse, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { ScheduleService } from './schedule.service';
-import { UpdateScheduleDto } from './dto/update-schedule.dto';
+import { MarkInstructorAttendanceDto, UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
@@ -159,6 +159,20 @@ export class ScheduleController {
   @ApiConflictResponse({ description: '{ message, conflicts } — force=false에서 충돌 시' })
   update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.schedule.update(id, dto, req.user?.sub); // actor → audit_log(update diff)
+  }
+
+  // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크 — 최초 1회만(수정·삭제는 매니저 이상 PATCH 전용).
+  @Post(':id/instructor-attendance')
+  @Roles(...STAFF_ROLES)
+  @ApiParam({ name: 'id', description: '세션 id' })
+  @ApiOperation({ summary: '강사 출결 체크 — 강사는 본인 세션 최초 1회만, 관리자는 제한 없음. 수정·초기화는 매니저 이상 PATCH. [전 직원]' })
+  @ApiOkResponse({ description: '{ row: ScheduleRow } — instructorAttendance 반영' })
+  markInstructorAttendance(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: MarkInstructorAttendanceDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.schedule.markInstructorAttendance(id, dto.status, req.user?.sub, req.user?.roles ?? []);
   }
 
   // 세션 삭제

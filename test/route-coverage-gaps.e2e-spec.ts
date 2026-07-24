@@ -74,7 +74,12 @@ describe('Route coverage gaps (e2e, B8 E4)', () => {
     const got = (await http.get(`/api/payouts/${payout.id}`).set(auth(admin)).expect(200)).body;
     expect(got.id).toBe(payout.id);
     expect(got.instructorId).toBe(1);
-    // [TBO-32 C4] findOneScoped — 강사 본인(park_inst=강사1)은 자기 정산서 열람 200, 타인(jung_inst)은 403
+    // [TBO-62 ⑥ 2026-07-24] 강사는 지급 완료(paid)만 — 본인 것이라도 지급 전(pending)은 403,
+    //  확정→지급 후에는 200(타인은 여전히 403). 종전 '본인 pending 200'은 신정책으로 대체.
+    await http.get(`/api/payouts/${payout.id}`).set(auth(inst)).expect(403);
+    if (payout.status === 'pending') await http.post(`/api/payouts/${payout.id}/confirm`).set(auth(admin)).expect(201);
+    const st = (await http.get(`/api/payouts/${payout.id}`).set(auth(admin)).expect(200)).body.status;
+    if (st === 'confirmed') await http.post(`/api/payouts/${payout.id}/pay`).set(auth(admin)).expect(201);
     expect((await http.get(`/api/payouts/${payout.id}`).set(auth(inst)).expect(200)).body.id).toBe(payout.id);
     await http.get(`/api/payouts/${payout.id}`).set(auth(inst2)).expect(403);
     await http.get('/api/payouts/999999').set(auth(admin)).expect(404);

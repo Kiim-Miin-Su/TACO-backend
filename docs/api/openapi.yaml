@@ -2465,6 +2465,31 @@ paths:
       summary: 반복 세션 bulk 생성 — 서버 발급 series ID + 규칙 자산화 + 원자 커밋. [로그인]
       tags:
         - scheduling
+  /api/schedule/{id}/instructor-attendance:
+    post:
+      operationId: ScheduleController_markInstructorAttendance
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 세션 id
+          schema:
+            type: number
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MarkInstructorAttendanceDto'
+      responses:
+        '200':
+          description: '{ row: ScheduleRow } — instructorAttendance 반영'
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 강사 출결 체크 — 강사는 본인 세션 최초 1회만, 관리자는 제한 없음. 수정·초기화는 매니저 이상 PATCH. [전 직원]
+      tags:
+        - scheduling
   /api/attendance:
     get:
       operationId: AttendanceController_findAll
@@ -2879,34 +2904,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 내 정산서 목록 [강사 본인]
-      tags:
-        - payouts
-  /api/payouts/me/preview:
-    get:
-      operationId: PayoutsController_previewMine
-      parameters:
-        - name: from
-          required: true
-          in: query
-          schema:
-            type: string
-        - name: to
-          required: true
-          in: query
-          schema:
-            type: string
-      responses:
-        '200':
-          description: ''
-          content:
-            application/json:
-              schema:
-                type: object
-      security:
-        - bearer: []
-        - access_token: []
-      summary: 내 시수×시급 산정 미리보기 [강사 본인]
+      summary: 내 지급 완료 정산 내역 [강사 본인] — paid만. 시수 산정·지급 전 정산은 관리자 전용(TBO-62 ⑥).
       tags:
         - payouts
   /api/payouts/readiness:
@@ -2941,33 +2939,6 @@ paths:
         - bearer: []
         - access_token: []
       summary: 전체 또는 지정 강사의 시수·페이 누락 항목(학생별 보고서 포함) [매니저 이상]
-      tags:
-        - payouts
-  /api/payouts/me/readiness:
-    get:
-      operationId: PayoutsController_readinessMine
-      parameters:
-        - name: from
-          required: false
-          in: query
-          schema:
-            type: string
-        - name: to
-          required: false
-          in: query
-          schema:
-            type: string
-      responses:
-        '200':
-          description: ''
-          content:
-            application/json:
-              schema:
-                type: object
-      security:
-        - bearer: []
-        - access_token: []
-      summary: 내 시수·페이 누락 항목(학생별 보고서 포함) [강사 본인]
       tags:
         - payouts
   /api/payouts/uncovered:
@@ -5970,6 +5941,18 @@ components:
           type: boolean
           example: true
           description: 공통 일정 조회 공개 여부
+    MarkInstructorAttendanceDto:
+      type: object
+      properties:
+        status:
+          enum:
+            - present
+            - late
+            - absent
+            - makeup
+          type: string
+          example: present
+          description: 강사 출결(출석/지각/결석/보강)
     UpsertAttendanceDto:
       type: object
       properties:

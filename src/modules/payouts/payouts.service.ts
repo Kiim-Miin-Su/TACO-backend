@@ -158,11 +158,13 @@ export class PayoutsService implements OnModuleInit {
     return this.store.findActive<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, { orderBy: { field: 'id' } });
   }
 
-  async listByInstructorDb(instructorId: number): Promise<InstructorPayoutRow[]> {
+  async listByInstructorDb(instructorId: number, opts?: { paidOnly?: boolean }): Promise<InstructorPayoutRow[]> {
     const rows = await this.store.findActive<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, {
       where: { instructorId } as Partial<InstructorPayoutRow>,
     });
-    return rows.sort((a, b) => (b.periodStart + b.createdAt).localeCompare(a.periodStart + a.createdAt));
+    // [TBO-62 ⑥ 2026-07-24] 강사 표면 = 지급 완료(paid)만 — 산정·확정 등 지급 전 상태는 관리자 전용.
+    const visible = opts?.paidOnly ? rows.filter((row) => row.status === 'paid') : rows;
+    return visible.sort((a, b) => (b.periodStart + b.createdAt).localeCompare(a.periodStart + a.createdAt));
   }
 
   private async payoutFromDb(id: number): Promise<InstructorPayoutRow> {
@@ -178,6 +180,10 @@ export class PayoutsService implements OnModuleInit {
     const isPrivileged = roles.includes('super_admin');
     if (!isPrivileged && row.instructorId !== actorId) {
       throw new ForbiddenException('본인 정산서만 조회할 수 있습니다.');
+    }
+    // [TBO-62 ⑥ 2026-07-24] 강사는 지급 완료(paid)된 본인 정산만 — 지급 전 산정 내역 비노출(목록과 동일 정책).
+    if (!isPrivileged && row.status !== 'paid') {
+      throw new ForbiddenException('지급 완료된 정산만 조회할 수 있습니다.');
     }
     return row;
   }

@@ -106,6 +106,21 @@ export class AttendanceService implements OnModuleInit {
       if (actorId != null && !isAdmin && !isSessionVisibleToInstructor(session, actorId))
         throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 기록할 수 있습니다.');
 
+      // [TBO-62 ⑤ 2026-07-24] 출결 기록 = "수업이 진행됐다"는 사실의 단일 진실원 — 시작 시각이 지난
+      //  scheduled 세션은 held로 자동 전이한다(운영 실측: 출석·리포트를 기록해도 status가 scheduled로
+      //  남아 시수·완료가 안 잡히고, 종료 경과 scheduled는 FE가 '미진행(펑크)→보강 필요'로 오분류).
+      //  경계: canceled/no_show/makeup/held는 절대 덮지 않고, 미래 세션(시작 전)은 전이하지 않는다.
+      const startMs = Date.parse(`${session.sessionDate}T${session.startTime ?? '00:00'}:00+09:00`);
+      if (session.status === 'scheduled' && Number.isFinite(startMs) && startMs <= Date.now()) {
+        await this.sessionsStore.update(session.id, { status: 'held' } as never);
+        if (actorId != null) {
+          await this.audit.log({
+            entity: 'class_sessions', entityId: session.id, action: 'update', actorId,
+            changes: { status: { before: 'scheduled', after: 'held' } }, reason: '출결 기록 자동 진행 처리(TBO-62)',
+          });
+        }
+      }
+
       // (세션, 학생) 유니크 — DB 기준 판별: 있으면 갱신, 없으면 삽입(lock이 교차 인스턴스 경쟁 직렬화).
       const [existing] = await this.store.findActive<Attendance>(ATTENDANCE_SPEC, {
         where: { sessionId: dto.sessionId, studentId: dto.studentId } as Partial<Attendance>, limit: 1,
