@@ -5,6 +5,7 @@ import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedRes
 import { PayoutsService } from './payouts.service';
 import { RolesGuard } from '../auth/roles.guard';
 import { ADMIN_ROLES, Roles } from '../auth/roles.decorator';
+import { SudoGuard } from '../auth/sudo.guard'; // [TBO-59 C3-2]
 import { GeneratePayoutDto, GenerateBulkPayoutDto, AdjustPayoutDto, RejectPayoutDto, ReversePayoutDto, UnconfirmPayoutDto } from './dto/payout.dto';
 import { PayoutReadinessService } from './payout-readiness.service';
 
@@ -177,9 +178,10 @@ export class PayoutsController {
   }
 
   @Post(':id/pay')
+  @UseGuards(SudoGuard) // [TBO-59 C3-2] 지급 확정(원장 출금) = sudo 재인증
   @Roles('super_admin')
   @ApiParam({ name: 'id', description: '정산서 id' })
-  @ApiOperation({ summary: '지급 완료(confirmed → paid) + 통합 원장 출금 기록 [대표]' })
+  @ApiOperation({ summary: '지급 완료(confirmed → paid) + 통합 원장 출금 기록(재인증 필수) [대표]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
   @ApiCreatedResponse({ description: '{ payout: status=paid, transaction: 원장 출금 1건 }' })
   @ApiBadRequestResponse({ description: 'confirmed 상태가 아님' })
   pay(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {

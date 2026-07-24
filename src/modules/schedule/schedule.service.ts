@@ -718,6 +718,7 @@ export class ScheduleService implements OnModuleInit {
       await this.refreshAfterLock();
       const before = this.db.findById<ClassSession>(SESSIONS, id);
       if (!before) throw new NotFoundException(`Session ${id} not found`);
+      await this.assertCeoOwnedSessionMutable(before, actorId); // [TBO-59 C3-3]
       const seriesRow = before.seriesId != null ? this.db.findById<ScheduleSeriesRow>(CLASS_SESSION_SERIES, before.seriesId) : undefined;
       if (opts?.expectedSeriesVersion != null && seriesRow && opts.expectedSeriesVersion !== seriesRow.version) {
         throw new ConflictException({
@@ -797,6 +798,19 @@ export class ScheduleService implements OnModuleInit {
 
   // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
   // scope(this_and_following|all)면 같은 seriesId 세션에 동일 날짜·시간 델타를 함께 적용.
+  /** [TBO-59 C3-3] 대표 소유 스케줄 보호 — 담당(instructorId)이 super_admin인 세션의 변경·삭제는
+   *  대표 본인만(FABLE §3.1). 판정은 lock 후 재조회된 세션 행 + users DB 행(권위) 기준. */
+  private async assertCeoOwnedSessionMutable(session: { instructorId?: number }, actorId?: number): Promise<void> {
+    const ownerId = session.instructorId;
+    if (ownerId == null) return;
+    const [owner] = await this.collections.findActive<StaffAccount>(USERS_SPEC, {
+      where: { id: ownerId } as never, limit: 1,
+    });
+    if (owner?.role === 'super_admin' && actorId !== ownerId) {
+      throw new ForbiddenException('대표 소유 스케줄은 대표 본인만 변경·삭제할 수 있습니다.');
+    }
+  }
+
   async update(id: number, dto: UpdateScheduleDto, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }> {
     await this.ensureReady();
     // [명시 코호트 v0.1.13] 부분집합 검증 — create와 동일 규칙(함수 통일: activeStudentIds 단일 소스)
@@ -826,6 +840,7 @@ export class ScheduleService implements OnModuleInit {
     await this.refreshAfterLock();
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
+    await this.assertCeoOwnedSessionMutable(cur, actorId); // [TBO-59 C3-3]
     // 참조 무결성(FK) 검증
     if (dto.courseId != null && !this.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
     if (dto.instructorId != null && !this.isScheduleOwner(dto.instructorId)) throw new BadRequestException(`instructorId ${dto.instructorId}는 활성 강사 또는 대표가 아닙니다`);

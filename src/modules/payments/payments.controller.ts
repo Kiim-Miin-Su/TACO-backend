@@ -17,6 +17,7 @@ import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { SudoGuard } from '../auth/sudo.guard'; // [TBO-59 C3-2]
 
 // [참조/처리] /api/payments — 결제·수납은 돈 관련 정보라 대표(CEO)만 조회/처리한다.
 @ApiTags('payments')
@@ -55,8 +56,9 @@ export class PaymentsController {
   }
 
   @Post(':id/refund')
+  @UseGuards(SudoGuard) // [TBO-59 C3-2] 환불(원장 출금) = sudo 재인증
   @Roles('super_admin')
-  @ApiOperation({ summary: '수납 환불 + 원장 역방향 출금 기록 [대표]' })
+  @ApiOperation({ summary: '수납 환불 + 원장 역방향 출금 기록(재인증 필수) [대표]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
   refund(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.payments.refund(id, req.user?.sub);
   }

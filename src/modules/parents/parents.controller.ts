@@ -5,7 +5,7 @@ import { ParentsService } from './parents.service';
 import { CreateParentDto } from './dto/create-parent.dto';
 import { LinkParentDto, UpdateRelationDto } from './dto/link-parent.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 import { UpdateParentDto } from './dto/update-parent.dto';
 
@@ -19,24 +19,24 @@ export class ParentsController {
   constructor(private readonly parents: ParentsService) {}
 
   @Get()
-  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '보호자 목록(Parent[])' })
+  @Roles(...ADMIN_ROLES) // [TBO-59 C3 · P0-5] 보호자 연락처 = 관리자 전용(강사 403)
+  @ApiOperation({ summary: '보호자 목록(Parent[]) — 연락처 포함이라 관리자 전용(강사 403, P0-5) [매니저 이상]' })
   @ApiOkResponse({ description: 'Parent[] — name·phone·kakaoAvailable' })
   findAll() {
     return this.parents.listDb(); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get('relations')
-  @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '학생↔보호자 관계(ParentStudent[]) — M:N(대표/납부자)' })
+  @Roles(...ADMIN_ROLES) // [TBO-59 C3 · P0-5] 보호자 연락처 = 관리자 전용(강사 403)
+  @ApiOperation({ summary: '학생↔보호자 관계(ParentStudent[]) — M:N(대표/납부자) [매니저 이상]' })
   @ApiOkResponse({ description: 'ParentStudent[] — parentId·studentId·relation·isPayer·isPrimary' })
   findAllRelations() {
     return this.parents.listRelationsDb(); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get(':id')
-  @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '보호자 단건과 학생 연결 정보 조회 [전 직원]' })
+  @Roles(...ADMIN_ROLES) // [TBO-59 C3 · P0-5]
+  @ApiOperation({ summary: '보호자 단건과 학생 연결 정보 조회 [매니저 이상]' })
   findOne(@Param('id', ParseIntPipe) id: number) {
     return this.parents.getDb(id); // [TBO-54 C2] DB 권위 READ
   }

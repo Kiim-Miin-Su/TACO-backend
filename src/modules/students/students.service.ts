@@ -1,8 +1,9 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import type { StudentAggregate } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
   COUNSEL_FORMS_SPEC,
+  COURSES_SPEC,
   ENROLLMENTS_SPEC,
   PARENTS_SPEC,
   PARENT_STUDENT_RELATIONS_SPEC,
@@ -16,6 +17,8 @@ import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service
 import { AuditService } from '../audit/audit.service';
 import { Student, STUDENTS } from './student.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
+import { ClassSessionsStore } from '../schedule/class-sessions.store'; // [TBO-59 C3] 강사 스코프 판정(세션 참여 학생)
+import type { Course } from '../courses/course.entity';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
 import { Parent, ParentStudent, PARENTS, PARENT_STUDENTS } from '../parents/parent.entity';
@@ -36,6 +39,7 @@ export class StudentsService implements OnModuleInit {
     private readonly store: PostgresCollectionStore,
     private readonly uow: CalendarUnitOfWork,
     private readonly audit: AuditService, // [감사 전수 2026-07-16] 직접 CRUD 이력(집계 경로는 registrations가 기록)
+    private readonly sessionsStore: ClassSessionsStore, // [TBO-59 C3] 강사 스코프(본인 세션 학생)
   ) {}
 
   // Postgres active rows를 프로세스 read model에 적재한다. 업무 seed는 만들지 않는다.
@@ -65,6 +69,61 @@ export class StudentsService implements OnModuleInit {
     const [row] = await this.store.findActive<Student>(STUDENTS_SPEC, { where: { id } as Partial<Student>, limit: 1 });
     if (!row) throw new NotFoundException(`Student ${id} not found`);
     return row;
+  }
+
+  // ── [TBO-59 C3 · P0-5] 강사 PII scope ─────────────────────────────────
+  /** 강사 안전 필드 allowlist — 연락처·주소·kakao·메모·생년월일 등 PII 제거(관리자 응답 무변). */
+  static readonly INSTRUCTOR_SAFE_FIELDS = [
+    'id', 'name', 'englishName', 'grade', 'country', 'schoolName', 'status', 'createdAt', 'updatedAt',
+  ] as const;
+
+  private toInstructorSafe(student: Student): Partial<Student> {
+    const safe: Record<string, unknown> = {};
+    for (const key of StudentsService.INSTRUCTOR_SAFE_FIELDS) {
+      if ((student as Record<string, unknown>)[key] !== undefined) safe[key] = (student as Record<string, unknown>)[key];
+    }
+    return safe as Partial<Student>;
+  }
+
+  /** 강사가 볼 수 있는 학생 id 집합 = 본인 담당 코스의 활성 수강생 ∪ 본인 세션 참여 학생.
+   *  판정 입력은 전부 DB/유계 read model(C2b 규약 — 메모리 단독 판정 금지). */
+  private async instructorStudentIds(actorId: number): Promise<Set<number>> {
+    const [courses, enrollments] = await Promise.all([
+      this.store.findActive<Course>(COURSES_SPEC, { where: { instructorId: actorId } as Partial<Course> }),
+      this.store.findActive<Enrollment>(ENROLLMENTS_SPEC),
+    ]);
+    const myCourseIds = new Set(courses.map((course) => course.id));
+    const ids = new Set<number>();
+    for (const enrollment of enrollments) {
+      if (myCourseIds.has(enrollment.courseId) && enrollment.status === 'active') ids.add(enrollment.studentId);
+    }
+    await this.sessionsStore.ensureReady(); // TTL 유계 read model(EP2)
+    type SessionRow = { id: number; createdAt: string; updatedAt: string; instructorId?: number; studentIds?: number[] };
+    for (const session of this.db.findAll<SessionRow>('class_sessions')) {
+      if (session.instructorId !== actorId) continue;
+      for (const studentId of session.studentIds ?? []) ids.add(Number(studentId));
+    }
+    return ids;
+  }
+
+  /** 목록 READ — 관리자는 전체(full), 강사는 본인 스코프 + 안전 필드만(P0-5). */
+  async listDbForActor(actorId?: number, roles: string[] = []): Promise<Array<Student | Partial<Student>>> {
+    const isPrivileged = roles.some((role) => role === 'super_admin' || role === 'manager' || role === 'admin');
+    if (isPrivileged) return this.listDb();
+    if (actorId == null) throw new ForbiddenException('학생 원부 조회 권한이 없습니다.');
+    const allowed = await this.instructorStudentIds(actorId);
+    const rows = await this.listDb();
+    return rows.filter((row) => allowed.has(row.id)).map((row) => this.toInstructorSafe(row));
+  }
+
+  /** 단건 READ — 강사는 본인 스코프 밖 403(원부 존재 여부와 무관한 사내 표준 응답). */
+  async getDbForActor(id: number, actorId?: number, roles: string[] = []): Promise<Student | Partial<Student>> {
+    const isPrivileged = roles.some((role) => role === 'super_admin' || role === 'manager' || role === 'admin');
+    if (isPrivileged) return this.getDb(id);
+    if (actorId == null) throw new ForbiddenException('학생 원부 조회 권한이 없습니다.');
+    const allowed = await this.instructorStudentIds(actorId);
+    if (!allowed.has(id)) throw new ForbiddenException('담당 수업의 학생만 조회할 수 있습니다.');
+    return this.toInstructorSafe(await this.getDb(id));
   }
 
   /** aggregate 구성 표 5종을 전부 findActive로 조립 — 조인·정렬 계약은 메모리판과 동일. */

@@ -14,6 +14,7 @@ import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { StudentsService } from './students.service';
 import { RolesGuard } from '../auth/roles.guard';
+import { SudoGuard } from '../auth/sudo.guard'; // [TBO-59 C3-2] 파괴 명령 재인증
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import { CreateStudentFamilyRelationDto, UpdateStudentFamilyRelationDto } from './dto/student-family-relation.dto';
 import { CreateStudentAcademicHistoryDto, UpdateStudentAcademicHistoryDto } from './dto/student-academic-history.dto';
@@ -27,9 +28,10 @@ export class StudentsController {
 
   @Get()
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '학생 원부 목록 조회(soft delete 제외, 퇴원·등록이탈 포함) [전 직원]' })
-  findAll() {
-    return this.students.listDb(); // [TBO-54 C2] DB 권위 READ
+  @ApiOperation({ summary: '학생 원부 목록 — 관리자 전체 / 강사는 담당 학생만+안전 필드(P0-5) [전 직원]' })
+  findAll(@Req() req: Request & { user?: JwtClaims }) {
+    // [TBO-59 C3] 강사 = 본인 담당 코스 수강생·세션 참여 학생만, PII 필드 제거(allowlist)
+    return this.students.listDbForActor(req.user?.sub, req.user?.roles ?? []);
   }
 
   @Get(':id/family-relations')
@@ -124,14 +126,15 @@ export class StudentsController {
 
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '학생 단건 프로필 조회 [전 직원]' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.students.getDb(id); // [TBO-54 C2] DB 권위 READ
+  @ApiOperation({ summary: '학생 단건 — 관리자 full / 강사는 담당 학생만+안전 필드, 밖은 403(P0-5) [전 직원]' })
+  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.students.getDbForActor(id, req.user?.sub, req.user?.roles ?? []); // [TBO-59 C3]
   }
 
   @Delete(':id')
+  @UseGuards(SudoGuard) // [TBO-59 C3-2] 원부 삭제 = sudo 재인증(브라우저 cookie 경로 강제)
   @Roles(...ADMIN_ROLES)
-  @ApiOperation({ summary: '학생 soft delete 및 관련 활성 관계 정리 [매니저 이상]' })
+  @ApiOperation({ summary: '학생 soft delete 및 관련 활성 관계 정리(재인증 필수) [매니저 이상]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
   remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.students.remove(id, req.user?.sub);
   }
