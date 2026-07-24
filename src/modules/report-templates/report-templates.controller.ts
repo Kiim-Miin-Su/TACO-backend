@@ -18,7 +18,8 @@ export class ReportTemplatesController {
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '수업 리포트 템플릿 목록 조회 [전 직원]' })
   findAll() {
-    return this.templates.findAll();
+    // [TBO-56 C2b] 목록 READ = DB 권위(findActive) — 메모리 미러 직접 반환 제거.
+    return this.templates.listDb();
   }
 
   @Post()

@@ -65,9 +65,10 @@ export class EventsService implements OnModuleInit {
   // 부분 수정 — 병합 후 구간 재검증(부분 패치로 end<start 역전 방지). diff audit 포함 한 tx.
   async update(id: number, dto: UpdateEventDto, actorId: number): Promise<AcademyEvent> {
     return this.uow.run(async () => {
-      const found = this.db.findById<AcademyEvent>(ACADEMY_EVENTS, id);
+      // [TBO-56 C2b] before = uow 안 DB 재조회(메모리 미러 stale이면 diff·구간 검증이 구 데이터 기준이 됨)
+      const [found] = await this.store.findActive<AcademyEvent>(ACADEMY_EVENTS_SPEC, { where: { id } as Partial<AcademyEvent>, limit: 1 });
       if (!found) throw new NotFoundException(`이벤트 ${id} 없음`);
-      const before = { ...found }; // [감사 전수 2026-07-16] live-reference 함정 — diff 공백 방지 클론
+      const before = { ...found };
       const merged = { startDate: dto.startDate ?? before.startDate, endDate: dto.endDate ?? before.endDate };
       if (merged.endDate < merged.startDate) {
         throw new BadRequestException('endDate must be on or after startDate');
@@ -84,7 +85,8 @@ export class EventsService implements OnModuleInit {
   // 소프트 삭제 — before 스냅샷 audit(복원 근거) 포함 한 tx.
   async remove(id: number, actorId: number): Promise<AcademyEvent> {
     return this.uow.run(async () => {
-      const before = this.db.findById<AcademyEvent>(ACADEMY_EVENTS, id);
+      // [TBO-56 C2b] before = uow 안 DB 재조회(스냅샷 audit이 실제 삭제 시점 데이터를 담도록)
+      const [before] = await this.store.findActive<AcademyEvent>(ACADEMY_EVENTS_SPEC, { where: { id } as Partial<AcademyEvent>, limit: 1 });
       if (!before) throw new NotFoundException(`이벤트 ${id} 없음`);
       await this.store.remove(ACADEMY_EVENTS_SPEC, id, actorId);
       await this.audit.log({

@@ -125,6 +125,123 @@ describeDb('[TBO-54 C2] SSOT read-after-write — 2-instance PG (e2e)', () => {
     expect(roadmapB.courses.map((c: { courseId: number }) => c.courseId)).toEqual([courseId]);
   });
 
+  // [TBO-56 C2b] 정산 읽기 8종 DB 전환 실증 — 종전엔 B 메모리에 A의 세션·보고서가 없어
+  //  preview 0원·readiness 공백·목록 미노출(TBO-55 감사 "payouts GET 8종 전부 메모리").
+  it('정산: A의 세션·승인 보고서·정산서가 B의 preview/readiness/목록/단건에 즉시 반영', async () => {
+    // A: 강사·코스(시급 60,000)·학생·수강 — 적격 입력 전부 API로 생성
+    const instructorId = Number((await httpA.post('/api/users/instructors').set(auth(admin)).send({
+      webId: `ssot_pay_inst_${stamp}`, name: `SSOT 정산강사 ${stamp}`, password: `Ssot!${stamp}p`,
+      defaultHourlyRate: 60000, canTeachKinder: false, countryCode: 'KR', timeZone: 'Asia/Seoul',
+    }).expect(201)).body.id);
+    const subjectId = Number((await httpA.post('/api/subjects').set(auth(admin))
+      .send({ code: `ssot_pay_${stamp}`, name: `SSOT 정산과목 ${stamp}` }).expect(201)).body.id);
+    const courseId = Number((await httpA.post('/api/courses').set(auth(admin)).send({
+      name: `SSOT 정산코스 ${stamp}`, subjectId, instructorId, price: 300000, hourlyRate: 60000, isKinder: false,
+    }).expect(201)).body.id);
+    const studentId = Number((await httpA.post('/api/students').set(auth(admin))
+      .send(studentAggregateBody(`SSOT정산${String(Date.now()).slice(-7)}`, {
+        interests: [{ customLabel: 'SSOT-P1', priority: 1 }, { customLabel: 'SSOT-P2', priority: 2 }],
+      })).expect(201)).body.student.id);
+    await httpA.post('/api/enrollments').set(auth(admin)).send({ studentId, courseId, totalSessions: 4 }).expect(201);
+    // A: 세션 2개 — ses1 held+보고서 승인(적격), ses2 held+보고서 없음(readiness 이슈)
+    const makeSession = async (startTime: string, durationMinutes: number) =>
+      Number((await httpA.post('/api/schedule').set(auth(admin)).send({
+        courseId, instructorId, studentIds: [studentId], sessionDate: '2099-03-03', startTime, durationMinutes, force: true,
+      }).expect(201)).body.row.id);
+    const ses1 = await makeSession('10:00', 90);
+    const ses2 = await makeSession('13:00', 60);
+    for (const id of [ses1, ses2]) await httpA.patch(`/api/schedule/${id}`).set(auth(admin)).send({ status: 'held', force: true }).expect(200);
+    const reportId = Number((await httpA.post('/api/reports').set(auth(admin))
+      .send({ sessionId: ses1, studentId, content: 'SSOT 정산 보고서' }).expect(201)).body.id);
+    await httpA.post(`/api/reports/${reportId}/approve`).set(auth(admin)).expect(201);
+    // B: preview — 입력 표 재수화 산정(measureFresh)이 A의 held+승인 세션만 계상
+    const previewB = (await httpB.get(`/api/payouts/preview?instructorId=${instructorId}&from=2099-03-01&to=2099-03-31`)
+      .set(auth(adminB)).expect(200)).body;
+    expect(previewB.sessionCount).toBe(1); // ses2는 보고서 미승인 — 제외
+    expect(previewB.computedAmount).toBe(90000); // 90분 × 60,000원/h
+    // B: readiness — A의 미비 세션(ses2 보고서 없음)이 즉시 이슈로, ses1은 적격으로
+    const readinessB = (await httpB.get(`/api/payouts/readiness?instructorId=${instructorId}&from=2099-03-01&to=2099-03-31`)
+      .set(auth(adminB)).expect(200)).body;
+    expect(readinessB.eligibleSessionIds).toContain(ses1);
+    expect(readinessB.issues.some((issue: { sessionId: number; type: string }) =>
+      issue.sessionId === ses2 && issue.type === 'report_missing')).toBe(true);
+    // A: 정산서 생성 → B 목록·단건 즉시(DB 권위 READ)
+    const payout = (await httpA.post('/api/payouts/generate').set(auth(admin))
+      .send({ instructorId, from: '2099-03-01', to: '2099-03-31' }).expect(201)).body;
+    const listB = (await httpB.get('/api/payouts').set(auth(adminB)).expect(200)).body as Array<{ id: number }>;
+    expect(listB.some((row) => row.id === payout.id)).toBe(true); // 종전: B 메모리에 없어 미노출
+    const detailB = (await httpB.get(`/api/payouts/${payout.id}`).set(auth(adminB)).expect(200)).body;
+    expect(detailB.computedAmount).toBe(90000);
+    expect(detailB.instructorId).toBe(instructorId);
+  });
+
+  // [TBO-56 C2b] 출결 GET/PUT DB 전환 실증 — 종전 PUT은 메모리 판별+lock 없음이라
+  //  교차 인스턴스에서 update 대신 insert 시도 → unique 500(TBO-55 감사 최상위 원자성 위험).
+  it('출결: A 기록 → B 조회 즉시, B upsert가 갱신 1행(교차 인스턴스 insert 중복 없음), 동시 upsert 직렬화', async () => {
+    const studentId = Number((await httpA.post('/api/students').set(auth(admin))
+      .send(studentAggregateBody(`SSOT출결${String(Date.now()).slice(-7)}`, {
+        interests: [{ customLabel: 'SSOT-A1', priority: 1 }, { customLabel: 'SSOT-A2', priority: 2 }],
+      })).expect(201)).body.student.id);
+    const instructorId = Number((await httpA.post('/api/users/instructors').set(auth(admin)).send({
+      webId: `ssot_att_inst_${stamp}`, name: `SSOT 출결강사 ${stamp}`, password: `Ssot!${stamp}a`,
+      defaultHourlyRate: 40000, canTeachKinder: false, countryCode: 'KR', timeZone: 'Asia/Seoul',
+    }).expect(201)).body.id);
+    const subjectId = Number((await httpA.post('/api/subjects').set(auth(admin))
+      .send({ code: `ssot_att_${stamp}`, name: `SSOT 출결과목 ${stamp}` }).expect(201)).body.id);
+    const courseId = Number((await httpA.post('/api/courses').set(auth(admin)).send({
+      name: `SSOT 출결코스 ${stamp}`, subjectId, instructorId, price: 100000, isKinder: false,
+    }).expect(201)).body.id);
+    await httpA.post('/api/enrollments').set(auth(admin)).send({ studentId, courseId, totalSessions: 4 }).expect(201);
+    const sessionId = Number((await httpA.post('/api/schedule').set(auth(admin)).send({
+      courseId, instructorId, studentIds: [studentId], sessionDate: '2099-03-05', startTime: '10:00', durationMinutes: 60, force: true,
+    }).expect(201)).body.row.id);
+    // A 기록 → B 조회 즉시(종전: B 메모리에 행 없어 공백)
+    await httpA.put('/api/attendance').set(auth(admin)).send({ sessionId, studentId, status: 'present' }).expect(200);
+    const rowsB = (await httpB.get(`/api/attendance?sessionId=${sessionId}`).set(auth(adminB)).expect(200)).body as Array<{ studentId: number; status: string }>;
+    expect(rowsB).toHaveLength(1);
+    expect(rowsB[0]).toMatchObject({ studentId, status: 'present' });
+    // B upsert = 기존 행 DB 판별 → **갱신**(종전: B 메모리에 행 없어 insert 시도 → unique 500)
+    await httpB.put('/api/attendance').set(auth(adminB)).send({ sessionId, studentId, status: 'late' }).expect(200);
+    const afterUpdate = (await httpA.get(`/api/attendance?sessionId=${sessionId}`).set(auth(admin)).expect(200)).body as Array<{ status: string }>;
+    expect(afterUpdate).toHaveLength(1); // 중복 행 0
+    expect(afterUpdate[0].status).toBe('late');
+    // 동시 upsert(A vs B) — session advisory lock으로 직렬화, 둘 다 성공·최종 1행(500 경로 제거)
+    const [ra, rb] = await Promise.all([
+      httpA.put('/api/attendance').set(auth(admin)).send({ sessionId, studentId, status: 'absent' }),
+      httpB.put('/api/attendance').set(auth(adminB)).send({ sessionId, studentId, status: 'excused' }),
+    ]);
+    expect([ra.status, rb.status]).toEqual([200, 200]);
+    const final = (await httpB.get(`/api/attendance?sessionId=${sessionId}`).set(auth(adminB)).expect(200)).body as Array<{ status: string }>;
+    expect(final).toHaveLength(1);
+    expect(['absent', 'excused']).toContain(final[0].status);
+  });
+
+  // [TBO-56 C2b] students 하위 조인 3종+interests DB 전환 실증 — 종전 family aggregate는
+  //  메모리 미러 조립이라 A의 관계 연결이 B에 미반영(TBO-55 감사 "TBO-30G 조인이 실제로는 메모리").
+  it('가족·희망코스: A의 관계 연결이 B의 family aggregate/relations/interests에 즉시 반영', async () => {
+    const make = async (label: string) => Number((await httpA.post('/api/students').set(auth(admin))
+      .send(studentAggregateBody(`${label}${String(Date.now()).slice(-6)}`, {
+        interests: [{ customLabel: `${label} 희망1`, priority: 1 }, { customLabel: `${label} 희망2`, priority: 2 }],
+      })).expect(201)).body.student.id);
+    const aId = await make('SSOT형');
+    const bId = await make('SSOT동생');
+    const relationId = Number((await httpA.post(`/api/students/${bId}/family-relations`).set(auth(admin))
+      .send({ relatedStudentId: aId, relationType: 'sibling' }).expect(201)).body.id);
+    // B: relations·aggregate 즉시(종전: B 메모리에 관계 행 없어 공백/미포함)
+    const relationsB = (await httpB.get(`/api/students/${bId}/family-relations`).set(auth(adminB)).expect(200)).body as Array<{ id: number }>;
+    expect(relationsB.some((row) => row.id === relationId)).toBe(true);
+    const familyB = (await httpB.get(`/api/students/${bId}/family`).set(auth(adminB)).expect(200)).body as {
+      studentId: number; members: Array<{ relationId: number; student: { id: number } }>;
+    };
+    expect(familyB.studentId).toBe(bId);
+    const member = familyB.members.find((row) => row.student.id === aId); // members = 관계 상대(자기 제외)
+    expect(member?.relationId).toBe(relationId); // 같은 관계 행에서 파생(사본 아님)
+    // B: interests — 학생 생성 시 입력 2건이 DB 조립로 즉시
+    const interestsB = (await httpB.get(`/api/students/${aId}/interests`).set(auth(adminB)).expect(200)).body as Array<{ priority: number }>;
+    expect(interestsB).toHaveLength(2);
+    expect(interestsB.map((row) => row.priority)).toEqual([1, 2]);
+  });
+
   it('GraphQL revenueReport: A 수납이 B 인스턴스 집계에 즉시 반영(P0-4 DB snapshot)', async () => {
     const studentId = Number((await httpA.post('/api/students').set(auth(admin))
       .send(studentAggregateBody(`SSOT매출${String(Date.now()).slice(-7)}`, {

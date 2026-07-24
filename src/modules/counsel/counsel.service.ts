@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { DbAnalyticsSnapshotRepository } from '../../database/db-analytics-snapshot.repository';
+import { STUDENTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { COUNSEL_FORMS_SPEC, COUNSEL_ROUNDS_SPEC } from '../../database/calendar-asset-specs';
@@ -48,17 +49,20 @@ export class CounselService implements OnModuleInit {
   ) {}
 
   // 상담의 학생 프로필·보호자·관심 수업은 student aggregate만 권위다.
-  private assertRefs(dto: {
+  // [TBO-56 C2b] 참조 검증 = DB 권위(findActive) — 교차 인스턴스의 계정 정지·학생 삭제 즉시 반영.
+  private async assertRefs(dto: {
     assignedStaffId?: number | null;
     studentId?: number;
-  }): void {
-    if (dto.assignedStaffId != null) this.assertActiveStaff(dto.assignedStaffId, 'assignedStaffId');
-    if (dto.studentId != null && !this.db.findById<Student>(STUDENTS, dto.studentId))
-      throw new BadRequestException(`studentId ${dto.studentId} 없음`);
+  }): Promise<void> {
+    if (dto.assignedStaffId != null) await this.assertActiveStaff(dto.assignedStaffId, 'assignedStaffId');
+    if (dto.studentId != null) {
+      const rows = await this.store.findActive<Student>(STUDENTS_SPEC, { where: { id: dto.studentId } as Partial<Student> });
+      if (!rows.length) throw new BadRequestException(`studentId ${dto.studentId} 없음`);
+    }
   }
 
-  private assertActiveStaff(id: number, field: 'assignedStaffId' | 'counselorId'): void {
-    const account = this.db.findById<StaffAccount>(USERS, id);
+  private async assertActiveStaff(id: number, field: 'assignedStaffId' | 'counselorId'): Promise<void> {
+    const [account] = await this.store.findActive<StaffAccount>(USERS_SPEC, { where: { id } as Partial<StaffAccount>, limit: 1 });
     if (!account || account.status !== 'active' || !isStaffRole(account.role)) {
       throw new BadRequestException(`${field} ${id}는 활성 직원이 아닙니다`);
     }
@@ -81,7 +85,7 @@ export class CounselService implements OnModuleInit {
 
   // 상담 접수 생성 — 최초 status='requested'(미지정 시). actorId 없으면(시드·내부 경로) audit 생략.
   async createForm(dto: CreateCounselDto, actorId?: number): Promise<CounselForm> {
-    this.assertRefs(dto);
+    await this.assertRefs(dto);
     return this.uow.run(async () => {
       const row = await this.store.insert<CounselForm>(COUNSEL_FORMS_SPEC, {
         ...dto,
@@ -101,7 +105,7 @@ export class CounselService implements OnModuleInit {
 
   // 상담 폼 수정(상태 전환·담당자·관심사). 존재 검증 + 관심 FK 검증.
   async updateForm(id: number, dto: UpdateCounselDto, actorId?: number): Promise<CounselForm> {
-    this.assertRefs(dto);
+    await this.assertRefs(dto);
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'counselForm', id }]);
       const before = { ...(await this.findForm(id)) };
@@ -120,8 +124,8 @@ export class CounselService implements OnModuleInit {
 
   // 회차 추가 — roundNo 자동 증가, 부모 폼 FK 검증 + nextContactAt 동기화(배지 단일 소스).
   async createRound(formId: number, dto: CreateCounselRoundDto, actorId?: number): Promise<CounselRound> {
-    if (dto.counselorId != null) this.assertActiveStaff(dto.counselorId, 'counselorId');
-    if (dto.formSnapshot) this.assertRefs(dto.formSnapshot);
+    if (dto.counselorId != null) await this.assertActiveStaff(dto.counselorId, 'counselorId');
+    if (dto.formSnapshot) await this.assertRefs(dto.formSnapshot);
     if (dto.nextContactAt !== undefined && dto.formSnapshot?.nextContactAt !== undefined
       && dto.nextContactAt !== dto.formSnapshot.nextContactAt) {
       throw new BadRequestException('nextContactAt과 formSnapshot.nextContactAt이 일치해야 합니다');
@@ -171,8 +175,8 @@ export class CounselService implements OnModuleInit {
   }
 
   async updateRound(formId: number, roundId: number, dto: UpdateCounselRoundDto, actorId: number): Promise<CounselRound> {
-    if (dto.counselorId != null) this.assertActiveStaff(dto.counselorId, 'counselorId');
-    if (dto.formSnapshot) this.assertRefs(dto.formSnapshot);
+    if (dto.counselorId != null) await this.assertActiveStaff(dto.counselorId, 'counselorId');
+    if (dto.formSnapshot) await this.assertRefs(dto.formSnapshot);
     if (dto.nextContactAt !== undefined && dto.formSnapshot?.nextContactAt !== undefined
       && dto.nextContactAt !== dto.formSnapshot.nextContactAt) {
       throw new BadRequestException('nextContactAt과 formSnapshot.nextContactAt이 일치해야 합니다');

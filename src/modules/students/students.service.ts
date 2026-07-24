@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import type { StudentAggregate } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
+  COUNSEL_FORMS_SPEC,
   ENROLLMENTS_SPEC,
   PARENTS_SPEC,
   PARENT_STUDENT_RELATIONS_SPEC,
@@ -139,6 +140,36 @@ export class StudentsService implements OnModuleInit {
    *  서버에서 조인해 파생한다 — 읽기 전용(원본 무변형·사본 저장 0). 학생 상세와 상담 화면이
    *  같은 응답만 소비해 "이름만 아는 full-list client join"을 제거한다(B7 규약의 가족 적용).
    */
+  /** [TBO-56 C2b] 가족 aggregate READ — 조인 6표를 요청마다 재수화 후 판정(교차 인스턴스 즉시 반영). */
+  async findFamilyAggregateDb(studentId: number): Promise<StudentFamilyAggregate> {
+    await this.getDb(studentId); // 404 판정도 DB
+    await this.store.hydrate<Student>(STUDENTS_SPEC);
+    await this.store.hydrate<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC);
+    await this.store.hydrate<Parent>(PARENTS_SPEC);
+    await this.store.hydrate<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC);
+    await this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
+    await this.store.hydrate<CounselForm>(COUNSEL_FORMS_SPEC);
+    return this.findFamilyAggregate(studentId);
+  }
+
+  /** [TBO-56 C2b] 가족 관계/학사 이력 READ = DB 권위. */
+  async findFamilyRelationsDb(studentId: number): Promise<StudentFamilyRelation[]> {
+    await this.getDb(studentId);
+    const [familyA, familyB] = await Promise.all([
+      this.store.findActive<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC, { where: { studentIdA: studentId } as Partial<StudentFamilyRelation> }),
+      this.store.findActive<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS_SPEC, { where: { studentIdB: studentId } as Partial<StudentFamilyRelation> }),
+    ]);
+    return [...familyA, ...familyB].sort((a, b) => a.id - b.id);
+  }
+
+  async findAcademicHistoriesDb(studentId: number): Promise<StudentAcademicHistory[]> {
+    await this.getDb(studentId);
+    const rows = await this.store.findActive<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC, {
+      where: { studentId } as Partial<StudentAcademicHistory>,
+    });
+    return rows.sort((a, b) => a.startedOn.localeCompare(b.startedOn) || a.id - b.id);
+  }
+
   findFamilyAggregate(studentId: number): StudentFamilyAggregate {
     this.findOne(studentId);
     const guardiansOf = (id: number) =>

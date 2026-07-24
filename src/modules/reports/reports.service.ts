@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { SESSION_REPORTS_SPEC } from '../../database/calendar-asset-specs';
+import { COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
@@ -144,36 +145,37 @@ export class ReportsService implements OnModuleInit {
   }
 
   async create(dto: CreateReportDto, actor?: ReportActor): Promise<SessionReportRow> {
-    // 1) 세션 FK 검증
-    const session = this.db.findById<ClassSession>(SESSIONS, dto.sessionId);
-    if (!session) throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
-    if (!this.db.findById<Student>(STUDENTS, dto.studentId))
-      throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
-    if (!studentBelongsToSession(session, dto.studentId, this.db.findAll<Enrollment>(ENROLLMENTS)))
-      throw new BadRequestException(`studentId ${dto.studentId}는 세션 ${dto.sessionId}의 수강생이 아닙니다`);
-
-    // 2) 소유권(H2 IDOR 차단) — 비관리자(강사)는 본인 담당 세션에만 작성 가능.
-    if (actor && !actorIsAdmin(actor) && !isSessionVisibleToInstructor(session, actor.id))
-      throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 세션의 보고서를 작성할 수 있습니다.');
-
-    // 3) 강사 일치(미지정 시 세션 강사로 채움)
-    const instructorId = dto.instructorId ?? session.instructorId;
-    if (instructorId !== session.instructorId)
-      throw new BadRequestException(
-        `보고서 강사(${instructorId})가 세션 강사(${session.instructorId})와 불일치`,
-      );
-
-    // 3) (세션, 학생) 중복 보고서 금지 — ERD unique(session_id, student_id)
-    const dup = this.db.findBy<SessionReportRow>(
-      SESSION_REPORTS,
-      (r) => r.sessionId === dto.sessionId && r.studentId === dto.studentId,
-    );
-    if (dup.length) throw new ConflictException(`세션 ${dto.sessionId}·학생 ${dto.studentId} 보고서가 이미 존재`);
-
-    // 4) 과목 스냅샷(코스 조인) — 코스가 있으면 subjectId 보존
-    const course = this.db.findById<Course>(COURSES, session.courseId);
-    const status = dto.status ?? 'submitted';
+    // [TBO-56 C2b] 판정 전부 DB 기준 + report lock 안에서(TBO-53이 전이 4종만 전환했던 갭 해소).
     return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'session', id: dto.sessionId }]);
+      // 1) 세션 FK 검증 — DB 재조회
+      const session = await this.sessionsStore.findByIdDb(dto.sessionId);
+      if (!session) throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
+      const [student] = await this.store.findActive<Student>(STUDENTS_SPEC, { where: { id: dto.studentId } as Partial<Student>, limit: 1 });
+      if (!student) throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
+      if (!studentBelongsToSession(session, dto.studentId, await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC)))
+        throw new BadRequestException(`studentId ${dto.studentId}는 세션 ${dto.sessionId}의 수강생이 아닙니다`);
+
+      // 2) 소유권(H2 IDOR 차단) — 비관리자(강사)는 본인 담당 세션에만 작성 가능.
+      if (actor && !actorIsAdmin(actor) && !isSessionVisibleToInstructor(session, actor.id))
+        throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 세션의 보고서를 작성할 수 있습니다.');
+
+      // 3) 강사 일치(미지정 시 세션 강사로 채움)
+      const instructorId = dto.instructorId ?? session.instructorId;
+      if (instructorId !== session.instructorId)
+        throw new BadRequestException(
+          `보고서 강사(${instructorId})가 세션 강사(${session.instructorId})와 불일치`,
+        );
+
+      // 4) (세션, 학생) 중복 보고서 금지 — DB 판별(물리 unique가 최후 방어)
+      const dup = await this.store.findActive<SessionReportRow>(SESSION_REPORTS_SPEC, {
+        where: { sessionId: dto.sessionId, studentId: dto.studentId } as Partial<SessionReportRow>, limit: 1,
+      });
+      if (dup.length) throw new ConflictException(`세션 ${dto.sessionId}·학생 ${dto.studentId} 보고서가 이미 존재`);
+
+      // 5) 과목 스냅샷(코스 조인) — 코스가 있으면 subjectId 보존
+      const [course] = await this.store.findActive<Course>(COURSES_SPEC, { where: { id: session.courseId } as Partial<Course>, limit: 1 });
+      const status = dto.status ?? 'submitted';
       const row = await this.store.insert<SessionReportRow>(SESSION_REPORTS_SPEC, {
         sessionId: dto.sessionId,
         studentId: dto.studentId,

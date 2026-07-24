@@ -1,6 +1,6 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, TRANSACTIONS_SPEC } from '../../database/calendar-asset-specs';
+import { COURSES_SPEC, ENROLLMENTS_SPEC, INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, TRANSACTIONS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 
@@ -131,6 +131,55 @@ export class PayoutsService implements OnModuleInit {
     await this.sessionsStore.ensureReady();
     await this.store.hydrate(SESSION_REPORTS_SPEC); // 보고서(승인 상태) — 적격 판정 입력
     await this.store.hydrate<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC);
+    // [TBO-56 C2b] 적격(활성 강사)·코호트·단가 판정 입력도 DB 기준 — TBO-55 감사 갭 해소.
+    await this.store.hydrate(USERS_SPEC);
+    await this.store.hydrate(ENROLLMENTS_SPEC);
+    await this.store.hydrate(COURSES_SPEC);
+  }
+
+  /** [TBO-56 C2b] 읽기 전용 산정(preview/readiness/uncovered)도 요청마다 입력 표 재수화 —
+   *  교차 인스턴스의 세션·보고서·정산 변경이 즉시 산정에 반영된다(순수 정책 함수는 무변). */
+  private async refreshReadInputs(): Promise<void> {
+    await this.refreshAfterLock();
+  }
+
+  async measureFresh(instructorId: number, from: string, to: string): Promise<MeasureResult> {
+    await this.refreshReadInputs();
+    return this.measure(instructorId, from, to);
+  }
+
+  async uncoveredFresh(months = 3): Promise<ReturnType<PayoutsService['uncovered']>> {
+    await this.refreshReadInputs();
+    return this.uncovered(months);
+  }
+
+  /** [TBO-56 C2b] 목록/단건 READ = DB 권위(findActive). */
+  listDb(): Promise<InstructorPayoutRow[]> {
+    return this.store.findActive<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, { orderBy: { field: 'id' } });
+  }
+
+  async listByInstructorDb(instructorId: number): Promise<InstructorPayoutRow[]> {
+    const rows = await this.store.findActive<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, {
+      where: { instructorId } as Partial<InstructorPayoutRow>,
+    });
+    return rows.sort((a, b) => (b.periodStart + b.createdAt).localeCompare(a.periodStart + a.createdAt));
+  }
+
+  private async payoutFromDb(id: number): Promise<InstructorPayoutRow> {
+    const [row] = await this.store.findActive<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, {
+      where: { id } as Partial<InstructorPayoutRow>, limit: 1,
+    });
+    if (!row) throw new NotFoundException(`Payout ${id} not found`);
+    return row;
+  }
+
+  async getScopedDb(id: number, roles: string[], actorId?: number): Promise<InstructorPayoutRow> {
+    const row = await this.payoutFromDb(id);
+    const isPrivileged = roles.includes('super_admin');
+    if (!isPrivileged && row.instructorId !== actorId) {
+      throw new ForbiddenException('본인 정산서만 조회할 수 있습니다.');
+    }
+    return row;
   }
 
   async generate(instructorId: number, from: string, to: string, actorId?: number): Promise<InstructorPayoutRow> {
@@ -361,7 +410,11 @@ export class PayoutsService implements OnModuleInit {
   async reject(id: number, reason?: string, actorId?: number): Promise<InstructorPayoutRow> {
     // [원자성] 반려 상태 + 연결 세션 전량 회수(부분 회수 잔존 금지)
     return this.unitOfWork.run(async () => {
-      const p = this.findOne(id);
+      // [TBO-56 C2b] 강사 단위 lock + 재수화 — 세션 회수 판정(payoutId===id)을 DB 기준으로(회수 누락 차단).
+      const scoped = await this.payoutFromDb(id);
+      await this.unitOfWork.lockTargets([{ kind: 'instructor', id: scoped.instructorId }]);
+      await this.refreshAfterLock();
+      const p = await this.payoutFromDb(id);
       if (p.status === 'paid') throw new BadRequestException('이미 지급됨 — 반려 불가');
       const rejected = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, { status: p.status }, {
         status: 'rejected',

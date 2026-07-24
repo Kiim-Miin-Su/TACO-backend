@@ -17,7 +17,7 @@ export class StudentInterestsController {
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '학생 관심 희망 수업 목록 조회 [전 직원]' })
   list(@Param('studentId', ParseIntPipe) studentId: number) {
-    return this.interests.findByStudent(studentId);
+    return this.interests.listByStudentDb(studentId); // [TBO-56 C2b] DB 권위 READ
   }
 
   @Put()

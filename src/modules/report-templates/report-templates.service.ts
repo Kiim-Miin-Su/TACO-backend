@@ -30,11 +30,17 @@ export class ReportTemplatesService implements OnModuleInit {
     return this.db.findAll<ReportTemplate>(REPORT_TEMPLATES);
   }
 
+  /** [TBO-56 C2b] 목록 READ = DB 권위. */
+  listDb(): Promise<ReportTemplate[]> {
+    return this.store.findActive<ReportTemplate>(REPORT_TEMPLATES_SPEC, { orderBy: { field: 'id' } });
+  }
+
   // actorId 없으면(시드·내부 경로) audit 생략. 쓰기+audit 한 tx(uow).
   async create(dto: CreateReportTemplateDto, actorId?: number): Promise<ReportTemplate> {
-    if (this.findAll().some((t) => t.name === dto.name))
-      throw new BadRequestException(`같은 이름의 템플릿이 이미 있습니다: ${dto.name}`);
     return this.uow.run(async () => {
+      // [TBO-56 C2b] 이름 중복 판별 = DB 기준(활성 unique가 최후 방어)
+      const dup = await this.store.findActive<ReportTemplate>(REPORT_TEMPLATES_SPEC, { where: { name: dto.name } as Partial<ReportTemplate>, limit: 1 });
+      if (dup.length) throw new BadRequestException(`같은 이름의 템플릿이 이미 있습니다: ${dto.name}`);
       const row = await this.store.insert<ReportTemplate>(REPORT_TEMPLATES_SPEC, { ...dto });
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
       if (actorId != null) await this.audit.log({ entity: 'report_templates', entityId: row.id, action: 'create', actorId });
@@ -43,10 +49,11 @@ export class ReportTemplatesService implements OnModuleInit {
   }
 
   async remove(id: number, actorId?: number): Promise<ReportTemplate> {
-    const row = this.db.findById<ReportTemplate>(REPORT_TEMPLATES, id);
-    if (!row) throw new NotFoundException(`ReportTemplate ${id} not found`);
-    const before = { ...row };
     return this.uow.run(async () => {
+      // [TBO-56 C2b] before = DB 재조회
+      const [row] = await this.store.findActive<ReportTemplate>(REPORT_TEMPLATES_SPEC, { where: { id } as Partial<ReportTemplate>, limit: 1 });
+      if (!row) throw new NotFoundException(`ReportTemplate ${id} not found`);
+      const before = { ...row };
       await this.store.remove(REPORT_TEMPLATES_SPEC, id, actorId);
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
       // 스냅샷에 연락처 키 없음 — 방어적 마스킹(users.service maskTarget 규약과 동일 원칙).

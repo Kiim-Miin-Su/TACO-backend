@@ -22,7 +22,7 @@ export class PayoutsController {
   @Roles('super_admin') // [TBO-21 RBAC] 전체 정산 목록은 돈 관련 정보 → 대표 전용
   @ApiOperation({ summary: '정산서 목록 [대표]' })
   findAll() {
-    return this.payouts.findAll();
+    return this.payouts.listDb(); // [TBO-56 C2b] DB 권위 READ
   }
 
   // GET /api/payouts/preview?instructorId=&from=&to= — 산정 미리보기(읽기 전용)
@@ -37,14 +37,14 @@ export class PayoutsController {
     @Query('from') from: string,
     @Query('to') to: string,
   ) {
-    return this.payouts.preview(instructorId, from, to);
+    return this.payouts.measureFresh(instructorId, from, to); // [TBO-56 C2b] 입력 표 재수화 후 산정
   }
 
   @Get('me')
   @Roles('instructor')
   @ApiOperation({ summary: '내 정산서 목록 [강사 본인]' })
   findMine(@Req() req: Request & { user?: JwtClaims }) {
-    return this.payouts.findByInstructor(req.user!.sub);
+    return this.payouts.listByInstructorDb(req.user!.sub); // [TBO-56 C2b] DB 권위 READ
   }
 
   @Get('me/preview')
@@ -57,7 +57,7 @@ export class PayoutsController {
     @Query('from') from: string,
     @Query('to') to: string,
   ) {
-    return this.payouts.preview(req.user!.sub, from, to);
+    return this.payouts.measureFresh(req.user!.sub, from, to); // [TBO-56 C2b]
   }
 
   @Get('readiness')
@@ -75,7 +75,7 @@ export class PayoutsController {
     if (parsed != null && (!Number.isInteger(parsed) || parsed <= 0)) {
       throw new BadRequestException('instructorId는 양의 정수여야 합니다.');
     }
-    return this.readiness.evaluate(parsed, from, to);
+    return this.readiness.evaluateFresh(parsed, from, to); // [TBO-56 C2b] 입력 표 재수화 후 판정
   }
 
   @Get('me/readiness')
@@ -86,7 +86,7 @@ export class PayoutsController {
     @Query('from') from?: string,
     @Query('to') to?: string,
   ) {
-    return this.readiness.evaluate(req.user!.sub, from, to);
+    return this.readiness.evaluateFresh(req.user!.sub, from, to); // [TBO-56 C2b]
   }
 
   // [TBO-32 C1 2026-07-20] 미정산 감지 — 최근 N개월 중 적격 세션이 남아 있는 (강사×월) 목록.
@@ -96,7 +96,7 @@ export class PayoutsController {
   @ApiOperation({ summary: '미정산 감지 — 적격 세션이 정산서에 미연결인 (강사×월) 목록(당월 포함 N개월). [대표]' })
   @ApiQuery({ name: 'months', required: false, description: '조회 개월 수(1~12, 기본 3)' })
   uncovered(@Query('months') months?: string) {
-    return this.payouts.uncovered(months ? Number(months) : undefined);
+    return this.payouts.uncoveredFresh(months ? Number(months) : undefined); // [TBO-56 C2b]
   }
 
   @Get(':id')
@@ -104,7 +104,7 @@ export class PayoutsController {
   @ApiOperation({ summary: '정산서 단건과 산정 line 조회 [대표·강사 본인] — 강사는 타인 정산 403(B7 스코프 규약).' })
   findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
     const actor = (req as Request & { user?: JwtClaims }).user;
-    return this.payouts.findOneScoped(id, actor?.roles ?? [], actor?.sub);
+    return this.payouts.getScopedDb(id, actor?.roles ?? [], actor?.sub); // [TBO-56 C2b] DB 권위 READ
   }
 
   // POST /api/payouts/generate — 정산서 생성 + 세션 연결(이중 계상 방지)

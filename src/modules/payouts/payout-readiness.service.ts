@@ -1,6 +1,9 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import type { PayReadiness } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
+import { PostgresCollectionStore } from '../../database/postgres-collection.store';
+import { ClassSessionsStore } from '../../modules/schedule/class-sessions.store';
+import { COURSES_SPEC, ENROLLMENTS_SPEC, SESSION_REPORTS_SPEC } from '../../database/calendar-asset-specs';
 import { addDaysISO } from '../../common/time.util';
 import { dateInTimeZone } from '../students/student-grade.policy';
 import { CoursesService } from '../courses/courses.service';
@@ -14,7 +17,18 @@ export class PayoutReadinessService {
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly courses: CoursesService,
+    private readonly store: PostgresCollectionStore,
+    private readonly sessionsStore: ClassSessionsStore,
   ) {}
+
+  /** [TBO-56 C2b] 준비 상태 READ도 요청마다 입력 표 재수화 — 교차 인스턴스 변경 즉시 반영. */
+  async evaluateFresh(instructorId?: number, from?: string, to?: string, now = new Date()): Promise<PayReadiness> {
+    await this.sessionsStore.ensureReady();
+    await this.store.hydrate(ENROLLMENTS_SPEC);
+    await this.store.hydrate(SESSION_REPORTS_SPEC);
+    await this.store.hydrate(COURSES_SPEC);
+    return this.evaluate(instructorId, from, to, now);
+  }
 
   evaluate(instructorId?: number, from?: string, to?: string, now = new Date()): PayReadiness {
     for (const [name, value] of [['from', from], ['to', to]] as const) {

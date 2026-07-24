@@ -42,6 +42,14 @@ export class StudentInterestsService implements OnModuleInit {
       .sort((a, b) => a.priority - b.priority || a.id - b.id);
   }
 
+  /** [TBO-56 C2b] 목록 READ = DB 권위(학생 존재 판정 포함). */
+  async listByStudentDb(studentId: number): Promise<StudentInterest[]> {
+    const students = await this.store.findActive<Student>(STUDENTS_SPEC, { where: { id: studentId } });
+    if (!students.length) throw new NotFoundException(`Student ${studentId} not found`);
+    const rows = await this.store.findActive<StudentInterest>(STUDENT_INTERESTS_SPEC, { where: { studentId } as Partial<StudentInterest> });
+    return rows.sort((a, b) => a.priority - b.priority || a.id - b.id);
+  }
+
   validate(inputs: readonly StudentInterestInput[]): NormalizedInterest[] {
     if (inputs.length < 2) throw new BadRequestException('희망 수업은 최소 2개여야 합니다.');
     if (inputs.length > 20) throw new BadRequestException('희망 수업은 최대 20개까지 등록할 수 있습니다.');

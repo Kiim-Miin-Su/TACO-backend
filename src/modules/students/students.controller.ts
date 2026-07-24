@@ -36,7 +36,7 @@ export class StudentsController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '학생의 등록 가족 관계 목록 조회 [매니저 이상]' })
   findFamilyRelations(@Param('id', ParseIntPipe) id: number) {
-    return this.students.findFamilyRelations(id);
+    return this.students.findFamilyRelationsDb(id); // [TBO-56 C2b] DB 권위 READ
   }
 
   // [TBO-30G 2026-07-23] 가족 조인 단일 진실원 — 관계→학생→보호자→수강→상담 서버 조인 파생(읽기 전용).
@@ -44,7 +44,7 @@ export class StudentsController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '가족(형제·자매) 조인 aggregate — 구성원별 학생·보호자·활성 수강·상담 이력·공유 보호자(테이블 조인 파생, 단일 진실원) [매니저 이상]' })
   findFamilyAggregate(@Param('id', ParseIntPipe) id: number) {
-    return this.students.findFamilyAggregate(id);
+    return this.students.findFamilyAggregateDb(id); // [TBO-56 C2b] 재수화 후 조인(교차 인스턴스 즉시)
   }
 
   @Post(':id/family-relations')
@@ -85,7 +85,7 @@ export class StudentsController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '학생 학교·학년 변경 timeline 조회 [매니저 이상]' })
   findAcademicHistories(@Param('id', ParseIntPipe) id: number) {
-    return this.students.findAcademicHistories(id);
+    return this.students.findAcademicHistoriesDb(id); // [TBO-56 C2b] DB 권위 READ
   }
 
   @Post(':id/academic-histories')

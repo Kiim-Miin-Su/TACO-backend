@@ -103,7 +103,7 @@ export class GraphqlGatewayController {
           })),
         };
       },
-      uncoveredPayouts: (args: { months?: number }) => this.payouts.uncovered(args.months ?? undefined),
+      uncoveredPayouts: (args: { months?: number }) => this.payouts.uncoveredFresh(args.months ?? undefined), // [TBO-56 C2b]
     };
 
     const result = await graphql({

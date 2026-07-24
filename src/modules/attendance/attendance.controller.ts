@@ -24,8 +24,8 @@ export class AttendanceController {
   @ApiQuery({ name: 'sessionId', required: false, type: Number })
   @ApiOkResponse({ description: 'Attendance[] — sessionId·studentId·status' })
   findAll(@Req() req: Request & { user?: JwtClaims }, @Query('sessionId') sessionId?: string) {
-    if (sessionId !== undefined) return this.attendance.findBySessionForActor(Number(sessionId), req.user?.sub, req.user?.roles);
-    return this.attendance.findAllForActor(req.user?.sub, req.user?.roles);
+    // [TBO-56 C2b] DB 권위 READ — 행 findActive + 강사 스코프 세션 재수화 판정
+    return this.attendance.listDbForActor(req.user?.sub, req.user?.roles, sessionId !== undefined ? Number(sessionId) : undefined);
   }
 
   @Put()
