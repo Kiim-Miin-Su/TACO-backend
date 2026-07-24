@@ -79,6 +79,8 @@ export class SignupPhoneChallengesService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
+    // [TBO-57 원천 픽스] hydrate 자체가 표-부재 생존(store 공통 규약) — migration owner-paste 전
+    //  배포에도 부팅·health는 살고, 이 표의 READ·쓰기만 SQL 오류로 fail-closed 된다.
     await this.store.hydrate<SignupPhoneChallenge>(SIGNUP_PHONE_CHALLENGES_SPEC);
   }
 

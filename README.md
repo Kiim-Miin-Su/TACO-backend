@@ -1,99 +1,65 @@
 # TACO API (backend)
 
-NestJS 기반 TACO ERP API. **독립 repo**로 운영합니다. 우선 in-memory DB로 시작하고, 추후 PostgreSQL(TypeORM)로 교체합니다.
+학원(TN Academy) 백오피스 ERP의 NestJS 11 API. **독립 repo**로 운영하며, 운영 DB는
+Neon PostgreSQL(TypeORM 커넥션 + 자체 collection store), 배포는 Vercel 서버리스입니다.
+
+- **단일 진실원(SSOT)**: 모든 업무 판정(READ·command 전제)은 운영 DB 행 기준.
+  메모리는 인스턴스별 read model(부팅 hydrate 미러)로만 사용합니다.
+- **동시성 규약**: 돈·상태 전이는 `advisory lock → DB 재조회 → CAS(WHERE+RETURNING) →
+  같은 tx 원장/audit` — 2-instance 경쟁 e2e(race/ssot)로 실증합니다.
+- **스키마 권위**: versioned migration ledger(`schema_migrations`, expected 28).
+  production 런타임 DDL 금지 — 신설 표는 owner가 migration을 선적용해야 하며(런북 §9),
+  미적용 상태로 배포돼도 **부팅은 생존**하고 해당 표 기능만 fail-closed 됩니다(2026-07-24 원천 픽스).
 
 ## 실행
 
 ```bash
 npm install
-npm run dev        # http://localhost:3001/api (watch)
+npm run dev                     # http://localhost:3001/api (watch) · Swagger /docs
 npm run build && npm start
 ```
 
-- 환경변수: `PORT`, `WEB_ORIGIN`, `TRUST_PROXY`(production 필수 hop/CIDR), `JWT_SECRET`, `JWT_EXPIRES_IN` — `.env.example` 참고
-- **API 문서(Swagger): http://localhost:3001/docs** (스펙 JSON: `/docs-json`)
+- 환경변수: `.env.example` 참고. production 부팅 필수(fail-fast): `DATABASE_URL`,
+  `JWT_SECRET`, `SMTP_HOST(+PORT/USER/PASS)`, `TRUST_PROXY`, `RRN_ENC_KEY(base64 32B)`.
+- 선택: `NCP_SENS_*` 4종(휴대전화 OTP — 넣으면 가입 폼 인증 필수+마이페이지 SMS 재인증이
+  코드 수정 없이 동시 활성), `WEB_ORIGIN`, `PROFILE_VERIFICATION_SALT`.
+- ⚠ 비밀값(DB URL·JWT·SMTP·SENS 키)은 채팅·문서·로그 어디에도 기록하지 않습니다.
 
-## Docker (로컬 테스트 → AWS 배포)
-
-브라우저는 frontend same-origin `/api`만 호출하고 Next rewrite가 backend로 전달합니다. backend origin은
-frontend의 server-only `API_URL`로 설정합니다.
-
-```bash
-cp .env.example .env            # 필요 시 값 수정
-docker compose up --build       # → http://localhost:3001/api · 문서 /docs
-docker compose logs -f api      # 로그
-docker compose down             # 중지
-```
-
-프론트 연결(BASE_URL):
+## 게이트 (커밋마다 그린)
 
 ```bash
-# frontend/.env.local (server-only; 브라우저 번들에 backend origin 미노출)
-API_URL=http://localhost:3001
-# API_URL=https://api.your-domain
+npx tsc --noEmit                                     # 타입 0
+npx jest --config test/jest-e2e.json                 # e2e 88 suites / 610+ (memory 모드)
+RUN_MONEY_RACE_E2E=1 DATABASE_URL=... npx jest ...   # PG 전용: race/ssot/phone/boot-guard 19
+npm run openapi                                      # OpenAPI 생성+검증 (138 paths / 192 ops)
+npm run e2e:coverage                                 # 라우트 커버리지 192/192 (미커버 0 게이트)
 ```
 
-> AWS 단계: ① `docker build` → ECR push ② ECS Fargate(또는 EC2+compose) 실행
-> ③ 보안그룹에서 3001(또는 ALB 443) 오픈 ④ `WEB_ORIGIN`을 프론트 배포 주소로 설정.
+- DB 검증: `npm run db:verify-migrations`(ledger 대조) · `npm run db:integrity`(읽기 전용 무결성 센서).
+- 마이그레이션: `npm run db:migrate:*` — dry-run 기본, `APPLY=1`로 실행(owner URL 전용).
 
-## 구조 (feature 모듈 기반)
+## 구조
 
 ```
 src/
-├─ main.ts            # 부트스트랩 (CORS, /api prefix, ValidationPipe, Swagger /docs)
-├─ app.module.ts      # 모듈 조립
-├─ common/types/      # 공용 타입 (BaseRow)
-├─ config/            # 환경설정 (app.config.ts)
-├─ database/          # InMemoryDatabase (추후 Repository로 교체)
-└─ modules/
-   ├─ auth/           # JWT 서명/검증
-   ├─ health/         # 헬스체크
-   ├─ users/          # 계정(web id 존재 확인)
-   ├─ students/       # 학생
-   ├─ enrollments/    # 수강 등록
-   ├─ payments/       # 결제(청구→수납)
-   ├─ subjects/       # 과목
-   ├─ courses/        # 코스(시급 포함)
-   └─ expenses/       # 지출(요청→승인/반려)
+├─ main.ts / api/index.ts   # 로컬 부트 / Vercel 서버리스 엔트리(콜드스타트 캐시)
+├─ config/                  # production 부팅 가드 · OpenAPI 공개 라우트 단일 소스
+├─ database/                # PostgresCollectionStore(hydrate/findActive/CAS) · UoW(lock) ·
+│                           # migrations/*.migration.ts + scripts/migrate-*.ts (ledger)
+└─ modules/                 # 도메인 모듈 (auth·users·students·parents·counsel·schedule·
+                            # attendance·reports·payments·transactions·expenses·payouts·
+                            # roadmaps·events·rooms·subjects·courses·graphql·audit·health …)
 ```
 
-## 타입 컨벤션 / 공유 계약
+- 인증: JWT + HttpOnly 쿠키(refresh 회전), 가입은 이메일 OTP + (SENS 설정 시) 휴대전화 OTP를
+  **가입 tx에서 일회 소비**. RRN은 AES-256-GCM 암호문만 저장(평문·로그 금지).
+- 권한: 전역 default-auth(@Public만 예외) + @Roles + 서비스 owner/join 검증. 공개 라우트는
+  `src/config/openapi.ts`의 allowlist가 OpenAPI·비인증 e2e sweep과 공유되는 단일 소스입니다.
+- 감사: 업무 변경은 도메인 tx와 같은 tx에서 append-only `audit_log` 기록(PII 마스킹).
 
-- 도메인 모델은 `type`(예: `Student = StudentContract & BaseRow`), DTO는 **class**(class-validator 런타임 메타데이터 필요).
-- 엔티티/DTO는 `@kms545487/contracts`를 `import type`/`implements` 하여 프론트와 형상 일치 (런타임 의존 없음 — `dist`에 미포함).
+## 문서
 
-## 엔드포인트
-
-> **전체 설계 스펙(현재+예정, payload 포함)**: [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) · 인덱스/규약: [`docs/api/README.md`](./docs/api/README.md)
-> 구현된 부분의 라이브 Swagger는 실행 후 `/docs`.
-
-### 구현 요약
-
-| Method | Path | 설명 |
-|---|---|---|
-| GET | `/api/health` | 헬스체크 |
-| POST | `/api/auth/token` · GET `/api/auth/me` | 토큰 발급/검증 |
-| GET | `/api/users/exists?webId=` | web id 존재 확인 |
-| GET/POST | `/api/students` (+ `/:id`) | 학생 |
-| GET/POST | `/api/enrollments` (`?studentId=`) | 수강 등록 |
-| GET/POST | `/api/payments` · POST `/:id/pay` | 결제·수납 |
-| GET/POST | `/api/subjects` (+ `/:id`) | 과목 |
-| GET/POST | `/api/courses` (+ `/:id`) | 코스 |
-| GET/POST | `/api/expenses` · POST `/:id/approve`·`/reject` | 지출(승인) |
-
-## 남은 도메인 (스펙 정의 완료 · 구현 예정)
-
-class-sessions·attendance·session-reports(피드백), counsel(forms+rounds), instructor-payouts,
-academy-events, roadmaps(M:N), parents/instructors, transactions/dashboard/approvals.
-payload·응답·권한은 [`docs/api/openapi.yaml`](./docs/api/openapi.yaml) 에 이미 정의됨(구현 26 · 예정 42 오퍼레이션).
-sub-resource가 있는 sessions·counsel을 먼저 구현 권장.
-
-## 변경 이력 — 스케줄 API 확장 (2026-06-29)
-
-- `GET /schedule/resources` — 자원 피커(강사·강의실·학생·코스 옵션, FK 정렬).
-- `POST /schedule` — 세션 생성(추천→배정·수동). FK 검증 + 충돌 검사(409 / `force`).
-- `GET /schedule?studentId=` — 학생 활성 수강 코스의 세션만(코호트 역추적, status≠drop).
-- `ScheduleRow.studentIds/studentNames` enrich(코호트). `availability` PUT/DELETE 클라이언트 연동.
-- e2e(jest+supertest): `test/schedule.e2e-spec.ts`·`test/availability.e2e-spec.ts` — 참조 무결성·충돌·시리즈 스코프. `npm run test:e2e`.
-- 보안 점검 이력: `docs/archive/SECURITY-review-2026-06-29.md`.
-- 현재 프로젝트 문서 입구: 루트 `docs/README.md`와 `docs/CODEX.md`.
+전체 설계·운영 문서는 형제 repo `docs/`가 입구입니다 — [`docs/README.md`](../docs/README.md):
+FABLE(운영 계약·현재 판정) · TODO(스프린트) · RUNBOOK(백업·모니터링·owner 절차) ·
+erd.dbml/DATA_DICTIONARY(스키마) · TBO-* (스프린트별 상세 회고).
+라이브 Swagger는 배포 `/docs`, 정적 스펙은 `openapi.json`(빌드 타임 생성·커밋)입니다.

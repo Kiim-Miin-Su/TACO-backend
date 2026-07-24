@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import type { BaseRow } from '../common/types/base';
 import { InMemoryDatabase } from './in-memory.database';
-import { PostgresConnectionService } from './postgres-connection.service';
+import { PostgresConnectionService, runtimeSchemaDdlEnabled } from './postgres-connection.service';
 import {
   camelToSnake,
   normalizeQueryRows,
@@ -54,6 +54,21 @@ export class PostgresCollectionStore {
     await this.postgres.ensureInitialized();
     if (!this.postgres.ready) return false;
     if (this.readyTables.has(spec.table)) return true;
+    // [TBO-57 원천 픽스 2026-07-24] 런타임 DDL 금지(운영) 환경에서는 표 존재를 확인해야만 ready로
+    //  캐시한다 — 종전엔 no-op DDL 후 무조건 캐시해, 부재 표가 ready로 오염되면 이후 hydrate의
+    //  생존 가드까지 우회됐다. 부재 표는 명시적 오류로 fail-closed(READ·쓰기 차단 — 조용한 메모리
+    //  폴백 금지). migration owner-paste 적용 후 다음 호출부터 자동 복구된다.
+    if (!runtimeSchemaDdlEnabled()) {
+      const [row] = await this.query(`SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${spec.table}`]);
+      if ((row as { present?: boolean } | undefined)?.present !== true) {
+        throw new Error(
+          `[db] ${spec.table} 표가 없습니다 — versioned migration(owner-paste) 적용 전입니다. ` +
+          '이 표의 READ·쓰기를 차단합니다(fail-closed). 부팅 hydrate는 생존 규약(빈 미러)으로 통과합니다.',
+        );
+      }
+      this.readyTables.add(spec.table);
+      return true;
+    }
     // [TBO-28B] DDL은 postgres.ddl(직렬화+중복 무해)로 — 부팅 병렬 onModuleInit 레이스 차단.
     await this.postgres.ddl(spec.createSql);
     for (const migrationSql of spec.migrations ?? []) await this.postgres.ddl(migrationSql);
@@ -63,7 +78,26 @@ export class PostgresCollectionStore {
     return true;
   }
 
+  /** [TBO-57 원천 픽스 2026-07-24] hydrate = 표-부재 허용(운영 한정 경고 후 []).
+   *  실측 사고: 신설 표(signup_phone_challenges)의 migration이 owner-paste 되기 전에 배포되면
+   *  런타임 DDL 금지 정책상 표가 없고, 부팅 onModuleInit hydrate의 SELECT가 콜드스타트를
+   *  전멸시켰다(/api/health 포함 전 라우트 다운). hydrate는 "메모리 미러 채우기"라 표 부재 시
+   *  빈 미러가 정확한 표현 — 경고 로그 후 []를 반환해 부팅·재수화가 생존한다(전 서비스·미래
+   *  신설 표 공통). fail-closed는 유지된다: findActive/insert/update/remove 등 실제 READ·쓰기는
+   *  부재 표에서 SQL 오류로 즉시 실패하고(조용한 메모리 폴백 없음), 표 부재는 readyTables에
+   *  캐시하지 않아 migration 적용 후 다음 요청/콜드스타트부터 자동 복구된다.
+   *  비운영(런타임 DDL 허용)은 ensureReady가 표를 만들므로 이 분기가 발동하지 않는다. */
   async hydrate<T extends BaseRow>(spec: PostgresCollectionSpec): Promise<T[]> {
+    await this.postgres.ensureInitialized();
+    if (this.postgres.ready && !this.readyTables.has(spec.table) && !runtimeSchemaDdlEnabled()) {
+      const [row] = await this.query(`SELECT to_regclass($1) IS NOT NULL AS present`, [`public.${spec.table}`]);
+      if ((row as { present?: boolean } | undefined)?.present !== true) {
+        this.logger.warn(
+          `${spec.table} 표가 아직 없습니다 — versioned migration(owner-paste) 적용 전. 부팅·재수화는 계속하고 이 표의 READ·쓰기는 SQL 오류로 fail-closed 됩니다.`,
+        );
+        return [];
+      }
+    }
     if (!(await this.ensureReady(spec))) return [];
     const rows = await this.query(`SELECT * FROM ${spec.table} ORDER BY id ASC`);
     const parsed = rows.map((row) => this.fromDbRow<T>(spec, row));
