@@ -15,3 +15,19 @@ for (const k of [
 }
 process.env.JWT_SECRET = 'e2e-test-secret';
 process.env.JWT_EXPIRES_IN = '1h';
+
+// [TBO-59 2026-07-24] DB URL도 hermetic — 개발자 셸에 DATABASE_URL(운영 Neon!)이 export 돼 있으면
+//  `npm run test:e2e`가 그대로 운영 DB에 붙어 픽스처·테스트 쓰기를 수행할 수 있다(실사고 소지 —
+//  owner-paste 마이그레이션 셸에서 release.zsh를 이어 돌리는 동선이 실제로 존재). PG 모드 스위트는
+//  전부 RUN_*_E2E 플래그로 명시 opt-in 하므로, 플래그가 하나도 없으면 DB URL을 전량 제거해
+//  기본 e2e는 항상 in-memory로 결정론 실행된다(운영 DB 보호 + 환경 무관 재현성).
+const pgOptIn = ['RUN_DB_CRUD_E2E', 'RUN_MONEY_RACE_E2E'].some((flag) => process.env[flag] === '1');
+if (!pgOptIn) {
+  for (const k of [
+    'DATABASE_URL', 'DATABASE_URL_UNPOOLED', 'POSTGRES_URL', 'POSTGRES_PRISMA_URL',
+    'POSTGRES_URL_NON_POOLING', 'POSTGRES_URL_NO_SSL', 'PGHOST', 'PGHOST_UNPOOLED',
+    'PGUSER', 'PGPASSWORD', 'PGDATABASE', 'PGPORT',
+  ]) {
+    delete process.env[k];
+  }
+}

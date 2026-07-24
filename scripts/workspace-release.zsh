@@ -22,6 +22,9 @@
 #     Run the real Postgres CRUD e2e suite.
 #   CLEAN_DB_QA_AFTER_SMOKE=1 RUN_DB_SMOKE=1 ./scripts/release.zsh
 #     Dry-run then apply the scoped QA cleanup after successful DB smokes.
+#   RUN_DB_CLEANUP=1 [CLEAN_DB_QA_APPLY=1] ./scripts/release.zsh
+#     Standalone QA/test-record cleanup (smoke 없이): dry-run 카운트 → APPLY 플래그 시 적용.
+#     대상: QA topic/2099 날짜 노이즈(soft delete) + 만료 챌린지·rate limit(하드 삭제, PII 최소화).
 #   VERIFY_DEPLOYMENT=1 ./scripts/release.zsh
 #     After push, require the exact backend/frontend Git SHAs to have successful
 #     Vercel deployments, then verify frontend, API, Postgres, and login CORS.
@@ -276,12 +279,25 @@ require_db_config() {
 }
 
 run_db_gates() {
-  if ! is_true "$RUN_DB_SMOKE" && ! is_true "$RUN_DB_CRUD"; then
+  if ! is_true "$RUN_DB_SMOKE" && ! is_true "$RUN_DB_CRUD" && ! is_true "${RUN_DB_CLEANUP:-0}"; then
     return 0
   fi
 
   require_db_config
   run_backend_with_db_env npm run db:check
+
+  # [TBO-59 2026-07-24] 독립 QA/테스트 레코드 정리 — 스모크 없이도 실행 가능(대표 지시).
+  #  기본 dry-run(카운트만) → CLEAN_DB_QA_APPLY=1일 때만 실제 적용(soft delete + 만료 챌린지
+  #  하드 삭제). 파괴적 적용 전 Neon 브랜치 스냅샷은 상시 규약(RUNBOOK §3).
+  if is_true "${RUN_DB_CLEANUP:-0}"; then
+    run_backend_with_db_env npm run db:cleanup:qa
+    if is_true "${CLEAN_DB_QA_APPLY:-0}"; then
+      log "backend: apply scoped QA cleanup (CLEAN_DB_QA_APPLY=1)"
+      ( cd "$ROOT/backend" && APPLY=1 DOTENV_CONFIG_PATH="$DB_ENV_FILE" npm run db:cleanup:qa )
+    else
+      warn "dry-run만 수행 — 적용은 RUN_DB_CLEANUP=1 CLEAN_DB_QA_APPLY=1 (사전 Neon 스냅샷 필수)"
+    fi
+  fi
 
   if is_true "$RUN_DB_CRUD"; then
     run_backend_with_db_env npm run test:e2e:db-crud
@@ -321,13 +337,34 @@ run_gates() {
     #  (2026-07-16 새벽 실패가 스크롤백 유실로 재현 불가였던 문제의 재발 방지). tee라 화면 출력 동일.
     local e2e_log="$ROOT/_logs/e2e-$(date +%Y%m%d-%H%M%S).log"
     mkdir -p "$ROOT/_logs"
+    # [TBO-59 2026-07-24] 셸에 DB URL이 export 돼 있어도 기본 e2e는 hermetic(in-memory)이다 —
+    #  jest-e2e.setup.ts가 RUN_*_E2E opt-in 없으면 DB URL을 전량 제거(운영 Neon 오염 원천 차단).
+    if [[ -n "${DATABASE_URL:-}" || -n "${POSTGRES_URL:-}" || -n "${POSTGRES_PRISMA_URL:-}" ]]; then
+      warn "셸에 DB URL이 export 되어 있음 — 기본 e2e는 hermetic 가드로 무시합니다(jest-e2e.setup.ts)"
+    fi
     log "backend: npm run test:e2e (log: $e2e_log)"
     # [2026-07-16 수정] test:e2e는 이미 --runInBand(직렬) — maxWorkers 병기 시 jest가 거부한다
     #  (실측: "Both --runInBand and --maxWorkers were specified"). 플레이크 완화는 retryTimes(1)가 담당.
     if ! ( setopt pipe_fail; cd "$ROOT/backend" && npm run test:e2e -- --silent 2>&1 | tee "$e2e_log" ); then
-      warn "backend e2e FAILED — 실패 상세: $e2e_log (FAIL/✕ 블록 확인)"
-      grep -E "^FAIL|✕" "$e2e_log" | head -20 || true
-      return 1
+      # [TBO-59 2026-07-24] 스톨-플레이크 완화 — 실측(2026-07-24 14:22): payouts 스위트가 앱 무응답
+      #  스톨로 10개 연쇄 타임아웃, 단독 재실행은 15/15 green. retryTimes(1)는 앱 인스턴스 자체가
+      #  멈추면 못 살리므로, "실패 스위트 ≤3개"에 한해 그 스위트만 새 프로세스로 1회 재실행한다.
+      #  둘 다 실패해야 실제 회귀(게이트 차단 유지) — 두 로그 모두 _logs에 보존되어 은폐가 없다.
+      local failed_suites
+      failed_suites=(${(f)"$(grep -E '^FAIL ' "$e2e_log" | awk '{print $2}' | sed 's#^\./#test/#' | sort -u)"})
+      if (( ${#failed_suites} == 0 || ${#failed_suites} > 3 )); then
+        warn "backend e2e FAILED (${#failed_suites} suites) — 실패 상세: $e2e_log (FAIL/✕ 블록 확인)"
+        grep -E "^FAIL|✕" "$e2e_log" | head -20 || true
+        return 1
+      fi
+      local rerun_log="${e2e_log%.log}-rerun.log"
+      warn "e2e 실패 스위트 ${#failed_suites}개 — 스톨-플레이크 판별 재실행: ${failed_suites[*]} (log: $rerun_log)"
+      if ! ( setopt pipe_fail; cd "$ROOT/backend" && npm run test:e2e -- --silent "${failed_suites[@]}" 2>&1 | tee "$rerun_log" ); then
+        warn "backend e2e FAILED (재실행도 실패 = 실제 회귀) — 로그: $e2e_log / $rerun_log"
+        grep -E "^FAIL|✕" "$rerun_log" | head -20 || true
+        return 1
+      fi
+      ok "재실행 green — 1차 실패는 스톨-플레이크로 판정(두 로그 보존: $e2e_log)"
     fi
   fi
 

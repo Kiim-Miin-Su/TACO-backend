@@ -69,6 +69,20 @@ const financePayoutWhere = `
   AND period_start >= DATE '2099-01-01'
 `;
 
+// [TBO-59 2026-07-24] 만료 챌린지 하드 삭제(PII 최소화 — phone/email 원문 보유 표).
+//  미소비(pending/verified/expired/locked) + 만료 7일 경과만 — consumed는 가입·변경 증빙으로 보존.
+//  QA·테스트가 남긴 인증 시도 레코드도 이 조건으로 함께 정리된다.
+const CHALLENGE_TABLES = ['signup_phone_challenges', 'signup_email_challenges', 'profile_verification_challenges'] as const;
+const staleChallengeWhere = `
+  status <> 'consumed'
+  AND expires_at < now() - interval '7 days'
+`;
+// 레이트리밋 창 종료 + 차단 해제 1일 경과 행 — 순수 만료 상태 키(개인 식별자 hash) 정리.
+const staleRateLimitWhere = `
+  window_expires_at < now() - interval '1 day'
+  AND (blocked_until IS NULL OR blocked_until < now())
+`;
+
 async function query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
   return dataSource.query(sql, params);
 }
@@ -117,6 +131,9 @@ async function countRows(): Promise<Record<string, unknown>> {
     financePayments: hasPayments ? (await query<{ count: number }>(`SELECT count(*)::int AS count FROM payments WHERE ${financePaymentWhere}`))[0]?.count ?? 0 : 0,
     financeExpenses: hasExpenses ? (await query<{ count: number }>(`SELECT count(*)::int AS count FROM expenses WHERE ${financeExpenseWhere}`))[0]?.count ?? 0 : 0,
     financePayouts: hasPayouts ? (await query<{ count: number }>(`SELECT count(*)::int AS count FROM instructor_payouts WHERE ${financePayoutWhere}`))[0]?.count ?? 0 : 0,
+    staleChallenges: Object.fromEntries(await Promise.all(CHALLENGE_TABLES.map(async (table) =>
+      [table, (await tableExists(table)) ? (await query<{ count: number }>(`SELECT count(*)::int AS count FROM ${table} WHERE ${staleChallengeWhere}`))[0]?.count ?? 0 : 0] as const))),
+    staleRateLimits: (await tableExists('auth_rate_limits')) ? (await query<{ count: number }>(`SELECT count(*)::int AS count FROM auth_rate_limits WHERE ${staleRateLimitWhere}`))[0]?.count ?? 0 : 0,
     financeTransactions: hasTransactions && hasPayments && hasExpenses && hasPayouts ? (await query<{ count: number }>(`
       SELECT count(*)::int AS count
       FROM transactions
@@ -217,6 +234,13 @@ async function applyCleanup(): Promise<Record<string, unknown>> {
           AND deleted_at IS NULL
       `);
     }
+    // [TBO-59] 만료 챌린지·레이트리밋 = 하드 DELETE(soft-delete 아님 — PII 최소화 목적이라 원문 제거가 목표).
+    for (const table of CHALLENGE_TABLES) {
+      const rows = await manager.query(`SELECT to_regclass($1) IS NOT NULL AS exists`, [`public.${table}`]);
+      if (rows[0]?.exists === true) await manager.query(`DELETE FROM ${table} WHERE ${staleChallengeWhere}`);
+    }
+    const rateLimitExists = await manager.query(`SELECT to_regclass('public.auth_rate_limits') IS NOT NULL AS exists`);
+    if (rateLimitExists[0]?.exists === true) await manager.query(`DELETE FROM auth_rate_limits WHERE ${staleRateLimitWhere}`);
   });
   return countRows();
 }
