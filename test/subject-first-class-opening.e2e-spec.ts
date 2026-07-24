@@ -123,13 +123,16 @@ describe('Subject-first class opening aggregate (e2e)', () => {
       row.studentId === 2 && courses.body.some((course: { id: number; name: string }) => course.id === row.courseId && course.name === marker))).toBe(false);
   });
 
-  it('Kinder 불가 강사는 subject까지 모두 rollback한다', async () => {
-    const marker = `Kinder blocked ${Date.now()}`;
-    await http.post('/api/schedule/open-class').set(auth(admin)).send({
+  // [TBO-61 2026-07-24] Kinder 가능 여부 게이트 제거(대표 지시 '유연하게') — 종전 "Kinder 불가
+  //  강사 400 rollback" 테스트를 신정책 실증으로 대체(트랜잭션 rollback 자체는 위 409 케이스가 커버).
+  it('Kinder는 강사 canTeachKinder와 무관하게 개설된다(유연화)', async () => {
+    const marker = `Kinder flexible ${Date.now()}`;
+    const result = (await http.post('/api/schedule/open-class').set(auth(admin)).send({
       subjectName: marker, instructorId: 2, isKinder: true, hourlyRateOverride: 40000,
       sessionDate: '2098-02-03', startTime: '09:00', durationMinutes: 60,
-    }).expect(400);
+    }).expect(201)).body;
+    expect(result.course).toMatchObject({ isKinder: true });
     const subjects = (await http.get('/api/subjects').set(auth(admin)).expect(200)).body;
-    expect(subjects.some((row: { name: string }) => row.name === marker)).toBe(false);
+    expect(subjects.some((row: { name: string }) => row.name === marker)).toBe(true);
   });
 });

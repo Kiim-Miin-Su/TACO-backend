@@ -141,7 +141,7 @@ export class CoursesService implements OnModuleInit {
       const nextKinder = input.isKinder ?? stored.isKinder;
       const effectiveRate = nextOverride ?? profile!.defaultHourlyRate ?? 0;
       if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
-      if (nextKinder && !profile!.canTeachKinder) throw new BadRequestException('Kinder 수업이 불가능한 강사입니다.');
+      // [TBO-61 2026-07-24] Kinder 가능 여부 게이트 제거(대표 지시 '유연하게') — 프로필 canTeachKinder는 정보 표시용으로만 유지.
       const patch = {
         name: subject.name,
         subjectId: subject.id,
@@ -173,7 +173,7 @@ export class CoursesService implements OnModuleInit {
         : dto.hourlyRate !== undefined ? dto.hourlyRate : null;
       const effectiveRate = explicitOverride ?? profile?.defaultHourlyRate ?? 0;
       if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
-      if (dto.isKinder && !profile!.canTeachKinder) throw new BadRequestException('Kinder 수업이 불가능한 강사입니다.');
+      // [TBO-61 2026-07-24] Kinder 가능 여부 게이트 제거(대표 지시 '유연하게') — 프로필 canTeachKinder는 정보 표시용으로만 유지.
       const row = await this.store.insert<StoredCourse>(COURSES_SPEC, {
         name: dto.name,
         subjectId: dto.subjectId,
@@ -210,7 +210,7 @@ export class CoursesService implements OnModuleInit {
       const effectiveRate = explicitOverride ?? profileRate;
       const isKinder = dto.isKinder ?? current.isKinder;
       if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
-      if (isKinder && !profile!.canTeachKinder) throw new BadRequestException('Kinder 수업이 불가능한 강사입니다.');
+      // [TBO-61 2026-07-24] Kinder 가능 여부 게이트 제거(대표 지시 '유연하게') — 프로필 canTeachKinder는 정보 표시용으로만 유지.
       const { hourlyRate: _legacyInput, ...fields } = dto;
       void _legacyInput;
       const stored = await this.store.update<StoredCourse>(COURSES_SPEC, id, {

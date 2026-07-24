@@ -55,10 +55,13 @@ describe('Catalog CRUD and RBAC (e2e)', () => {
     expect((await http.get(`/api/courses/${course.id}`).set(auth(admin)).expect(200)).body)
       .toMatchObject({ hourlyRate: 55000, hourlyRateOverride: null });
 
-    await http.post('/api/courses').set(auth(admin)).send({
-      name: 'Kinder 차단', subjectId: subject.id, instructorId: 2, price: 100000,
+    // [TBO-61 2026-07-24] Kinder 가능 여부 게이트 제거(대표 지시 '유연하게') — canTeachKinder=false 강사도 Kinder 수업 개설 가능.
+    const kinderFlexible = (await http.post('/api/courses').set(auth(admin)).send({
+      name: 'Kinder 유연 개설', subjectId: subject.id, instructorId: 2, price: 100000,
       hourlyRateOverride: 40000, isKinder: true,
-    }).expect(400);
+    }).expect(201)).body;
+    expect(kinderFlexible.isKinder).toBe(true);
+    await http.delete(`/api/courses/${kinderFlexible.id}`).set(auth(admin)).expect(200);
 
     await http.delete(`/api/subjects/${subject.id}`).set(auth(admin)).expect(409);
     await http.delete(`/api/courses/${defaultCourse.id}`).set(auth(admin)).expect(200);
