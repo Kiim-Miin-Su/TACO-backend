@@ -72,7 +72,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
         throw new BadRequestException('아이디 변경은 대표만 가능합니다(매니저·강사 아이디 변경 불가 정책).');
       }
 
-      const requestedChanges = this.normalizeChanges(dto);
+      const requestedChanges = await this.normalizeChanges(dto);
       const actualChanges = this.changedOnly(requester, requestedChanges);
       if (!Object.keys(actualChanges).length) throw new BadRequestException('현재 프로필과 다른 변경 항목이 필요합니다.');
 
@@ -415,7 +415,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     if (duplicate && duplicate.id !== requesterId) throw new ConflictException('이미 사용 중인 아이디입니다.');
   }
 
-  private normalizeChanges(dto: CreateProfileChangeRequestDto): ProfileChanges {
+  private async normalizeChanges(dto: CreateProfileChangeRequestDto): Promise<ProfileChanges> {
     const changes: ProfileChanges = {};
     if (dto.name !== undefined) changes.name = dto.name.trim();
     // [E0] 아이디(webId) — 승인제 전환(즉시 변경 경로에서 분리). 형식은 즉시 변경과 동일 최소 규칙.
@@ -435,7 +435,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     //  국가↔시간대 교차 일치는 강제하지 않는다(FE 토글이 국가 선택 시 tz 자동 세팅 — 서버는 목록 밖 차단만).
     if (dto.countryCode !== undefined) {
       const countryCode = dto.countryCode == null ? null : dto.countryCode.trim().toUpperCase() || null;
-      if (countryCode != null && !this.countries.isValidCountryCode(countryCode)) {
+      if (countryCode != null && !(await this.countries.isValidCountryCode(countryCode))) {
         throw new BadRequestException('국가 코드는 카탈로그에서 선택해 주세요.');
       }
       changes.countryCode = countryCode;
@@ -448,7 +448,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
         } catch {
           throw new BadRequestException('올바른 IANA 타임존이 아닙니다.');
         }
-        if (!this.countries.isValidTimeZone(timeZone)) {
+        if (!(await this.countries.isValidTimeZone(timeZone))) {
           throw new BadRequestException('시간대는 카탈로그에서 선택해 주세요.');
         }
       }
