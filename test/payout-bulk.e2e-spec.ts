@@ -40,7 +40,12 @@ describe('Payout bulk + uncovered + is_paid (e2e, TBO-32 C1)', () => {
     expect(park).toBeDefined();
     expect(park!.sessionCount).toBe(3); // 시드: held+승인 보고서 3건(무보고 held·canceled 제외)
     expect(park!.computedAmount).toBeGreaterThan(0);
-    expect(entries.some((e) => e.instructorId === 2)).toBe(false); // jung 6월은 시드에서 지급 완료(전량 연결)
+    // [TBO-66 T2] uncovered에 '실행 미확정' 엔트리가 추가됨 — jung의 **6월** 부재만 단언(현재 주
+    //  scheduled 경과분은 executionMissingCount 엔트리로 정당하게 노출된다).
+    expect(entries.some((e) => e.instructorId === 2 && e.month === '2026-06')).toBe(false); // jung 6월은 시드에서 지급 완료(전량 연결)
+    for (const e of entries.filter((x) => x.month !== '2026-06')) {
+      expect((e as { executionMissingCount: number }).executionMissingCount + e.sessionCount).toBeGreaterThan(0); // 노출 근거 명시
+    }
     await http.get('/api/payouts/uncovered').set(auth(inst)).expect(403); // 돈 정보 — 대표 전용
     await http.get('/api/payouts/uncovered?months=99').set(auth(admin)).expect(200); // 1~12로 clamp(500 아님)
   });
@@ -76,8 +81,9 @@ describe('Payout bulk + uncovered + is_paid (e2e, TBO-32 C1)', () => {
     expect(run2.generated).toHaveLength(0);
     expect(run2.skipped.map((s: { instructorId: number }) => s.instructorId).sort()).toEqual([1, 2]);
 
-    const entries = (await http.get('/api/payouts/uncovered?months=3').set(auth(admin)).expect(200)).body as Array<{ month: string; instructorId: number }>;
-    expect(entries.some((e) => e.month === '2026-06')).toBe(false); // 6월 미정산 소거
+    const entries = (await http.get('/api/payouts/uncovered?months=3').set(auth(admin)).expect(200)).body as Array<{ month: string; instructorId: number; sessionCount: number }>;
+    // [TBO-66 T2] 적격 소거만 단언 — ②가 추가한 6월 scheduled는 실행 미확정 엔트리(sessionCount 0)로 남는 것이 신계약
+    expect(entries.some((e) => e.month === '2026-06' && e.sessionCount > 0)).toBe(false); // 6월 미정산(적격) 소거
 
     await http.post('/api/payouts/generate-bulk').set(auth(inst)).send(JUNE).expect(403); // 대표 전용
     await http.post('/api/payouts/generate-bulk').set(auth(admin))

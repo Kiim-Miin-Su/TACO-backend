@@ -37,6 +37,7 @@ describe('ScheduleService DB read-model hydration', () => {
       'subjects',
       'enrollments',
       'students',
+      'rooms', // [TBO-66 R2] 강의실 미러도 조회 전 재수화(정원·검증·표기)
     ]));
   });
 });

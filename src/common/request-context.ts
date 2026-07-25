@@ -18,6 +18,9 @@ export function requestContextMiddleware(req: Request, res: Response, next: Next
   const incoming = String(req.headers['x-request-id'] ?? '');
   const requestId = INCOMING_RE.test(incoming) ? incoming : randomUUID().slice(0, 8);
   res.setHeader('X-Request-Id', requestId);
+  // [TBO-66 R4 2026-07-25] 전 API 응답 no-store — 쿠키 인증 GET(원장·정산·학생 PII)이 브라우저
+  //  디스크 캐시/bfcache에 남아 공용 PC·로그아웃 후 뒤로가기로 재노출되는 것을 차단(종전 헤더 0건).
+  res.setHeader('Cache-Control', 'no-store');
   storage.run({ requestId }, next);
 }
 

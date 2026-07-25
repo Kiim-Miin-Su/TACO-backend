@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import type { Room } from '../rooms/room.entity'; // [TBO-66 R2]
 import { randomUUID } from 'crypto';
 import type {
   Conflict,
@@ -32,18 +33,11 @@ import { hasAdminRole } from '../auth/roles.decorator'; // [TBO-62 ④] 강사 �
 import { ClassSessionsStore } from './class-sessions.store';
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
 import { selectSeriesScope, type SeriesScope } from './series-scope.policy';
-import { addMinutesGuarded, normalizeSessionTime, storedEndTimeOf, SESSION_TIME_DEFAULTS } from './session-time.policy';
+import { addMinutesGuarded, normalizeSessionTime, storedEndTimeOf, SESSION_TIME_DEFAULTS, autoHoldPatch } from './session-time.policy';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import {
-  CLASS_SESSION_SERIES_SPEC,
-  COURSES_SPEC,
-  ENROLLMENTS_SPEC,
-  STUDENTS_SPEC,
-  SUBJECTS_SPEC,
-  USERS_SPEC,
-} from '../../database/calendar-asset-specs';
+import { CLASS_SESSION_SERIES_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC, SUBJECTS_SPEC, USERS_SPEC, ROOMS_SPEC } from '../../database/calendar-asset-specs';
 import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, isPayoutLocked, payoutIdOf, teachingMinutesOf, type SessionAccountingImpact } from './session-accounting.policy';
 import { studentBelongsToSession } from './session-participant.policy';
 import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
@@ -141,6 +135,7 @@ export class ScheduleService implements OnModuleInit {
       () => this.collections.hydrate<Subject>(SUBJECTS_SPEC),
       () => this.collections.hydrate<Enrollment>(ENROLLMENTS_SPEC),
       () => this.collections.hydrate<Student>(STUDENTS_SPEC),
+      () => this.collections.hydrate<Room>(ROOMS_SPEC), // [TBO-66 R2] roomId 검증·정원 충돌·이름 표기가 메모리 미러 소비 — 교차 인스턴스 신선화
     ];
     if (this.unitOfWork.inPgTransaction) {
       for (const task of tasks) await task();
@@ -1085,9 +1080,15 @@ export class ScheduleService implements OnModuleInit {
     const course = this.courseOf(courseId);
     const instructorId = dto.instructorId ?? (dto.courseId != null && course ? course.instructorId : cur.instructorId);
     const roomId = dto.roomId ?? cur.roomId;
+    // [TBO-66 C1 2026-07-25] 강사 출결 기록도 "진행됐다"는 사실 기록 — 시작 경과 scheduled 세션이면
+    //  held 자동 전이(autoHoldPatch 단일 진실원 — 학생 출결·리포트 승인 경로와 동일 규칙).
+    //  dto.status 명시가 항상 우선(수동 지정 존중). 전이는 update의 audit diff에 status 변경으로 남는다.
+    const autoHeld = dto.status == null && !dto.clearInstructorAttendance && dto.instructorAttendance != null
+      ? autoHoldPatch({ ...cur, sessionDate, startTime, durationMinutes }, Date.now())
+      : null;
     return {
       sessionDate, startTime, endTime, durationMinutes, courseId, instructorId, roomId,
-      status: dto.status ?? cur.status,
+      status: dto.status ?? autoHeld?.status ?? cur.status,
       topic: dto.topic ?? (dto.courseId != null && course ? course.name : cur.topic),
       memo: dto.memo ?? cur.memo,
       color: dto.color ?? cur.color,

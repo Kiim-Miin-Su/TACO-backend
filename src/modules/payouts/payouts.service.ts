@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { sessionEndPassed } from '../schedule/session-time.policy'; // [TBO-66 T2]
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { ATTENDANCE_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC, INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, STUDENTS_SPEC, TRANSACTIONS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
@@ -378,6 +379,7 @@ export class PayoutsService implements OnModuleInit {
   uncovered(months = 3): Array<{
     instructorId: number; instructorName: string; instructorStatus: string; month: string;
     periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
+    executionMissingCount: number; // [TBO-66 T2] 기간 내 종료 경과 scheduled(실행 미확정 — 조용한 누락 방지)
   }> {
     const boundedMonths = Math.min(Math.max(Math.trunc(months) || 3, 1), 12);
     // [리뷰 P1-2 2026-07-22] 비활성(퇴직 등) 강사의 미지급분도 감지 — 조용한 소실 방지.
@@ -386,9 +388,11 @@ export class PayoutsService implements OnModuleInit {
     const instructors = this.db.findBy<StaffAccount>(USERS, (a) => a.role === 'instructor');
     // [TBO-65 M2] 월 경계 앵커 = KST 오늘(종전 UTC now — KST 1일 00~09시에 전월로 잡히던 어긋남)
     const [anchorYear, anchorMonth] = todayKst().split('-').map(Number);
+    const nowMs = Date.now();
     const entries: Array<{
       instructorId: number; instructorName: string; instructorStatus: string; month: string;
       periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
+      executionMissingCount: number;
     }> = [];
     for (let back = 0; back < boundedMonths; back += 1) {
       const first = new Date(Date.UTC(anchorYear, anchorMonth - 1 - back, 1));
@@ -397,7 +401,14 @@ export class PayoutsService implements OnModuleInit {
       const periodEnd = last.toISOString().slice(0, 10);
       for (const instructor of instructors) {
         const m = this.measure(instructor.id, periodStart, periodEnd);
-        if (m.sessionCount === 0) continue;
+        // [TBO-66 T2 2026-07-25] 실행 미확정(종료 경과 scheduled·미연결)도 계상 — 종전엔 적격만 세어
+        //  "출결·리포트를 아무도 안 찍은 달"이 대표 배너에서 완전히 보이지 않았다(readiness와 비대칭).
+        const executionMissingCount = this.db.findBy<SessionWithPayout>(
+          SESSIONS,
+          (x) => x.instructorId === instructor.id && x.sessionDate >= periodStart && x.sessionDate <= periodEnd
+            && x.status === 'scheduled' && x.payoutId == null && sessionEndPassed(x, nowMs),
+        ).length;
+        if (m.sessionCount === 0 && executionMissingCount === 0) continue;
         entries.push({
           instructorId: instructor.id,
           instructorName: instructor.name,
@@ -408,6 +419,7 @@ export class PayoutsService implements OnModuleInit {
           sessionCount: m.sessionCount,
           totalMinutes: m.totalMinutes,
           computedAmount: m.computedAmount,
+          executionMissingCount,
         });
       }
     }

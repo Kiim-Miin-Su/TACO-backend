@@ -15,6 +15,9 @@ type UserRow = {
   emailVerifyExpiresAt?: string | null;
 };
 
+// [TBO-66] full-run 부하에서 로그인(bcrypt)·연쇄 요청이 5s 기본을 넘겨 플레이크(2회 실측) — 스위트 한정 상향
+jest.setTimeout(20000);
+
 describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;

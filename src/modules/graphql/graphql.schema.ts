@@ -29,7 +29,10 @@ type CounselCorrelation { totalForms: Int! enrolledSubjects: [String!]! rows: [C
 type CorrelationRow { interestKey: String! counselCount: Int! convertedCount: Int!
   conversionRate: Float! enrolledBySubject: [KeyCount!]! }
 type UncoveredPayout { instructorId: Int! instructorName: String! instructorStatus: String!
-  month: String! sessionCount: Int! computedAmount: Int! }
+  month: String! sessionCount: Int! computedAmount: Int!
+  # [TBO-66 T2] 실행 미확정(종료 경과 scheduled)
+  executionMissingCount: Int!
+}
 `;
 
 export const schema = buildSchema(SDL);

@@ -187,7 +187,7 @@ export class CounselService implements OnModuleInit {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'counselForm', id: formId }]);
       const beforeForm = { ...(await this.findForm(formId)) };
-      const before = { ...this.roundForForm(formId, roundId) };
+      const before = { ...(await this.roundForForm(formId, roundId)) };
       const formSnapshot = dto.formSnapshot == null
         ? { ...before.formSnapshot }
         : snapshotOfForm({ ...before.formSnapshot, ...dto.formSnapshot });
@@ -229,7 +229,7 @@ export class CounselService implements OnModuleInit {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'counselForm', id: formId }]);
       const beforeForm = { ...(await this.findForm(formId)) };
-      const before = { ...this.roundForForm(formId, roundId) };
+      const before = { ...(await this.roundForForm(formId, roundId)) };
       await this.store.remove(COUNSEL_ROUNDS_SPEC, roundId, actorId);
       await this.audit.log({
         entity: 'counsel_rounds', entityId: roundId, action: 'delete', actorId,
@@ -250,8 +250,10 @@ export class CounselService implements OnModuleInit {
     });
   }
 
-  private roundForForm(formId: number, roundId: number): CounselRound {
-    const row = this.db.findById<CounselRound>('counsel_rounds', roundId);
+  // [TBO-66 R5 2026-07-25] 존재·소속 판정 = DB 재조회 — 다른 인스턴스가 만든 회차의 즉시 수정/삭제 허용
+  //  (종전 메모리 직독은 교차 인스턴스에서 유령 404). 호출부는 uow lock 안이라 재조회가 권위다.
+  private async roundForForm(formId: number, roundId: number): Promise<CounselRound> {
+    const [row] = await this.store.findActive<CounselRound>(COUNSEL_ROUNDS_SPEC, { where: { id: roundId } as Partial<CounselRound>, limit: 1 });
     if (!row || row.counselFormId !== formId) throw new NotFoundException(`상담 ${formId}의 회차 ${roundId} 없음`);
     return row;
   }

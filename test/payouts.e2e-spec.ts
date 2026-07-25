@@ -41,7 +41,8 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
     return res.body.row.id;
   }
   async function setStatus(id: number, status: string): Promise<void> {
-    await http.patch(`/api/schedule/${id}`).set(asAdmin()).send({ status, force: true }).expect(200);
+    // [TBO-66 C1] 리포트 승인이 세션을 held로 자동 확정 — 이후 취소 전환은 회계 영향 ack 필요(정합)
+    await http.patch(`/api/schedule/${id}`).set(asAdmin()).send({ status, force: true, acknowledgeAccountingImpact: true }).expect(200);
   }
   // 보고서 작성(submitted) → 반환 id
   async function makeReport(sessionId: number): Promise<number> {

@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { ClassSessionsStore } from '../schedule/class-sessions.store'; // [TBO-66 R3]
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
@@ -21,6 +22,7 @@ export class EnrollmentsService implements OnModuleInit {
     private readonly store: PostgresCollectionStore,
     private readonly uow: CalendarUnitOfWork,
     private readonly audit: AuditService,
+    private readonly sessionsStore: ClassSessionsStore, // [TBO-66 R3] completedSessions 파생 입력 재수화
   ) {}
 
   // 데모 수강 시드 — 프론트 목데이터 이관. studentId→students, courseId→courses(무결성).
@@ -47,6 +49,7 @@ export class EnrollmentsService implements OnModuleInit {
   /** [TBO-54 C2] 목록/상세 READ = DB 권위(행 원부). 파생 completedSessions는 세션
    *  읽기모델(EP2 TTL hydrate — staleness 유계) 기반 — 세션 전환은 후속 청크. */
   async listDb(studentId?: number): Promise<Enrollment[]> {
+    await this.sessionsStore.ensureReady(); // [TBO-66 R3] held 파생이 스테일 미러로 계산되던 갭
     const rows = await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, {
       where: studentId == null ? undefined : ({ studentId } as Partial<Enrollment>),
       orderBy: { field: 'id' },
@@ -55,6 +58,7 @@ export class EnrollmentsService implements OnModuleInit {
   }
 
   async getDb(id: number): Promise<Enrollment> {
+    await this.sessionsStore.ensureReady(); // [TBO-66 R3]
     const [row] = await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, { where: { id } as Partial<Enrollment>, limit: 1 });
     if (!row) throw new NotFoundException(`Enrollment ${id} not found`);
     return this.withDerivedCompletedSessions([row])[0];

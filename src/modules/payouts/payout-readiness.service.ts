@@ -4,7 +4,7 @@ import type { PayReadiness } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { ClassSessionsStore } from '../../modules/schedule/class-sessions.store';
-import { COURSES_SPEC, ENROLLMENTS_SPEC, SESSION_REPORTS_SPEC } from '../../database/calendar-asset-specs';
+import { ATTENDANCE_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC, SESSION_REPORTS_SPEC } from '../../database/calendar-asset-specs';
 import { addDaysISO } from '../../common/time.util';
 import { dateInTimeZone } from '../students/student-grade.policy';
 import { CoursesService } from '../courses/courses.service';
@@ -28,6 +28,7 @@ export class PayoutReadinessService {
     await this.store.hydrate(ENROLLMENTS_SPEC);
     await this.store.hydrate(SESSION_REPORTS_SPEC);
     await this.store.hydrate(COURSES_SPEC);
+    await this.store.hydrate(ATTENDANCE_SPEC); // [TBO-66 R1] 출결도 적격 입력(기간설정 ①) — 미재수화면 교차 인스턴스 오판정
     return this.evaluate(instructorId, from, to, now);
   }
 
