@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { hasAdminRole } from '../auth/role-policy'; // [감사 M3]
 import type { StudentAggregate } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -481,7 +482,7 @@ export class StudentsService implements OnModuleInit {
   }
 
   private today(): string {
-    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Seoul' }).format(new Date());
+    return todayKst(); // [TBO-65 M2] KST 오늘 단일 진실원(en-CA 재구현 사본 제거)
   }
 
   private previousDate(date: string): string {

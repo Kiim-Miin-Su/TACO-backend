@@ -61,7 +61,7 @@ describe('Route coverage gaps (e2e, B8 E4)', () => {
     await http.get('/api/expenses/999999').set(auth(admin)).expect(404);
   });
 
-  it('GET /payouts/:id — 대표 200 · 강사 본인 200 · 타인 강사 403(B7 스코프) · 없는 id 404', async () => {
+  it('GET /payouts/:id — 대표 200 · 강사는 상세 전면 403(기간설정 ②) · 없는 id 404', async () => {
     // 데모 시드: 강사 1은 6월에 적격 세션(미정산)이 있다(audit-coverage와 동일 전제).
     //  retryTimes(1) 대비 — 재시도에선 세션이 이미 연결돼 generate 400이므로 목록에서 재사용(멱등).
     const gen = await http.post('/api/payouts/generate').set(auth(admin))
@@ -74,13 +74,16 @@ describe('Route coverage gaps (e2e, B8 E4)', () => {
     const got = (await http.get(`/api/payouts/${payout.id}`).set(auth(admin)).expect(200)).body;
     expect(got.id).toBe(payout.id);
     expect(got.instructorId).toBe(1);
-    // [TBO-62 ⑥ 2026-07-24] 강사는 지급 완료(paid)만 — 본인 것이라도 지급 전(pending)은 403,
-    //  확정→지급 후에는 200(타인은 여전히 403). 종전 '본인 pending 200'은 신정책으로 대체.
-    await http.get(`/api/payouts/${payout.id}`).set(auth(inst)).expect(403);
+    // [기간설정 ② 2026-07-24] 강사는 단건 상세(회차 lines) **전면 403** — 지급 후에도 상세 불가,
+    //  지급 요약은 GET /payouts/me(paid만). 종전 'paid면 본인 200'(TBO-62 ⑥)에서 한 단계 더 좁힘.
+    await http.get(`/api/payouts/${payout.id}`).set(auth(inst)).expect(403); // 지급 전
     if (payout.status === 'pending') await http.post(`/api/payouts/${payout.id}/confirm`).set(auth(admin)).expect(201);
     const st = (await http.get(`/api/payouts/${payout.id}`).set(auth(admin)).expect(200)).body.status;
     if (st === 'confirmed') await http.post(`/api/payouts/${payout.id}/pay`).set(auth(admin)).expect(201);
-    expect((await http.get(`/api/payouts/${payout.id}`).set(auth(inst)).expect(200)).body.id).toBe(payout.id);
+    await http.get(`/api/payouts/${payout.id}`).set(auth(inst)).expect(403); // 지급 후에도 상세 403
+    // 지급 요약은 me 목록으로 — paid 행이 보인다(요약 필드만 사용하는 계약)
+    const mine = (await http.get('/api/payouts/me').set(auth(inst)).expect(200)).body as Array<{ id: number; status: string }>;
+    expect(mine.some((p) => p.id === payout.id && p.status === 'paid')).toBe(true);
     await http.get(`/api/payouts/${payout.id}`).set(auth(inst2)).expect(403);
     await http.get('/api/payouts/999999').set(auth(admin)).expect(404);
   });

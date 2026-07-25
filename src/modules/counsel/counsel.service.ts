@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { DbAnalyticsSnapshotRepository } from '../../database/db-analytics-snapshot.repository';
 import { STUDENTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
@@ -147,7 +148,7 @@ export class CounselService implements OnModuleInit {
       if (dto.nextContactAt !== undefined) formSnapshot.nextContactAt = dto.nextContactAt;
       const round = await this.store.insert<CounselRound>(COUNSEL_ROUNDS_SPEC, {
         counselFormId: formId, roundNo, counselorId: dto.counselorId,
-        completedAt: new Date().toISOString().slice(0, 10), isCompleted: true,
+        completedAt: todayKst(), isCompleted: true, // [TBO-65 M2] KST 기준
         summary: dto.summary, detail: dto.detail, result: dto.result,
         nextAction: dto.nextAction, nextContactAt: formSnapshot.nextContactAt ?? null,
         formSnapshot,

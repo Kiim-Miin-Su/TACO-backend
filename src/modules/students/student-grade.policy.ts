@@ -15,13 +15,9 @@ export function ageOnDate(birthDate: string, onDate: string): number | null {
   return age;
 }
 
-export function dateInTimeZone(now = new Date(), timeZone = 'Asia/Seoul'): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(now);
-  const value = (type: 'year' | 'month' | 'day') => parts.find((part) => part.type === type)?.value ?? '';
-  return `${value('year')}-${value('month')}-${value('day')}`;
-}
+// [TBO-65 M2] 정본은 common/time.util로 이관 — 기존 import 경로 호환을 위한 재수출.
+import { dateInTimeZone } from '../../common/time.util';
+export { dateInTimeZone };
 
 /** 학생 학년 표시는 모든 backend projection에서 같은 계약을 사용한다. */
 export function studentGradeLabel(grade: number | null | undefined): string | undefined {

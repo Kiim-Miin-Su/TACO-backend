@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { Attendance, ATTENDANCE } from '../attendance/attendance.entity'; // [기간설정 ①]
 import type { PayReadiness } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -44,21 +45,17 @@ export class PayoutReadinessService {
     const periodStart = from || addDaysISO(periodEnd, -90);
     if (periodStart > periodEnd) throw new BadRequestException('정산 기간이 잘못되었습니다(from > to)');
 
-    const timeParts = new Intl.DateTimeFormat('en-GB', {
-      timeZone: 'Asia/Seoul', hour: '2-digit', minute: '2-digit', hour12: false,
-    }).formatToParts(now);
-    const part = (type: 'hour' | 'minute') => timeParts.find((item) => item.type === type)?.value ?? '00';
 
     return evaluatePayoutReadiness({
       sessions: this.db.findAll<ClassSession>(SESSIONS),
       enrollments: this.db.findAll<Enrollment>(ENROLLMENTS),
       reports: this.db.findAll<SessionReportRow>(SESSION_REPORTS),
+      attendance: this.db.findAll<Attendance>(ATTENDANCE), // [기간설정 ①]
       periodStart,
       periodEnd,
       instructorId,
       effectiveRateOf: (courseId) => this.courses.findOptional(courseId)?.hourlyRate,
-      nowDate: today,
-      nowTime: `${part('hour')}:${part('minute')}`,
+      nowMs: now.getTime(), // [TBO-65 M1] 시각 술어는 epoch 하나로
     });
   }
 }

@@ -45,16 +45,23 @@ const report = (studentId: number, approvalStatus: SessionReportRow['approvalSta
   updatedAt: '2026-07-01T00:00:00.000Z',
 } as SessionReportRow);
 
-const evaluate = (reports: SessionReportRow[], sessions: ClassSession[] = [session()]) => evaluatePayoutReadiness({
+// [기간설정 ① 2026-07-24] 출결도 분류 입력 — 기본은 전 참가자 출석 기록(출결 완결 상태에서
+//  리포트 축의 적격/누락만 검증). 출결 미기록 케이스는 전용 테스트에서 attendance를 비워 검증.
+const attendanceRow = (studentId: number, sessionId = 7001) => ({ sessionId, studentId, status: 'present' });
+const evaluate = (
+  reports: SessionReportRow[],
+  sessions: ClassSession[] = [session()],
+  attendance: Array<{ sessionId: number; studentId: number; status: string }> = [attendanceRow(1), attendanceRow(4)],
+) => evaluatePayoutReadiness({
   sessions,
   enrollments: [enrollment(1), enrollment(4)],
   reports,
+  attendance,
   periodStart: '2026-07-01',
   periodEnd: '2026-07-31',
   instructorId: 1,
   effectiveRateOf: () => 50_000,
-  nowDate: '2026-07-21',
-  nowTime: '12:00',
+  nowMs: Date.parse('2026-07-21T12:00:00+09:00'), // [TBO-65 M1] epoch 단일 기준
 });
 
 describe('시수·페이 준비 정책', () => {
@@ -72,6 +79,13 @@ describe('시수·페이 준비 정책', () => {
       ['report_pending_approval', 1],
       ['report_rejected', 4],
     ]);
+    expect(evaluate([report(1, 'approved'), report(4, 'approved')]).eligibleSessionIds).toEqual([7001]);
+  });
+
+  it('[기간설정 ①] 학생 출결 미기록이면 리포트 전원 승인이어도 auto 적격이 아니다(직접 입력 대상)', () => {
+    const result = evaluate([report(1, 'approved'), report(4, 'approved')], [session()], [attendanceRow(1)]); // 학생4 미기록
+    expect(result.eligibleSessionIds).toEqual([]); // attendance_missing → manual(빈칸 — 매니저 int 입력)
+    // 출결까지 완결되면 적격 복귀
     expect(evaluate([report(1, 'approved'), report(4, 'approved')]).eligibleSessionIds).toEqual([7001]);
   });
 

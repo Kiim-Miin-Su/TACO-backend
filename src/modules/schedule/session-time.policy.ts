@@ -51,3 +51,32 @@ export function normalizeSessionTime(
   assertSessionDuration(input.startTime, durationMinutes);
   return { startTime: input.startTime, durationMinutes, endTime: storedEndTimeOf(input.startTime, durationMinutes) };
 }
+
+// ── [TBO-65 M1 2026-07-24] "세션 시각 경과" 술어 단일 진실원 ──
+//  종전엔 attendance 자동 전이(시작·epoch)와 payout-readiness(종료·KST 벽문자열 — 자정 크로스
+//  '24:xx' 파생·사전순 비교로 하루 지연 판정 소지)가 서로 다른 기준을 재구현했다. epoch(KST +09:00
+//  파싱) 하나로 통일 — 자정 크로스는 duration 가산으로 자연 해결(문자열 비교 금지).
+export type SessionMoment = { sessionDate: string; startTime?: string | null; durationMinutes?: number };
+
+/** 세션 시작 epoch(ms) — startTime 없으면 그날 00:00 KST. 파싱 불가면 NaN. */
+export function sessionStartMs(session: SessionMoment): number {
+  return Date.parse(`${session.sessionDate}T${session.startTime ?? '00:00'}:00+09:00`);
+}
+
+/** 세션 종료 epoch(ms) = 시작 + durationMinutes(기본 60). */
+export function sessionEndMs(session: SessionMoment): number {
+  const start = sessionStartMs(session);
+  return start + (session.durationMinutes ?? SESSION_TIME_DEFAULTS.durationMinutes) * 60_000;
+}
+
+/** 시작이 지났는가 — 출결 기록 시 scheduled→held 자동 전이 기준(TBO-62 ⑤). */
+export function sessionStartPassed(session: SessionMoment, nowMs: number): boolean {
+  const start = sessionStartMs(session);
+  return Number.isFinite(start) && start <= nowMs;
+}
+
+/** 종료가 지났는가 — readiness "진행됐어야 할 세션" 센서 기준. */
+export function sessionEndPassed(session: SessionMoment, nowMs: number): boolean {
+  const end = sessionEndMs(session);
+  return Number.isFinite(end) && end <= nowMs;
+}

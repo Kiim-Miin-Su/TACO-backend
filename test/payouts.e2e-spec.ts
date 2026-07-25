@@ -73,6 +73,12 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
   it("2) 수업 진행(held) + 보고서 작성·승인", async () => {
     // 진행 처리
     for (const id of [S1, S2, S3, S4]) await setStatus(id, "held");
+    // [기간설정 ① 2026-07-24] 학생 출결 기록 — 미기록도 '이상'(attendance_missing → 직접 입력)이라
+    //  auto 적격이 되려면 출결까지 완결돼야 한다(실운영 흐름과 동일: 출결 → 리포트 → 승인).
+    for (const id of [S1, S2]) {
+      await http.put("/api/attendance").set(asAdmin())
+        .send({ sessionId: id, studentId: STUDENT, status: "present" }).expect(200);
+    }
     // S1·S2 보고서 작성 → 승인
     const r1 = await makeReport(S1);
     const r2 = await makeReport(S2);

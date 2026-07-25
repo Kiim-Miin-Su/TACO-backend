@@ -43,3 +43,18 @@ export const addDaysISO = (dateStr: string, days: number): string => {
 /** 두 "YYYY-MM-DD"의 일수 차(a - b, UTC 기준 반올림). */
 export const dayDiff = (a: string, b: string): number =>
   Math.round((Date.parse(a + 'T00:00:00Z') - Date.parse(b + 'T00:00:00Z')) / 86_400_000);
+
+// ── [TBO-65 M2 2026-07-24] KST '오늘' 단일 진실원 ──
+//  종전엔 dateInTimeZone(student-grade.policy)·en-CA toLocaleDateString(students.today)·
+//  UTC toISOString().slice(0,10)(enrollments·counsel·ceoDashboard·uncovered)이 산개 —
+//  KST 자정~09:00 사이 "오늘"이 하루 어긋났다(도메인 스탬프·집계 기준일). 여기 하나만 쓴다.
+export function dateInTimeZone(now = new Date(), timeZone = 'Asia/Seoul'): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone, year: 'numeric', month: '2-digit', day: '2-digit',
+  }).formatToParts(now);
+  const value = (type: 'year' | 'month' | 'day') => parts.find((part) => part.type === type)?.value ?? '';
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+/** 도메인 날짜 스탬프·집계 기준일용 KST 오늘(YYYY-MM-DD). */
+export const todayKst = (now = new Date()): string => dateInTimeZone(now);

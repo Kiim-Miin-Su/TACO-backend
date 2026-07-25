@@ -182,7 +182,7 @@ export class SignupPhoneChallengesService implements OnModuleInit {
       case 'verified':
         return { id, status: 'verified' };
       case 'locked':
-        throw new BadRequestException('인증 시도 횟수를 초과했습니다. 처음부터 다시 요청해 주세요.');
+        throw new BadRequestException({ statusCode: 400, message: '인증 시도 횟수를 초과했습니다. 처음부터 다시 요청해 주세요.', code: 'OTP_LOCKED' }); // [TBO-65 5-B] FE는 code로 잠금 감지(문구 결합 해소)
       default:
         throw new BadRequestException(GENERIC_INVALID);
     }

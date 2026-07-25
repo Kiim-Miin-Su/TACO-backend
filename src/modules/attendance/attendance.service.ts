@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { sessionStartPassed } from '../schedule/session-time.policy'; // [TBO-65 M1]
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { ATTENDANCE_SPEC } from '../../database/calendar-asset-specs';
@@ -94,9 +95,9 @@ export class AttendanceService implements OnModuleInit {
       //  scheduled 세션은 held로 자동 전이한다(운영 실측: 출석·리포트를 기록해도 status가 scheduled로
       //  남아 시수·완료가 안 잡히고, 종료 경과 scheduled는 FE가 '미진행(펑크)→보강 필요'로 오분류).
       //  경계: canceled/no_show/makeup/held는 절대 덮지 않고, 미래 세션(시작 전)은 전이하지 않는다.
-      const startMs = Date.parse(`${session.sessionDate}T${session.startTime ?? '00:00'}:00+09:00`);
       let autoHeld = false; // [TBO-58 P2] 자동 전이 여부 — 로그 1줄에 함께 남긴다(전이 추적)
-      if (session.status === 'scheduled' && Number.isFinite(startMs) && startMs <= Date.now()) {
+      // [TBO-65 M1] 시각 경과 판정 = session-time.policy 단일 진실원(readiness와 같은 기준 계열)
+      if (session.status === 'scheduled' && sessionStartPassed(session, Date.now())) {
         autoHeld = true;
         await this.sessionsStore.update(session.id, { status: 'held' } as never);
         if (actorId != null) {

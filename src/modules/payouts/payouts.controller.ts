@@ -96,7 +96,7 @@ export class PayoutsController {
 
   @Get(':id')
   @Roles('super_admin', 'instructor')
-  @ApiOperation({ summary: '정산서 단건과 산정 line 조회 [대표·강사 본인] — 강사는 타인 정산 403(B7 스코프 규약).' })
+  @ApiOperation({ summary: '정산서 단건과 산정 line 조회 [대표] — 강사는 403(상세내역 불가, 지급 요약은 GET /payouts/me — 기간설정 ② 2026-07-24).' })
   findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
     const actor = (req as Request & { user?: JwtClaims }).user;
     return this.payouts.getScopedDb(id, actor?.roles ?? [], actor?.sub); // [TBO-56 C2b] DB 권위 READ

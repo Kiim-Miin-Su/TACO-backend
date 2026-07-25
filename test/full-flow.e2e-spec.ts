@@ -108,6 +108,10 @@ describe("Full Flow (e2e)", () => {
   // 6) 진행(held)으로 상태 변경
   it("6) S1 수업 진행(held)으로 상태 변경 → 200", async () => {
     await http.patch(`/api/schedule/${S1}`).set(asAdmin()).send({ status: "held", force: true }).expect(200);
+    // [기간설정 ① 2026-07-24] 학생 출결 기록 — 미기록은 '이상'이라 자동 적격 제외(신정책)
+    for (const studentId of [1, 4]) {
+      await http.put("/api/attendance").set(asAdmin()).send({ sessionId: S1, studentId, status: "present" }).expect(200);
+    }
   });
 
   // 7) 그룹 수업 대상 학생 전원의 리포트 작성 + 승인

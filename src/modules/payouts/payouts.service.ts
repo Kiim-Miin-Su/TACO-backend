@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { ATTENDANCE_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC, INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, STUDENTS_SPEC, TRANSACTIONS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -91,6 +92,10 @@ export class PayoutsService implements OnModuleInit {
     const reportsByKey = new Map(
       this.db.findAll<SessionReportRow>(SESSION_REPORTS).map((r) => [`${r.sessionId}:${r.studentId}`, r]),
     );
+    // [기간설정 지시 ① 2026-07-24] 출결 현황도 분류 입력 — 미기록이면 auto 금지(직접 입력)
+    const attendanceByKey = new Map(
+      this.db.findAll<Attendance>(ATTENDANCE).map((a) => [`${a.sessionId}:${a.studentId}`, a.status]),
+    );
     const sessions = this.db.findBy<SessionWithPayout>(
       SESSIONS,
       (s) => s.instructorId === instructorId && s.sessionDate >= from && s.sessionDate <= to,
@@ -103,6 +108,7 @@ export class PayoutsService implements OnModuleInit {
       const classification = classifySessionForPayout(s, {
         participantIds,
         reportOf: (studentId) => reportsByKey.get(`${s.id}:${studentId}`),
+        attendanceOf: (studentId) => attendanceByKey.get(`${s.id}:${studentId}`),
         hourlyRate: course?.hourlyRate,
       });
       if (classification.effectiveAmount == null) continue; // manual 미책정·excluded — 정산 라인 제외
@@ -219,6 +225,7 @@ export class PayoutsService implements OnModuleInit {
       const classification = classifySessionForPayout(session, {
         participantIds,
         reportOf: (studentId) => reportsByKey.get(`${session.id}:${studentId}`),
+        attendanceOf: (studentId) => attendanceByKey.get(`${session.id}:${studentId}`), // [기간설정 ①]
         hourlyRate: course?.hourlyRate,
       });
       return {
@@ -259,15 +266,14 @@ export class PayoutsService implements OnModuleInit {
     return { instructorId, periodStart: from, periodEnd: to, rows, totals };
   }
 
-  async getScopedDb(id: number, roles: string[], actorId?: number): Promise<InstructorPayoutRow> {
+  async getScopedDb(id: number, roles: string[], _actorId?: number): Promise<InstructorPayoutRow> {
     const row = await this.payoutFromDb(id);
     const isPrivileged = roles.includes('super_admin');
-    if (!isPrivileged && row.instructorId !== actorId) {
-      throw new ForbiddenException('본인 정산서만 조회할 수 있습니다.');
-    }
-    // [TBO-62 ⑥ 2026-07-24] 강사는 지급 완료(paid)된 본인 정산만 — 지급 전 산정 내역 비노출(목록과 동일 정책).
-    if (!isPrivileged && row.status !== 'paid') {
-      throw new ForbiddenException('지급 완료된 정산만 조회할 수 있습니다.');
+    // [기간설정 지시 ② 2026-07-24] 강사는 **단건 상세(회차별 산정 lines) 전면 불가** — 지급 완료
+    //  요약(기간·시수·금액·지급일)은 목록(GET /payouts/me)으로 충분(대표: "이미 지급된 것만,
+    //  상세내역은 불가"). 종전 paid 단건 200(TBO-62 ⑥)에서 한 단계 더 좁힘 — 정책 변화 명시.
+    if (!isPrivileged) {
+      throw new ForbiddenException('정산 상세 내역은 관리자 전용입니다. 지급 내역은 내 페이 목록에서 확인하세요.');
     }
     return row;
   }
@@ -378,13 +384,14 @@ export class PayoutsService implements OnModuleInit {
     //  pending/rejected 강사는 수업이 없어 measure 0으로 자연 배제되고, active 외 상태는
     //  instructorStatus로 표시해 화면에서 구분한다(일괄 산정 기본 대상은 여전히 active만).
     const instructors = this.db.findBy<StaffAccount>(USERS, (a) => a.role === 'instructor');
-    const now = new Date();
+    // [TBO-65 M2] 월 경계 앵커 = KST 오늘(종전 UTC now — KST 1일 00~09시에 전월로 잡히던 어긋남)
+    const [anchorYear, anchorMonth] = todayKst().split('-').map(Number);
     const entries: Array<{
       instructorId: number; instructorName: string; instructorStatus: string; month: string;
       periodStart: string; periodEnd: string; sessionCount: number; totalMinutes: number; computedAmount: number;
     }> = [];
     for (let back = 0; back < boundedMonths; back += 1) {
-      const first = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - back, 1));
+      const first = new Date(Date.UTC(anchorYear, anchorMonth - 1 - back, 1));
       const last = new Date(Date.UTC(first.getUTCFullYear(), first.getUTCMonth() + 1, 0));
       const periodStart = first.toISOString().slice(0, 10);
       const periodEnd = last.toISOString().slice(0, 10);

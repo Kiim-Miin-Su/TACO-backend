@@ -1,4 +1,5 @@
 import { Logger, BadRequestException, Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
@@ -119,7 +120,7 @@ export class GraphqlGatewayController {
       ceoDashboard: logged('ceoDashboard', async (args: { from?: string; to?: string }) => {
         const value = range(args);
         const snapshot = await this.analytics.revenue();
-        return computeCeoDashboard(snapshot, value, new Date().toISOString().slice(0, 10));
+        return computeCeoDashboard(snapshot, value, todayKst()); // [TBO-65 M2] aging 기준일 = KST
       }),
     };
 

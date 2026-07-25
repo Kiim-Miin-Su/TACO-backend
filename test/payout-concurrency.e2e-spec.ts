@@ -28,6 +28,8 @@ describe('payout concurrent transition integrity (e2e)', () => {
       force: true,
     }).expect(201)).body.row;
     await http.patch(`/api/schedule/${session.id}`).set(auth()).send({ status: 'held', force: true }).expect(200);
+    // [기간설정 ① 2026-07-24] 출결 미기록 = 이상(auto 제외) — 적격이 되려면 출결까지 완결
+    await http.put('/api/attendance').set(auth()).send({ sessionId: session.id, studentId: 1, status: 'present' }).expect(200);
     const report = (await http.post('/api/reports').set(auth()).send({
       sessionId: session.id,
       studentId: 1,

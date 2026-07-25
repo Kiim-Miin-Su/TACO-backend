@@ -1,4 +1,5 @@
 import type { PayReadiness, PayReadinessIssue, PayReadinessIssueType } from '@kms545487/contracts';
+import { sessionEndPassed } from '../schedule/session-time.policy'; // [TBO-65 M1]
 import type { Enrollment } from '../enrollments/enrollment.entity';
 import type { SessionReportRow } from '../reports/report.entity';
 import type { ClassSession } from '../schedule/schedule.entity';
@@ -15,12 +16,14 @@ export type PayoutReadinessInput = {
   sessions: readonly ReadinessSession[];
   enrollments: readonly Enrollment[];
   reports: readonly SessionReportRow[];
+  /** [기간설정 ① 2026-07-24] 학생 출결 — 미기록도 '이상'이라 auto 적격에서 제외(분류 입력). */
+  attendance: readonly { sessionId: number; studentId: number; status: string }[];
   periodStart: string;
   periodEnd: string;
   instructorId?: number;
   effectiveRateOf: (courseId: number) => number | undefined;
-  nowDate: string;
-  nowTime: string;
+  /** [TBO-65 M1] 판정 시점 epoch(ms) — 시각 술어는 session-time.policy 단일 진실원. */
+  nowMs: number;
 };
 
 const reportIssueType = (report?: SessionReportRow): PayReadinessIssueType | null => {
@@ -29,20 +32,6 @@ const reportIssueType = (report?: SessionReportRow): PayReadinessIssueType | nul
   if (report.approvalStatus === 'rejected') return 'report_rejected';
   if (report.approvalStatus === 'submitted' || report.status === 'submitted') return 'report_pending_approval';
   return 'report_draft';
-};
-
-const isPastScheduledSession = (
-  session: Pick<ClassSession, 'sessionDate' | 'startTime' | 'endTime' | 'durationMinutes'>,
-  nowDate: string,
-  nowTime: string,
-): boolean => {
-  if (session.sessionDate !== nowDate) return session.sessionDate < nowDate;
-  const end = session.endTime ?? (() => {
-    const [hour, minute] = (session.startTime ?? '00:00').split(':').map(Number);
-    const total = hour * 60 + minute + session.durationMinutes;
-    return `${String(Math.floor(total / 60)).padStart(2, '0')}:${String(total % 60).padStart(2, '0')}`;
-  })();
-  return end <= nowTime;
 };
 
 const issue = (
@@ -68,6 +57,7 @@ const issue = (
  */
 export function evaluatePayoutReadiness(input: PayoutReadinessInput): PayReadiness {
   const cohortIndex = buildCohortIndex(input.enrollments);
+  const attendanceByKey = new Map(input.attendance.map((a) => [`${a.sessionId}:${a.studentId}`, a.status])); // [기간설정 ①]
   const reportsByKey = new Map(input.reports.map((row) => [`${row.sessionId}:${row.studentId}`, row]));
   const eligibleSessionIds: number[] = [];
   const issues: PayReadinessIssue[] = [];
@@ -84,7 +74,7 @@ export function evaluatePayoutReadiness(input: PayoutReadinessInput): PayReadine
 
   for (const session of candidates) {
     if (session.status === 'scheduled') {
-      if (isPastScheduledSession(session, input.nowDate, input.nowTime)) {
+      if (sessionEndPassed(session, input.nowMs)) { // [TBO-65 M1] '24:xx' 문자열 비교 하루 지연 소지 해소
         issues.push(issue('session_execution_missing', session));
       }
       continue;
@@ -123,6 +113,7 @@ export function evaluatePayoutReadiness(input: PayoutReadinessInput): PayReadine
     const classification = classifySessionForPayout(session, {
       participantIds,
       reportOf: (studentId) => reportsByKey.get(`${session.id}:${studentId}`),
+      attendanceOf: (studentId) => attendanceByKey.get(`${session.id}:${studentId}`), // [기간설정 ①]
       hourlyRate: input.effectiveRateOf(session.courseId),
     });
     if (classification.kind === 'auto') eligibleSessionIds.push(session.id);

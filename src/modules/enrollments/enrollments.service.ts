@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -83,7 +84,7 @@ export class EnrollmentsService implements OnModuleInit {
         totalSessions: dto.totalSessions,
         completedSessions: 0,
         memo: dto.memo,
-        enrolledAt: new Date().toISOString().slice(0, 10),
+        enrolledAt: todayKst(), // [TBO-65 M2] KST 기준(UTC slice는 자정 부근 하루 어긋남)
       });
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
       if (actorId != null) await this.audit.log({ entity: 'enrollments', entityId: row.id, action: 'create', actorId, changes: this.audit.snapshotOf(row) });
@@ -122,7 +123,7 @@ export class EnrollmentsService implements OnModuleInit {
             courseId,
             status: 'active',
             completedSessions: 0,
-            enrolledAt: new Date().toISOString().slice(0, 10),
+            enrolledAt: todayKst(), // [TBO-65 M2] KST 기준(UTC slice는 자정 부근 하루 어긋남)
           });
           if (actorId != null) {
             await this.audit.log({ entity: 'enrollments', entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) });
@@ -137,7 +138,7 @@ export class EnrollmentsService implements OnModuleInit {
         const before = { ...existing };
         const updated = await this.store.update<Enrollment>(ENROLLMENTS_SPEC, existing.id, {
           status: 'active',
-          enrolledAt: new Date().toISOString().slice(0, 10),
+          enrolledAt: todayKst(), // [TBO-65 M2] KST 기준(UTC slice는 자정 부근 하루 어긋남)
         }) as Enrollment;
         if (actorId != null) {
           await this.audit.log({ entity: 'enrollments', entityId: updated.id, action: 'update', actorId, changes: this.audit.diffOf(before, updated) });
