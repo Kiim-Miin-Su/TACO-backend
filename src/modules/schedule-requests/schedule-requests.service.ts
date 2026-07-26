@@ -7,7 +7,8 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type { AvailabilityKind, AvailabilityOwner, RecurrenceScope, ScheduleRequest, SessionMode, Conflict } from '@kms545487/contracts';
 import type { BaseRow } from '../../database/in-memory.database';
-import { ScheduleService } from '../schedule/schedule.service';
+import { ScheduleReadService } from '../schedule/schedule-read.service'; // [TBO-69 C1] 검증·충돌·목록
+import { ScheduleService } from '../schedule/schedule.service'; // 승인 시 세션 생성·수정·삭제(명령)
 import { AuditService } from '../audit/audit.service';
 import { CreateScheduleRequestDto } from './dto/create-schedule-request.dto';
 import { UpdateScheduleRequestDto } from './dto/update-schedule-request.dto';
@@ -45,7 +46,8 @@ type RequestRow = ScheduleRequest & BaseRow & {
 export class ScheduleRequestsService {
   constructor(
     private readonly store: ScheduleRequestsStore,
-    private readonly schedule: ScheduleService,
+    private readonly schedule: ScheduleReadService, // [TBO-69 C1] 검증·충돌·목록 = 읽기 서비스
+    private readonly scheduleCmd: ScheduleService, // 승인 확정 시 명령(생성·수정·삭제)
     private readonly availability: AvailabilityService,
     private readonly audit: AuditService,
   ) {}
@@ -285,7 +287,7 @@ export class ScheduleRequestsService {
       }
       const before = { ...req };
       // 기존 createSession 경로 그대로 — FK·코호트 재검증 + 충돌 409(force면 강제) + create audit(actor=승인자)
-      const { row: session, conflicts } = await this.schedule.create({
+      const { row: session, conflicts } = await this.scheduleCmd.create({
         courseId: req.courseId!, instructorId: req.instructorId, roomId: req.roomId,
         sessionDate: req.sessionDate!, startTime: req.startTime!, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic,
@@ -304,7 +306,7 @@ export class ScheduleRequestsService {
     if (req.targetSessionId == null) throw new BadRequestException('변경할 세션 id가 없습니다.');
     return this.store.transaction(async () => {
       const before = { ...req };
-      const { conflicts } = await this.schedule.update(req.targetSessionId!, {
+      const { conflicts } = await this.scheduleCmd.update(req.targetSessionId!, {
         courseId: req.courseId, instructorId: req.instructorId, roomId: req.roomId,
         sessionDate: req.sessionDate, startTime: req.startTime, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic, studentIds: req.studentIds,
@@ -325,7 +327,7 @@ export class ScheduleRequestsService {
     return this.store.transaction(async () => {
       const before = { ...req };
       // [TBO-29C C3] 요청의 scope를 direct 삭제 명령과 동일하게 전달 — 승인=direct와 같은 series UoW.
-      await this.schedule.remove(req.targetSessionId!, decidedBy, { scope: (req.scope ?? 'this') as 'this' | 'this_and_following' | 'all' });
+      await this.scheduleCmd.remove(req.targetSessionId!, decidedBy, { scope: (req.scope ?? 'this') as 'this' | 'this_and_following' | 'all' });
       const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
       }));

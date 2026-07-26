@@ -1,5 +1,6 @@
-import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
-import type { Room } from '../rooms/room.entity'; // [TBO-66 R2]
+// [TBO-69 C1 2026-07-26] 스케줄 **명령(Command) 서비스** — 읽기(hydrate·lookup·enrich·목록·검증)는
+//  schedule-read.service로 분리(본문 이동 — 규약 무변). 명령은 읽기를 단방향 주입해 경유한다.
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import type {
   Conflict,
@@ -21,26 +22,21 @@ import { ReportsService } from '../reports/reports.service';
 import { ClassSession, SESSIONS } from './schedule.entity';
 import { detectConflicts } from './conflict.util';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
-import { Course, COURSES as COURSES_COL } from '../courses/course.entity';
 import { CoursesService } from '../courses/courses.service';
-import { Subject, SUBJECTS as SUBJECTS_COL } from '../subjects/subject.entity';
-import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
-import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
-import { studentGradeLabel } from '../students/student-grade.policy';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
-import { USERS, isActiveInstructor, isActiveScheduleOwner, type StaffAccount } from '../users/user.entity'; // 일정 owner=강사+대표
+import type { StaffAccount } from '../users/user.entity';
 import { hasAdminRole } from '../auth/roles.decorator'; // [TBO-62 ④] 강사 본인 출결 체크 판정
 import { ClassSessionsStore } from './class-sessions.store';
+import { ScheduleReadService, SESSION_DEFAULTS } from './schedule-read.service'; // [TBO-69 C1]
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
 import { selectSeriesScope, type SeriesScope } from './series-scope.policy';
-import { addMinutesGuarded, normalizeSessionTime, storedEndTimeOf, SESSION_TIME_DEFAULTS, autoHoldPatch } from './session-time.policy';
+import { addMinutesGuarded, normalizeSessionTime, storedEndTimeOf, autoHoldPatch } from './session-time.policy';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { CLASS_SESSION_SERIES_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC, SUBJECTS_SPEC, USERS_SPEC, ROOMS_SPEC } from '../../database/calendar-asset-specs';
-import { accountingImpactOf, combineAccountingImpacts, countsForTeachingHours, isPayoutLocked, payoutIdOf, teachingMinutesOf, type SessionAccountingImpact } from './session-accounting.policy';
+import { CLASS_SESSION_SERIES_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
+import { accountingImpactOf, combineAccountingImpacts, isPayoutLocked, payoutIdOf, type SessionAccountingImpact } from './session-accounting.policy';
 import { studentBelongsToSession } from './session-participant.policy';
-import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
 import { EnrollmentsService } from '../enrollments/enrollments.service';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
@@ -52,17 +48,8 @@ import { hhmmToMin as toMin, weekdayOf, addDaysISO, dayDiff } from '../../common
 //  학생 삭제·신규 수강이 캘린더에 반영되지 않는 무결성 버그가 있었다.
 // [강사 식별자 통일 2026-07-07] 강사 = users(role='instructor'), 강사 id = users.id.
 //  하드코딩 INSTRUCTORS 상수/브리지 폐기 — 이름/검증/피커는 instructorUsers/instructorName/isInstructor 헬퍼로 users 조회.
-// 과목 색 폴백(표시용) — Subject 계약에 color가 없어 세션→코스 색이 모두 없을 때만 사용.
-const SUBJECT_FALLBACK_COLOR: Record<number, string> = { 1: '#0969da', 2: '#1a7f37' };
 
-// [R-3 2차] 세션 필드 기본값 단일 소스 — create·mergeFields·enrich가 공유(리터럴 중복 제거·단일 책임).
-//  하위호환 폴백값(구데이터·미지정 입력)을 한 곳에서 관리 → 필드 추가 시 여기만 갱신.
-const SESSION_DEFAULTS = {
-  kind: 'class',
-  mode: 'in_person',
-  status: 'scheduled',
-  durationMinutes: SESSION_TIME_DEFAULTS.durationMinutes, // [C4] 시간 기본값은 session-time.policy가 소유
-} as const satisfies { kind: ClassSession['kind']; mode: ClassSession['mode']; status: ClassSession['status']; durationMinutes: number };
+// [TBO-69 C1] SESSION_DEFAULTS·SUBJECT_FALLBACK_COLOR는 schedule-read.service로 이동(enrich 소유).
 
 // ── [TBO-29C C4] 시간 정규화는 session-time.policy가 단일 소스 — 로컬 사본(addMinutes/endTimeOf/
 //  assertDuration/CROSS_MAX_MIN)을 폐기하고 별칭으로 위임한다. 자정 크로스 endTime은 **명시 null**
@@ -83,7 +70,7 @@ type MergedFields = {
 };
 
 @Injectable()
-export class ScheduleService implements OnModuleInit {
+export class ScheduleService {
   private readonly logger = new Logger(ScheduleService.name);
 
   constructor(
@@ -98,57 +85,8 @@ export class ScheduleService implements OnModuleInit {
     private readonly collections: PostgresCollectionStore, // [TBO-28F] users 투영 재조회(교차 인스턴스 정합)
     private readonly courses: CoursesService,
     private readonly enrollments: EnrollmentsService,
+    private readonly read: ScheduleReadService, // [TBO-69 C1] 읽기 단방향 주입
   ) {}
-
-  // 이번 주 데모 수업 시드 — 주간 반복 시리즈 단위(같은 시리즈=한 seriesId). 충돌 없게 구성.
-  async onModuleInit(): Promise<void> {
-    await this.sessions.ensureReady();
-  }
-
-  // [EP2 2026-07-16] 읽기 경로 hydrate 게이트 — 종전엔 캘린더 진입 시 읽기 라우트 **각각**이
-  //  일정 read model(class_sessions·availability·users·series·courses·subjects·enrollments·students)을
-  //  PostgreSQL에서 재적재한다. 서버리스의 다른 인스턴스가 과목/학생/수강을 만든 직후에도
-  //  캘린더와 수업 목록이 인스턴스 로컬 메모리를 권위로 오인하지 않게 하는 SSOT 경계다.
-  //  ① in-flight 공유: 동시 읽기(캘린더 병렬 요청 버스트)는 진행 중인 hydrate 1회를 공유.
-  //  ② TTL: 직전 hydrate가 TTL 이내면 스킵(교차 인스턴스 staleness ≤ TTL — 같은 인스턴스의
-  //     쓰기는 write-through로 메모리에 즉시 반영되므로 read-after-write는 영향 없음).
-  //  안전 경계: pg tx 안(refreshAfterLock — 명령의 권위 재조회)은 게이트 비대상(항상 전량, 순차).
-  //  기본 TTL: test=0(교차 인스턴스 즉시 가시성 시맨틱 보존 — TBO-28F e2e), 그 외 2000ms.
-  //  env SCHEDULE_READ_HYDRATE_TTL_MS로 재정의(0=끔).
-  private hydratedAt = 0;
-  private hydrateInFlight: Promise<void> | null = null;
-  private readonly hydrateTtlMs = process.env.SCHEDULE_READ_HYDRATE_TTL_MS != null
-    ? Math.max(0, Number(process.env.SCHEDULE_READ_HYDRATE_TTL_MS) || 0)
-    : process.env.NODE_ENV === 'test' ? 0 : 2000;
-
-  async ensureReady(): Promise<void> {
-    // [TBO-28F] users도 재조회 — 다른 인스턴스에서 승인/등록된 계정이 리소스·검증에 즉시 반영.
-    // [TBO-29C C2→C5 성능 수정] pg tx **안**(refreshAfterLock)에서는 단일 커넥션이라 순차 실행,
-    //  tx **밖**(일반 조회 경로)에서는 병렬 — 순차 고정이 Neon(WAN) 왕복 지연을 합산시켜
-    //  release 게이트 db-crud가 타임아웃하는 회귀를 만들었다(실측 2026-07-15).
-    const tasks = [
-      () => this.sessions.ensureReady(),
-      () => this.availability.refresh(),
-      () => this.collections.hydrate<StaffAccount>(USERS_SPEC),
-      () => this.collections.hydrate<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC),
-      () => this.collections.hydrate<Course>(COURSES_SPEC),
-      () => this.collections.hydrate<Subject>(SUBJECTS_SPEC),
-      () => this.collections.hydrate<Enrollment>(ENROLLMENTS_SPEC),
-      () => this.collections.hydrate<Student>(STUDENTS_SPEC),
-      () => this.collections.hydrate<Room>(ROOMS_SPEC), // [TBO-66 R2] roomId 검증·정원 충돌·이름 표기가 메모리 미러 소비 — 교차 인스턴스 신선화
-    ];
-    if (this.unitOfWork.inPgTransaction) {
-      for (const task of tasks) await task();
-      this.hydratedAt = Date.now();
-      return;
-    }
-    if (this.hydrateTtlMs > 0 && Date.now() - this.hydratedAt < this.hydrateTtlMs) return;
-    if (this.hydrateInFlight) return this.hydrateInFlight;
-    this.hydrateInFlight = Promise.all(tasks.map((task) => task()))
-      .then(() => { this.hydratedAt = Date.now(); })
-      .finally(() => { this.hydrateInFlight = null; });
-    return this.hydrateInFlight;
-  }
 
   // [TBO-28C] 캘린더 명령의 advisory lock 키 — 대상 강사·강의실·학생·세션. UoW.lockTargets가 정렬·중복 제거.
   private calendarLockKeys(t: {
@@ -167,250 +105,12 @@ export class ScheduleService implements OnModuleInit {
 
   /** [TBO-28C] 잠금 획득 직후 권위 DB에서 세션·가용 투영을 재조회(다른 요청/인스턴스의 커밋 반영). */
   private async refreshAfterLock(): Promise<void> {
-    await this.ensureReady();
-  }
-
-  /** [TBO-28C] 학생 세션 간 중복 검사용 유효 코호트 리졸버(명시 studentIds ?? 코스 활성 수강생). */
-  private effectiveStudentIds = (s: ClassSession): number[] =>
-    s.studentIds?.length ? s.studentIds : this.activeStudentIds(s.courseId);
-
-  // ── 카탈로그/명단 조회(단일 소스 = 실제 컬렉션) — 감사 A ──
-  private courseOf(id: number): Course | undefined {
-    return this.courses.findOptional(id);
-  }
-  private subjectOf(id?: number): Subject | undefined {
-    return id == null ? undefined : this.db.findById<Subject>(SUBJECTS_COL, id);
-  }
-  private studentOf(id: number): Student | undefined {
-    return this.db.findById<Student>(STUDENTS_COL, id);
-  }
-  // [강사 식별자 통일] 강사 = users(role='instructor'), 강사 id = users.id.
-  // [TBO-28B] 중앙 술어 isActiveInstructor(role=instructor AND status=active AND 미삭제) —
-  //  pending/rejected 강사가 리소스 피커·세션 배정에 노출되던 갭 차단(28A 조사 §2).
-  private scheduleOwnerUsers(): StaffAccount[] {
-    return this.db.findBy<StaffAccount>(USERS, (u) => isActiveScheduleOwner(u));
-  }
-  private instructorName(id?: number): string | undefined {
-    return id == null ? undefined : this.db.findById<StaffAccount>(USERS, id)?.name;
-  }
-  private isScheduleOwner(id: number): boolean {
-    return isActiveScheduleOwner(this.db.findById<StaffAccount>(USERS, id));
-  }
-  // 코호트 = 활성 수강(enrollment.status==='active') ∧ 캘린더 노출 상태 학생.
-  //  students.remove(소프트삭제)가 학생·수강 모두 'canceled'로 정리하므로 삭제 즉시 코호트에서 빠진다.
-  private activeStudentIds(courseId: number): number[] {
-    // 인덱스 조회(courseId) — enrich가 세션마다 호출하는 핫패스(전체 스캔 제거)
-    return this.db
-      .findByField<Enrollment>(ENROLLMENTS_COL, 'courseId', courseId)
-      .filter((e) => e.status === 'active')
-      .map((e) => e.studentId)
-      .filter((sid) => {
-        const student = this.studentOf(sid);
-        return student != null && isScheduleVisibleStudentStatus(student.status);
-      });
-  }
-
-  // [B7 E3 2026-07-16] 단건 조회 — list와 동일 enrich(발행된 ScheduleRow 계약 재사용, 계약 무변경).
-  //  없는 id=404. 강사 스코프(존재하나 본인 세션 아님=403)는 컨트롤러가 판정(404→403 표준 — B7 문서 §1b).
-  findOneEnriched(id: number): ScheduleRow {
-    const row = this.db.findById<ClassSession>(SESSIONS, id);
-    if (!row) throw new NotFoundException(`Session ${id} not found`);
-    const rooms = new Map(this.rooms.findAll().map((r) => [r.id, r]));
-    return this.enrich(row, rooms);
-  }
-
-  // 기간/필터 조회 → enriched 읽기모델(주간 표/캘린더용)
-  // studentId 필터: 해당 학생이 활성 수강 중인 코스의 세션만(enrollments 역추적 — 단일 소스).
-  list(opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number }): ScheduleRow[] {
-    const rooms = new Map(this.rooms.findAll().map((r) => [r.id, r]));
-    const coursesOfStudent = opts.studentId != null
-      ? new Set(
-          this.db
-            .findByField<Enrollment>(ENROLLMENTS_COL, 'studentId', opts.studentId)
-            .filter((e) => e.status === 'active')
-            .map((e) => e.courseId),
-        )
-      : null;
-    // [EP3 2026-07-16] 인덱스 진입 — instructorId(강사 캘린더 핫패스)·roomId 지정 시 세컨더리
-    //  인덱스(findByField)로 후보를 좁힌 뒤 잔여 필터. 종전엔 인덱스가 있는데도 findBy 전량 스캔.
-    const base = opts.instructorId
-      ? this.db.findByField<ClassSession>(SESSIONS, 'instructorId', opts.instructorId)
-      : opts.roomId
-        ? this.db.findByField<ClassSession>(SESSIONS, 'roomId', opts.roomId)
-        : this.db.findAll<ClassSession>(SESSIONS);
-    return base
-      .filter((s) =>
-        (opts.from ? s.sessionDate >= opts.from : true) &&
-        (opts.to ? s.sessionDate <= opts.to : true) &&
-        (opts.instructorId ? s.instructorId === opts.instructorId : true) &&
-        (opts.roomId ? s.roomId === opts.roomId : true) &&
-        (coursesOfStudent ? coursesOfStudent.has(s.courseId) : true),
-      )
-      .map((s) => this.enrich(s, rooms))
-      .sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')));
-  }
-
-  listVisible(
-    opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number },
-    viewerInstructorId: number,
-  ): ScheduleRow[] {
-    return this.list(opts).filter((row) => isSessionVisibleToInstructor(row, viewerInstructorId));
-  }
-
-  // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터.
-  //  · 카운트(출/지/결/보강/미표시)는 **진행 회차(held·makeup)** 기준(마킹 대상).
-  //  · 인정 시수는 **시수 정책**(status='held' && 결석 아님 — 보강 제외, payouts와 동일 규칙).
-  //  ⚠ DB 이관(TBO-08): 지금은 in-memory 전 세션 스캔+집계 → Postgres에선 **class_sessions GROUP BY instructor_id**
-  //    (WHERE date BETWEEN·status IN, deleted_at IS NULL)로 승격. 규칙(카운트 모집단·시수)은 그대로 유지.
-  instructorAttendanceSummary(opts: { from?: string; to?: string; instructorId?: number }): {
-    from?: string; to?: string;
-    rows: Array<{
-      instructorId: number; instructorName: string;
-      held: number; present: number; late: number; absent: number; makeup: number; unmarked: number;
-      attendanceRate: number | null; teachingMinutes: number; teachingHours: number;
-    }>;
-    totals: { instructors: number; held: number; present: number; late: number; absent: number; makeup: number; unmarked: number; teachingHours: number };
-  } {
-    const sessions = this.list(opts).filter((r) =>
-      (r.status === 'held' || r.status === 'makeup')
-      && isActiveInstructor(this.db.findById<StaffAccount>(USERS, Number(r.instructorId))));
-    const byInst = new Map<number, ScheduleRow[]>();
-    for (const r of sessions) {
-      const k = Number(r.instructorId);
-      byInst.set(k, [...(byInst.get(k) ?? []), r]);
-    }
-    const rows = [...byInst.entries()]
-      .map(([instructorId, list]) => {
-        const c = { present: 0, late: 0, absent: 0, makeup: 0, unmarked: 0 };
-        let teachingMinutes = 0;
-        for (const s of list) {
-          const a = s.instructorAttendance;
-          if (a === 'present' || a === 'late' || a === 'absent' || a === 'makeup') c[a]++;
-          else c.unmarked++;
-          if (countsForTeachingHours(s)) teachingMinutes += teachingMinutesOf(s);
-        }
-        const denom = c.present + c.late + c.absent;
-        const attendanceRate = denom ? Math.round(((c.present + c.late) / denom) * 100) : null;
-        return {
-          instructorId, instructorName: list[0]?.instructorName ?? `강사 ${instructorId}`,
-          held: list.length, present: c.present, late: c.late, absent: c.absent, makeup: c.makeup, unmarked: c.unmarked,
-          attendanceRate, teachingMinutes, teachingHours: Math.round((teachingMinutes / 60) * 100) / 100,
-        };
-      })
-      .sort((a, b) => a.instructorName.localeCompare(b.instructorName, 'ko'));
-    const totals = rows.reduce(
-      (t, r) => ({
-        instructors: t.instructors + 1, held: t.held + r.held, present: t.present + r.present, late: t.late + r.late,
-        absent: t.absent + r.absent, makeup: t.makeup + r.makeup, unmarked: t.unmarked + r.unmarked,
-        teachingHours: Math.round((t.teachingHours + r.teachingHours) * 100) / 100,
-      }),
-      { instructors: 0, held: 0, present: 0, late: 0, absent: 0, makeup: 0, unmarked: 0, teachingHours: 0 },
-    );
-    return { from: opts.from, to: opts.to, rows, totals };
-  }
-
-  // 자원 피커(좌측 레일·필터)용 경량 목록 — 강사·강의실·학생.
-  resources(scope?: { instructorId?: number }): import('@kms545487/contracts').ScheduleResources {
-    const PALETTE = ['#0969da', '#1a7f37', '#8250df', '#bf3989', '#9a6700', '#1b7c83'];
-    // 코스 진행시간·활성 roster를 한 번씩 색인한다. 응답 course option이 캘린더 생성/과목 split의
-    // 유일한 DB read model이므로 프론트가 /courses·/subjects·/enrollments·/students 전량을 재조회하지 않는다.
-    const courseDurationById = new Map<number, number>();
-    for (const session of this.db.findAll<ClassSession>(SESSIONS)) {
-      if (!courseDurationById.has(Number(session.courseId))) {
-        courseDurationById.set(Number(session.courseId), session.durationMinutes);
-      }
-    }
-    const studentIdsByCourse = new Map<number, number[]>();
-    for (const enrollment of this.db.findAll<Enrollment>(ENROLLMENTS_COL)) {
-      if (enrollment.status !== 'active') continue;
-      const student = this.studentOf(enrollment.studentId);
-      if (!student || !isScheduleVisibleStudentStatus(student.status)) continue;
-      const ids = studentIdsByCourse.get(Number(enrollment.courseId)) ?? [];
-      ids.push(Number(enrollment.studentId));
-      studentIdsByCourse.set(Number(enrollment.courseId), ids);
-    }
-    const courses = this.db
-      .findAll<Course>(COURSES_COL)
-      .filter((c) => scope?.instructorId == null || Number(c.instructorId) === Number(scope.instructorId));
-    const scopedStudentIds = scope?.instructorId == null
-      ? null
-      : new Set(courses.flatMap((course) => studentIdsByCourse.get(Number(course.id)) ?? []));
-    return {
-      instructors: this.scheduleOwnerUsers().filter((u) => scope?.instructorId == null || Number(u.id) === Number(scope.instructorId)).map((u) => {
-        const c = courses.find((x) => x.instructorId === u.id);
-        return {
-          type: 'instructor' as const, id: u.id, name: u.name,
-          color: PALETTE[u.id % PALETTE.length],
-          sub: c ? this.subjectOf(c.subjectId)?.name : undefined,
-          countryCode: u.countryCode ?? undefined,
-          timeZone: u.timeZone ?? undefined,
-          scheduleOwnerRole: u.role,
-        };
-      }),
-      rooms: this.rooms.findAll().map((r) => ({
-        type: 'room' as const, id: r.id, name: r.name, color: r.color,
-        sub: r.capacity != null ? `정원 ${r.capacity}` : undefined,
-      })),
-      // 학생 = students 컬렉션(단일 소스). 중앙 상태 술어로 캘린더 노출 대상을 제한한다.
-      students: this.db
-        .findBy<Student>(STUDENTS_COL, (s) => isScheduleVisibleStudentStatus(s.status) && (scopedStudentIds == null || scopedStudentIds.has(Number(s.id))))
-        .map((s) => ({
-          type: 'student' as const, id: s.id, name: s.name,
-          color: PALETTE[(s.id + 2) % PALETTE.length],
-          sub: studentGradeLabel(s.grade),
-          countryCode: s.country,
-        })),
-      courses: courses.map((c) => ({
-        id: c.id, name: c.name, subjectId: c.subjectId, instructorId: c.instructorId,
-        instructorName: this.instructorName(c.instructorId) ?? '',
-        subjectName: this.subjectOf(c.subjectId)?.name ?? '',
-        color: c.color ?? SUBJECT_FALLBACK_COLOR[c.subjectId],
-        durationMinutes: courseDurationById.get(Number(c.id)) ?? 90,
-        studentIds: studentIdsByCourse.get(Number(c.id)) ?? [],
-      })),
-    };
-  }
-
-  // 세션 생성(추천→배정). FK 검증 + 충돌 검사(force 아니면 충돌 시 409).
-  /** [TBO-16 #9] 세션 입력 공통 검증(FK·코호트) — create와 schedule-requests가 **같은 함수** 사용(우회 경로 방지).
-   *  반환: 확정 instructorId(미지정=코스 기본 강사). */
-  validateSessionInput(input: { courseId: number; instructorId?: number; roomId?: number; studentIds?: number[] }): number {
-    const course = this.courseOf(input.courseId);
-    if (!course) throw new BadRequestException(`courseId ${input.courseId} 없음`);
-    const instructorId = input.instructorId ?? course.instructorId;
-    if (!this.isScheduleOwner(instructorId)) throw new BadRequestException(`instructorId ${instructorId}는 활성 강사 또는 대표가 아닙니다`);
-    if (input.roomId != null && !this.rooms.findAll().some((r) => r.id === input.roomId))
-      throw new BadRequestException(`roomId ${input.roomId} 없음`);
-    if (input.studentIds?.length) {
-      const allowed = new Set(this.activeStudentIds(input.courseId));
-      const bad = input.studentIds.filter((id) => !allowed.has(id));
-      if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
-    }
-    return instructorId;
-  }
-
-  /** 강사 승인 요청의 DB 권위 경계.
-   *  프론트의 scoped resource picker를 신뢰하지 않고 코스 기본 강사·요청 강사·JWT actor가 모두 같은지
-   *  매 요청마다 실제 course row로 재검증한다. 상담 일정은 관리 역할만 생성한다. */
-  validateInstructorRequestInput(
-    input: { courseId: number; instructorId?: number; roomId?: number; studentIds?: number[]; kind?: ClassSession['kind'] },
-    actorInstructorId: number,
-  ): number {
-    const course = this.courseOf(input.courseId);
-    if (!course) return this.validateSessionInput(input);
-    if (Number(course.instructorId) !== Number(actorInstructorId)
-      || (input.instructorId != null && Number(input.instructorId) !== Number(actorInstructorId))) {
-      throw new ForbiddenException('강사는 본인이 담당하는 코스의 수업만 요청할 수 있습니다.');
-    }
-    if (input.kind === 'counsel') {
-      throw new ForbiddenException('상담 일정은 관리 역할만 생성할 수 있습니다.');
-    }
-    return this.validateSessionInput(input);
+    await this.read.ensureReady();
   }
 
   /** 과목 text input → subject/course/enrollment/session 단일 transaction. */
   async openClass(dto: OpenClassInput, actorId?: number): Promise<OpenClassResult> {
-    await this.ensureReady();
+    await this.read.ensureReady();
     const studentIds = [...new Set((dto.studentIds ?? []).map(Number))];
     return this.unitOfWork.run(async () => {
       await this.unitOfWork.lockTargets([
@@ -453,7 +153,7 @@ export class ScheduleService implements OnModuleInit {
 
   /** 과목 text input → subject/course/enrollment + 기존 원자 bulk series command 재사용. */
   async openClassSeries(dto: OpenClassSeriesInput, actorId?: number): Promise<OpenClassSeriesResult> {
-    await this.ensureReady();
+    await this.read.ensureReady();
     const studentIds = [...new Set((dto.studentIds ?? []).map(Number))];
     return this.unitOfWork.run(async () => {
       await this.unitOfWork.lockTargets([
@@ -505,10 +205,10 @@ export class ScheduleService implements OnModuleInit {
     isPublic?: boolean;
     makeupForSessionId?: number; // [대표 지시 ⑭ 2026-07-16] 보강 세션 → 원본(결강) 세션 링크
   }, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[] }> {
-    await this.ensureReady();
-    const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
-    const course = this.courseOf(dto.courseId)!;
-    const studentIds = dto.studentIds !== undefined ? dto.studentIds : this.activeStudentIds(dto.courseId);
+    await this.read.ensureReady();
+    const instructorId = this.read.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
+    const course = this.read.courseOf(dto.courseId)!;
+    const studentIds = dto.studentIds !== undefined ? dto.studentIds : this.read.activeStudentIds(dto.courseId);
 
     // [C4] 시간 정규화 단일 진입점 — endTime<startTime=익일 종료, 크로스=endTime null(duration 파생 저장)
     const { startTime, durationMinutes, endTime } = normalizeSessionTime(
@@ -536,7 +236,7 @@ export class ScheduleService implements OnModuleInit {
         { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
         this.db.findAll<ClassSession>(SESSIONS),
         this.availability.list(),
-        this.effectiveStudentIds,
+        this.read.effectiveStudentIds,
         (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제
       );
       // 디버깅: 생성 요청 + 충돌 현황 로깅
@@ -571,7 +271,7 @@ export class ScheduleService implements OnModuleInit {
       return { row: created, conflicts };
     });
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
-    return { row: this.enrich(row, roomsMap), conflicts };
+    return { row: this.read.enrich(row, roomsMap), conflicts };
   }
 
   /** [TBO-29C C2] 반복 규칙 -> occurrence 날짜 정규화(순수) — [startsOn, endsOn]에서 weekdays에 속하는 날짜.
@@ -595,10 +295,10 @@ export class ScheduleService implements OnModuleInit {
    *  전체 정규화한 뒤, 모든 자원 lock -> 권위 재조회 -> **전체 conflict 선계산** -> series+occurrence+audit를
    *  **한 transaction**으로 저장한다. 중간 실패는 전부 롤백(series +0, sessions +0, audit +0). */
   async createSeries(dto: CreateScheduleSeriesDto, actorId?: number): Promise<CreateScheduleSeriesResult> {
-    await this.ensureReady();
-    const instructorId = this.validateSessionInput(dto); // FK·코호트 공통 검증(단건 create와 같은 함수)
-    const course = this.courseOf(dto.courseId)!;
-    const studentIds = dto.studentIds !== undefined ? dto.studentIds : this.activeStudentIds(dto.courseId);
+    await this.read.ensureReady();
+    const instructorId = this.read.validateSessionInput(dto); // FK·코호트 공통 검증(단건 create와 같은 함수)
+    const course = this.read.courseOf(dto.courseId)!;
+    const studentIds = dto.studentIds !== undefined ? dto.studentIds : this.read.activeStudentIds(dto.courseId);
     const timeZone = dto.timeZone ?? 'Asia/Seoul';
     if (timeZone !== 'Asia/Seoul') throw new BadRequestException('반복 규칙 시간대는 MVP에서 Asia/Seoul만 지원합니다');
 
@@ -623,7 +323,7 @@ export class ScheduleService implements OnModuleInit {
           { sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
           existing,
           this.availability.list(),
-          this.effectiveStudentIds,
+          this.read.effectiveStudentIds,
         (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제
         ));
       }
@@ -690,7 +390,7 @@ export class ScheduleService implements OnModuleInit {
       createdBy: result.series.createdBy ?? undefined,
       updatedBy: result.series.updatedBy ?? undefined,
     };
-    return { series: seriesOut, rows: result.rows.map((r) => this.enrich(r, roomsMap)), conflicts: result.conflicts };
+    return { series: seriesOut, rows: result.rows.map((r) => this.read.enrich(r, roomsMap)), conflicts: result.conflicts };
   }
 
   // 세션 삭제 — [v9] soft delete(행 보존·deletedBy 기록) + audit before 스냅샷 + 동반 정리(출결·리포트) 단일 tx.
@@ -703,7 +403,7 @@ export class ScheduleService implements OnModuleInit {
     actorId?: number,
     opts?: { scope?: SeriesScope; expectedSeriesVersion?: number },
   ): Promise<{ id: number; deleted: boolean; removedIds: number[] }> {
-    await this.ensureReady();
+    await this.read.ensureReady();
     const scope = opts?.scope ?? 'this';
     const pre = this.db.findById<ClassSession>(SESSIONS, id);
     if (!pre) throw new NotFoundException(`Session ${id} not found`);
@@ -777,22 +477,6 @@ export class ScheduleService implements OnModuleInit {
       return { id, deleted: removedIds.includes(id), removedIds };
     });
   }
-
-  // 충돌 드라이런(생성·이동 전 검사)
-  checkConflicts(input: {
-    sessionDate: string; startTime: string; endTime?: string; durationMinutes?: number;
-    instructorId?: number; roomId?: number; studentIds?: number[]; ignoreSessionId?: number; mode?: ClassSession['mode'];
-  }): Conflict[] {
-    // [R-9] endTime/durationMinutes를 그대로 전달 — conflict.util이 자정 크로스(익일 종료)까지 해석.
-    return detectConflicts(
-      { sessionDate: input.sessionDate, startTime: input.startTime, endTime: input.endTime, durationMinutes: input.durationMinutes, instructorId: input.instructorId, roomId: input.roomId, studentIds: input.studentIds, ignoreSessionId: input.ignoreSessionId, mode: input.mode },
-      this.db.findAll<ClassSession>(SESSIONS),
-      this.availability.list(),
-      this.effectiveStudentIds,
-        (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제 // [TBO-28C] 학생 세션 간 중복 포함
-    );
-  }
-
   // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
   // scope(this_and_following|all)면 같은 seriesId 세션에 동일 날짜·시간 델타를 함께 적용.
   /** [TBO-59 C3-3] 대표 소유 스케줄 보호 — 담당(instructorId)이 super_admin인 세션의 변경·삭제는
@@ -810,7 +494,7 @@ export class ScheduleService implements OnModuleInit {
 
   /** [TBO-63 2026-07-24] 삭제 복구(캘린더 undo) — 삭제된 회차만, 정산 미연결만. audit 기록. */
   async restoreSession(id: number, actorId?: number): Promise<{ row: ClassSession }> {
-    await this.ensureReady();
+    await this.read.ensureReady();
     return this.unitOfWork.run(async () => {
       await this.unitOfWork.lockTargets([{ kind: 'session', id }]);
       const restored = await this.sessions.restore(id);
@@ -828,7 +512,7 @@ export class ScheduleService implements OnModuleInit {
   /** [TBO-64 2026-07-24] 회차 가격 책정(시수 워크시트) — 매니저/대표 전용. lock → DB 재조회 →
    *  가드(held·결석 아님·정산 미연결) → 조건부 UPDATE + audit. null = 책정 해제(자동/빈칸 복귀). */
   async setSessionPayAmount(id: number, amount: number | null, actorId?: number): Promise<{ row: ClassSession }> {
-    await this.ensureReady();
+    await this.read.ensureReady();
     if (amount != null && (!Number.isInteger(amount) || amount < 0))
       throw new BadRequestException('금액은 0 이상의 정수여야 합니다.');
     return this.unitOfWork.run(async () => {
@@ -861,7 +545,7 @@ export class ScheduleService implements OnModuleInit {
   async markInstructorAttendance(
     id: number, status: InstructorAttendanceStatus, actorId?: number, roles: string[] = [],
   ): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }> {
-    await this.ensureReady();
+    await this.read.ensureReady();
     const isAdmin = hasAdminRole(roles);
     if (!isAdmin) {
       const cur = await this.sessions.findByIdDb(id);
@@ -873,11 +557,11 @@ export class ScheduleService implements OnModuleInit {
   }
 
   async update(id: number, dto: UpdateScheduleDto, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }> {
-    await this.ensureReady();
+    await this.read.ensureReady();
     // [명시 코호트 v0.1.13] 부분집합 검증 — create와 동일 규칙(함수 통일: activeStudentIds 단일 소스)
     if (dto.studentIds?.length) {
       const cur0 = this.db.findById<ClassSession>(SESSIONS, id);
-      const allowed = new Set(this.activeStudentIds(dto.courseId ?? cur0?.courseId ?? 0));
+      const allowed = new Set(this.read.activeStudentIds(dto.courseId ?? cur0?.courseId ?? 0));
       const bad = dto.studentIds.filter((x) => !allowed.has(x));
       if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
     }
@@ -903,8 +587,8 @@ export class ScheduleService implements OnModuleInit {
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
     await this.assertCeoOwnedSessionMutable(cur, actorId); // [TBO-59 C3-3]
     // 참조 무결성(FK) 검증
-    if (dto.courseId != null && !this.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
-    if (dto.instructorId != null && !this.isScheduleOwner(dto.instructorId)) throw new BadRequestException(`instructorId ${dto.instructorId}는 활성 강사 또는 대표가 아닙니다`);
+    if (dto.courseId != null && !this.read.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
+    if (dto.instructorId != null && !this.read.isScheduleOwner(dto.instructorId)) throw new BadRequestException(`instructorId ${dto.instructorId}는 활성 강사 또는 대표가 아닙니다`);
     if (dto.roomId != null && !this.rooms.findAll().some((r) => r.id === dto.roomId)) throw new BadRequestException(`roomId ${dto.roomId} 없음`);
 
     // [TBO-29C C3] series 권위 확인 + version CAS — 잠금 후 판정이 권위. stale 클라이언트 명령은 409.
@@ -924,8 +608,8 @@ export class ScheduleService implements OnModuleInit {
     const primaryImpact = accountingImpactOf(cur, primary, {
       beforeApprovedReport: approved,
       afterApprovedReport: approved,
-      beforeHourlyRate: this.courseOf(cur.courseId)?.hourlyRate ?? 0,
-      afterHourlyRate: this.courseOf(primary.courseId)?.hourlyRate ?? 0,
+      beforeHourlyRate: this.read.courseOf(cur.courseId)?.hourlyRate ?? 0,
+      afterHourlyRate: this.read.courseOf(primary.courseId)?.hourlyRate ?? 0,
     });
     const accountingImpacts: SessionAccountingImpact[] = [primaryImpact];
     const accountingLocked: ClassSession[] = isPayoutLocked(cur) ? [cur] : [];
@@ -980,8 +664,8 @@ export class ScheduleService implements OnModuleInit {
       accountingImpacts.push(accountingImpactOf(member, patch.fields, {
         beforeApprovedReport: memberApproved,
         afterApprovedReport: memberApproved,
-        beforeHourlyRate: this.courseOf(member.courseId)?.hourlyRate ?? 0,
-        afterHourlyRate: this.courseOf(patch.fields.courseId)?.hourlyRate ?? 0,
+        beforeHourlyRate: this.read.courseOf(member.courseId)?.hourlyRate ?? 0,
+        afterHourlyRate: this.read.courseOf(patch.fields.courseId)?.hourlyRate ?? 0,
       }));
     }
     const impact = combineAccountingImpacts(accountingImpacts);
@@ -1010,9 +694,9 @@ export class ScheduleService implements OnModuleInit {
     for (const f of [primary, ...seriesPatches.map((p) => p.fields)]) {
       conflicts.push(...detectConflicts(
         // [R-9→C4] 크로스 세션은 endTime이 null(명시) — durationMinutes로 이틀(±1일) 겹침 검사
-        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime ?? undefined, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, studentIds: f.studentIds ?? this.activeStudentIds(f.courseId), mode: f.mode },
+        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime ?? undefined, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, studentIds: f.studentIds ?? this.read.activeStudentIds(f.courseId), mode: f.mode },
         others, blocks,
-        this.effectiveStudentIds,
+        this.read.effectiveStudentIds,
         (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제 // [TBO-28C] 학생 세션 간 중복 포함
       ));
     }
@@ -1057,7 +741,7 @@ export class ScheduleService implements OnModuleInit {
     }
 
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
-    return { row: this.enrich(updated, roomsMap), conflicts, updated: 1 + seriesPatches.length };
+    return { row: this.read.enrich(updated, roomsMap), conflicts, updated: 1 + seriesPatches.length };
       });
   }
 
@@ -1077,7 +761,7 @@ export class ScheduleService implements OnModuleInit {
       { defaultDurationMinutes: cur.durationMinutes });
 
     const courseId = dto.courseId ?? cur.courseId;
-    const course = this.courseOf(courseId);
+    const course = this.read.courseOf(courseId);
     const instructorId = dto.instructorId ?? (dto.courseId != null && course ? course.instructorId : cur.instructorId);
     const roomId = dto.roomId ?? cur.roomId;
     // [TBO-66 C1 2026-07-25] 강사 출결 기록도 "진행됐다"는 사실 기록 — 시작 경과 scheduled 세션이면
@@ -1122,26 +806,4 @@ export class ScheduleService implements OnModuleInit {
       throw new ConflictException(`세션 ${sessionId}에 작성된 보고서가 있어 코스를 변경할 수 없습니다`);
   }
 
-  private enrich(s: ClassSession, rooms: Map<number, { name: string }>): ScheduleRow {
-    const c = this.courseOf(s.courseId);
-    // 명시 코호트(v0.1.13) 우선 — 미지정 시 기존대로 코스 활성 수강생 파생(하위 호환)
-    const studentIds = s.studentIds?.length ? s.studentIds.map(Number) : this.activeStudentIds(s.courseId);
-    return {
-      ...s,
-      kind: s.kind ?? SESSION_DEFAULTS.kind, // [v0.1.14] 시드·구데이터 하위호환(미지정=class)
-      mode: s.mode ?? SESSION_DEFAULTS.mode, // [v0.1.16] 하위호환(미지정=대면)
-      weekday: weekdayOf(s.sessionDate),
-      // [R-9→C4] 자정 크로스(시작+진행≥24:00)면 endTime 미제공(null→undefined) — FE가 durationMinutes로 파생(단일 규칙)
-      endTime: s.endTime ?? (s.startTime ? endTimeOf(s.startTime, s.durationMinutes) ?? undefined : undefined),
-      courseName: c?.name ?? `course ${s.courseId}`,
-      subjectName: this.subjectOf(c?.subjectId)?.name ?? '',
-      instructorName: this.instructorName(s.instructorId) ?? `강사 ${s.instructorId}`,
-      roomName: s.roomId ? rooms.get(s.roomId)?.name : undefined,
-      color: s.color ?? c?.color ?? (c ? SUBJECT_FALLBACK_COLOR[c.subjectId] : undefined), // 세션 → 코스 → 과목 폴백
-      studentIds,
-      studentNames: studentIds.map((sid) => this.studentOf(sid)?.name ?? `학생 ${sid}`),
-      // [TBO-29C C3] series edit CAS — 클라이언트가 scope 편집/삭제 시 expectedSeriesVersion으로 회신
-      seriesVersion: s.seriesId != null ? this.db.findById<ScheduleSeriesRow>(CLASS_SESSION_SERIES, s.seriesId)?.version : undefined,
-    };
-  }
 }

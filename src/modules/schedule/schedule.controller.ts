@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiOkResponse, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { ScheduleService } from './schedule.service';
+import { ScheduleReadService } from './schedule-read.service'; // [TBO-69 C1]
 import { MarkInstructorAttendanceDto, SetSessionPayAmountDto, UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
@@ -18,7 +19,10 @@ import { OpenClassDto, OpenClassSeriesDto } from './dto/open-class.dto';
 @UseGuards(RolesGuard)
 @Controller('schedule')
 export class ScheduleController {
-  constructor(private readonly schedule: ScheduleService) {}
+  constructor(
+    private readonly schedule: ScheduleService, // 명령(개설·수정·삭제·복구·책정·출결)
+    private readonly scheduleRead: ScheduleReadService, // [TBO-69 C1] 읽기(목록·단건·집계·리소스·충돌 검사)
+  ) {}
 
   // GET /api/schedule?from=YYYY-MM-DD&to=YYYY-MM-DD&instructorId=&roomId=&studentId=
   @Get()
@@ -35,7 +39,7 @@ export class ScheduleController {
     @Query('roomId') roomId?: string,
     @Query('studentId') studentId?: string,
   ) {
-    await this.schedule.ensureReady();
+    await this.scheduleRead.ensureReady();
     const filters = {
       from,
       to,
@@ -44,8 +48,8 @@ export class ScheduleController {
       studentId: studentId ? Number(studentId) : undefined,
     };
     return isInstructorOnly(req.user?.roles)
-      ? this.schedule.listVisible({ ...filters, instructorId: undefined }, req.user!.sub)
-      : this.schedule.list(filters);
+      ? this.scheduleRead.listVisible({ ...filters, instructorId: undefined }, req.user!.sub)
+      : this.scheduleRead.list(filters);
   }
 
   // GET /api/schedule/resources — 자원 피커(강사·강의실·학생·코스)
@@ -53,8 +57,8 @@ export class ScheduleController {
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '자원 피커 — 역할별 강사·강의실·학생·코스+과목 FK+활성 roster. 캘린더 필터·배정 폼 SSOT.' })
   async resources(@Req() req: Request & { user?: JwtClaims }) {
-    await this.schedule.ensureReady();
-    return this.schedule.resources(isInstructorOnly(req.user?.roles) ? { instructorId: req.user?.sub } : undefined);
+    await this.scheduleRead.ensureReady();
+    return this.scheduleRead.resources(isInstructorOnly(req.user?.roles) ? { instructorId: req.user?.sub } : undefined);
   }
 
   // [TBO-19] GET /api/schedule/instructor-attendance-summary — 강사 출결 현황 집계(관리자 대시보드)
@@ -69,8 +73,8 @@ export class ScheduleController {
     @Query('to') to?: string,
     @Query('instructorId') instructorId?: string,
   ) {
-    await this.schedule.ensureReady();
-    return this.schedule.instructorAttendanceSummary({
+    await this.scheduleRead.ensureReady();
+    return this.scheduleRead.instructorAttendanceSummary({
       from, to, instructorId: instructorId ? Number(instructorId) : undefined,
     });
   }
@@ -84,8 +88,8 @@ export class ScheduleController {
   @ApiOperation({ summary: '세션 단건. 강사는 본인 배정 일반 일정만, 상담은 관리 역할만(404→403).' })
   @ApiOkResponse({ description: 'ScheduleRow — 강사·과목·강의실명·코호트 포함' })
   async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
-    await this.schedule.ensureReady();
-    const row = this.schedule.findOneEnriched(id);
+    await this.scheduleRead.ensureReady();
+    const row = this.scheduleRead.findOneEnriched(id);
     if (isInstructorOnly(req.user?.roles) && !isSessionVisibleToInstructor(row, req.user!.sub))
       throw new ForbiddenException('강사는 본인이 배정된 일반 일정만 조회할 수 있습니다.');
     return row;
@@ -97,19 +101,19 @@ export class ScheduleController {
   @ApiOperation({ summary: '충돌 드라이런 — 강사는 JWT 본인 수업 범위, 생성·이동 전 이중예약/불가시간 겹침 검사' })
   @ApiOkResponse({ description: 'Conflict[] — 각 항목 { type, resource, resourceId, sessionId?, detail? }' })
   async conflicts(@Body() body: ConflictCheckDto, @Req() req: Request & { user?: JwtClaims }) {
-    await this.schedule.ensureReady();
-    if (!isInstructorOnly(req.user?.roles)) return this.schedule.checkConflicts(body);
+    await this.scheduleRead.ensureReady();
+    if (!isInstructorOnly(req.user?.roles)) return this.scheduleRead.checkConflicts(body);
 
     const instructorId = req.user!.sub;
-    const allowedStudents = new Set(this.schedule.resources({ instructorId }).students.map((student) => Number(student.id)));
+    const allowedStudents = new Set(this.scheduleRead.resources({ instructorId }).students.map((student) => Number(student.id)));
     if (body.studentIds?.some((studentId) => !allowedStudents.has(Number(studentId)))) {
       throw new ForbiddenException('강사는 본인 수업 학생의 충돌만 조회할 수 있습니다.');
     }
     if (body.ignoreSessionId != null) {
-      const ownsIgnoredSession = this.schedule.list({ instructorId }).some((row) => Number(row.id) === Number(body.ignoreSessionId));
+      const ownsIgnoredSession = this.scheduleRead.list({ instructorId }).some((row) => Number(row.id) === Number(body.ignoreSessionId));
       if (!ownsIgnoredSession) throw new ForbiddenException('타 강사 수업은 충돌 검사에서 제외할 수 없습니다.');
     }
-    return this.schedule.checkConflicts({ ...body, instructorId });
+    return this.scheduleRead.checkConflicts({ ...body, instructorId });
   }
 
   @Post('open-class')

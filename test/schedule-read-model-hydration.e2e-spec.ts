@@ -1,7 +1,9 @@
 import { InMemoryDatabase } from '../src/database/in-memory.database';
-import { ScheduleService } from '../src/modules/schedule/schedule.service';
+// [TBO-69 C1] hydrate 게이트(ensureReady)는 읽기 서비스 소유로 이동 — 스펙도 소유자를 따라간다.
+//  (명령 schedule.service의 refreshAfterLock은 이 ensureReady를 단방향 경유 — 규약 무변)
+import { ScheduleReadService } from '../src/modules/schedule/schedule-read.service';
 
-describe('ScheduleService DB read-model hydration', () => {
+describe('ScheduleReadService DB read-model hydration', () => {
   it('서버리스 조회 전에 일정 조인에 필요한 모든 DB 컬렉션을 재수화한다', async () => {
     const hydrated: string[] = [];
     const sessions = { ensureReady: jest.fn(async () => undefined) };
@@ -12,17 +14,13 @@ describe('ScheduleService DB read-model hydration', () => {
         return [];
       }),
     };
-    const service = new ScheduleService(
+    const service = new ScheduleReadService(
       new InMemoryDatabase(),
       sessions as never,
       { inPgTransaction: false } as never,
       {} as never,
       availability as never,
-      {} as never,
-      {} as never,
-      {} as never,
       collections as never,
-      {} as never,
       {} as never,
     );
 

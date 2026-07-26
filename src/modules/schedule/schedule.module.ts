@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { RoomsModule } from '../rooms/rooms.module';
 import { AvailabilityModule } from '../availability/availability.module';
 import { ScheduleService } from './schedule.service';
+import { ScheduleReadService } from './schedule-read.service'; // [TBO-69 C1]
 import { ScheduleController } from './schedule.controller';
 import { AuthModule } from '../auth/auth.module';
 import { AuditModule } from '../audit/audit.module';
@@ -15,7 +16,7 @@ import { EnrollmentsModule } from '../enrollments/enrollments.module';
 @Module({
   imports: [RoomsModule, AvailabilityModule, AuthModule, AuditModule, AttendanceModule, ReportsModule, CoursesModule, EnrollmentsModule], // accounting impact도 유효 수업 시급 resolver 사용
   controllers: [ScheduleController],
-  providers: [ScheduleService],
-  exports: [ScheduleService],
+  providers: [ScheduleService, ScheduleReadService],
+  exports: [ScheduleService, ScheduleReadService],
 })
 export class ScheduleModule {}
