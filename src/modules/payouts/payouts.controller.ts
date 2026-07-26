@@ -3,6 +3,7 @@ import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiUnauthorizedResponse, ApiForbiddenResponse } from '@nestjs/swagger';
 import { PayoutsService } from './payouts.service';
+import { PayoutsReadService } from './payouts-read.service'; // [TBO-69 C2]
 import { RolesGuard } from '../auth/roles.guard';
 import { ADMIN_ROLES, Roles } from '../auth/roles.decorator';
 import { SudoGuard } from '../auth/sudo.guard'; // [TBO-59 C3-2]
@@ -15,7 +16,8 @@ import { PayoutReadinessService } from './payout-readiness.service';
 @Controller('payouts')
 export class PayoutsController {
   constructor(
-    private readonly payouts: PayoutsService,
+    private readonly payouts: PayoutsService, // 명령(생성·확정·지급·회수)
+    private readonly payoutsRead: PayoutsReadService, // [TBO-69 C2] 읽기(산정·워크시트·목록·미정산)
     private readonly readiness: PayoutReadinessService,
   ) {}
 
@@ -23,7 +25,7 @@ export class PayoutsController {
   @Roles('super_admin') // [TBO-21 RBAC] 전체 정산 목록은 돈 관련 정보 → 대표 전용
   @ApiOperation({ summary: '정산서 목록 [대표]' })
   findAll() {
-    return this.payouts.listDb(); // [TBO-56 C2b] DB 권위 READ
+    return this.payoutsRead.listDb(); // [TBO-56 C2b] DB 권위 READ
   }
 
   // GET /api/payouts/preview?instructorId=&from=&to= — 산정 미리보기(읽기 전용)
@@ -38,7 +40,7 @@ export class PayoutsController {
     @Query('from') from: string,
     @Query('to') to: string,
   ) {
-    return this.payouts.measureFresh(instructorId, from, to); // [TBO-56 C2b] 입력 표 재수화 후 산정
+    return this.payoutsRead.measureFresh(instructorId, from, to); // [TBO-56 C2b] 입력 표 재수화 후 산정
   }
 
   @Get('me')
@@ -47,7 +49,7 @@ export class PayoutsController {
   findMine(@Req() req: Request & { user?: JwtClaims }) {
     // [TBO-62 ⑥ 2026-07-24] 대표 지시: 강사는 "지금까지 받은 것"만 — 시수 측정·예상 페이·지급 전
     //  상태(pending/confirmed)는 비노출(paid만). preview/readiness 강사 라우트는 제거됨.
-    return this.payouts.listByInstructorDb(req.user!.sub, { paidOnly: true });
+    return this.payoutsRead.listByInstructorDb(req.user!.sub, { paidOnly: true });
   }
 
   @Get('readiness')
@@ -75,7 +77,7 @@ export class PayoutsController {
   @ApiOperation({ summary: '미정산 감지 — 적격 세션이 정산서에 미연결인 (강사×월) 목록(당월 포함 N개월). [대표]' })
   @ApiQuery({ name: 'months', required: false, description: '조회 개월 수(1~12, 기본 3)' })
   uncovered(@Query('months') months?: string) {
-    return this.payouts.uncoveredFresh(months ? Number(months) : undefined); // [TBO-56 C2b]
+    return this.payoutsRead.uncoveredFresh(months ? Number(months) : undefined); // [TBO-56 C2b]
   }
 
   // [TBO-64 2026-07-24] 시수 워크시트 — 강사·기간의 전 회차(출결·리포트·가격 분류·합계).
@@ -91,7 +93,7 @@ export class PayoutsController {
     @Query('from') from: string,
     @Query('to') to: string,
   ) {
-    return this.payouts.worksheetFresh(instructorId, from, to);
+    return this.payoutsRead.worksheetFresh(instructorId, from, to);
   }
 
   @Get(':id')
@@ -99,7 +101,7 @@ export class PayoutsController {
   @ApiOperation({ summary: '정산서 단건과 산정 line 조회 [대표] — 강사는 403(상세내역 불가, 지급 요약은 GET /payouts/me — 기간설정 ② 2026-07-24).' })
   findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request) {
     const actor = (req as Request & { user?: JwtClaims }).user;
-    return this.payouts.getScopedDb(id, actor?.roles ?? [], actor?.sub); // [TBO-56 C2b] DB 권위 READ
+    return this.payoutsRead.getScopedDb(id, actor?.roles ?? [], actor?.sub); // [TBO-56 C2b] DB 권위 READ
   }
 
   // POST /api/payouts/generate — 정산서 생성 + 세션 연결(이중 계상 방지)

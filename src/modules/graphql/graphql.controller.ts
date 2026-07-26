@@ -10,7 +10,7 @@ import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { DbAnalyticsSnapshotRepository } from '../../database/db-analytics-snapshot.repository';
 import { CounselService } from '../counsel/counsel.service';
-import { PayoutsService } from '../payouts/payouts.service';
+import { PayoutsReadService } from '../payouts/payouts-read.service'; // [TBO-69 C2] 읽기만 소비
 import { assertDayRange } from '../../common/day-range';
 import { schema } from './graphql.schema';
 import { computeCeoDashboard, computeFinanceSummary, computeRevenueReport } from './revenue-analytics';
@@ -49,7 +49,7 @@ export class GraphqlGatewayController {
   constructor(
     private readonly analytics: DbAnalyticsSnapshotRepository, // [TBO-54 C2] P0-4 — DB 단일 snapshot
     private readonly counsel: CounselService,
-    private readonly payouts: PayoutsService,
+    private readonly payouts: PayoutsReadService,
   ) {}
 
   @Post()
