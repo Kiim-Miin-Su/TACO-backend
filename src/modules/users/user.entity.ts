@@ -5,6 +5,7 @@
 import type { BaseRow } from '../../common/types/base';
 import type { Account } from '@kms545487/contracts';
 import { isStaffRole, type AppRole } from '../auth/role-policy';
+import { decryptRrn, maskRrn } from '../../common/rrn-crypto.util'; // [TBO-68 C3] rrnMaskedOf
 
 export const USERS = 'users';
 
@@ -81,3 +82,14 @@ export const profileVersionOf = (u: Pick<StaffAccount, 'profileVersion'>): numbe
 
 // (참고) contracts Account 형태로 변환이 필요할 때
 export const toAccount = (a: SafeAccount): Account => ({ id: a.id, webId: a.webId, name: a.name, role: a.role });
+
+/** [TBO-68 C3] RRN 마스킹 산출(서버 내부 복호화) — 승인 대기 목록·계정 상세(super_admin) 공유.
+ *  복호 실패(키 교체·구 데이터)는 노출 대신 null(fail-closed). 평문·암호문은 어떤 응답에도 없다. */
+export const rrnMaskedOf = (account: Pick<StaffAccount, 'rrnEncrypted'>): string | null => {
+  if (!account.rrnEncrypted) return null;
+  try {
+    return maskRrn(decryptRrn(account.rrnEncrypted));
+  } catch {
+    return null;
+  }
+};

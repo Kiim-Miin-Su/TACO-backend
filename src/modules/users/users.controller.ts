@@ -2,6 +2,7 @@ import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Patch,
 import { ApiBearerAuth, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { UsersService } from './users.service';
+import { SignupApprovalService } from './signup-approval.service'; // [TBO-68 C3] 직접 등록
 import { RolesGuard } from '../auth/roles.guard';
 import { ADMIN_ROLES, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import { SuperAdminGuard } from '../auth/super-admin.guard';
@@ -16,7 +17,10 @@ import { profileVersionOf } from './user.entity';
 @UseGuards(RolesGuard)
 @Controller('users')
 export class UsersController {
-  constructor(private readonly users: UsersService) {}
+  constructor(
+    private readonly users: UsersService,
+    private readonly signupApproval: SignupApprovalService, // [TBO-68 C3]
+  ) {}
 
   @Get('me/profile')
   @Roles(...STAFF_ROLES)
@@ -55,7 +59,7 @@ export class UsersController {
   async createInstructor(@Body() dto: CreateInstructorDto, @Req() req: Request & { user?: JwtClaims }) {
     const sub = req.user?.sub;
     if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
-    return this.users.provisionInstructor(dto, sub);
+    return this.signupApproval.provisionInstructor(dto, sub);
   }
 
   // [E0] PATCH me/credentials는 CredentialsModule로 이동(비밀번호 변경 이메일 OTP 오케스트레이션 —

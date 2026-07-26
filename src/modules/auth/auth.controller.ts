@@ -37,6 +37,7 @@ import { SudoGuard } from './sudo.guard'; // [TBO-34 C2-C]
 import { LoginThrottlerGuard } from './login-throttler.guard';
 import { AuthEventsService } from './auth-events.service';
 import { UsersService } from '../users/users.service';
+import { SignupApprovalService } from '../users/signup-approval.service'; // [TBO-68 C3]
 import { authVersionOf, isStaffRole, type StaffAccount } from '../users/user.entity';
 import { MailService } from '../mail/mail.service';
 import { LoginResponseDto } from './dto/login-response.dto';
@@ -58,6 +59,7 @@ export class AuthController {
   constructor(
     private readonly auth: AuthService,
     private readonly users: UsersService,
+    private readonly signupApproval: SignupApprovalService, // [TBO-68 C3] 승인센터 표면 분리
     private readonly mail: MailService,
     private readonly events: AuthEventsService,
     private readonly refreshTokens: RefreshTokensService,
@@ -426,7 +428,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '처리 가능한 승인 대기 계정 목록(매니저=강사, 관리자=강사·매니저, 대표=대표 외).' })
   pending(@Req() req: Request & { user?: JwtClaims }) {
-    return this.users.listPending(this.actorOf(req));
+    return this.signupApproval.listPending(this.actorOf(req));
   }
 
   // [TBO-28B] 원자적 승인 command — actor=JWT sub(바디 위조 불가), users CAS + instructor_profiles + audit_log 단일 tx.
@@ -437,7 +439,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 승인(요청 역할 보존, 역할별 범위 강제, 원자 tx+audit). 동시 결정은 409.' })
   async approve(@Param('id', ParseIntPipe) id: number, @Body() dto: ApproveDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.users.approve(id, this.actorOf(req), dto.reason);
+    return this.signupApproval.approve(id, this.actorOf(req), dto.reason);
   }
 
   // [핫픽스 2026-07-20] 레거시 pending 계정 인증 메일 재발송 — 구 링크 가입자가 SMTP 부재기에
@@ -447,7 +449,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '승인 대기 계정 인증 메일 재발송(새 48h 토큰) — 대표 전용. 미인증 pending만.' })
   async resendPendingVerification(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
-    const { account, verifyToken } = await this.users.resendVerificationEmail(id, this.actorOf(req));
+    const { account, verifyToken } = await this.signupApproval.resendVerificationEmail(id, this.actorOf(req));
     const base = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
     const link = `${base}/verify-email?token=${verifyToken}`;
     const sent = await this.mail.sendVerifyEmail(account.email as string, link);
@@ -464,7 +466,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 반려(역할별 범위 강제, 사유 필수, audit 기록). 동시 결정은 409.' })
   async reject(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.users.reject(id, this.actorOf(req), dto.reason);
+    return this.signupApproval.reject(id, this.actorOf(req), dto.reason);
   }
 
   // [핫픽스 2026-07-20] 가입 신청 삭제 — pending/rejected만. 식별자 해제(같은 아이디·이메일 재가입
@@ -474,7 +476,7 @@ export class AuthController {
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 신청 삭제(pending·rejected만·재인증 필수) — 식별자 해제·RRN 파기·audit. 대표 전용, cookie 세션은 reauth 후 10분 내만 허용.' })
   async deletePending(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.users.deletePendingAccount(id, this.actorOf(req), dto.reason);
+    return this.signupApproval.deletePendingAccount(id, this.actorOf(req), dto.reason);
   }
 
   /** 검증된 JWT의 sub만 actor로 쓴다(불변식 §5-4). 인증 가드가 req.user를 부착한다. */

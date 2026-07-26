@@ -7,27 +7,22 @@ import { BadRequestException, ConflictException, ForbiddenException, forwardRef,
 import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
-import type { InstructorAggregate, UpdateInstructorInput, WebIdCheckResult } from '@kms545487/contracts';
+import type { WebIdCheckResult } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { COURSES_SPEC, INSTRUCTOR_CONTRACTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
+import { USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
 import { maskTarget } from '../profile-verifications/profile-verification.entity'; // [E0.5 ⑥] audit 마스킹
 import {
-  RRN_FORMAT_MESSAGE, birthYearFromRrn, decryptRrn, encryptRrn, maskRrn, normalizeRrn, validateRrnFormat,
-} from '../../common/rrn-crypto.util'; // [TBO-31 C1 D2]
+  RRN_FORMAT_MESSAGE, birthYearFromRrn, encryptRrn, normalizeRrn, validateRrnFormat,
+} from '../../common/rrn-crypto.util'; // [TBO-31 C1 D2] (마스킹은 user.entity.rrnMaskedOf — TBO-68 C3)
 import { SignupEmailChallengesService } from '../auth/signup-email-challenges.service'; // [TBO-31 C1 D1]
 import { SignupPhoneChallengesService } from '../auth/signup-phone-challenges.service'; // [TBO-57]
 import { InstructorProfilesStore } from './instructor-profiles.store';
-import type { InstructorProfile } from './instructor-profiles.store';
-import { ClassSessionsStore } from '../schedule/class-sessions.store';
-import type { Course } from '../courses/course.entity';
-import type { InstructorContract } from '../instructor-contracts/instructor-contract.entity';
-import { canDecideSignupRole, roleHasCapability } from '../auth/role-policy';
 import {
-  USERS, authVersionOf, isStaffRole, toSafe,
-  type AccountStatus, type SafeAccount, type StaffAccount, type StaffRole,
+  USERS, authVersionOf, isStaffRole, rrnMaskedOf, toSafe,
+  type SafeAccount, type StaffAccount, type StaffRole,
 } from './user.entity';
 
 // 하위 호환 재노출(외부 소비처가 users.service 경유로 import하던 심볼)
@@ -50,7 +45,6 @@ export class UsersService implements OnModuleInit {
     private readonly uow: CalendarUnitOfWork,
     private readonly audit: AuditService,
     private readonly profiles: InstructorProfilesStore,
-    private readonly sessions: ClassSessionsStore,
     // [TBO-31 C1 D1] 가입 tx에서 이메일 OTP challenge를 일회 소비 — Users↔Auth 기존 forwardRef 순환 위.
     @Inject(forwardRef(() => SignupEmailChallengesService))
     private readonly signupChallenges: SignupEmailChallengesService,
@@ -59,133 +53,7 @@ export class UsersService implements OnModuleInit {
     private readonly signupPhoneChallenges: SignupPhoneChallengesService,
   ) {}
 
-  private instructorAggregateOf(account: StaffAccount, profile: InstructorProfile): InstructorAggregate {
-    return {
-      id: account.id,
-      webId: account.webId,
-      name: account.name,
-      email: account.email ?? null,
-      phone: account.phone ?? null,
-      status: account.status,
-      countryCode: account.countryCode ?? null,
-      timeZone: account.timeZone ?? null,
-      university: profile.university ?? null,
-      major: profile.major ?? null,
-      birthYear: profile.birthYear ?? null,
-      defaultHourlyRate: profile.defaultHourlyRate ?? 0,
-      canTeachKinder: profile.canTeachKinder ?? false,
-      approvedBy: profile.approvedBy,
-      approvedAt: profile.approvedAt,
-    };
-  }
-
-  async listInstructors(): Promise<InstructorAggregate[]> {
-    await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
-    return this.db.findBy<StaffAccount>(USERS, (account) =>
-      account.role === 'instructor' && account.status === 'active' && account.deletedAt == null)
-      .map((account) => {
-        const profile = this.profiles.findActive(account.id);
-        if (!profile) return null;
-        return this.instructorAggregateOf(account, profile);
-      })
-      .filter((row): row is InstructorAggregate => row != null)
-      .sort((a, b) => a.name.localeCompare(b.name, 'ko'));
-  }
-
-  async getInstructor(id: number): Promise<InstructorAggregate> {
-    await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
-    const account = this.findById(id);
-    const profile = this.profiles.findActive(id);
-    if (!account || account.role !== 'instructor' || account.status !== 'active' || !profile)
-      throw new NotFoundException(`강사 ${id} 없음`);
-    return this.instructorAggregateOf(account, profile);
-  }
-
-  async updateInstructor(id: number, actorId: number, patch: UpdateInstructorInput): Promise<InstructorAggregate> {
-    await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
-    return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'user', id }]);
-      await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
-      const currentAccount = this.findById(id);
-      const currentProfile = this.profiles.findActive(id);
-      if (!currentAccount || currentAccount.role !== 'instructor' || currentAccount.status !== 'active' || !currentProfile)
-        throw new NotFoundException(`강사 ${id} 없음`);
-      const beforeAccount = { ...currentAccount };
-      const beforeProfile = { ...currentProfile };
-
-      const userPatch: Partial<StaffAccount> = {};
-      if (patch.name !== undefined) userPatch.name = patch.name.trim();
-      if (patch.phone !== undefined) userPatch.phone = patch.phone.trim() || null;
-      if (patch.email !== undefined) {
-        const email = patch.email.trim().toLowerCase();
-        const taken = this.db.findBy<StaffAccount>(USERS, (a) => a.id !== id && !!a.email && a.email.toLowerCase() === email).length > 0;
-        if (taken) throw new BadRequestException('이미 사용 중인 이메일입니다.');
-        userPatch.email = email;
-        if (email !== (beforeAccount.email ?? '').toLowerCase()) userPatch.authVersion = authVersionOf(beforeAccount) + 1;
-      }
-      if (patch.countryCode !== undefined) userPatch.countryCode = patch.countryCode?.trim() || null;
-      if (patch.timeZone !== undefined) userPatch.timeZone = patch.timeZone?.trim() || null;
-      const afterAccount = Object.keys(userPatch).length
-        ? await this.store.update<StaffAccount>(USERS_SPEC, id, userPatch as never)
-        : beforeAccount;
-      if (!afterAccount) throw new NotFoundException(`강사 ${id} 없음`);
-
-      const profilePatch = {
-        university: patch.university !== undefined ? patch.university?.trim() || null : undefined,
-        major: patch.major !== undefined ? patch.major?.trim() || null : undefined,
-        birthYear: patch.birthYear,
-        defaultHourlyRate: patch.defaultHourlyRate,
-        canTeachKinder: patch.canTeachKinder,
-      };
-      const afterProfile = Object.values(profilePatch).some((value) => value !== undefined)
-        ? await this.profiles.updateDetails(id, profilePatch)
-        : beforeProfile;
-
-      const userChanges = this.audit.maskContactPii(this.audit.diffOf(beforeAccount, afterAccount));
-      if (Object.keys(userChanges).length) {
-        await this.audit.log({ entity: 'users', entityId: id, action: 'update', actorId, changes: userChanges,
-          reason: '강사 aggregate 수정' });
-      }
-      const profileChanges = this.audit.maskContactPii(this.audit.diffOf(beforeProfile, afterProfile));
-      if (Object.keys(profileChanges).length) {
-        await this.audit.log({ entity: 'instructor_profiles', entityId: id, action: 'update', actorId,
-          changes: profileChanges, reason: '강사 aggregate 수정' });
-      }
-      return this.instructorAggregateOf(afterAccount, afterProfile);
-    });
-  }
-
-  async removeInstructor(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
-    await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
-    return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'user', id }]);
-      await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
-      const currentAccount = this.findById(id);
-      const currentProfile = this.profiles.findActive(id);
-      if (!currentAccount || currentAccount.role !== 'instructor' || currentAccount.status !== 'active' || !currentProfile)
-        throw new NotFoundException(`강사 ${id} 없음`);
-      const account = { ...currentAccount };
-      const profile = { ...currentProfile };
-      const [courses, contracts, hasSession] = await Promise.all([
-        this.store.findActive<Course>(COURSES_SPEC, { where: { instructorId: id }, limit: 1 }),
-        this.store.findActive<InstructorContract>(INSTRUCTOR_CONTRACTS_SPEC, { where: { instructorId: id, active: true }, limit: 1 }),
-        this.sessions.existsForInstructor(id),
-      ]);
-      const blockers = [courses.length && '수업', contracts.length && '계약', hasSession && '스케줄'].filter(Boolean);
-      if (blockers.length) throw new ConflictException(`활성 참조가 있는 강사는 삭제할 수 없습니다: ${blockers.join('·')}`);
-
-      await this.store.update<StaffAccount>(USERS_SPEC, id, {
-        status: 'rejected', authVersion: authVersionOf(account) + 1,
-      } as never);
-      await this.profiles.softDelete(id, actorId);
-      await this.store.remove(USERS_SPEC, id, actorId);
-      await this.audit.log({ entity: 'instructor_profiles', entityId: id, action: 'delete', actorId,
-        changes: this.audit.maskContactPii(this.audit.snapshotOf(profile)), reason: '대표 강사 삭제' });
-      await this.audit.log({ entity: 'users', entityId: id, action: 'delete', actorId,
-        changes: this.audit.maskContactPii(this.audit.snapshotOf(toSafe(account))), reason: '대표 강사 삭제' });
-      return { id, deleted: true as const };
-    });
-  }
+  // [TBO-68 C3] 강사 HR aggregate CRUD → instructor-hr.service.ts 분리(본문 이동 — 규약 무변).
 
   async onModuleInit(): Promise<void> {
     const hydrated = await this.store.hydrate<StaffAccount>(USERS_SPEC);
@@ -632,27 +500,8 @@ export class UsersService implements OnModuleInit {
 
   // [핫픽스 2026-07-20 대표 보고] 레거시 잔존 pending 계정(구 링크 가입 — SMTP 부재기에 인증 메일
   //  미발송) 구제 — 새 토큰 발급+재발송. 신규 가입은 OTP verified 생성이라 이 경로가 필요 없다.
-  async resendVerificationEmail(id: number, actorId: number): Promise<{ account: SafeAccount; verifyToken: string }> {
-    await this.refreshFromDb();
-    const acc = this.findById(id);
-    if (!acc || acc.status !== 'pending') throw new NotFoundException('승인 대기 계정이 아닙니다.');
-    if (acc.emailVerified === true) throw new BadRequestException('이미 이메일 인증이 완료된 계정입니다.');
-    if (!acc.email) throw new BadRequestException('계정에 이메일이 없습니다.');
-    const verifyToken = randomBytes(24).toString('hex');
-    return this.uow.run(async () => {
-      const updated = await this.store.update<StaffAccount>(USERS_SPEC, id, {
-        emailVerifyTokenHash: sha256(verifyToken),
-        emailVerifyExpiresAt: new Date(Date.now() + 48 * 60 * 60 * 1000).toISOString(), // 48h(가입 링크 관례)
-      } as Partial<StaffAccount> as never);
-      if (!updated) throw new NotFoundException('승인 대기 계정이 아닙니다.');
-      await this.audit.log({
-        entity: 'users', entityId: id, action: 'update', actorId,
-        changes: { emailVerifyToken: { before: '[redacted]', after: '[reissued]' } },
-        reason: '이메일 인증 메일 재발송(대표 — 레거시 pending 구제)',
-      });
-      return { account: toSafe(updated), verifyToken };
-    });
-  }
+  // [TBO-68 C3] 승인센터 표면(listPending·approve·reject·resend·delete·직접 등록) →
+  //  signup-approval.service.ts 분리(본문 이동 — CAS·같은 tx·audit 규약 무변).
 
   // ── [유저 관리 2026-07-20 대표 지시] 상세 단건 + 대표 직접 수정 ────────────────
 
@@ -662,7 +511,7 @@ export class UsersService implements OnModuleInit {
     const acc = this.findById(id);
     if (!acc) throw new NotFoundException(`계정 ${id} 없음`);
     const safe = toSafe(acc);
-    return requesterRole === 'super_admin' ? { ...safe, rrnMasked: this.rrnMaskedOf(acc) } : safe;
+    return requesterRole === 'super_admin' ? { ...safe, rrnMasked: rrnMaskedOf(acc) } : safe; // [TBO-68 C3] 공유 함수(user.entity)
   }
 
   /**
@@ -720,222 +569,6 @@ export class UsersService implements OnModuleInit {
       });
       return toSafe(updated);
     });
-  }
-
-  // [핫픽스 2026-07-20 대표 보고] 가입 신청 삭제 — pending/rejected 계정을 정리한다.
-  //  users.web_id/email은 하드 UNIQUE(부분 인덱스 아님)라 반려·soft delete만으로는 같은 아이디/이메일
-  //  재가입이 영구히 막힌다("삭제가 안 된다"의 실체). 삭제 = 식별자 tombstone 해제 + RRN 즉시 파기
-  //  (개보법 수집 최소화 — 반려 계정 RRN 보존 기한 문제도 함께 해소) + soft delete + audit(사유 필수).
-  async deletePendingAccount(id: number, actorId: number, reason: string): Promise<{ ok: true }> {
-    await this.refreshFromDb();
-    return this.uow.run(async () => {
-      const before = this.findById(id);
-      if (!before) throw new NotFoundException(`계정 ${id} 없음`);
-      if (before.status !== 'pending' && before.status !== 'rejected')
-        throw new BadRequestException('가입 대기(pending)·반려(rejected) 계정만 삭제할 수 있습니다.');
-      const tombstone = `del_${id}_${Date.now().toString(36)}`.slice(0, 50); // UNIQUE 해제(50자 상한)
-      await this.store.update<StaffAccount>(USERS_SPEC, id, {
-        webId: tombstone,
-        email: null, // email UNIQUE는 NULL 다중 허용 — 원 이메일 즉시 재가입 가능
-        rrnEncrypted: null, // 개인정보 파기(마스킹 포함 일절 잔존 금지)
-        emailVerifyTokenHash: null,
-        emailVerifyExpiresAt: null,
-        passwordResetTokenHash: null,
-        passwordResetExpiresAt: null,
-        authVersion: authVersionOf(before) + 1,
-      } as Partial<StaffAccount> as never);
-      await this.store.remove(USERS_SPEC, id, actorId);
-      // audit — 원 식별자는 사유 추적을 위해 webId만 기록(email·RRN은 기록하지 않는다).
-      await this.audit.log({
-        entity: 'users', entityId: id, action: 'delete', actorId,
-        changes: { webId: { before: before.webId, after: tombstone }, status: { before: before.status, after: '[deleted]' } },
-        reason,
-      });
-      return { ok: true as const };
-    });
-  }
-
-  async listPending(actorId: number): Promise<Array<SafeAccount & { rrnMasked: string | null }>> {
-    await this.refreshFromDb(); // [28F] 다른 인스턴스의 신규 가입이 대표 대기목록에 즉시 반영
-    const actor = this.signupDecisionActor(actorId);
-    // [TBO-31 C1 D2] 승인 판단 근거로 rrnMasked('950101-1******')만 노출 — 평문·암호문은 응답에 없다.
-    //  birthYear(파생값)는 SafeAccount에 그대로 유지(기존 승인센터 표시 소비처).
-    return this.db.findBy<StaffAccount>(USERS, (a) =>
-      a.status === 'pending' && a.deletedAt == null && canDecideSignupRole(actor.role, a.role)).map((a) => ({
-      ...toSafe(a),
-      rrnMasked: this.rrnMaskedOf(a),
-    }));
-  }
-
-  /** 마스킹 산출(서버 내부 복호화) — 복호 실패(키 교체·구 데이터)는 노출 대신 null(fail-closed). */
-  private rrnMaskedOf(account: StaffAccount): string | null {
-    if (!account.rrnEncrypted) return null;
-    try {
-      return maskRrn(decryptRrn(account.rrnEncrypted));
-    } catch {
-      return null;
-    }
-  }
-
-  private signupDecisionActor(actorId: number): StaffAccount {
-    const actor = this.findById(actorId);
-    if (!actor || actor.status !== 'active' || actor.deletedAt != null || !roleHasCapability(actor.role, 'signup.decide'))
-      throw new ForbiddenException('활성 관리자만 가입 신청을 처리할 수 있습니다.');
-    return actor;
-  }
-
-  private assertSignupDecisionScope(actorId: number, target: StaffAccount): void {
-    const actor = this.signupDecisionActor(actorId);
-    if (!canDecideSignupRole(actor.role, target.role))
-      throw new ForbiddenException('해당 역할의 가입 신청을 처리할 권한이 없습니다.');
-  }
-
-  // ── [TBO-28B] 승인/반려 — 원자적 승인 command ────────────────────────────────
-  //  · actor = 검증된 JWT sub만(바디 위조 불가 — 불변식 §5-4). reason은 audit_log에 남는다.
-  //  · CAS(조건부 update: status='pending')로 동시 approve/approve·approve/reject 중 **한 command만 성공**(나머지 409).
-  //  · users + instructor_profiles + audit_log가 **같은 트랜잭션**(CalendarUnitOfWork: 메모리 스냅샷 ⊃ pg tx).
-  //  · auth_version +1 → 상태/역할 변경 즉시 기존 JWT 무효(AccountStateService 대조).
-
-  async approve(id: number, actorId: number, reason?: string): Promise<SafeAccount> {
-    await this.refreshFromDb(); // [28F] 사전 조회(authVersion 등) 정합 — 최종 판정은 CAS가 권위
-    return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'user', id }, { kind: 'user', id: actorId }]);
-      await this.refreshFromDb();
-      const before = this.findById(id);
-      if (!before) throw new NotFoundException(`계정 ${id} 없음`);
-      this.assertSignupDecisionScope(actorId, before);
-      const finalRole: StaffRole = before.role;
-      const approvedAt = new Date().toISOString();
-      const updated = await this.store.updateIf<StaffAccount>(
-        USERS_SPEC, id,
-        { status: 'pending', emailVerified: true },
-        {
-          status: 'active', role: finalRole,
-          approvedBy: actorId, approvedAt,
-          authVersion: authVersionOf(before) + 1,
-        },
-      );
-      if (!updated) {
-        const cur = this.findById(id);
-        if (cur && !cur.emailVerified) throw new ForbiddenException('이메일 인증이 완료되지 않은 계정은 승인할 수 없습니다.');
-        throw new ConflictException('이미 처리된 계정입니다(대기 상태가 아님).');
-      }
-      // 불변식: active instructor ↔ active instructor_profiles 정확 1행.
-      // [E0.5 ④b] 가입 폼 제공 정보(대학·전공·출생연도)를 같은 tx에서 프로필로 승계(COALESCE upsert).
-      if (updated.role === 'instructor') {
-        const profile = await this.profiles.upsertActive(id, actorId, approvedAt, {
-          university: updated.university ?? null,
-          major: updated.major ?? null,
-          birthYear: updated.birthYear ?? null,
-        });
-        await this.audit.log({ entity: 'instructor_profiles', entityId: id, action: 'create', actorId,
-          changes: this.audit.maskContactPii(this.audit.snapshotOf(profile)), reason: '가입 승인 강사 프로필 생성' });
-      }
-      await this.audit.log({
-        entity: 'users', entityId: id, action: 'approve', actorId,
-        changes: {
-          status: { before: 'pending', after: 'active' },
-        },
-        reason,
-      });
-      return toSafe(updated);
-    });
-  }
-
-  // ── [운영 흐름 2026-07-14 대표 공지] 강사 직접 등록 — 대표가 받은 정보(이름·나이·대학교·전공·전화·아이디·비번)로
-  //  즉시 active 계정 생성(가입승인 흐름과 동일 기계: users + instructor_profiles + audit 단일 tx).
-  //  이메일 인증 생략(직접 신원 확인 전제). 학생·수업 추가는 기존 웹 화면 흐름.
-  async provisionInstructor(
-    input: {
-      webId: string; name: string; password: string;
-      email?: string; phone?: string; university?: string; major?: string; birthYear?: number;
-      countryCode?: string; timeZone?: string;
-      defaultHourlyRate?: number; canTeachKinder?: boolean;
-      role?: 'instructor' | 'manager' | 'admin'; // [유저 관리 07-20] 역할 확장(기본 instructor)
-    },
-    actorId: number,
-  ): Promise<SafeAccount> {
-    await this.refreshFromDb(); // [28F] 교차 인스턴스 중복 검사 정합
-    const webId = input.webId.trim();
-    const email = input.email?.trim().toLowerCase() || null;
-    if (webId.length < 3) throw new BadRequestException('아이디는 3자 이상이어야 합니다.');
-    if (input.password.length < 8) throw new BadRequestException('비밀번호는 8자 이상이어야 합니다.');
-    if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.');
-    if (email && this.db.findBy<StaffAccount>(USERS, (a) => !!a.email && a.email.toLowerCase() === email).length)
-      throw new BadRequestException('이미 사용 중인 이메일입니다.');
-    const passwordHash = await bcrypt.hash(input.password, 12);
-    if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.'); // [M1] TOCTOU 재검증
-    const role: 'instructor' | 'manager' | 'admin' = input.role ?? 'instructor';
-    return this.uow.run(async () => {
-      // 최종 중복/actor 판정은 bcrypt 이전 cache가 아니라 identity lock 뒤 Postgres readback이 권위다.
-      await this.uow.lockTargets([
-        { kind: 'loginIdentity', id: identityLockId(webId) },
-        { kind: 'user', id: actorId },
-      ]);
-      await this.refreshFromDb();
-      if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.');
-      if (email && this.db.findBy<StaffAccount>(USERS, (account) =>
-        !!account.email && account.email.toLowerCase() === email).length) {
-        throw new BadRequestException('이미 사용 중인 이메일입니다.');
-      }
-      const approvedAt = new Date().toISOString();
-      const acc = await this.store.insert<StaffAccount>(USERS_SPEC, {
-        webId, name: input.name.trim(), email, phone: input.phone?.trim() || null,
-        role, status: 'active', passwordHash,
-        emailVerified: true, // 직접 등록 — 인증 게이트 생략(로그인 게이트 통과용)
-        approvedBy: actorId, approvedAt, authVersion: 1,
-        profileVersion: 1,
-        countryCode: input.countryCode, timeZone: input.timeZone,
-      });
-      if (role === 'instructor') {
-        // 강사 프로필은 강사 역할만(E0.5 ④b 승계 규약과 동일 기계).
-        const profile = await this.profiles.upsertActive(acc.id, actorId, approvedAt, {
-          university: input.university?.trim() || null,
-          major: input.major?.trim() || null,
-          birthYear: input.birthYear ?? null,
-          defaultHourlyRate: input.defaultHourlyRate ?? 0,
-          canTeachKinder: input.canTeachKinder ?? false,
-        });
-        await this.audit.log({ entity: 'instructor_profiles', entityId: acc.id, action: 'create', actorId,
-          changes: this.audit.maskContactPii(this.audit.snapshotOf(profile)), reason: '대표 직접 강사 프로필 생성' });
-      }
-      await this.audit.log({
-        entity: 'users', entityId: acc.id, action: 'create', actorId,
-        changes: { status: { after: 'active' }, role: { after: role } },
-        reason: '대표 직접 등록',
-      });
-      return toSafe(acc);
-    });
-  }
-
-  async reject(id: number, actorId: number, reason: string): Promise<SafeAccount> {
-    await this.refreshFromDb(); // [28F]
-    return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'user', id }, { kind: 'user', id: actorId }]);
-      await this.refreshFromDb();
-      const before = this.findById(id);
-      if (!before) throw new NotFoundException(`계정 ${id} 없음`);
-      this.assertSignupDecisionScope(actorId, before);
-      const updated = await this.store.updateIf<StaffAccount>(
-        USERS_SPEC, id,
-        { status: 'pending' },
-        { status: 'rejected', authVersion: authVersionOf(before) + 1 },
-      );
-      if (!updated) throw new ConflictException('이미 처리된 계정입니다(대기 상태가 아님).');
-      await this.audit.log({
-        entity: 'users', entityId: id, action: 'reject', actorId,
-        changes: { status: { before: 'pending', after: 'rejected' } },
-        reason,
-      });
-      return toSafe(updated);
-    });
-  }
-
-  /** @deprecated [TBO-28B] approve/reject로 대체 — actor/audit/tx 없는 직접 상태 변경 금지. */
-  async setStatus(_id: number, status: AccountStatus, _role?: string): Promise<SafeAccount> {
-    throw new BadRequestException(
-      status === 'active' ? 'approve()를 사용하세요(actor/audit/tx 필수).' : 'reject()를 사용하세요(actor/reason 필수).',
-    );
   }
 
   checkWebId(webId: string): WebIdCheckResult {
