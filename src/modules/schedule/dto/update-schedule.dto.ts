@@ -1,12 +1,15 @@
 import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, IsBoolean, Max, IsArray, ArrayMaxSize } from 'class-validator';
+import { SESSION_STATUSES, INSTRUCTOR_ATT_STATUSES } from '../schedule.entity'; // [P2 M5]
+import { SESSION_MAX_MIN, SESSION_MIN_MIN } from '../session-time.policy'; // [P2 M7] 분 상한 단일 진실원
+import { MAX_AMOUNT } from '../../../common/validation-limits'; // [P2 M6]
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import type { SessionStatus, RecurrenceScope, InstructorAttendanceStatus, SessionKind, SessionMode, UpdateClassSessionInput } from '@kms545487/contracts';
 import { SESSION_KINDS, SESSION_MODES } from './create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-const STATUSES: SessionStatus[] = ['scheduled', 'held', 'canceled', 'no_show', 'makeup'];
+const STATUSES = SESSION_STATUSES; // [P2 M5]
 const SCOPES: RecurrenceScope[] = ['this', 'this_and_following', 'all'];
-const INSTRUCTOR_ATT: InstructorAttendanceStatus[] = ['present', 'late', 'absent', 'makeup'];
+const INSTRUCTOR_ATT = INSTRUCTOR_ATT_STATUSES; // [P2 M5]
 
 // PATCH /schedule/:id — 이동·리사이즈·상세편집 공용 부분수정 DTO. 모든 필드 선택.
 // [v0.1.14] implements UpdateClassSessionInput — contracts 필드 drift를 tsc가 강제(감사 A1 해소).
@@ -39,7 +42,7 @@ export class UpdateScheduleDto implements UpdateClassSessionInput {
   endTime?: string;
 
   @ApiPropertyOptional({ example: 60 })
-  @IsOptional() @IsInt() @Min(10) @Max(480) // [감사 H4] 상한 8h — 시급 계산 오염 방지
+  @IsOptional() @IsInt() @Min(SESSION_MIN_MIN) @Max(SESSION_MAX_MIN) // [감사 H4] 상한 8h — 시급 계산 오염 방지
   durationMinutes?: number;
 
   @ApiPropertyOptional({ description: '명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용', type: [Number] })
@@ -104,7 +107,7 @@ export class UpdateScheduleDto implements UpdateClassSessionInput {
   kind?: SessionKind;
 
   @ApiPropertyOptional({ example: 50000, description: '[v0.1.14] 세션 단건 가격(원)' })
-  @IsOptional() @IsInt() @Min(0) @Max(100_000_000)
+  @IsOptional() @IsInt() @Min(0) @Max(MAX_AMOUNT) // [P2 M6]
   price?: number;
 
   @ApiPropertyOptional({ enum: SESSION_MODES, example: 'online', description: '[v0.1.16] 수업방식 변경(대면/비대면)' })

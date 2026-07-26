@@ -1,9 +1,10 @@
 import { Type } from 'class-transformer';
+import { COUNSEL_RESULTS } from '../counsel.entity'; // [P2 M5]
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
 import type { UpdateCounselRoundInput } from '@kms545487/contracts';
 import { CounselFormSnapshotDto } from './counsel-form-snapshot.dto';
 
-const RESULT = ['positive', 'neutral', 'negative', 'no_response', 'registered'] as const;
+const RESULT = COUNSEL_RESULTS; // [P2 M5]
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 export class UpdateCounselRoundDto implements UpdateCounselRoundInput {

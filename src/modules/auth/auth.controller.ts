@@ -289,7 +289,7 @@ export class AuthController {
     let devWebId: string | undefined;
     if (acc?.email) {
       const sentResult = await this.mail.sendRecoverIdEmail(acc.email, acc.webId);
-      if (process.env.NODE_ENV !== 'production') devWebId = sentResult.devWebId;
+      if (!isProduction()) devWebId = sentResult.devWebId; // [P2 M4] 환경 판정 단일 진실원
     }
     await this.events.record({ type: 'recover_id_requested', userId: acc?.id, attemptedWebId: dto.email, req });
     return { ok: true, message: '가입된 이메일이면 아이디 안내 메일을 보냈습니다.', ...(devWebId ? { devWebId } : {}) };
@@ -307,7 +307,7 @@ export class AuthController {
       const base = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
       const link = `${base}/reset-password?token=${resetToken}`;
       const sentResult = await this.mail.sendPasswordResetEmail(account.email, link);
-      if (process.env.NODE_ENV !== 'production') devResetUrl = sentResult.devLink;
+      if (!isProduction()) /* [P2 M4] */ devResetUrl = sentResult.devLink;
     }
     await this.events.record({ type: 'password_reset_requested', userId: account?.id, attemptedWebId: dto.webId, req });
     return { ok: true, message: '아이디와 이메일이 일치하면 재설정 링크를 보냈습니다.', ...(devResetUrl ? { devResetUrl } : {}) };

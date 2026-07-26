@@ -2,9 +2,10 @@
 //  · in-memory DB 폴백 · raw verification URL 노출.
 //  main.ts와 api/index.ts(서버리스) 양쪽 부트 경로에서 호출한다.
 import { runtimeDatabaseUrl } from '../database/database-url';
+import { isProduction } from '../common/env'; // [P2 M4]
 
 export function assertProductionBootSafety(): void {
-  if (process.env.NODE_ENV !== 'production') return;
+  if (!isProduction()) return; // [P2 M4]
   const missing: string[] = [];
   // (a) DB 없음 → in-memory 폴백은 콜드스타트마다 데이터 유실 — 부팅 차단.
   if (!runtimeDatabaseUrl()) missing.push('DATABASE_URL(또는 POSTGRES_URL)');
@@ -36,6 +37,6 @@ export function assertProductionBootSafety(): void {
 const DEMO_PASSWORDS = new Set(['demo1234']);
 
 export function isForbiddenDemoCredential(password: string | undefined | null): boolean {
-  if (process.env.NODE_ENV !== 'production') return false;
+  if (!isProduction()) return false; // [P2 M4]
   return !!password && DEMO_PASSWORDS.has(password);
 }

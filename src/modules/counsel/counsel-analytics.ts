@@ -4,6 +4,7 @@
 //  상관관계의 "희망"은 student_interests(학생 aggregate 권위), "등록"은 enrollments가 소스 —
 //  counsel 폼에 희망 과목 사본 필드를 만들지 않는다(계약 0.2.17 studentId 필수 체계와 일관).
 import type { CounselResult, CounselStatus } from '@kms545487/contracts';
+import { COUNSEL_RESULTS, COUNSEL_STATUSES } from './counsel.entity'; // [P2 M5]
 
 export type CounselAnalyticsSnapshot = {
   forms: Array<{ id: number; studentId: number; status: CounselStatus; createdAt: string }>;
@@ -44,8 +45,8 @@ const inRange = (createdAt: string, range: CounselAnalyticsRange): boolean => {
   return true;
 };
 
-const STATUSES: CounselStatus[] = ['requested', 'pending', 'registered', 'dropped'];
-const RESULTS: CounselResult[] = ['positive', 'neutral', 'negative', 'no_response', 'registered'];
+const STATUSES: readonly CounselStatus[] = COUNSEL_STATUSES; // [P2 M5]
+const RESULTS: readonly CounselResult[] = COUNSEL_RESULTS; // [P2 M5]
 
 export function computeCounselFunnel(snapshot: CounselAnalyticsSnapshot, range: CounselAnalyticsRange = {}): CounselFunnel {
   const forms = snapshot.forms.filter((form) => inRange(form.createdAt, range));

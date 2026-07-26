@@ -1,4 +1,5 @@
 import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
+import { SESSION_MAX_MIN, SESSION_MIN_MIN } from '../../schedule/session-time.policy'; // [P2 M7] 분 상한 단일 진실원
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import type { AvailabilityKind, RecurrenceScope, SessionKind, SessionMode } from '@kms545487/contracts';
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
@@ -38,7 +39,7 @@ export class UpdateScheduleRequestDto {
   endTime?: string;
 
   @ApiPropertyOptional({ example: 90 })
-  @IsOptional() @IsInt() @Min(10) @Max(480)
+  @IsOptional() @IsInt() @Min(SESSION_MIN_MIN) @Max(SESSION_MAX_MIN)
   durationMinutes?: number;
 
   @ApiPropertyOptional({ type: [Number], description: '명시 코호트 — 세션과 동일 부분집합 검증' })

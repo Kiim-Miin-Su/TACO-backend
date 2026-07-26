@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable } from '@nestjs/common';
+import { guardianKey, onlyDigits } from '../../common/digits.util'; // [P2 4-A/B]
 import type { StudentAggregate } from '@kms545487/contracts';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { StudentsService } from '../students/students.service';
@@ -48,7 +49,7 @@ export class RegistrationsService {
       await this.interests.reloadCommandState();
       this.interests.validate(dto.interests);
       const locks = guardians
-        .map((guardian) => (guardian.phone ?? '').replace(/\D/g, ''))
+        .map((guardian) => onlyDigits(guardian.phone ?? '')) // [P2 4-A]
         .filter(Boolean)
         .map((digits) => ({ kind: 'parentIntake' as const, id: phoneLockIdOf(digits) }));
       await this.uow.lockTargets(locks);
@@ -185,7 +186,7 @@ export class RegistrationsService {
   private normalizeGuardians<T extends { name: string; phone?: string; isPrimary?: boolean }>(guardians: T[]): Array<T & { isPrimary: boolean }> {
     if (guardians.filter((guardian) => guardian.isPrimary).length > 1) throw new ConflictException('주보호자는 최대 1명입니다.');
     const normalized = guardians.map((guardian, index) => ({ ...guardian, isPrimary: guardians.some((item) => item.isPrimary) ? guardian.isPrimary === true : index === 0 }));
-    const keys = normalized.map((guardian) => `${guardian.name.trim().toLowerCase()}:${(guardian.phone ?? '').replace(/\D/g, '')}`);
+    const keys = normalized.map((guardian) => guardianKey(guardian.name, guardian.phone ?? '')); // [P2 4-B] FE identity.guardianKey와 동형(계약 테스트 고정)
     if (new Set(keys).size !== keys.length) throw new ConflictException('중복된 보호자 입력이 있습니다.');
     return normalized;
   }

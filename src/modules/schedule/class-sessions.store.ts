@@ -10,7 +10,7 @@ import {
   toIsoString,
   type PostgresRow,
 } from '../../database/postgres-row.util';
-import { ClassSession, SESSIONS } from './schedule.entity';
+import { ClassSession, SESSIONS, SESSION_STATUSES } from './schedule.entity';
 import {
   CLASS_SESSIONS_SERIES_FK_SQL,
   CLASS_SESSION_SERIES_BACKFILL_SQL,
@@ -21,12 +21,12 @@ import { TBO36_CLASS_SESSIONS_SQL } from '../../database/migrations/staff-pay-ca
 
 const TABLE = SESSIONS;
 
-const SESSION_STATUSES = ['scheduled', 'held', 'canceled', 'no_show', 'makeup'];
+// [P2 M5] CHECK 값 = schedule.entity SESSION_STATUSES 진실원 소비(아래 import)
 const SESSION_KINDS = ['class', 'level_test', 'counsel'];
 const SESSION_MODES = ['in_person', 'online'];
 const INSTRUCTOR_ATTENDANCE = ['present', 'late', 'absent', 'makeup'];
 
-const sqlList = (items: string[]): string => items.map((x) => `'${x}'`).join(', ');
+const sqlList = (items: readonly string[]): string => items.map((x) => `'${x}'`).join(', ');
 
 @Injectable()
 export class ClassSessionsStore implements OnModuleInit {

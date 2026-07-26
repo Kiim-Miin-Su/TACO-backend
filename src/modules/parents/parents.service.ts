@@ -1,4 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { onlyDigits } from '../../common/digits.util'; // [P2 4-A]
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
@@ -120,7 +121,7 @@ export class ParentsService implements OnModuleInit {
     guardian: { name: string; phone?: string; relation?: string; isPayer?: boolean; isPrimary?: boolean },
     actorId?: number,
   ): Promise<{ parent: Parent; relation: ParentStudent; linkedExisting: boolean }> {
-    const digits = (v?: string) => (v ?? '').replace(/\D/g, '');
+    const digits = (v?: string) => onlyDigits(v ?? ''); // [P2 4-A] 공용 진실원
     const normalized = digits(guardian.phone);
     const normalizedName = guardian.name.trim().toLowerCase();
     const existing = normalized

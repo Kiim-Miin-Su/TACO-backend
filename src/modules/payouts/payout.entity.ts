@@ -11,7 +11,8 @@ export { TRANSACTIONS } from '../transactions/transaction.entity';
  *  paid      — 지급 완료(통합 원장에 출금 기록)
  *  rejected  — 반려(연결 세션 회수 → 재산정 가능)  ※ 계약 PayoutStatus 확장
  */
-export type PayoutStatus = 'pending' | 'confirmed' | 'paid' | 'rejected';
+export type { PayoutStatus } from '@kms545487/contracts'; // [P2 3-A] 로컬 재정의 제거 — 계약 단일 진실원
+import type { PayoutStatus } from '@kms545487/contracts';
 
 // 정산서에 묶인 세션 1건의 산정 명세(감사 추적용 스냅샷).
 export type PayoutLine = {

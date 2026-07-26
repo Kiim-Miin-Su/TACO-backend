@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { isProduction } from '../common/env'; // [P2 M4]
 import { assertPgUrlPolicy, resolvePgSsl } from './pg-ssl'; // [TBO-34 C2-C]
 import { AsyncLocalStorage } from 'async_hooks';
 import { DataSource, type EntityManager } from 'typeorm';
@@ -34,13 +35,13 @@ export function runtimeSchemaDdlEnabled(): boolean {
   assertRuntimeDdlPolicy();
   const explicit = process.env.RUNTIME_SCHEMA_DDL?.trim().toLowerCase();
   if (explicit != null && explicit !== '') return explicit === 'true';
-  return process.env.NODE_ENV !== 'production';
+  return !isProduction(); // [P2 M4]
 }
 
 /** [TBO-34 C2-C] production에서 runtime DDL을 env로 재활성화하는 뒷문을 막는다(스키마 변경 = versioned migration 전용).
  *  ddl() 단일 깔때기의 skip에 더해, 재활성화 시도 자체를 부팅·호출 시점에 fail-fast로 끊는다. */
 export function assertRuntimeDdlPolicy(): void {
-  if (process.env.NODE_ENV !== 'production') return;
+  if (!isProduction()) return; // [P2 M4]
   const explicit = process.env.RUNTIME_SCHEMA_DDL?.trim().toLowerCase();
   if (explicit === 'true') {
     throw new Error('[db] production에서 RUNTIME_SCHEMA_DDL=true는 허용되지 않습니다 — 스키마 변경은 versioned migration 전용입니다(TBO-34 C2-C).');

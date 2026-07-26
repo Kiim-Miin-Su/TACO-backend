@@ -1,9 +1,10 @@
 import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
+import { COUNSEL_STATUSES } from '../counsel.entity'; // [P2 M5]
 import type { UpdateCounselInput } from '@kms545487/contracts';
 import { COUNSEL_DATE, COUNSEL_TEXT, SOURCES, SUBMITTERS } from './create-counsel.dto'; // [보안] 자유 텍스트 상한 단일 소스
 
 // [참조/처리] PATCH /counsel/:id — 상태 전환·담당자·관심사 수정. status는 계약 유니온 검사.
-const STATUS = ['requested', 'pending', 'registered', 'dropped'] as const;
+const STATUS = COUNSEL_STATUSES; // [P2 M5] 진실원(counsel.entity)
 export class UpdateCounselDto implements UpdateCounselInput {
   @IsOptional() @IsIn(STATUS as unknown as string[]) status?: UpdateCounselInput['status'];
   @IsOptional() @IsIn(SOURCES as unknown as string[]) source?: UpdateCounselInput['source'];

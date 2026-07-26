@@ -1,9 +1,12 @@
 import { IsBoolean, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
+import { SESSION_STATUSES } from '../schedule.entity'; // [P2 M5]
+import { SESSION_MAX_MIN, SESSION_MIN_MIN } from '../session-time.policy'; // [P2 M7] 분 상한 단일 진실원
+import { MAX_AMOUNT } from '../../../common/validation-limits'; // [P2 M6]
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { SessionStatus, SessionKind, SessionMode, CreateClassSessionInput } from '@kms545487/contracts';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-const STATUSES: SessionStatus[] = ['scheduled', 'held', 'canceled', 'no_show', 'makeup'];
+const STATUSES = SESSION_STATUSES; // [P2 M5] 런타임 배열 진실원(schedule.entity)
 export const SESSION_KINDS: SessionKind[] = ['class', 'level_test', 'counsel'];
 export const SESSION_MODES: SessionMode[] = ['in_person', 'online']; // [v0.1.16] 수업방식
 
@@ -36,7 +39,7 @@ export class CreateScheduleDto implements CreateClassSessionInput {
   endTime?: string;
 
   @ApiPropertyOptional({ example: 90, description: 'endTime 없을 때 사용(기본 60)' })
-  @IsOptional() @IsInt() @Min(10) @Max(480) // [감사 H4] 상한 8h — 시급 계산 오염 방지
+  @IsOptional() @IsInt() @Min(SESSION_MIN_MIN) @Max(SESSION_MAX_MIN) // [감사 H4] 상한 8h — 시급 계산 오염 방지
   durationMinutes?: number;
 
   @ApiPropertyOptional({ description: '명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용', type: [Number] })
@@ -72,7 +75,7 @@ export class CreateScheduleDto implements CreateClassSessionInput {
   kind?: SessionKind;
 
   @ApiPropertyOptional({ example: 50000, description: '[v0.1.14] 세션 단건 가격(원) — 상담(kind=counsel) 등. 코스 정가와 별개' })
-  @IsOptional() @IsInt() @Min(0) @Max(100_000_000) // 금액 규칙 통일(@Max 1e8)
+  @IsOptional() @IsInt() @Min(0) @Max(MAX_AMOUNT) // 금액 규칙 통일 — 단일 진실원(P2 M6)
   price?: number;
 
   @ApiPropertyOptional({ enum: SESSION_MODES, example: 'in_person', description: '[v0.1.16] 수업방식(기본 in_person) — 대면/비대면. 강의실 유무와 독립' })

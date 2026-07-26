@@ -4,6 +4,7 @@
 //  - 호출 규약: **쓰기 서비스의 db.transaction 안에서** log()를 호출(이력 포함 원자성 — 롤백 시 이력도 롤백).
 //  - delete는 changes에 before 전체 스냅샷('__row' 키 — 복원 근거), update는 변경 필드 diff만(diffOf).
 //  - append-only: 본 컬렉션에는 update/remove를 제공하지 않는다(불변 — dbml v9 §32 예외 테이블).
+import { CONTACT_PII_KEY } from '../../common/log-redaction'; // [P2 L2]
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import type { AuditAction, AuditLog } from '@kms545487/contracts';
 import { AUDIT_LOG_SPEC } from '../../database/calendar-asset-specs';
@@ -65,8 +66,7 @@ export class AuditService implements OnModuleInit {
    *  치환한다(중첩 객체 재귀 — snapshotOf의 __row.before 내부 포함).
    *  근거: users.service의 maskTarget 규약(연락처는 마스킹된 형태로만 이력에 남긴다)과 동일 원칙. */
   maskContactPii<T>(changes: T): T {
-    const isContactKey = (key: string): boolean =>
-      /phone|email|birth_?(date|year)|address|kakao_?id|overseas_?country|counsel_?topic|reference_?notes|rrn/i.test(key);
+    const isContactKey = (key: string): boolean => CONTACT_PII_KEY.test(key); // [P2 L2] 공용 패턴(log-redaction)
     const walk = (value: unknown): unknown => {
       if (!value || typeof value !== 'object') return value;
       if (Array.isArray(value)) return value.map(walk);

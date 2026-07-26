@@ -5,6 +5,8 @@ import {
   Matches, Max, MaxLength, Min, ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
+import { SESSION_STATUSES } from '../schedule.entity'; // [P2 M5]
+import { SESSION_MAX_MIN, SESSION_MIN_MIN } from '../session-time.policy'; // [P2 M7] 분 상한 단일 진실원
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type {
   CreateScheduleSeriesCommand, ScheduleSeriesRepeatKind, SessionKind, SessionMode, SessionStatus,
@@ -12,7 +14,7 @@ import type {
 import { SESSION_KINDS, SESSION_MODES } from './create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-const STATUSES: SessionStatus[] = ['scheduled', 'held', 'canceled', 'no_show', 'makeup'];
+const STATUSES = SESSION_STATUSES; // [P2 M5]
 const REPEAT_KINDS: ScheduleSeriesRepeatKind[] = ['weekly', 'custom'];
 
 export class ScheduleSeriesRepeatDto {
@@ -63,7 +65,7 @@ export class CreateScheduleSeriesDto implements CreateScheduleSeriesCommand {
   endTime?: string;
 
   @ApiPropertyOptional({ example: 90, description: 'endTime 없을 때 사용(기본 60)' })
-  @IsOptional() @IsInt() @Min(10) @Max(480)
+  @IsOptional() @IsInt() @Min(SESSION_MIN_MIN) @Max(SESSION_MAX_MIN)
   durationMinutes?: number;
 
   @ApiPropertyOptional({ example: 'Asia/Seoul', description: '규칙 해석 기준 시간대(MVP는 Asia/Seoul 고정)' })
