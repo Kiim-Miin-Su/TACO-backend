@@ -67,7 +67,8 @@
   "db:provision-runtime-role": "ts-node scripts/provision-runtime-role.ts",
   "db:smoke:runtime-role": "ts-node scripts/runtime-role-db-smoke.ts",
   "db:rotate-rrn-key": "ts-node scripts/rotate-rrn-key.ts",
-  "db:migrate:view-preset-owner": "ts-node scripts/migrate-view-preset-owner.ts"
+  "db:migrate:view-preset-owner": "ts-node scripts/migrate-view-preset-owner.ts",
+  "qa:server": "ts-node --transpile-only test/qa-fixture-server.ts"
  },
  "dependencies": {
   "@kms545487/contracts": "^0.2.17",
