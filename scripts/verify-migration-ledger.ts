@@ -31,6 +31,7 @@ import { SCHEDULE_REQUEST_MEMO_MIGRATION_ID } from '../src/database/migrations/s
 import { ENROLLMENT_COURSE_UNIQUE_MIGRATION_ID } from '../src/database/migrations/enrollment-course-unique.migration';
 import { PAYMENTS_MONEY_CONSTRAINTS_MIGRATION_ID } from '../src/database/migrations/payments-money-constraints.migration';
 import { SIGNUP_PHONE_CHALLENGES_MIGRATION_ID } from '../src/database/migrations/signup-phone-challenges.migration';
+import { VIEW_PRESET_OWNER_MIGRATION_ID } from '../src/database/migrations/view-preset-owner.migration';
 
 loadLocalEnv();
 
@@ -63,6 +64,7 @@ export const EXPECTED_MIGRATION_IDS = [
   ENROLLMENT_COURSE_UNIQUE_MIGRATION_ID,
   PAYMENTS_MONEY_CONSTRAINTS_MIGRATION_ID, // [TBO-53 C1] payments/transactions FK·CHECK
   SIGNUP_PHONE_CHALLENGES_MIGRATION_ID, // [TBO-57] 가입 전 휴대전화 OTP challenge 표
+  VIEW_PRESET_OWNER_MIGRATION_ID, // [TBO-58 P2] calendar_view_presets 소유자 FK
 ] as const;
 
 const url = directDatabaseUrl();
