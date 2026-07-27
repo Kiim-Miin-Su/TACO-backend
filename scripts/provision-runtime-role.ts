@@ -5,17 +5,25 @@
 //    npx ts-node scripts/provision-runtime-role.ts [--apply]
 //  비밀번호·URL은 로그에 남기지 않는다(상시 보안 규약). Neon 적용 절차는 RUNBOOK 문서 참조.
 import { Client } from 'pg';
+import { randomBytes } from 'node:crypto';
+import { chmodSync, writeFileSync } from 'node:fs';
 import { resolvePgSsl } from '../src/database/pg-ssl';
+import { loadLocalEnv } from '../src/config/load-env';
+import { directDatabaseUrl } from '../src/database/database-url';
 
 const APPLY = process.argv.includes('--apply') || process.env.APPLY === '1';
+loadLocalEnv();
 
 async function main(): Promise<void> {
-  const url = process.env.DATABASE_URL ?? process.env.POSTGRES_URL;
+  const url = directDatabaseUrl();
   if (!url) throw new Error('DATABASE_URL(owner)이 필요합니다.');
   const role = process.env.RUNTIME_ROLE_NAME?.trim() || 'taco_runtime';
   if (!/^[a-z_][a-z0-9_]*$/.test(role)) throw new Error('RUNTIME_ROLE_NAME은 소문자·숫자·언더스코어만 허용됩니다.');
-  const password = process.env.RUNTIME_ROLE_PASSWORD;
-  if (APPLY && !password) throw new Error('RUNTIME_ROLE_PASSWORD가 필요합니다(로그에 남기지 않음).');
+  const outputFile = process.env.RUNTIME_ROLE_OUTPUT_FILE?.trim();
+  const password = process.env.RUNTIME_ROLE_PASSWORD || (APPLY && outputFile ? randomBytes(32).toString('hex') : undefined);
+  if (APPLY && !password) {
+    throw new Error('RUNTIME_ROLE_PASSWORD 또는 RUNTIME_ROLE_OUTPUT_FILE이 필요합니다(로그에 남기지 않음).');
+  }
 
   const client = new Client({ connectionString: url, ssl: resolvePgSsl() });
   await client.connect();
@@ -52,11 +60,52 @@ async function main(): Promise<void> {
     }
 
     // 검증 readback — role 권한 스냅샷(비밀번호·URL 미출력)
-    const { rows: [check] } = await client.query(
-      `select has_schema_privilege($1, 'public', 'CREATE') as can_create,
-              has_schema_privilege($1, 'public', 'USAGE') as can_use`, [role]);
-    console.log(`[readback] ${role}: schema USAGE=${check.can_use} CREATE=${check.can_create} (CREATE는 false여야 함)`);
-    if (APPLY && check.can_create) throw new Error(`[provision] ${role}이 여전히 CREATE 권한을 가짐 — 수동 확인 필요`);
+    const { rows: [roleState] } = await client.query(
+      'select exists(select 1 from pg_roles where rolname=$1) as exists',
+      [role],
+    );
+    if (!APPLY) {
+      console.log(`[readback] ${role}: exists=${roleState.exists} (dry-run은 권한을 변경하지 않음)`);
+    } else {
+      const { rows: [check] } = await client.query(
+        `select has_schema_privilege($1, 'public', 'CREATE') as can_create,
+                has_schema_privilege($1, 'public', 'USAGE') as can_use`, [role]);
+      console.log(`[readback] ${role}: schema USAGE=${check.can_use} CREATE=${check.can_create} (CREATE는 false여야 함)`);
+      if (check.can_create) throw new Error(`[provision] ${role}이 여전히 CREATE 권한을 가짐 — 수동 확인 필요`);
+    }
+
+    if (APPLY && password) {
+      const runtimeUrl = new URL(url);
+      runtimeUrl.username = role;
+      runtimeUrl.password = password;
+      const runtime = new Client({ connectionString: runtimeUrl.toString(), ssl: resolvePgSsl() });
+      await runtime.connect();
+      try {
+        const { rows: [runtimeCheck] } = await runtime.query(`
+          SELECT current_user,
+                 has_schema_privilege(current_user, 'public', 'USAGE') AS can_use,
+                 has_schema_privilege(current_user, 'public', 'CREATE') AS can_create,
+                 COALESCE(bool_and(
+                   has_table_privilege(current_user, format('%I.%I', schemaname, tablename), 'SELECT,INSERT,UPDATE,DELETE')
+                 ), true) AS all_table_dml
+          FROM pg_tables
+          WHERE schemaname = 'public'
+          GROUP BY current_user
+        `);
+        if (runtimeCheck?.current_user !== role || !runtimeCheck.can_use || runtimeCheck.can_create || !runtimeCheck.all_table_dml) {
+          throw new Error('[provision] runtime role 권한 readback 불일치');
+        }
+        console.log(`[readback] ${role}: login=true schema USAGE=true CREATE=false all-table-DML=true`);
+      } finally {
+        await runtime.end();
+      }
+
+      if (outputFile) {
+        writeFileSync(outputFile, `${runtimeUrl.toString()}\n`, { encoding: 'utf8', mode: 0o600 });
+        chmodSync(outputFile, 0o600);
+        console.log('[provision] runtime URL을 권한 0600 임시 파일에 기록했습니다(경로·값 비출력).');
+      }
+    }
     console.log(APPLY
       ? '[provision] 완료 — 런타임 DATABASE_URL을 이 role 자격으로 교체하세요(절차: RUNBOOK-BACKUP-MONITORING).'
       : '[provision] dry-run 완료 — 적용은 --apply.');

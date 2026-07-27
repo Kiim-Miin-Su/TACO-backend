@@ -1,5 +1,10 @@
 export function runtimeDatabaseUrl(): string | undefined {
-  return process.env.DATABASE_URL || process.env.POSTGRES_URL || process.env.POSTGRES_PRISMA_URL;
+  return (
+    process.env.RUNTIME_DATABASE_URL ||
+    process.env.DATABASE_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_PRISMA_URL
+  );
 }
 
 export function directDatabaseUrl(): string | undefined {

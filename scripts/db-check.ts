@@ -2,11 +2,11 @@ import 'reflect-metadata';
 import { resolvePgSsl } from '../src/database/pg-ssl';
 import { DataSource } from 'typeorm';
 import { loadLocalEnv } from '../src/config/load-env';
-import { directDatabaseUrl } from '../src/database/database-url';
+import { directDatabaseUrl, runtimeDatabaseUrl } from '../src/database/database-url';
 
 loadLocalEnv();
 
-const url = directDatabaseUrl();
+const url = process.env.DB_CHECK_TARGET === 'runtime' ? runtimeDatabaseUrl() : directDatabaseUrl();
 
 if (!url) {
   console.error('DATABASE_URL_UNPOOLED, DATABASE_URL, POSTGRES_URL_NON_POOLING, or POSTGRES_URL is required for db:check');

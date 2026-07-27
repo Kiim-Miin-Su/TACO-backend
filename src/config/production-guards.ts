@@ -9,7 +9,7 @@ export function assertProductionBootSafety(): void {
   if (!isProduction()) return; // [P2 M4]
   const missing: string[] = [];
   // (a) DB 없음 → in-memory 폴백은 콜드스타트마다 데이터 유실 — 부팅 차단.
-  if (!runtimeDatabaseUrl()) missing.push('DATABASE_URL(또는 POSTGRES_URL)');
+  if (!runtimeDatabaseUrl()) missing.push('RUNTIME_DATABASE_URL(또는 DATABASE_URL/POSTGRES_URL)');
   // (b) JWT_SECRET — AuthService 생성 시에도 throw하지만 부트 진입점에서 먼저 명확히 알린다.
   if (!process.env.JWT_SECRET) missing.push('JWT_SECRET');
   // (c) 인증 메일 전달 수단 없음 → devLink 노출 경로뿐 — 부팅 차단.
