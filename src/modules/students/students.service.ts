@@ -30,6 +30,7 @@ import { StudentFamilyRelation, STUDENT_FAMILY_RELATIONS } from './student-famil
 import { StudentAcademicHistory, STUDENT_ACADEMIC_HISTORIES } from './student-academic-history.entity';
 import { CreateStudentFamilyRelationDto, UpdateStudentFamilyRelationDto } from './dto/student-family-relation.dto';
 import { CreateStudentAcademicHistoryDto, UpdateStudentAcademicHistoryDto } from './dto/student-academic-history.dto';
+import { projectStudentAcademicProfile } from './student-academic-projection';
 // [TBO-30G] 가족 조인 파생 — counsel_forms는 읽기 전용 조인(entity 상수만 — 서비스 순환 없음).
 import { CounselForm, COUNSEL_FORMS } from '../counsel/counsel.entity';
 import type { StudentFamilyAggregate, StudentFamilyMember } from './student-family.types';
@@ -67,14 +68,31 @@ export class StudentsService implements OnModuleInit {
   }
 
   /** [TBO-54 C2] 목록/상세/aggregate READ = DB 권위(다른 인스턴스의 등록·퇴원 즉시 반영). */
-  listDb(): Promise<Student[]> {
-    return this.store.findActive<Student>(STUDENTS_SPEC, { orderBy: { field: 'id' } });
+  async listDb(): Promise<Student[]> {
+    const [students, histories] = await Promise.all([
+      this.store.findActive<Student>(STUDENTS_SPEC, { orderBy: { field: 'id' } }),
+      this.store.findActive<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC),
+    ]);
+    const historiesByStudent = new Map<number, StudentAcademicHistory[]>();
+    for (const history of histories) {
+      const rows = historiesByStudent.get(history.studentId) ?? [];
+      rows.push(history);
+      historiesByStudent.set(history.studentId, rows);
+    }
+    const today = this.today();
+    return students.map((student) =>
+      projectStudentAcademicProfile(student, historiesByStudent.get(student.id) ?? [], today));
   }
 
   async getDb(id: number): Promise<Student> {
-    const [row] = await this.store.findActive<Student>(STUDENTS_SPEC, { where: { id } as Partial<Student>, limit: 1 });
+    const [[row], histories] = await Promise.all([
+      this.store.findActive<Student>(STUDENTS_SPEC, { where: { id } as Partial<Student>, limit: 1 }),
+      this.store.findActive<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC, {
+        where: { studentId: id } as Partial<StudentAcademicHistory>,
+      }),
+    ]);
     if (!row) throw new NotFoundException(`Student ${id} not found`);
-    return row;
+    return projectStudentAcademicProfile(row, histories, this.today());
   }
 
   // ── [TBO-59 C3 · P0-5] 강사 PII scope ─────────────────────────────────
@@ -492,14 +510,15 @@ export class StudentsService implements OnModuleInit {
   }
 
   private refreshAcademicReadModel(studentId: number): void {
-    const today = this.today();
-    const current = this.db.findByField<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES, 'studentId', studentId)
-      .filter((row) => row.startedOn <= today && (row.endedOn == null || row.endedOn >= today))
-      .sort((a, b) => b.startedOn.localeCompare(a.startedOn) || b.id - a.id)[0];
     const row = this.db.findById<Student>(STUDENTS, studentId);
     if (!row) return;
-    row.grade = current?.grade;
-    row.schoolName = current?.schoolName;
+    const projected = projectStudentAcademicProfile(
+      row,
+      this.db.findByField<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES, 'studentId', studentId),
+      this.today(),
+    );
+    row.grade = projected.grade;
+    row.schoolName = projected.schoolName;
   }
 
   private async syncCurrentAcademicProjection(studentId: number, _actorId: number, _reason: string): Promise<void> {
