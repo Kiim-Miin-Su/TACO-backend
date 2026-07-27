@@ -168,11 +168,10 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
       await http.post(`/api/payouts/${payoutId}/reverse`).set(as('admin')).send({ reason: 'J2 회수 검증' }).expect(201);
       const after = (await http.get('/api/payouts/me').set(as('park_inst')).expect(200)).body as Array<{ id: number }>;
       expect(after.some((p) => p.id === payoutId)).toBe(false); // paid만 노출 — 회수분 비노출
-      // 회수 후 재산정 — **수기 책정가는 회수와 함께 초기화**(TBO-32 C1: reverse가 instructorPayAmount를
-      //  null로 되돌린다 — 실측 확인). auto 5만만 재계상되고 S2는 다시 "책정 필요" 빈칸 → 재지급하려면
-      //  매니저가 다시 정수 입력해야 한다(여정 문서 §J2-8에 명시).
+      // 회수 후 재산정 — 사용자 수기 책정가는 보존되고 payoutId만 해제된다(TBO-73).
+      // 정산 snapshot(lines)과 회차 override(instructorPayAmount)의 역할을 섞지 않는다.
       const remeasure = (await http.get(`/api/payouts/preview?instructorId=1&from=${J2DAY}&to=${J2DAY2}`).set(as('admin')).expect(200)).body;
-      expect(remeasure.computedAmount).toBe(baseline.autoAmount + 50000);
+      expect(remeasure.computedAmount).toBe(payoutAmount);
     });
   });
 

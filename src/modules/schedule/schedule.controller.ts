@@ -11,6 +11,7 @@ import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
 import { RolesGuard } from '../auth/roles.guard';
+import { SudoGuard } from '../auth/sudo.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES, isInstructorOnly } from '../auth/roles.decorator';
 import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
 import { OpenClassDto, OpenClassSeriesDto } from './dto/open-class.dto';
@@ -192,9 +193,10 @@ export class ScheduleController {
 
   // [TBO-64 2026-07-24] 회차 가격 책정(시수 워크시트) — 지각·리포트 미작성 회차의 수동 금액 확정.
   @Put(':id/pay-amount')
+  @UseGuards(SudoGuard)
   @Roles(...ADMIN_ROLES)
   @ApiParam({ name: 'id', description: '세션 id' })
-  @ApiOperation({ summary: '회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 연결된 회차 409. [매니저 이상]' })
+  @ApiOperation({ summary: '회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 재인증 필수, 연결된 회차 409. [매니저 이상]' })
   setPayAmount(
     @Param('id', PositiveIntPipe) id: number,
     @Body() dto: SetSessionPayAmountDto,

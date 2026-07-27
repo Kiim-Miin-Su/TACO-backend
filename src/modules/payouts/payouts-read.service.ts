@@ -3,11 +3,11 @@
 //  감지(uncovered)·목록/단건(DB 권위 findActive)·강사 스코프 판정·판정 입력 표 재수화.
 //  **본문 이동만 — 산식·정책·403 경계 무변.** 명령(payouts.service)은 이 서비스를 단방향 주입해
 //  잠금 후 재조회(refreshAfterLock→refreshReadInputs)·산정(measure)·단건(findOne)을 경유한다.
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { sessionEndPassed } from '../schedule/session-time.policy'; // [TBO-66 T2]
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { ATTENDANCE_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC, INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, STUDENTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
+import { ATTENDANCE_SPEC, ENROLLMENTS_SPEC, INSTRUCTOR_PAYOUTS_SPEC, SESSION_REPORTS_SPEC, STUDENTS_SPEC, SUBJECTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
@@ -21,8 +21,9 @@ import { SessionReportRow, SESSION_REPORTS } from '../reports/report.entity';
 import { CoursesService } from '../courses/courses.service';
 import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // 대표 schedule owner는 정산 제외
 import { InstructorPayoutRow, PayoutLine, PAYOUTS } from './payout.entity';
+import { Subject, SUBJECTS } from '../subjects/subject.entity';
 
-// 세션 행은 정산 연결 후 payoutId/페이 스냅샷을 갖는다(ERD class_sessions).
+// 세션 행은 정산 연결 payoutId와 사용자 책정가 override를 갖는다. 산정 스냅샷은 payout.lines가 정본이다.
 type SessionWithPayout = ClassSession & {
   payoutId?: number; instructorPayAmount?: number;
   isPaid?: boolean; paidPayoutId?: number | null;
@@ -40,6 +41,8 @@ export type MeasureResult = {
 
 @Injectable()
 export class PayoutsReadService implements OnModuleInit {
+  private readonly logger = new Logger(PayoutsReadService.name);
+
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
@@ -60,7 +63,10 @@ export class PayoutsReadService implements OnModuleInit {
     // [TBO-56 C2b] 적격(활성 강사)·코호트·단가 판정 입력도 DB 기준 — TBO-55 감사 갭 해소.
     await this.store.hydrate(USERS_SPEC);
     await this.store.hydrate(ENROLLMENTS_SPEC);
-    await this.store.hydrate(COURSES_SPEC);
+    // 유효 시급은 course override + instructor profile 기본값의 projection이다.
+    // CoursesService의 fresh 경계를 호출해 두 입력을 같은 read snapshot으로 갱신한다.
+    await this.courses.findAllFresh();
+    await this.store.hydrate(SUBJECTS_SPEC);
     // [TBO-64] 워크시트 입력(참가자 출결·학생명)도 DB 기준.
     await this.store.hydrate(ATTENDANCE_SPEC);
     await this.store.hydrate(STUDENTS_SPEC);
@@ -181,6 +187,8 @@ export class PayoutsReadService implements OnModuleInit {
       this.db.findAll<Attendance>(ATTENDANCE).map((a) => [`${a.sessionId}:${a.studentId}`, a.status]),
     );
     const studentNameOf = (id: number) => this.db.findById<Student>(STUDENTS, id)?.name ?? `학생 ${id}`;
+    const subjectNameOf = (id: number | undefined) =>
+      id == null ? '과목 미지정' : this.db.findById<Subject>(SUBJECTS, id)?.name ?? `과목 ${id}`;
 
     const sessions = this.db
       .findBy<SessionWithPayout>(SESSIONS, (x) => x.instructorId === instructorId && x.sessionDate >= from && x.sessionDate <= to)
@@ -202,6 +210,8 @@ export class PayoutsReadService implements OnModuleInit {
         durationMinutes: session.durationMinutes,
         courseId: session.courseId,
         courseName: course?.name ?? `코스 ${session.courseId}`,
+        subjectId: course?.subjectId ?? null,
+        subjectName: subjectNameOf(course?.subjectId),
         hourlyRate: course?.hourlyRate ?? null,
         status: session.status,
         instructorAttendance: session.instructorAttendance ?? null,
@@ -212,6 +222,7 @@ export class PayoutsReadService implements OnModuleInit {
             studentId,
             name: studentNameOf(studentId),
             attendance: attendanceByKey.get(`${session.id}:${studentId}`) ?? null,
+            reportId: report?.id ?? null,
             reportApproval: report ? report.approvalStatus ?? 'draft' : null, // null = 미작성
           };
         }),
@@ -230,6 +241,9 @@ export class PayoutsReadService implements OnModuleInit {
       unpricedCount: rows.filter((r) => r.pricing.kind === 'manual' && r.pricing.effectiveAmount == null).length,
       excludedCount: rows.filter((r) => r.pricing.kind === 'excluded').length,
     };
+    this.logger.debug(
+      `action=worksheet actorScope=admin instructor=${instructorId} from=${from} to=${to} rows=${rows.length} included=${totals.includedCount} result=success`,
+    );
     return { instructorId, periodStart: from, periodEnd: to, rows, totals };
   }
 

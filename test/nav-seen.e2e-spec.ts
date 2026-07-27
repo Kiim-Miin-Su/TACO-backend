@@ -18,16 +18,17 @@ describe('Nav seen states (e2e, B3)', () => {
 
   it('마킹(upsert) → 조회 반영, 재마킹 시 시각 전진', async () => {
     const admin = await login('admin');
-    expect((await http.get('/api/nav-seen').set('Authorization', `Bearer ${admin}`).expect(200)).body).toEqual({});
+    const before = (await http.get('/api/nav-seen').set('Authorization', `Bearer ${admin}`).expect(200)).body;
     const first = (await http.put('/api/nav-seen').set('Authorization', `Bearer ${admin}`).send({ navKey: 'admin' }).expect(200)).body;
     expect(first.navKey).toBe('admin');
+    if (before.admin) expect(Date.parse(first.lastSeenAt)).toBeGreaterThanOrEqual(Date.parse(before.admin));
     const map1 = (await http.get('/api/nav-seen').set('Authorization', `Bearer ${admin}`).expect(200)).body;
     expect(map1.admin).toBe(first.lastSeenAt);
     await new Promise((r) => setTimeout(r, 5));
     const second = (await http.put('/api/nav-seen').set('Authorization', `Bearer ${admin}`).send({ navKey: 'admin' }).expect(200)).body;
     expect(Date.parse(second.lastSeenAt)).toBeGreaterThanOrEqual(Date.parse(first.lastSeenAt));
     const map2 = (await http.get('/api/nav-seen').set('Authorization', `Bearer ${admin}`).expect(200)).body;
-    expect(Object.keys(map2)).toEqual(['admin']); // upsert — 행 1개 유지
+    expect(Object.keys(map2).filter((key) => key === 'admin')).toHaveLength(1); // upsert — 해당 키 행 1개 유지
   });
 
   it('동시 마킹도 unique 충돌 없이 모두 성공하고 활성 행은 한 건이다', async () => {

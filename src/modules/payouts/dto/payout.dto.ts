@@ -47,11 +47,11 @@ export class AdjustPayoutDto {
   @Max(MAX_AMOUNT)
   amount!: number;
 
-  @ApiPropertyOptional({ example: '교통비 차감', description: '수정 사유' })
-  @IsOptional()
+  @ApiProperty({ example: '교통비 차감 반영', description: '수정 사유(감사 이력, 5자 이상)' })
   @IsString()
+  @MinLength(5)
   @MaxLength(TEXT.memo)
-  reason?: string;
+  reason!: string;
 }
 
 // POST /payouts/:id/reject — 대표 반려(+연결 세션 회수)

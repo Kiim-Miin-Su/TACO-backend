@@ -124,12 +124,13 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
     expect(p.totalMinutes).toBe(210);
     expect(p.computedAmount).toBe(165000);
     expect(p.amount).toBe(165000);
-    // 연결된 세션은 instructorPayAmount 스냅샷 보유
+    // 자동 산정 스냅샷은 payout.lines에만 보존한다. 회차 컬럼은 사용자 override 전용이라 null 유지.
     const s1 = (await http.get(`/api/schedule?from=${MON}&to=${SUN}`).set(asAdmin()).expect(200)).body.find(
       (r: { id: number }) => r.id === S1,
     );
     expect(s1.payoutId).toBe(p.id);
-    expect(s1.instructorPayAmount).toBe(75000);
+    expect(s1.instructorPayAmount ?? null).toBeNull();
+    expect(p.lines.find((line: { sessionId: number }) => line.sessionId === S1)?.amount).toBe(75000);
   });
 
   it("6) 이중 계상 방지 — 같은 기간 재산정 시 적격 0 → generate 400", async () => {
@@ -155,13 +156,24 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
     const p = (
       await http.post("/api/payouts/generate").set(asAdmin()).send({ instructorId: INSTRUCTOR, from: MON, to: SUN }).expect(201)
     ).body;
+    await http
+      .post(`/api/payouts/${p.id}/adjust`)
+      .set({ Authorization: `Bearer ${ADMIN}` })
+      .send({ amount: 150000, reason: "교통비 차감" })
+      .expect(403)
+      .then((res) => expect(res.body.code).toBe("SUDO_REQUIRED"));
+    await http
+      .post(`/api/payouts/${p.id}/adjust`)
+      .set(asAdmin())
+      .send({ amount: 150000, reason: "짧음" })
+      .expect(400);
     const adj = (
-      await http.post(`/api/payouts/${p.id}/adjust`).set(asAdmin()).send({ amount: 150000, reason: "교통비 차감" }).expect(201)
+      await http.post(`/api/payouts/${p.id}/adjust`).set(asAdmin()).send({ amount: 150000, reason: "교통비 차감 반영" }).expect(201)
     ).body;
     expect(adj.computedAmount).toBe(165000); // 기준 보존
     expect(adj.adjustedAmount).toBe(150000);
     expect(adj.amount).toBe(150000); // 실효 지급액
-    expect(adj.adjustReason).toBe("교통비 차감");
+    expect(adj.adjustReason).toBe("교통비 차감 반영");
   });
 
   it("9) 확정→지급(pay) — 통합 원장 출금 1줄 기록, 금액=실효 지급액", async () => {

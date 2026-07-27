@@ -4624,7 +4624,7 @@
             "access_token": []
           }
         ],
-        "summary": "회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 연결된 회차 409. [매니저 이상]",
+        "summary": "회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 재인증 필수, 연결된 회차 409. [매니저 이상]",
         "tags": [
           "scheduling"
         ]
@@ -5580,7 +5580,7 @@
             "access_token": []
           }
         ],
-        "summary": "정산서 단건과 산정 line 조회 [대표] — 강사는 403(상세내역 불가, 지급 요약은 GET /payouts/me — 기간설정 ② 2026-07-24).",
+        "summary": "정산서 단건과 산정 line 조회 [대표]. 강사용 지급 요약 호환 API는 GET /payouts/me이며 UI에서는 호출하지 않음.",
         "tags": [
           "payouts"
         ]
@@ -5789,7 +5789,7 @@
             "access_token": []
           }
         ],
-        "summary": "대표 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존) [대표]",
+        "summary": "대표 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존, 사유·재인증 필수) [대표]",
         "tags": [
           "payouts"
         ]
@@ -5884,7 +5884,7 @@
             "access_token": []
           }
         ],
-        "summary": "지급 회수(paid → rejected+reversedAt) — 보상 원장 입금 1건 + 연결 세션 전량 회수(재산정 가능) [대표]",
+        "summary": "지급 회수(paid → rejected+reversedAt) — 보상 원장 입금 1건 + 연결 세션 전량 회수(재산정 가능, 재인증 필수) [대표]",
         "tags": [
           "payouts"
         ]
@@ -10630,13 +10630,15 @@
           },
           "reason": {
             "type": "string",
+            "minLength": 5,
             "maxLength": 500,
-            "example": "교통비 차감",
-            "description": "수정 사유"
+            "example": "교통비 차감 반영",
+            "description": "수정 사유(감사 이력, 5자 이상)"
           }
         },
         "required": [
-          "amount"
+          "amount",
+          "reason"
         ]
       },
       "RejectPayoutDto": {

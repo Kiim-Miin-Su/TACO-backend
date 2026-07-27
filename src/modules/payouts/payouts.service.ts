@@ -17,7 +17,7 @@ import {
   TransactionRow,
 } from './payout.entity';
 
-// 세션 행은 정산 연결 후 payoutId/페이 스냅샷을 갖는다(ERD class_sessions).
+// 세션 행은 정산 연결 payoutId와 사용자 책정가 override를 갖는다. 산정 스냅샷은 payout.lines가 정본이다.
 type SessionWithPayout = ClassSession & {
   payoutId?: number; instructorPayAmount?: number;
   // [TBO-32 C1 2026-07-20] 지급 이력·무결성 — is_paid(지급 완료 플래그·회수 시에만 false 복귀),
@@ -59,7 +59,7 @@ export class PayoutsService {
     private readonly read: PayoutsReadService, // [TBO-69 C2] 읽기 단방향 주입
   ) {}
 
-  // 정산서 생성(pending) + 세션 연결(payoutId·페이 스냅샷 기록 → 이중 계상 방지).
+  // 정산서 생성(pending) + 세션 연결(payoutId → 이중 계상 방지, 금액 스냅샷은 payout.lines).
   // [리뷰 P0-4 2026-07-20] 잠금 후 재하이드레이트 — 멀티 인스턴스(serverless)에서 스테일 메모리로
   //  적격성(취소·보고서 반려를 못 본 계상)·상태 전이를 판정하지 않도록, payout 경로도 schedule의
   //  lock→refreshAfterLock 규약에 편입한다. 세션·보고서·정산서 세 자산이 판정 입력의 전부다.
@@ -93,9 +93,16 @@ export class PayoutsService {
       // [리뷰 P0-4] 강사 단위 직렬화 + 잠금 후 재하이드레이트 — 스테일 메모리 계상 차단.
       await this.unitOfWork.lockTargets([{ kind: 'instructor', id: instructorId }]);
       await this.refreshAfterLock();
-      const m = this.read.measure(instructorId, from, to);
+      let m = this.read.measure(instructorId, from, to);
       if (m.sessionCount === 0)
         throw new BadRequestException('정산 대상 세션이 없습니다(진행 완료 + 승인 보고서 필요)');
+      // 회차별 override와 정산 생성이 같은 session advisory lock을 공유한다. 잠금 대기 중
+      // 출결·리포트·책정가가 바뀔 수 있으므로 획득 뒤 fresh read로 산정 스냅샷을 다시 만든다.
+      await this.unitOfWork.lockTargets(m.lines.map((line) => ({ kind: 'session' as const, id: line.sessionId })));
+      await this.refreshAfterLock();
+      m = this.read.measure(instructorId, from, to);
+      if (m.sessionCount === 0)
+        throw new ConflictException('산정 대상 회차가 다른 요청에서 먼저 변경되었습니다. 다시 산정해 주세요.');
 
       const payout = await this.store.insert<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, {
         instructorId,
@@ -113,7 +120,7 @@ export class PayoutsService {
       this.moneyLog.log(`action=generate payout=${payout.id} instructor=${instructorId} period=${from}..${to} sessions=${m.lines.length} amount=${payout.amount} result=begin`);
       // 세션 ← 정산서 연결(FK). 이후 measure에서 payoutId!=null 로 제외됨.
       for (const l of m.lines) {
-        const claimed = await this.sessionsStore.claimPayout(l.sessionId, payout.id, l.amount);
+        const claimed = await this.sessionsStore.claimPayout(l.sessionId, payout.id);
         if (!claimed) {
           this.moneyLog.warn(`action=generate.claim payout=${payout.id} session=${l.sessionId} result=conflict(rollback)`);
           throw new ConflictException(`세션 ${l.sessionId}이 다른 정산서에 먼저 연결되었습니다. 다시 산정해 주세요.`);
@@ -245,6 +252,9 @@ export class PayoutsService {
           changes: { amount: { before: p.amount, after: amount } }, reason,
         });
       }
+      this.moneyLog.log(
+        `action=adjust payout=${id} actor=${actorId ?? 0} before=${p.amount} after=${amount} result=success`,
+      );
       return updated;
     });
   }
@@ -269,7 +279,6 @@ export class PayoutsService {
         if (s && s.payoutId === id) {
           await this.sessionsStore.update(l.sessionId, {
             payoutId: null,
-            instructorPayAmount: null,
           } as never);
         }
       }
@@ -324,7 +333,6 @@ export class PayoutsService {
           //  회수된 이력이 세션에 남는다(is_paid=false ∧ paid_payout_id≠NULL = 회수 이력 판별).
           await this.sessionsStore.update(l.sessionId, {
             payoutId: null,
-            instructorPayAmount: null,
             isPaid: false,
           } as never);
         }

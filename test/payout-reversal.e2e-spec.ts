@@ -51,6 +51,10 @@ describe('Payout reversal (e2e, B9 E5)', () => {
 
   it('회수 성공: rejected+reversedAt · 보상 입금 1건(금액 대사) · 세션 전량 해제 · 감사 2건 · 재회수 400', async () => {
     const before = (await http.get(`/api/payouts/${payoutId}`).set(auth(admin)).expect(200)).body;
+    await http.post(`/api/payouts/${payoutId}/reverse`)
+      .set({ Authorization: `Bearer ${admin}` })
+      .send({ reason: '재인증 없는 회수 차단' }).expect(403)
+      .then((response) => expect(response.body.code).toBe('SUDO_REQUIRED'));
     const res = (await http.post(`/api/payouts/${payoutId}/reverse`).set(auth(admin))
       .send({ reason: '보고서 반려로 시수 재산정 필요' }).expect(201)).body;
     expect(res.payout.status).toBe('rejected');

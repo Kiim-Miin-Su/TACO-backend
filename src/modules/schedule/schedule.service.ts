@@ -538,6 +538,9 @@ export class ScheduleService {
           reason: '시수 워크시트 가격 책정(TBO-64)',
         });
       }
+      this.logger.log(
+        `action=set_session_pay_amount session=${id} actor=${actorId ?? 0} before=${cur.instructorPayAmount ?? 'null'} after=${amount ?? 'null'} result=success`,
+      );
       return { row: updated };
     });
   }

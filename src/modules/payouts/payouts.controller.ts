@@ -102,8 +102,8 @@ export class PayoutsController {
   }
 
   @Get(':id')
-  @Roles('super_admin', 'instructor')
-  @ApiOperation({ summary: '정산서 단건과 산정 line 조회 [대표] — 강사는 403(상세내역 불가, 지급 요약은 GET /payouts/me — 기간설정 ② 2026-07-24).' })
+  @Roles('super_admin')
+  @ApiOperation({ summary: '정산서 단건과 산정 line 조회 [대표]. 강사용 지급 요약 호환 API는 GET /payouts/me이며 UI에서는 호출하지 않음.' })
   findOne(@Param('id', PositiveIntPipe) id: number, @Req() req: Request) {
     const actor = (req as Request & { user?: JwtClaims }).user;
     return this.payoutsRead.getScopedDb(id, actor?.roles ?? [], actor?.sub); // [TBO-56 C2b] DB 권위 READ
@@ -150,9 +150,10 @@ export class PayoutsController {
   }
 
   @Post(':id/adjust')
+  @UseGuards(SudoGuard)
   @Roles('super_admin')
   @ApiParam({ name: 'id', description: '정산서 id' })
-  @ApiOperation({ summary: '대표 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존) [대표]' })
+  @ApiOperation({ summary: '대표 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존, 사유·재인증 필수) [대표]' })
   @ApiCreatedResponse({ description: '정산서(computedAmount 보존, adjustedAmount·amount 갱신)' })
   adjust(@Param('id', PositiveIntPipe) id: number, @Body() body: AdjustPayoutDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.payouts.adjust(id, body.amount, body.reason, req.user?.sub);
@@ -169,9 +170,10 @@ export class PayoutsController {
 
   // [B9 E5 2026-07-16] 지급 회수(보상 command) — paid 정산의 유일한 되돌림 경로.
   @Post(':id/reverse')
+  @UseGuards(SudoGuard)
   @Roles('super_admin')
   @ApiParam({ name: 'id', description: '정산서 id' })
-  @ApiOperation({ summary: '지급 회수(paid → rejected+reversedAt) — 보상 원장 입금 1건 + 연결 세션 전량 회수(재산정 가능) [대표]' })
+  @ApiOperation({ summary: '지급 회수(paid → rejected+reversedAt) — 보상 원장 입금 1건 + 연결 세션 전량 회수(재산정 가능, 재인증 필수) [대표]' })
   @ApiCreatedResponse({ description: '{ payout: rejected+reversedAt, transaction: 원장 입금(payout_reversal) 1건 }' })
   @ApiBadRequestResponse({ description: 'paid 상태가 아님(지급 전 취소는 반려 사용) 또는 사유 누락' })
   reverse(@Param('id', PositiveIntPipe) id: number, @Body() body: ReversePayoutDto, @Req() req: Request & { user?: JwtClaims }) {

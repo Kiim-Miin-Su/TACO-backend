@@ -102,6 +102,7 @@ export type PayoutWorksheetParticipant = {
   studentId: number;
   name: string;
   attendance: string | null; // 학생 출결(미표시 null)
+  reportId: number | null; // 상세 페이지 재사용을 위한 실제 session_reports.id
   reportApproval: string | null; // approved/submitted/rejected/draft, null = 미작성
 };
 
@@ -112,6 +113,8 @@ export type PayoutWorksheetRow = {
   durationMinutes: number;
   courseId: number;
   courseName: string;
+  subjectId: number | null;
+  subjectName: string;
   hourlyRate: number | null;
   status: string;
   instructorAttendance: string | null;
