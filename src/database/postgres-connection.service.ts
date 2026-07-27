@@ -3,6 +3,7 @@ import { isProduction } from '../common/env'; // [P2 M4]
 import { assertPgUrlPolicy, resolvePgSsl } from './pg-ssl'; // [TBO-34 C2-C]
 import { AsyncLocalStorage } from 'async_hooks';
 import { DataSource, type EntityManager } from 'typeorm';
+import * as pg from 'pg';
 import { runtimeDatabaseUrl } from './database-url';
 
 export type DatabaseConnectionStatus = {
@@ -92,6 +93,9 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
   private async initialize(url: string): Promise<void> {
     this.dataSource = new DataSource({
       type: 'postgres',
+      // TypeORM otherwise loads pg dynamically. Supplying the driver keeps the
+      // serverless file tracer and the runtime on the same explicit dependency.
+      driver: pg,
       url,
       synchronize: false,
       migrationsRun: false,
