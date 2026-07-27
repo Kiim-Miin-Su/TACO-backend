@@ -255,10 +255,28 @@ export class ReportsService implements OnModuleInit {
   //  [C1] 존재 판정도 DB(reportFromDb 404) — 다른 인스턴스가 만든 보고서도 즉시 승인 가능(메모리 404 제거).
   async approve(id: number, approvedBy?: number): Promise<SessionReportRow> {
     return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'report', id }]);
+      // report.sessionId는 불변 FK라 잠금 대상 산정에만 선조회한다. 실제 승인 판정은 두 자산을
+      // 함께 잠근 뒤 fresh DB 행으로 다시 수행한다. schedule cancel/no_show도 session lock을
+      // 사용하므로 두 명령은 in-memory FIFO와 Postgres advisory lock에서 같은 순서로 직렬화된다.
+      const scoped = await this.reportFromDb(id);
+      await this.uow.lockTargets([{ kind: 'session', id: scoped.sessionId }, { kind: 'report', id }]);
       const r = await this.reportFromDb(id); // [C1] lock 뒤 DB 재조회
       if (r.approvalStatus !== 'submitted')
         throw new BadRequestException(`승인 불가 상태(${r.approvalStatus ?? r.status}) — submitted만 승인 가능`);
+      const session = await this.sessionsStore.findByIdDb(r.sessionId);
+      if (!session)
+        throw new ConflictException('연결된 수업을 찾을 수 없어 보고서를 승인할 수 없습니다.');
+      if (session.status === 'canceled' || session.status === 'no_show') {
+        this.transitionLog.warn(
+          `action=approve report=${id} session=${r.sessionId} actor=${approvedBy ?? 0} result=conflict(session:${session.status})`,
+        );
+        throw new ConflictException({
+          code: 'SESSION_TERMINAL',
+          message: `취소/결강 처리된 수업(${session.status})의 보고서는 승인할 수 없습니다.`,
+          sessionId: session.id,
+          sessionStatus: session.status,
+        });
+      }
       // [C1] CAS: submitted에서만 approved 전이 — approve-vs-reject 경쟁 시 정확히 1승자(패자 409).
       const after = await this.store.updateIf<SessionReportRow>(SESSION_REPORTS_SPEC, id, { approvalStatus: 'submitted' }, {
         approvalStatus: 'approved',
@@ -273,10 +291,11 @@ export class ReportsService implements OnModuleInit {
       // [TBO-66 C1 2026-07-25] 리포트 승인 = "수업이 진행됐다"는 사실 기록 — 시작 경과 scheduled
       //  세션이면 held 자동 전이(autoHoldPatch 단일 진실원). 종전엔 학생 출결 경로만 전이해
       //  리포트만 승인된 세션이 워크시트 제외·uncovered 미감지로 잔류했다.
-      const session = await this.sessionsStore.findByIdDb(after.sessionId);
-      const holdPatch = session ? autoHoldPatch(session, Date.now()) : null;
+      const holdPatch = autoHoldPatch(session, Date.now());
       if (holdPatch) {
-        await this.sessionsStore.update(after.sessionId, holdPatch as never);
+        const held = await this.sessionsStore.update(after.sessionId, holdPatch as never);
+        if (!held)
+          throw new ConflictException('수업 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
         this.transitionLog.log(`action=approve report=${id} session=${after.sessionId} autoHeld=1`);
         if (approvedBy != null && approvedBy > 0) {
           await this.audit.log({

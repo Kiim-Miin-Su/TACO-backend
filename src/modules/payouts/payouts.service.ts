@@ -67,6 +67,26 @@ export class PayoutsService {
     await this.read.refreshReadInputs(); // [TBO-69 C2] 판정 입력 표 목록 = 읽기 서비스 단일 정본
   }
 
+  /**
+   * Payout command의 공통 경쟁 경계.
+   * advisory lock 뒤 DB에서 행을 다시 읽고, status/amount/updatedAt을 한 CAS revision으로 사용한다.
+   * updatedAt은 BaseRow의 영속 revision이며 별도 메모리 전용 버전 필드를 만들지 않는다.
+   */
+  private async lockedPayout(id: number): Promise<InstructorPayoutRow> {
+    await this.unitOfWork.lockTargets([{ kind: 'payout', id }]);
+    // memory mode의 findActive는 저장 행 참조를 반환하므로 detached snapshot으로 정규화한다.
+    // 그렇지 않으면 updateIf가 before 행까지 mutate해 audit.before가 after와 같아진다.
+    return structuredClone(await this.read.payoutFromDb(id));
+  }
+
+  private payoutCas(payout: InstructorPayoutRow): Partial<InstructorPayoutRow> {
+    return {
+      status: payout.status,
+      amount: payout.amount,
+      updatedAt: payout.updatedAt,
+    };
+  }
+
   async generate(instructorId: number, from: string, to: string, actorId?: number): Promise<InstructorPayoutRow> {
     // [원자성] 정산서 생성 + 세션 payoutId 연결이 함께 성공/실패(이중계상 방지 불변식 보호)
     return this.unitOfWork.run(async () => {
@@ -156,9 +176,10 @@ export class PayoutsService {
   async confirm(id: number, actorId?: number): Promise<InstructorPayoutRow> {
     // [감사 전수 2026-07-16] 상태전환 + 이력 원자화(uow — 이력 실패 시 전환도 롤백).
     return this.unitOfWork.run(async () => {
-      const p = this.read.findOne(id);
+      const p = await this.lockedPayout(id);
+      if (p.status === 'confirmed') throw new ConflictException('이미 확정된 정산입니다');
       if (p.status !== 'pending') throw new BadRequestException(`확정 불가 상태(${p.status})`);
-      const updated = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, { status: 'pending' }, {
+      const updated = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, this.payoutCas(p), {
         status: 'confirmed',
         confirmedAt: new Date().toISOString(),
       });
@@ -166,7 +187,10 @@ export class PayoutsService {
       if (actorId != null) {
         await this.audit.log({
           entity: 'instructor_payouts', entityId: id, action: 'approve', actorId,
-          changes: { status: { before: 'pending', after: 'confirmed' } },
+          changes: {
+            status: { before: 'pending', after: 'confirmed' },
+            amount: { before: p.amount, after: updated.amount },
+          },
         });
       }
       this.moneyLog.log(`action=confirm payout=${id} actor=${actorId ?? 0} amount=${updated.amount} result=confirmed`); // [TBO-58 P2]
@@ -204,11 +228,11 @@ export class PayoutsService {
 
   async adjust(id: number, amount: number, reason?: string, actorId?: number): Promise<InstructorPayoutRow> {
     return this.unitOfWork.run(async () => {
-      const p = this.read.findOne(id);
+      const p = await this.lockedPayout(id);
       if (p.status === 'paid' || p.status === 'rejected')
         throw new BadRequestException(`수정 불가 상태(${p.status})`);
       if (amount == null || amount < 0) throw new BadRequestException('수정 금액은 0 이상이어야 합니다');
-      const updated = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, { status: p.status }, {
+      const updated = await this.store.updateIf<InstructorPayoutRow>(INSTRUCTOR_PAYOUTS_SPEC, id, this.payoutCas(p), {
         adjustedAmount: amount,
         adjustReason: reason,
         amount,

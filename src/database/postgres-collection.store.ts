@@ -280,7 +280,13 @@ export class PostgresCollectionStore {
     const idParam = values.length;
     const conditions = expectedKeys.map((key) => {
       values.push(expectedPayload[key]);
-      return `${safeColumn(key)} = $${values.length}`;
+      const column = safeColumn(key);
+      // PostgreSQL timestamptz(μs) → JS ISO(ms) 왕복 뒤에도 같은 revision을 비교할 수 있게 정규화.
+      // status/amount 같은 도메인 CAS와 함께 사용하므로 같은 ms의 서로 다른 전이를 허용하지 않는다.
+      if (key === 'updatedAt') {
+        return `date_trunc('milliseconds', ${column}) = date_trunc('milliseconds', $${values.length}::timestamptz)`;
+      }
+      return `${column} = $${values.length}`;
     });
     const table = safeTable(spec.table);
     const [row] = await this.query(
