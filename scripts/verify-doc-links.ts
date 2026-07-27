@@ -2,9 +2,33 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
 const DOCS_ROOT = resolve(process.cwd(), '../docs');
-const SOURCE_FILES = ['TODO.md', 'FABLE.md'];
+const SOURCE_FILES = ['TODO.md', 'TODO-current.md', 'FABLE.md', 'REVIEW.md'];
+const MARKDOWN_LINK = /(?<!!)\[[^\]]*\]\(([^)]+)\)/g;
 
-function headingAnchors(markdown: string): Set<string> {
+export function markdownOutsideCode(markdown: string): string {
+  let fence: { marker: '`' | '~'; length: number } | null = null;
+
+  return markdown.split(/\r?\n/).map((line) => {
+    const fenceMatch = /^\s*(`{3,}|~{3,})/.exec(line);
+    if (fenceMatch) {
+      const marker = fenceMatch[1][0] as '`' | '~';
+      if (fence == null) {
+        fence = { marker, length: fenceMatch[1].length };
+      } else if (fence.marker === marker && fenceMatch[1].length >= fence.length) {
+        fence = null;
+      }
+      return '';
+    }
+    if (fence != null) return '';
+    return line.replace(/(`+)(.*?)\1/g, '');
+  }).join('\n');
+}
+
+export function markdownLinkDestinations(markdown: string): string[] {
+  return [...markdownOutsideCode(markdown).matchAll(MARKDOWN_LINK)].map((match) => match[1]);
+}
+
+export function headingAnchors(markdown: string): Set<string> {
   const anchors = new Set<string>();
   const counts = new Map<string, number>();
   for (const line of markdown.split(/\r?\n/)) {
@@ -22,7 +46,7 @@ function headingAnchors(markdown: string): Set<string> {
   return anchors;
 }
 
-function main(): void {
+export function main(): void {
   const failures: string[] = [];
   let total = 0;
   let local = 0;
@@ -31,9 +55,9 @@ function main(): void {
   for (const sourceName of SOURCE_FILES) {
     const sourcePath = join(DOCS_ROOT, sourceName);
     const markdown = readFileSync(sourcePath, 'utf8');
-    for (const match of markdown.matchAll(/(?<!!)\[[^\]]*\]\(([^)]+)\)/g)) {
+    for (const rawDestination of markdownLinkDestinations(markdown)) {
       total += 1;
-      const destination = match[1].trim().replace(/^<|>$/g, '').split(/\s+["']/)[0];
+      const destination = rawDestination.trim().replace(/^<|>$/g, '').split(/\s+["']/)[0];
       if (/^(?:https?:|mailto:)/.test(destination)) {
         external += 1;
         continue;
@@ -60,4 +84,4 @@ function main(): void {
   console.log(`Documentation links verified — sources=${SOURCE_FILES.length}, total=${total}, local=${local}, external=${external}`);
 }
 
-main();
+if (require.main === module) main();

@@ -113,6 +113,7 @@ async function main(): Promise<void> {
       .filter((table) => !new RegExp(`^###(?:\\s+|.*?\\s/)${table}(?:\\s|$)`, 'm').test(dictionary))
       .sort();
     const undocumentedPhysicalTables = [...live.keys()].filter((table) => !documented.has(table)).sort();
+    const dbmlOnlyTables = [...dbml.keys()].filter((table) => !live.has(table)).sort();
     const columnDrift = [...live.entries()].flatMap(([table, tableColumns]) => {
       const liveNames = tableColumns.map((column) => column.column_name);
       const documentedNames = documented.get(table) ?? [];
@@ -130,12 +131,14 @@ async function main(): Promise<void> {
       ok: missingInLive.length === 0
         && missingDictionarySections.length === 0
         && undocumentedPhysicalTables.length === 0
+        && dbmlOnlyTables.length === 0
         && columnDrift.length === 0,
       livePhysicalTables: live.size,
       runtimeDomainTables: runtimeTables.size,
       missingInLive,
       missingDictionarySections,
       undocumentedPhysicalTables,
+      dbmlOnlyTables,
       columnDrift,
     };
     console.log(JSON.stringify(report, null, 2));
