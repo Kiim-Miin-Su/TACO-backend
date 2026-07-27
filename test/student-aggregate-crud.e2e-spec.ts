@@ -75,9 +75,9 @@ describe('[TBO-35 35C] student aggregate CRUD/RBAC/audit', () => {
     expect(detail.student).not.toHaveProperty('address');
     expect(detail.student).not.toHaveProperty('birthDate');
     expect(detail.interests.map((row: { priority: number }) => row.priority)).toEqual([1, 2]);
-    expect(detail.guardians).toEqual([]);
-    expect(detail.familyRelations).toEqual([]);
-    expect(detail.academicHistories).toEqual([]);
+    expect(detail.guardians).toBeUndefined();
+    expect(detail.familyRelations).toBeUndefined();
+    expect(detail.academicHistories).toBeUndefined();
     expect(JSON.stringify(detail)).not.toContain('010-8222-3333');
     await http.get(`/api/students/${studentId}/aggregate`).set(foreignInstructor()).expect(403);
 

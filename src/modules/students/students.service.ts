@@ -34,7 +34,7 @@ import { CreateStudentAcademicHistoryDto, UpdateStudentAcademicHistoryDto } from
 import { CounselForm, COUNSEL_FORMS } from '../counsel/counsel.entity';
 import type { StudentFamilyAggregate, StudentFamilyMember } from './student-family.types';
 
-export type InstructorStudentAggregate = Omit<StudentAggregate, 'student'> & {
+export type InstructorStudentAggregate = Pick<StudentAggregate, 'interests'> & {
   student: Partial<Student>;
 };
 
@@ -150,9 +150,6 @@ export class StudentsService implements OnModuleInit {
     return {
       student,
       interests,
-      guardians: [],
-      familyRelations: [],
-      academicHistories: [],
     };
   }
 
