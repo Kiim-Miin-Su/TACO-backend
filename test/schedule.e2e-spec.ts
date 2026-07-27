@@ -220,6 +220,21 @@ describe("Schedule API (e2e)", () => {
     expect(JSON.stringify(res.body)).toContain("double_book");
   });
 
+  it("POST /schedule — production은 force=true도 충돌 저장을 거부", async () => {
+    const previous = process.env.NODE_ENV;
+    process.env.NODE_ENV = "production";
+    try {
+      const res = await http
+        .post("/api/schedule")
+        .set(TH())
+        .send({ courseId: 10, sessionDate: MON, startTime: "16:00", durationMinutes: 90, force: true })
+        .expect(409);
+      expect(JSON.stringify(res.body)).toContain("double_book");
+    } finally {
+      process.env.NODE_ENV = previous;
+    }
+  });
+
   it("POST /schedule — force=true면 충돌이 있어도 생성", async () => {
     const res = await http
       .post("/api/schedule")

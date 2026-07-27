@@ -38,6 +38,10 @@ import { CLASS_SESSION_SERIES_SPEC, USERS_SPEC } from '../../database/calendar-a
 import { accountingImpactOf, combineAccountingImpacts, isPayoutLocked, payoutIdOf, type SessionAccountingImpact } from './session-accounting.policy';
 import { studentBelongsToSession } from './session-participant.policy';
 import { EnrollmentsService } from '../enrollments/enrollments.service';
+import { isProduction } from '../../common/env';
+
+export const canForceScheduleConflicts = (requested?: boolean): boolean =>
+  requested === true && !isProduction();
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(로컬 중복 제거).
 //  로컬 이름과 동일하게 별칭 → 호출부 무변경. addMinutes는 가드형이라 로컬 유지(아래).
 import { hhmmToMin as toMin, weekdayOf, addDaysISO, dayDiff } from '../../common/time.util';
@@ -240,8 +244,8 @@ export class ScheduleService {
         (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제
       );
       // 디버깅: 생성 요청 + 충돌 현황 로깅
-      if (conflicts.length && !dto.force) {
-        this.logger.warn(`create 충돌 ${conflicts.length}건 — course=${dto.courseId} ${dto.sessionDate} ${dto.startTime} (force로 강제 가능)`);
+      if (conflicts.length && !canForceScheduleConflicts(dto.force)) {
+        this.logger.warn(`create 충돌 ${conflicts.length}건 — course=${dto.courseId} ${dto.sessionDate} ${dto.startTime}`);
         throw new ConflictException({ message: '스케줄 충돌', conflicts });
       }
 
@@ -327,8 +331,8 @@ export class ScheduleService {
         (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제
         ));
       }
-      if (allConflicts.length && !dto.force) {
-        this.logger.warn(`createSeries 충돌 ${allConflicts.length}건 — course=${dto.courseId} ${dates[0]}~${dates[dates.length - 1]} ${startTime} (force로 강제 가능)`);
+      if (allConflicts.length && !canForceScheduleConflicts(dto.force)) {
+        this.logger.warn(`createSeries 충돌 ${allConflicts.length}건 — course=${dto.courseId} ${dates[0]}~${dates[dates.length - 1]} ${startTime}`);
         throw new ConflictException({ message: '스케줄 충돌', conflicts: allConflicts });
       }
 
@@ -702,8 +706,8 @@ export class ScheduleService {
     }
     // 결강·취소(canceled/no_show)로 바꾸는 변경은 시간 점유가 사라지므로 충돌 검사와 무관 — 항상 허용.
     const becomesCanceled = primary.status === 'canceled' || primary.status === 'no_show';
-    if (conflicts.length && !dto.force && !becomesCanceled) {
-      this.logger.warn(`update 충돌 ${conflicts.length}건 — session=${id} scope=${scope} (force로 강제 가능)`);
+    if (conflicts.length && !canForceScheduleConflicts(dto.force) && !becomesCanceled) {
+      this.logger.warn(`update 충돌 ${conflicts.length}건 — session=${id} scope=${scope}`);
       throw new ConflictException({ message: '스케줄 충돌', conflicts });
     }
 
