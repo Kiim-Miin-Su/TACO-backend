@@ -38,7 +38,15 @@ import {
 } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CLASS_SESSION_SERIES_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
-import { accountingImpactOf, combineAccountingImpacts, isPayoutLocked, payoutIdOf, type SessionAccountingImpact } from './session-accounting.policy';
+import {
+  accountingImpactOf,
+  accountingImpactOfRemoval,
+  accountingImpactHash,
+  combineAccountingImpacts,
+  isPayoutLocked,
+  payoutIdOf,
+  type SessionAccountingImpact,
+} from './session-accounting.policy';
 import { EnrollmentsService } from '../enrollments/enrollments.service';
 import { isProduction } from '../../common/env';
 import { SessionAccountingContextService } from './session-accounting-context.service';
@@ -409,8 +417,20 @@ export class ScheduleService {
   async remove(
     id: number,
     actorId?: number,
-    opts?: { scope?: SeriesScope; expectedSeriesVersion?: number },
-  ): Promise<{ id: number; deleted: boolean; removedIds: number[] }> {
+    opts?: {
+      scope?: SeriesScope;
+      expectedSeriesVersion?: number;
+      acknowledgeAccountingImpact?: boolean;
+      expectedAccountingImpactHash?: string;
+      expectedTargetIds?: readonly number[];
+    },
+  ): Promise<{
+    id: number;
+    deleted: boolean;
+    removedIds: number[];
+    accountingImpact?: SessionAccountingImpact;
+    accountingImpactHash?: string;
+  }> {
     await this.read.ensureReady();
     const scope = opts?.scope ?? 'this';
     const pre = this.db.findById<ClassSession>(SESSIONS, id);
@@ -449,6 +469,27 @@ export class ScheduleService {
         companions = selectSeriesScope(this.db.findBy<ClassSession>(SESSIONS, (s) => s.seriesId === before.seriesId), before, scope);
       }
       const targets = [before, ...companions];
+      if (opts?.expectedTargetIds) {
+        const expectedTargetIds = [...opts.expectedTargetIds].sort((a, b) => a - b);
+        const currentTargetIds = targets.map((target) => target.id).sort((a, b) => a - b);
+        if (
+          expectedTargetIds.length !== currentTargetIds.length
+          || expectedTargetIds.some((targetId, index) => targetId !== currentTargetIds[index])
+        ) {
+          throw new ConflictException({
+            code: 'REQUEST_SCOPE_STALE',
+            message: '요청 이후 반복 수업 대상이 변경되었습니다. 현재 범위를 확인한 새 요청이 필요합니다.',
+            expectedTargetIds,
+            currentTargetIds,
+          });
+        }
+      }
+      const accountingContext = await this.accountingContext.loadFresh(targets.map((target) => target.id));
+      const accountingImpact = combineAccountingImpacts(targets.map((target) => accountingImpactOfRemoval(target, {
+        approvedReport: this.accountingContext.isReportComplete(accountingContext, target),
+        hourlyRate: this.read.courseOf(target.courseId)?.hourlyRate ?? 0,
+      })));
+      const impactHash = accountingImpactHash(targets.map((target) => target.id), accountingImpact);
       // [C3] 전 회차 사전 검증 — 정산 연결이 하나라도 있으면 전체 불변(부분 삭제 금지).
       const locked = targets.filter((t) => isPayoutLocked(t));
       if (locked.length) {
@@ -456,6 +497,21 @@ export class ScheduleService {
           code: 'PAYOUT_REVERSAL_REQUIRED',
           message: `정산서에 연결된 수업(${locked.map((t) => `${t.id}(정산 ${payoutIdOf(t)})`).join(', ')})은 정산 회수 전 삭제할 수 없습니다`,
           sessionIds: locked.map((t) => t.id),
+          impact: accountingImpact,
+          impactHash,
+        });
+      }
+      if (accountingImpact.changed && (
+        !opts?.acknowledgeAccountingImpact
+        || opts.expectedAccountingImpactHash !== impactHash
+      )) {
+        throw new ConflictException({
+          code: 'ACCOUNTING_IMPACT_ACK_REQUIRED',
+          message: opts?.acknowledgeAccountingImpact
+            ? '확인한 회계 영향이 현재 상태와 달라졌습니다. 최신 영향 미리보기를 다시 확인하세요.'
+            : '삭제하면 확정 시수 또는 정산 예상 금액이 변경됩니다. 영향 미리보기를 확인하고 다시 승인하세요.',
+          impact: accountingImpact,
+          impactHash,
         });
       }
       const correlation = before.seriesId != null ? `series=${before.seriesId} scope=${scope} corr=${randomUUID()}` : undefined;
@@ -467,8 +523,16 @@ export class ScheduleService {
         await this.attendance.removeBySession(t.id, actorId);
         await this.reports.removeBySession(t.id, actorId);
         if (deleted) removedIds.push(t.id);
-        if (deleted && actorId != null)
-          await this.audit.log({ entity: SESSIONS, entityId: t.id, action: 'delete', actorId, changes: this.audit.snapshotOf(snap) as never, reason: correlation });
+        if (deleted && actorId != null) {
+          const changes = this.audit.snapshotOf(snap) as Record<string, { before?: unknown; after?: unknown }>;
+          if (t.id === before.id && accountingImpact.changed) {
+            changes.accountingImpactAcknowledgement = {
+              before: null,
+              after: { hash: impactHash, impact: accountingImpact },
+            };
+          }
+          await this.audit.log({ entity: SESSIONS, entityId: t.id, action: 'delete', actorId, changes, reason: correlation });
+        }
       }
       // [C3] series 정리: 남은 회차 0 → series soft delete · scope 삭제 → version 전진(+endsOn 축소)
       if (seriesRow) {
@@ -489,7 +553,13 @@ export class ScheduleService {
             await this.audit.log({ entity: CLASS_SESSION_SERIES, entityId: seriesRow.id, action: 'update', actorId, changes: this.audit.diffOf(beforeSeries, bumped) as never, reason: correlation });
         }
       }
-      return { id, deleted: removedIds.includes(id), removedIds };
+      return {
+        id,
+        deleted: removedIds.includes(id),
+        removedIds,
+        accountingImpact: accountingImpact.changed ? accountingImpact : undefined,
+        accountingImpactHash: accountingImpact.changed ? impactHash : undefined,
+      };
     });
   }
   // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
@@ -507,20 +577,12 @@ export class ScheduleService {
     }
   }
 
-  /** [TBO-63 2026-07-24] 삭제 복구(캘린더 undo) — 삭제된 회차만, 정산 미연결만. audit 기록. */
-  async restoreSession(id: number, actorId?: number): Promise<{ row: ClassSession }> {
-    await this.read.ensureReady();
-    return this.unitOfWork.run(async () => {
-      await this.unitOfWork.lockTargets([{ kind: 'session', id }]);
-      const restored = await this.sessions.restore(id);
-      if (!restored) throw new NotFoundException(`복구할 삭제 회차가 없습니다(id ${id}) — 이미 활성이거나 정산 연결됨.`);
-      if (actorId != null) {
-        await this.audit.log({
-          entity: 'class_sessions', entityId: id, action: 'update', actorId,
-          changes: { deletedAt: { before: 'deleted', after: null } }, reason: '캘린더 undo 복구(TBO-63)',
-        });
-      }
-      return { row: restored };
+  /** 삭제는 출결·보고서·반복 시리즈 메타를 함께 전이한다.
+   * 삭제 배치 스냅샷 없는 단일 세션 restore는 종속 행을 빠뜨리므로 fail-closed 한다. */
+  async restoreSession(_id: number, _actorId?: number): Promise<never> {
+    throw new ConflictException({
+      code: 'SESSION_AGGREGATE_RESTORE_REQUIRED',
+      message: '수업 삭제 복구는 출결·보고서·반복 시리즈를 함께 복구하는 배치 기능이 준비될 때까지 사용할 수 없습니다.',
     });
   }
 

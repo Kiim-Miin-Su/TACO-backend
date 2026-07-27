@@ -17,6 +17,7 @@ import { hasAdminRole } from '../auth/roles.decorator';
 import { UpsertAvailabilityDto } from '../availability/dto/upsert-availability.dto';
 import { ScheduleRequestsStore } from './schedule-requests.store';
 import { normalizeSessionTime } from '../schedule/session-time.policy';
+import { selectSeriesScope } from '../schedule/series-scope.policy';
 
 export const SCHEDULE_REQUESTS = 'schedule_requests';
 
@@ -40,6 +41,12 @@ type RequestRow = ScheduleRequest & BaseRow & {
   requestReason?: string;
   memo?: string;
   scope?: RecurrenceScope;
+};
+
+type ApprovalOptions = {
+  forceConflicts?: boolean;
+  acknowledgeAccountingImpact?: boolean;
+  expectedAccountingImpactHash?: string;
 };
 
 @Injectable()
@@ -166,6 +173,15 @@ export class ScheduleRequestsService {
     if (!hasAdminRole(requesterRoles) && Number(target.instructorId) !== Number(requesterId)) {
       throw new ForbiddenException('강사는 본인 수업 삭제만 요청할 수 있습니다.');
     }
+    const scope = dto.scope ?? 'this';
+    const members = scope !== 'this' && target.seriesId != null
+      ? selectSeriesScope(
+        this.schedule.list({}).filter((session) => session.seriesId === target.seriesId),
+        target,
+        scope,
+      )
+      : [];
+    const impactSessionIds = [target.id, ...members.map((session) => session.id)];
     const row = await this.store.transaction(async () => {
       const created = await this.store.insert<RequestRow>({
         requesterId,
@@ -183,8 +199,9 @@ export class ScheduleRequestsService {
         topic: target.topic,
         studentIds: target.studentIds,
         requestReason: dto.requestReason,
-        impactSessionIds: [target.id],
-        changeSummary: `수업 삭제 요청 · ${target.sessionDate} ${target.startTime ?? ''}${target.endTime ? `-${target.endTime}` : ''}`,
+        scope,
+        impactSessionIds,
+        changeSummary: `수업 삭제 요청(${scope}) · ${target.sessionDate} ${target.startTime ?? ''}${target.endTime ? `-${target.endTime}` : ''} · 영향 ${impactSessionIds.length}건`,
         status: 'pending',
       } as unknown as Omit<RequestRow, keyof BaseRow>);
       await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
@@ -272,7 +289,7 @@ export class ScheduleRequestsService {
   }
 
   /** 승인 — [요청 상태 + 세션 생성(충돌 409·force 재검사) + 역참조 + audit] 단일 tx 원자화. */
-  async approve(id: number, decidedBy: number, force?: boolean): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
+  async approve(id: number, decidedBy: number, options: ApprovalOptions = {}): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
     await this.schedule.ensureReady();
     return this.store.transaction(async () => {
       const req = await this.mustPending(id, true);
@@ -280,10 +297,10 @@ export class ScheduleRequestsService {
         return this.approveAvailability(req, decidedBy);
       }
       if (req.requestKind === 'session_update') {
-        return this.approveSessionUpdate(req, decidedBy, force);
+        return this.approveSessionUpdate(req, decidedBy, options);
       }
       if (req.requestKind === 'session_delete') {
-        return this.approveSessionDelete(req, decidedBy);
+        return this.approveSessionDelete(req, decidedBy, options);
       }
       const before = { ...req };
       // 기존 createSession 경로 그대로 — FK·코호트 재검증 + 충돌 409(force면 강제) + create audit(actor=승인자)
@@ -291,7 +308,8 @@ export class ScheduleRequestsService {
         courseId: req.courseId!, instructorId: req.instructorId, roomId: req.roomId,
         sessionDate: req.sessionDate!, startTime: req.startTime!, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic,
-        memo: req.memo, studentIds: req.studentIds, kind: req.kind, mode: req.mode, force, // [C2D] mode 보존
+        memo: req.memo, studentIds: req.studentIds, kind: req.kind, mode: req.mode,
+        force: options.forceConflicts, // [C2D] mode 보존
 
       }, decidedBy);
       const updated = this.mustStored(await this.store.update<RequestRow>(id, {
@@ -302,7 +320,7 @@ export class ScheduleRequestsService {
     });
   }
 
-  private async approveSessionUpdate(req: RequestRow, decidedBy: number, force?: boolean): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
+  private async approveSessionUpdate(req: RequestRow, decidedBy: number, options: ApprovalOptions): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
     if (req.targetSessionId == null) throw new BadRequestException('변경할 세션 id가 없습니다.');
     return this.store.transaction(async () => {
       const before = { ...req };
@@ -311,8 +329,9 @@ export class ScheduleRequestsService {
         sessionDate: req.sessionDate, startTime: req.startTime, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic, studentIds: req.studentIds,
         memo: req.memo,
-        kind: req.kind, mode: req.mode, scope: req.scope, force,
-        acknowledgeAccountingImpact: force,
+        kind: req.kind, mode: req.mode, scope: req.scope,
+        force: options.forceConflicts,
+        acknowledgeAccountingImpact: options.acknowledgeAccountingImpact,
       }, decidedBy);
       const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
@@ -322,16 +341,31 @@ export class ScheduleRequestsService {
     });
   }
 
-  private async approveSessionDelete(req: RequestRow, decidedBy: number): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
+  private async approveSessionDelete(req: RequestRow, decidedBy: number, options: ApprovalOptions): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
     if (req.targetSessionId == null) throw new BadRequestException('삭제할 세션 id가 없습니다.');
     return this.store.transaction(async () => {
       const before = { ...req };
       // [TBO-29C C3] 요청의 scope를 direct 삭제 명령과 동일하게 전달 — 승인=direct와 같은 series UoW.
-      await this.scheduleCmd.remove(req.targetSessionId!, decidedBy, { scope: (req.scope ?? 'this') as 'this' | 'this_and_following' | 'all' });
+      const removal = await this.scheduleCmd.remove(req.targetSessionId!, decidedBy, {
+        scope: (req.scope ?? 'this') as 'this' | 'this_and_following' | 'all',
+        acknowledgeAccountingImpact: options.acknowledgeAccountingImpact,
+        expectedAccountingImpactHash: options.expectedAccountingImpactHash,
+        expectedTargetIds: req.impactSessionIds?.length ? req.impactSessionIds : undefined,
+      });
       const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
       }));
-      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
+      const changes = this.audit.diffOf(before, updated);
+      if (removal.accountingImpact && removal.accountingImpactHash) {
+        changes.accountingImpactAcknowledgement = {
+          before: null,
+          after: {
+            hash: removal.accountingImpactHash,
+            impact: removal.accountingImpact,
+          },
+        };
+      }
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes });
       return { request: updated, conflicts: [] };
     });
   }

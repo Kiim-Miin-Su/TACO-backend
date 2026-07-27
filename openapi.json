@@ -4343,6 +4343,24 @@
               "minimum": 1,
               "maximum": 2147483647
             }
+          },
+          {
+            "name": "acknowledgeAccountingImpact",
+            "required": false,
+            "in": "query",
+            "description": "시수·정산 영향 미리보기를 확인한 뒤 true로 재요청",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "expectedAccountingImpactHash",
+            "required": false,
+            "in": "query",
+            "description": "직전 409 영향 미리보기의 impactHash. 잠금 후 값이 달라지면 재확인 409",
+            "schema": {
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -4578,7 +4596,7 @@
             "access_token": []
           }
         ],
-        "summary": "삭제 회차 복구(soft delete 해제) — 캘린더 undo 전용, 정산 연결 회차 불가. [매니저 이상]",
+        "summary": "삭제 회차 복구(현재 비활성) — aggregate 복구 미구현으로 409. [매니저 이상]",
         "tags": [
           "scheduling"
         ]
@@ -5105,6 +5123,35 @@
             "name": "force",
             "required": false,
             "in": "query",
+            "deprecated": true,
+            "description": "레거시 충돌 강제. 회계 영향 확인에는 사용되지 않음",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "forceConflicts",
+            "required": false,
+            "in": "query",
+            "description": "시간·자원 충돌 강제 승인",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "acknowledgeAccountingImpact",
+            "required": false,
+            "in": "query",
+            "description": "409 회계 영향 미리보기 확인",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "expectedAccountingImpactHash",
+            "required": false,
+            "in": "query",
+            "description": "직전 409의 impactHash",
             "schema": {
               "type": "string"
             }
@@ -5123,7 +5170,7 @@
             "access_token": []
           }
         ],
-        "summary": "요청 승인 → createSession 재사용(충돌 409, force=true 강제) + 역참조 + audit. [관리자]",
+        "summary": "요청 승인 → 충돌 강제와 회계 영향 확인을 분리하고 원자 전이 + audit. [관리자]",
         "tags": [
           "schedule-requests"
         ]
@@ -10353,7 +10400,7 @@
             ],
             "type": "string",
             "example": "this",
-            "description": "session_update 반복 수업 적용 범위"
+            "description": "session_update/session_delete 반복 수업 적용 범위"
           },
           "targetAvailabilityId": {
             "type": "number",

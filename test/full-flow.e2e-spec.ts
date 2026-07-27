@@ -173,7 +173,15 @@ describe("Full Flow (e2e)", () => {
 
   // 11) 독립 스케줄 삭제 → 페이 미반영(시수 미측정)
   it("11) S1 삭제 → 페이 미리보기에서 사라짐(시수 0)", async () => {
-    await http.delete(`/api/schedule/${S1}`).set(asAdmin()).expect(200);
+    const blocked = await http.delete(`/api/schedule/${S1}`).set(asAdmin()).expect(409);
+    expect(blocked.body).toMatchObject({
+      code: "ACCOUNTING_IMPACT_ACK_REQUIRED",
+      impact: { before: { teachingMinutes: 90 }, after: { teachingMinutes: 0 } },
+    });
+    await http.delete(`/api/schedule/${S1}`).set(asAdmin()).query({
+      acknowledgeAccountingImpact: "true",
+      expectedAccountingImpactHash: blocked.body.impactHash,
+    }).expect(200);
     const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${W3MON}&to=${W3SUN}`).set(asAdmin()).expect(200)).body;
     expect(m.lines.some((l: { sessionId: number }) => l.sessionId === S1)).toBe(false);
     expect(m.sessionCount).toBe(0);

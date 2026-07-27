@@ -2,15 +2,22 @@ import { INestApplication } from '@nestjs/common';
 import { assertExpectedAfter } from '../src/common/expected-after.util';
 import {
   AUDIT_LOG_SPEC,
+  ATTENDANCE_SPEC,
   SESSION_REPORTS_SPEC,
 } from '../src/database/calendar-asset-specs';
+import type { BaseRow } from '../src/database/in-memory.database';
 import { CalendarUnitOfWork, type CalendarLockKey } from '../src/database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../src/database/postgres-collection.store';
+import { AuditService } from '../src/modules/audit/audit.service';
+import type { Attendance } from '../src/modules/attendance/attendance.entity';
 import { ClassSessionsStore } from '../src/modules/schedule/class-sessions.store';
 import { ScheduleService } from '../src/modules/schedule/schedule.service';
 import { teachingMinutesOf } from '../src/modules/schedule/session-accounting.policy';
 import { SessionReportRow } from '../src/modules/reports/report.entity';
 import { ReportsService } from '../src/modules/reports/reports.service';
+import { ScheduleRequestsService } from '../src/modules/schedule-requests/schedule-requests.service';
+import { ScheduleRequestsStore } from '../src/modules/schedule-requests/schedule-requests.store';
+import type { ScheduleRequest } from '@kms545487/contracts';
 import { createTestApp } from './setup-app';
 
 const enabled = process.env.RUN_MONEY_RACE_E2E === '1';
@@ -260,6 +267,131 @@ describePostgres('report approve vs session terminal two-instance PostgreSQL con
       reportStatus: after.report?.approvalStatus,
       reportApproveAuditCount: after.reportAudits.length,
       sessionTransitions: statusTransitions(after.sessionAudits),
+    });
+  }, 30_000);
+
+  it('delete-request late audit failure rolls back the PostgreSQL aggregate, then acknowledged retry commits once', async () => {
+    const session = await sessionsA.insert({
+      courseId: 990001,
+      instructorId: 990002,
+      sessionDate: '2020-01-13',
+      startTime: '10:00',
+      endTime: '11:00',
+      durationMinutes: 60,
+      status: 'held',
+      studentIds: [990003],
+      kind: 'class',
+      mode: 'online',
+      topic: 'delete request PG rollback',
+    });
+    const attendance = await storeA.insert<Attendance>(ATTENDANCE_SPEC, {
+      sessionId: session.id,
+      studentId: 990003,
+      status: 'present',
+    });
+    const report = await storeA.insert<SessionReportRow>(SESSION_REPORTS_SPEC, {
+      sessionId: session.id,
+      studentId: 990003,
+      instructorId: session.instructorId,
+      content: 'delete request PostgreSQL rollback',
+      status: 'submitted',
+      approvalStatus: 'approved',
+      submittedAt: new Date().toISOString(),
+      approvedAt: new Date().toISOString(),
+      approvedBy: actorApprove,
+    });
+    const requestStore = appA.get(ScheduleRequestsStore);
+    const requestRow = await requestStore.insert<ScheduleRequest & BaseRow>({
+      requesterId: session.instructorId,
+      requestKind: 'session_delete',
+      targetSessionId: session.id,
+      courseId: session.courseId,
+      instructorId: session.instructorId,
+      sessionDate: session.sessionDate,
+      startTime: session.startTime,
+      endTime: session.endTime,
+      durationMinutes: session.durationMinutes,
+      studentIds: session.studentIds,
+      requestReason: 'PG rollback proof',
+      scope: 'this',
+      impactSessionIds: [session.id],
+      status: 'pending',
+    });
+    const requests = appA.get(ScheduleRequestsService);
+
+    let impactHash = '';
+    try {
+      await requests.approve(requestRow.id, actorApprove);
+    } catch (error) {
+      const response = (error as { response?: { code?: string; impactHash?: string } }).response;
+      expect(response?.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
+      impactHash = response?.impactHash ?? '';
+    }
+    expect(impactHash).toMatch(/^[a-f0-9]{64}$/);
+
+    const audit = appA.get(AuditService);
+    const originalLog = audit.log.bind(audit);
+    const auditSpy = jest.spyOn(audit, 'log').mockImplementation(async (entry) => {
+      if (entry.entity === 'schedule_requests' && entry.entityId === requestRow.id && entry.action === 'approve') {
+        throw new Error('injected PostgreSQL late request audit failure');
+      }
+      return originalLog(entry);
+    });
+    await expect(requests.approve(requestRow.id, actorApprove, {
+      acknowledgeAccountingImpact: true,
+      expectedAccountingImpactHash: impactHash,
+    })).rejects.toThrow('injected PostgreSQL late request audit failure');
+    auditSpy.mockRestore();
+
+    const [attendanceAfterRollback] = await storeA.findActive<Attendance>(ATTENDANCE_SPEC, {
+      where: { id: attendance.id } as Partial<Attendance>,
+      limit: 1,
+    });
+    const [reportAfterRollback] = await storeA.findActive<SessionReportRow>(SESSION_REPORTS_SPEC, {
+      where: { id: report.id } as Partial<SessionReportRow>,
+      limit: 1,
+    });
+    const requestAfterRollback = await requestStore.findById<ScheduleRequest & BaseRow>(requestRow.id);
+    assertExpectedAfter('PG delete-request late failure expected/after', {
+      sessionActive: true,
+      attendanceActive: true,
+      reportActive: true,
+      requestStatus: 'pending',
+    }, {
+      sessionActive: Boolean(await sessionsA.findByIdDb(session.id)),
+      attendanceActive: Boolean(attendanceAfterRollback),
+      reportActive: Boolean(reportAfterRollback),
+      requestStatus: requestAfterRollback?.status,
+    });
+
+    await requests.approve(requestRow.id, actorApprove, {
+      acknowledgeAccountingImpact: true,
+      expectedAccountingImpactHash: impactHash,
+    });
+    const approved = await requestStore.findById<ScheduleRequest & BaseRow>(requestRow.id);
+    const requestAudits = (await storeA.findActive<AuditRow>(AUDIT_LOG_SPEC, {
+      orderBy: { field: 'id' },
+    })).filter((row) => row.entity === 'schedule_requests' && row.entityId === requestRow.id && row.action === 'approve');
+    assertExpectedAfter('PG delete-request acknowledged commit expected/after', {
+      sessionActive: false,
+      attendanceCount: 0,
+      reportCount: 0,
+      requestStatus: 'approved',
+      approveAuditCount: 1,
+      acknowledgedHash: impactHash,
+    }, {
+      sessionActive: Boolean(await sessionsA.findByIdDb(session.id)),
+      attendanceCount: (await storeA.findActive<Attendance>(ATTENDANCE_SPEC, {
+        where: { sessionId: session.id } as Partial<Attendance>,
+      })).length,
+      reportCount: (await storeA.findActive<SessionReportRow>(SESSION_REPORTS_SPEC, {
+        where: { sessionId: session.id } as Partial<SessionReportRow>,
+      })).length,
+      requestStatus: approved?.status,
+      approveAuditCount: requestAudits.length,
+      acknowledgedHash: requestAudits[0]?.changes?.accountingImpactAcknowledgement?.after
+        ? (requestAudits[0].changes!.accountingImpactAcknowledgement!.after as { hash?: string }).hash
+        : undefined,
     });
   }, 30_000);
 });

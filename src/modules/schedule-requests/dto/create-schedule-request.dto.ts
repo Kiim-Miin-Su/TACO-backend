@@ -88,8 +88,9 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @IsDefined() @IsString() @MinLength(1) @MaxLength(500)
   requestReason?: string;
 
-  @ApiPropertyOptional({ enum: RECURRENCE_SCOPES, example: 'this', description: 'session_update 반복 수업 적용 범위' })
-  @ValidateIf((o) => o.requestKind === 'session_update')
+  @ApiPropertyOptional({ enum: RECURRENCE_SCOPES, example: 'this', description: 'session_update/session_delete 반복 수업 적용 범위' })
+  @ValidateIf(isSessionTargetRequest)
+  @IsOptional()
   @IsIn(RECURRENCE_SCOPES)
   scope?: RecurrenceScope;
 

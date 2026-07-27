@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { assertExpectedAfter } from '../src/common/expected-after.util';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
+import { AuditService } from '../src/modules/audit/audit.service';
 import { SESSIONS, type ClassSession } from '../src/modules/schedule/schedule.entity';
 import { createTestApp } from './setup-app';
 
@@ -11,12 +12,14 @@ const TO = '2026-06-30';
 describe('session joined-table expected/after integrity (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
+  let db: InMemoryDatabase;
   let token = '';
   const auth = () => ({ Authorization: `Bearer ${token}` });
 
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
+    db = app.get(InMemoryDatabase);
     token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
   });
   afterAll(async () => app.close());
@@ -94,6 +97,74 @@ describe('session joined-table expected/after integrity (e2e)', () => {
     });
   });
 
+  it('미정산 held 회차 삭제는 영향 확인을 요구하고, 확인 후 종속행을 원자 삭제하며 audit 실패는 전부 롤백한다', async () => {
+    const session = (await http.post('/api/schedule').set(auth()).send({
+      courseId: 10,
+      instructorId: 1,
+      studentIds: [1],
+      sessionDate: '2026-06-04',
+      startTime: '06:00',
+      durationMinutes: 60,
+      status: 'held',
+      force: true,
+    }).expect(201)).body.row as { id: number };
+    await http.put('/api/attendance').set(auth())
+      .send({ sessionId: session.id, studentId: 1, status: 'present' }).expect(200);
+    const report = (await http.post('/api/reports').set(auth())
+      .send({ sessionId: session.id, studentId: 1, content: '삭제 원자성 검증 보고서' }).expect(201)).body as { id: number };
+    await http.post(`/api/reports/${report.id}/approve`).set(auth()).expect(201);
+
+    const beforeRelations = await relations(session.id);
+    const blocked = await http.delete(`/api/schedule/${session.id}`).set(auth()).expect(409);
+    expect(blocked.body.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
+    expect(blocked.body.impact).toMatchObject({
+      changed: true,
+      before: { teachingMinutes: 60 },
+      after: { teachingMinutes: 0, payoutEligibleMinutes: 0, computedAmount: 0 },
+      delta: { teachingMinutes: -60 },
+    });
+    expect(blocked.body.impactHash).toMatch(/^[a-f0-9]{64}$/);
+    await http.delete(`/api/schedule/${session.id}?acknowledgeAccountingImpact=yes`).set(auth()).expect(400);
+    await http.delete(`/api/schedule/${session.id}`).set(auth()).query({
+      acknowledgeAccountingImpact: 'true',
+      expectedAccountingImpactHash: '0'.repeat(64),
+    }).expect(409);
+    assertExpectedAfter('삭제 확인 전 관계 무변경', beforeRelations, await relations(session.id));
+    await http.get(`/api/schedule/${session.id}`).set(auth()).expect(200);
+
+    const beforeRollbackPreview = await preview();
+    const audit = app.get(AuditService);
+    const auditSpy = jest.spyOn(audit, 'log').mockRejectedValueOnce(new Error('injected session delete audit failure'));
+    await http.delete(`/api/schedule/${session.id}`).set(auth()).query({
+      acknowledgeAccountingImpact: 'true',
+      expectedAccountingImpactHash: blocked.body.impactHash,
+    }).expect(500);
+    auditSpy.mockRestore();
+    assertExpectedAfter('삭제 audit 실패 전체 롤백', beforeRelations, await relations(session.id));
+    await http.get(`/api/schedule/${session.id}`).set(auth()).expect(200);
+    const afterRollbackPreview = await preview();
+    assertExpectedAfter('삭제 audit 실패 정산 미리보기 롤백', {
+      sessionCount: beforeRollbackPreview.sessionCount,
+      totalMinutes: beforeRollbackPreview.totalMinutes,
+      computedAmount: beforeRollbackPreview.computedAmount,
+    }, {
+      sessionCount: afterRollbackPreview.sessionCount,
+      totalMinutes: afterRollbackPreview.totalMinutes,
+      computedAmount: afterRollbackPreview.computedAmount,
+    });
+    expect(db.findAll<{ entity: string; entityId: number; action: string }>('audit_log')
+      .filter((row) => row.entity === SESSIONS && row.entityId === session.id && row.action === 'delete')).toHaveLength(0);
+
+    await http.delete(`/api/schedule/${session.id}`).set(auth()).query({
+      acknowledgeAccountingImpact: 'true',
+      expectedAccountingImpactHash: blocked.body.impactHash,
+    }).expect(200);
+    await http.get(`/api/schedule/${session.id}`).set(auth()).expect(404);
+    assertExpectedAfter('삭제 확인 후 종속행 soft delete', { attendance: [], reports: [] }, await relations(session.id));
+    expect(db.findAll<{ entity: string; entityId: number; action: string }>('audit_log')
+      .filter((row) => row.entity === SESSIONS && row.entityId === session.id && row.action === 'delete')).toHaveLength(1);
+  });
+
   it('정산 연결 세션은 확인값이 있어도 원장 회수 전 변경·삭제되지 않는다', async () => {
     const payouts = (await http.get('/api/payouts').set(auth()).expect(200)).body;
     const paid = payouts.find((row: { instructorId: number; status: string }) => row.instructorId === 2 && row.status === 'paid');
@@ -103,7 +174,11 @@ describe('session joined-table expected/after integrity (e2e)', () => {
     const blocked = await http.patch(`/api/schedule/${sessionId}`).set(auth())
       .send({ durationMinutes: before.durationMinutes + 30, acknowledgeAccountingImpact: true }).expect(409);
     expect(blocked.body.code).toBe('PAYOUT_REVERSAL_REQUIRED');
-    await http.delete(`/api/schedule/${sessionId}`).set(auth()).expect(409);
+    const deleteBlocked = await http.delete(`/api/schedule/${sessionId}?acknowledgeAccountingImpact=true`).set(auth()).expect(409);
+    expect(deleteBlocked.body).toMatchObject({
+      code: 'PAYOUT_REVERSAL_REQUIRED',
+      impact: { payoutId: paid.id },
+    });
     const after = (await http.get(`/api/schedule?from=${FROM}&to=${TO}&instructorId=2`).set(auth()).expect(200)).body
       .find((row: { id: number }) => row.id === sessionId);
     assertExpectedAfter('정산 연결 세션 불변', before, after);

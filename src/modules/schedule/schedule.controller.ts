@@ -187,11 +187,11 @@ export class ScheduleController {
     return this.schedule.markInstructorAttendance(id, dto.status, req.user?.sub, req.user?.roles ?? []);
   }
 
-  // [TBO-63 2026-07-24] 삭제 복구(캘린더 undo) — cmd/ctrl+Z 스택의 삭제 역연산.
+  // [TBO-74C-2] 종속 행 없는 단일 세션 복구는 무결성을 깨뜨리므로 현재 fail-closed.
   @Post(':id/restore')
   @RequireCapabilities('calendar.manage')
   @ApiParam({ name: 'id', description: '세션 id' })
-  @ApiOperation({ summary: '삭제 회차 복구(soft delete 해제) — 캘린더 undo 전용, 정산 연결 회차 불가. [매니저 이상]' })
+  @ApiOperation({ summary: '삭제 회차 복구(현재 비활성) — aggregate 복구 미구현으로 409. [매니저 이상]' })
   restore(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.schedule.restoreSession(id, req.user?.sub);
   }
@@ -216,6 +216,8 @@ export class ScheduleController {
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiQuery({ name: 'scope', required: false, enum: ['this', 'this_and_following', 'all'], description: '[TBO-29C C3] 반복 삭제 범위(기본 this). payout lock은 전 회차 사전 검증 — 하나라도 걸리면 전체 불변' })
   @ApiQuery({ name: 'expectedSeriesVersion', required: false, description: '[C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE' })
+  @ApiQuery({ name: 'acknowledgeAccountingImpact', required: false, type: Boolean, description: '시수·정산 영향 미리보기를 확인한 뒤 true로 재요청' })
+  @ApiQuery({ name: 'expectedAccountingImpactHash', required: false, description: '직전 409 영향 미리보기의 impactHash. 잠금 후 값이 달라지면 재확인 409' })
   @ApiOkResponse({ description: '{ id, deleted, removedIds: number[] }' })
   @ApiOperation({ summary: '세션 삭제(반복 scope 지원) [로그인]' })
   remove(
@@ -224,12 +226,20 @@ export class ScheduleController {
     @Query('scope') scope?: string,
     @Query('expectedSeriesVersion', OptionalPositiveIntPipe)
     expectedSeriesVersion?: number,
+    @Query('acknowledgeAccountingImpact') acknowledgeAccountingImpact?: string,
+    @Query('expectedAccountingImpactHash') expectedAccountingImpactHash?: string,
   ) {
     if (scope != null && !['this', 'this_and_following', 'all'].includes(scope))
       throw new BadRequestException('scope는 this|this_and_following|all 중 하나여야 합니다');
+    if (acknowledgeAccountingImpact != null && !['true', 'false'].includes(acknowledgeAccountingImpact))
+      throw new BadRequestException('acknowledgeAccountingImpact는 true 또는 false여야 합니다');
+    if (expectedAccountingImpactHash != null && !/^[a-f0-9]{64}$/.test(expectedAccountingImpactHash))
+      throw new BadRequestException('expectedAccountingImpactHash는 64자리 sha256 hex여야 합니다');
     return this.schedule.remove(id, req.user?.sub, {
       scope: (scope ?? 'this') as 'this' | 'this_and_following' | 'all',
       expectedSeriesVersion,
+      acknowledgeAccountingImpact: acknowledgeAccountingImpact === 'true',
+      expectedAccountingImpactHash,
     }); // actor → soft delete deletedBy + audit 스냅샷
   }
 }

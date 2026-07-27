@@ -92,15 +92,14 @@ describe('[TBO-62] 긴급 수정 (e2e)', () => {
     expect(clear.body.message).toContain('비울 수 없습니다');
   });
 
-  it('[TBO-63] 삭제 복구(undo) — 삭제 회차 restore 200·활성/중복 복구 404·강사 403', async () => {
+  it('[TBO-74C-2] 삭제 복구(undo) — aggregate 스냅샷 전까지 매니저 409·강사 403 fail-closed', async () => {
     const row = await makeSession({ sessionDate: addDaysISO(MON, 28), startTime: '11:30' });
     await http.delete(`/api/schedule/${row.id}`).set(auth('admin')).expect(200);
-    const restored = (await http.post(`/api/schedule/${row.id}/restore`).set(auth('manager')).expect(201)).body;
-    expect(restored.row.id).toBe(row.id);
+    const blocked = (await http.post(`/api/schedule/${row.id}/restore`).set(auth('manager')).expect(409)).body;
+    expect(blocked.code).toBe('SESSION_AGGREGATE_RESTORE_REQUIRED');
     const back = (await http.get(`/api/schedule?from=${addDaysISO(MON, 28)}&to=${addDaysISO(MON, 28)}`)
       .set(auth('admin')).expect(200)).body.find((r: { id: number }) => r.id === row.id);
-    expect(back).toBeDefined(); // 캘린더에 재등장
-    await http.post(`/api/schedule/${row.id}/restore`).set(auth('manager')).expect(404); // 이미 활성
+    expect(back).toBeUndefined();
     await http.post(`/api/schedule/${row.id}/restore`).set(auth('park_inst')).expect(403);
   });
 

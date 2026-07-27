@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { ClassSession } from './schedule.entity';
 
 export type AccountingSession = Pick<ClassSession, 'status' | 'durationMinutes'> & {
@@ -82,6 +83,23 @@ export function accountingImpactOf(
   };
 }
 
+/** 삭제 전 영향 미리보기. 삭제 후에는 시수·정산 대상에서 완전히 제외된다. */
+export function accountingImpactOfRemoval(
+  session: AccountingSession,
+  input: { approvedReport: boolean; hourlyRate: number },
+): SessionAccountingImpact {
+  return accountingImpactOf(
+    session,
+    { ...session, status: 'canceled' },
+    {
+      beforeApprovedReport: input.approvedReport,
+      afterApprovedReport: false,
+      beforeHourlyRate: input.hourlyRate,
+      afterHourlyRate: input.hourlyRate,
+    },
+  );
+}
+
 export function combineAccountingImpacts(impacts: readonly SessionAccountingImpact[]): SessionAccountingImpact {
   const sum = (side: 'before' | 'after' | 'delta'): SessionAccountingProjection => impacts.reduce(
     (acc, impact) => ({
@@ -98,4 +116,17 @@ export function combineAccountingImpacts(impacts: readonly SessionAccountingImpa
     after: sum('after'),
     delta: sum('delta'),
   };
+}
+
+/** 사용자가 본 영향 미리보기와 잠금 후 실행할 대상 집합을 결속하는 지문. */
+export function accountingImpactHash(
+  sessionIds: readonly number[],
+  impact: SessionAccountingImpact,
+): string {
+  return createHash('sha256')
+    .update(JSON.stringify({
+      sessionIds: [...sessionIds].sort((a, b) => a - b),
+      impact,
+    }))
+    .digest('hex');
 }

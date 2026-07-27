@@ -1,6 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
+import { AuditService } from '../src/modules/audit/audit.service';
 
 // TBO-16 #9 — 강사 수업 요청 → 매니저 승인/반려 + soft delete(v9) + audit_log(#7).
 //  검증 축: ① 요청=세션과 동일 FK·코호트 검증 ② 승인=createSession 재사용(충돌 409 → tx 원자 롤백)
@@ -99,6 +100,69 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     expect(approved.changes.createdSessionId.after).toBe(ok.request.createdSessionId);
     // 이미 처리된 요청 재승인 400
     await http.post(`/api/schedule-requests/${pending.id}/approve?force=true`).set(asAdmin()).expect(400);
+  });
+
+  it('강사 held 수업 삭제 요청은 관리자 영향 확인 전 pending 유지, 확인 후 요청·세션·종속행을 함께 전이한다', async () => {
+    const session = (await http.post('/api/schedule').set(asAdmin()).send({
+      courseId: 10,
+      instructorId: 1,
+      studentIds: [1],
+      sessionDate: '2026-06-05',
+      startTime: '06:00',
+      durationMinutes: 60,
+      status: 'held',
+      force: true,
+    }).expect(201)).body.row as { id: number };
+    await http.put('/api/attendance').set(asAdmin())
+      .send({ sessionId: session.id, studentId: 1, status: 'present' }).expect(200);
+    const report = (await http.post('/api/reports').set(asInst())
+      .send({ sessionId: session.id, studentId: 1, content: '삭제 승인 회계 영향 검증' }).expect(201)).body as { id: number };
+    await http.post(`/api/reports/${report.id}/approve`).set(asAdmin()).expect(201);
+    const pending = (await http.post('/api/schedule-requests').set(asInst()).send({
+      requestKind: 'session_delete',
+      targetSessionId: session.id,
+      requestReason: '불가피한 일정 변경으로 삭제를 요청합니다.',
+    }).expect(201)).body.row as { id: number };
+
+    const blocked = await http.post(`/api/schedule-requests/${pending.id}/approve`).set(asAdmin()).expect(409);
+    expect(blocked.body).toMatchObject({
+      code: 'ACCOUNTING_IMPACT_ACK_REQUIRED',
+      impact: { before: { teachingMinutes: 60 }, after: { teachingMinutes: 0 } },
+    });
+    expect(blocked.body.impactHash).toMatch(/^[a-f0-9]{64}$/);
+    expect((await http.get('/api/schedule-requests?status=pending').set(asAdmin()).expect(200)).body)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id: pending.id, status: 'pending' })]));
+    await http.get(`/api/schedule/${session.id}`).set(asAdmin()).expect(200);
+
+    // 레거시 force는 충돌만 강제하며 회계 확인을 우회하지 못한다.
+    await http.post(`/api/schedule-requests/${pending.id}/approve?force=true`).set(asAdmin()).expect(409);
+    const audit = app.get(AuditService);
+    const originalLog = audit.log.bind(audit);
+    const auditSpy = jest.spyOn(audit, 'log').mockImplementation(async (entry) => {
+      if (entry.entity === 'schedule_requests' && entry.entityId === pending.id && entry.action === 'approve') {
+        throw new Error('injected late request approval audit failure');
+      }
+      return originalLog(entry);
+    });
+    await http.post(`/api/schedule-requests/${pending.id}/approve`).set(asAdmin()).query({
+      acknowledgeAccountingImpact: 'true',
+      expectedAccountingImpactHash: blocked.body.impactHash,
+    }).expect(500);
+    auditSpy.mockRestore();
+    expect((await http.get('/api/schedule-requests?status=pending').set(asAdmin()).expect(200)).body)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id: pending.id, status: 'pending' })]));
+    await http.get(`/api/schedule/${session.id}`).set(asAdmin()).expect(200);
+    expect((await http.get(`/api/attendance?sessionId=${session.id}`).set(asAdmin()).expect(200)).body).not.toEqual([]);
+    expect((await http.get(`/api/reports?sessionId=${session.id}`).set(asAdmin()).expect(200)).body).not.toEqual([]);
+
+    const approved = await http.post(`/api/schedule-requests/${pending.id}/approve`).set(asAdmin()).query({
+      acknowledgeAccountingImpact: 'true',
+      expectedAccountingImpactHash: blocked.body.impactHash,
+    }).expect(201);
+    expect(approved.body.request).toMatchObject({ id: pending.id, status: 'approved' });
+    await http.get(`/api/schedule/${session.id}`).set(asAdmin()).expect(404);
+    expect((await http.get(`/api/attendance?sessionId=${session.id}`).set(asAdmin()).expect(200)).body).toEqual([]);
+    expect((await http.get(`/api/reports?sessionId=${session.id}`).set(asAdmin()).expect(200)).body).toEqual([]);
   });
 
   it('동시 승인: pending 요청은 한 번만 승인되고 세션도 한 건만 생성된다', async () => {
@@ -249,6 +313,65 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
     expect(rows.find((s: { id: number }) => s.id === second.id)).toMatchObject({ startTime: '08:30', endTime: '09:30' });
     const approved = (await http.get('/api/schedule-requests?status=approved').set(asAdmin()).expect(200)).body;
     expect(approved.some((r: { id: number; requestReason?: string }) => r.id === made.id && r.requestReason)).toBe(true);
+  });
+
+  it('[TBO-74C-2] 반복 수업 삭제 요청: scope·영향 회차가 요청 DB와 실제 삭제 대상에서 일치한다', async () => {
+    const series = (await http.post('/api/schedule/series').set(asAdmin()).send({
+      courseId: 10,
+      repeat: { kind: 'weekly', weekdays: [1], startsOn: '2099-09-07', endsOn: '2099-09-14' },
+      startTime: '06:00',
+      endTime: '07:00',
+      force: true,
+      topic: '반복 삭제 범위 검증',
+    }).expect(201)).body as { rows: Array<{ id: number }> };
+    const ids = series.rows.map((row) => row.id);
+
+    const pending = (await http.post('/api/schedule-requests').set(asInst()).send({
+      requestKind: 'session_delete',
+      targetSessionId: ids[0],
+      requestReason: '반복 수업 전체 삭제 요청',
+      scope: 'all',
+    }).expect(201)).body.row;
+    expect(pending).toMatchObject({
+      requestKind: 'session_delete',
+      scope: 'all',
+      impactSessionIds: ids,
+      status: 'pending',
+    });
+
+    await http.post(`/api/schedule-requests/${pending.id}/approve`).set(asAdmin()).expect(201);
+    const remaining = (await http.get('/api/schedule?from=2099-09-07&to=2099-09-14').set(asAdmin()).expect(200)).body;
+    expect(remaining.filter((row: { id: number }) => ids.includes(row.id))).toHaveLength(0);
+  });
+
+  it('[TBO-74C-2] 반복 삭제 요청 뒤 대상 집합이 달라지면 새 요청 전까지 fail-closed한다', async () => {
+    const series = (await http.post('/api/schedule/series').set(asAdmin()).send({
+      courseId: 10,
+      repeat: { kind: 'weekly', weekdays: [1], startsOn: '2099-10-05', endsOn: '2099-10-12' },
+      startTime: '06:00',
+      endTime: '07:00',
+      force: true,
+      topic: '반복 삭제 stale 범위 검증',
+    }).expect(201)).body as { rows: Array<{ id: number }> };
+    const ids = series.rows.map((row) => row.id);
+    const pending = (await http.post('/api/schedule-requests').set(asInst()).send({
+      requestKind: 'session_delete',
+      targetSessionId: ids[0],
+      requestReason: '반복 수업 전체 삭제 요청',
+      scope: 'all',
+    }).expect(201)).body.row;
+
+    await http.delete(`/api/schedule/${ids[1]}`).set(asAdmin()).expect(200);
+    const stale = await http.post(`/api/schedule-requests/${pending.id}/approve`).set(asAdmin()).expect(409);
+    expect(stale.body).toMatchObject({
+      code: 'REQUEST_SCOPE_STALE',
+      expectedTargetIds: ids,
+      currentTargetIds: [ids[0]],
+    });
+    const stillPending = (await http.get('/api/schedule-requests?status=pending').set(asAdmin()).expect(200)).body;
+    expect(stillPending.some((row: { id: number }) => row.id === pending.id)).toBe(true);
+    const sessions = (await http.get('/api/schedule?from=2099-10-05&to=2099-10-12').set(asAdmin()).expect(200)).body;
+    expect(sessions.some((row: { id: number }) => row.id === ids[0])).toBe(true);
   });
 
   it('[C4] 수업 삭제 요청: 강사 삭제 액션 → pending → 관리자 승인 시 세션 soft delete + audit', async () => {
