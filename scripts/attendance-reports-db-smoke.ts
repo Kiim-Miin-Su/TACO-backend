@@ -149,7 +149,8 @@ async function main(): Promise<void> {
     await http.patch(`/api/schedule/${sessionId}`).set(auth(manager))
       .send({ clearInstructorAttendance: true, acknowledgeAccountingImpact: true }).expect(200);
 
-    const contracts = (await http.get('/api/instructor-contracts').set(auth(manager)).expect(200)).body as ContractRow[];
+    await http.get('/api/instructor-contracts').set(auth(manager)).expect(403);
+    const contracts = (await http.get('/api/instructor-contracts').set(auth(ceo)).expect(200)).body as ContractRow[];
     if (!contracts.some((row) => row.instructorId === 1 && row.active && row.monthlyHours > 0 && row.hourlyRate > 0)) {
       throw new Error(`instructor contract seed/hydration missing before restart: ${JSON.stringify(contracts)}`);
     }
