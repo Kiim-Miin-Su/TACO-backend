@@ -68,7 +68,16 @@ describe("Full Flow (e2e)", () => {
     await http
       .put("/api/availability")
       .set(asAdmin())
-      .send({ ownerType: "instructor", ownerId: 1, kind: "unavailable", weekday: 2, startTime: "16:00", endTime: "17:00" })
+      .send({
+        ownerType: "instructor",
+        ownerId: 1,
+        kind: "unavailable",
+        weekday: 2,
+        startTime: "16:00",
+        endTime: "17:00",
+        effectiveFrom: W3TUE,
+        effectiveTo: W3TUE,
+      })
       .expect(200);
   });
 
