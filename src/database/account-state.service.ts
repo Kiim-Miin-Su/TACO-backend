@@ -2,7 +2,7 @@
 //  목적: role/status/credential 변경(auth_version 증가) 시 만료 전 기존 JWT를 즉시 거부.
 //  Postgres 모드 = 요청마다 users 1행 SELECT(다중 인스턴스에서도 즉시 일관 — 28B 종료 조건).
 //  in-memory 모드 = 메모리 컬렉션이 곧 권위.
-//  DatabaseModule(@Global)에서 제공 — RolesGuard/SuperAdminGuard가 모듈 import 추가 없이 주입받는다.
+//  DatabaseModule(@Global)에서 제공 — 중앙 RolesGuard가 모듈 import 추가 없이 주입받는다.
 import { Injectable } from '@nestjs/common';
 import { InMemoryDatabase } from './in-memory.database';
 import { PostgresConnectionService } from './postgres-connection.service';

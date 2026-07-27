@@ -23,7 +23,6 @@ import { ClassSession, SESSIONS } from './schedule.entity';
 import { detectConflicts } from './conflict.util';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CoursesService } from '../courses/courses.service';
-import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
 import type { StaffAccount } from '../users/user.entity';
 import { hasAdminRole } from '../auth/roles.decorator'; // [TBO-62 ④] 강사 본인 출결 체크 판정
 import { ClassSessionsStore } from './class-sessions.store';
@@ -32,13 +31,17 @@ import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.
 import { selectSeriesScope, type SeriesScope } from './series-scope.policy';
 import { addMinutesGuarded, normalizeSessionTime, storedEndTimeOf, autoHoldPatch } from './session-time.policy';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
-import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calendar-unit-of-work.service';
+import {
+  CalendarUnitOfWork,
+  sessionAccountingLockKeys,
+  type CalendarLockKey,
+} from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CLASS_SESSION_SERIES_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { accountingImpactOf, combineAccountingImpacts, isPayoutLocked, payoutIdOf, type SessionAccountingImpact } from './session-accounting.policy';
-import { studentBelongsToSession } from './session-participant.policy';
 import { EnrollmentsService } from '../enrollments/enrollments.service';
 import { isProduction } from '../../common/env';
+import { SessionAccountingContextService } from './session-accounting-context.service';
 
 export const canForceScheduleConflicts = (requested?: boolean): boolean =>
   requested === true && !isProduction();
@@ -90,6 +93,7 @@ export class ScheduleService {
     private readonly courses: CoursesService,
     private readonly enrollments: EnrollmentsService,
     private readonly read: ScheduleReadService, // [TBO-69 C1] 읽기 단방향 주입
+    private readonly accountingContext: SessionAccountingContextService,
   ) {}
 
   // [TBO-28C] 캘린더 명령의 advisory lock 키 — 대상 강사·강의실·학생·세션. UoW.lockTargets가 정렬·중복 제거.
@@ -412,10 +416,22 @@ export class ScheduleService {
     const pre = this.db.findById<ClassSession>(SESSIONS, id);
     if (!pre) throw new NotFoundException(`Session ${id} not found`);
     return this.unitOfWork.run(async () => {
-      await this.unitOfWork.lockTargets([
-        { kind: 'session', id },
-        ...(pre.seriesId != null ? [{ kind: 'series' as const, id: Number(pre.seriesId) }] : []),
-      ]);
+      if (pre.seriesId != null) {
+        await this.unitOfWork.lockTargets([{ kind: 'series', id: Number(pre.seriesId) }]);
+      }
+      await this.refreshAfterLock();
+      const scopedBefore = this.db.findById<ClassSession>(SESSIONS, id);
+      if (!scopedBefore) throw new NotFoundException(`Session ${id} not found`);
+      const preliminaryCompanions = scope !== 'this' && scopedBefore.seriesId != null
+        ? selectSeriesScope(
+          this.db.findBy<ClassSession>(SESSIONS, (session) => session.seriesId === scopedBefore.seriesId),
+          scopedBefore,
+          scope,
+        )
+        : [];
+      await this.unitOfWork.lockTargets(sessionAccountingLockKeys({
+        sessionIds: [scopedBefore.id, ...preliminaryCompanions.map((session) => session.id)],
+      }));
       await this.refreshAfterLock();
       const before = this.db.findById<ClassSession>(SESSIONS, id);
       if (!before) throw new NotFoundException(`Session ${id} not found`);
@@ -431,11 +447,6 @@ export class ScheduleService {
       let companions: ClassSession[] = [];
       if (scope !== 'this' && before.seriesId != null) {
         companions = selectSeriesScope(this.db.findBy<ClassSession>(SESSIONS, (s) => s.seriesId === before.seriesId), before, scope);
-        if (companions.length) {
-          await this.unitOfWork.lockTargets(this.calendarLockKeys({ sessionIds: companions.map((m) => m.id) }));
-          await this.refreshAfterLock();
-          companions = selectSeriesScope(this.db.findBy<ClassSession>(SESSIONS, (s) => s.seriesId === before.seriesId), before, scope);
-        }
       }
       const targets = [before, ...companions];
       // [C3] 전 회차 사전 검증 — 정산 연결이 하나라도 있으면 전체 불변(부분 삭제 금지).
@@ -577,19 +588,41 @@ export class ScheduleService {
     const pre = this.db.findById<ClassSession>(SESSIONS, id);
     if (!pre) throw new NotFoundException(`Session ${id} not found`);
     return this.unitOfWork.run(async () => {
-    // [TBO-29C C3] 1단계 잠금: **series 키(있으면) 우선 포함** + 대상 세션 + primary 현재/목표 자원.
-    //  series advisory lock이 같은 시리즈를 만지는 모든 명령(scope 편집·삭제·단건 member 편집)의 단일
-    //  choke point — 구 구현은 primary session만 잠가 서로 다른 회차의 동시 scope 편집이 교차했다.
+    // series를 먼저 단독 잠근 뒤 전체 member/resource/session 키를 한 번에 획득한다.
+    // 같은 series의 서로 다른 회차에서 scope 편집해도 낮은 kind 락을 뒤늦게 얻는 역전이 없다.
+    if (pre.seriesId != null) {
+      await this.unitOfWork.lockTargets([{ kind: 'series', id: Number(pre.seriesId) }]);
+    }
+    await this.refreshAfterLock();
+    const scopedPre = this.db.findById<ClassSession>(SESSIONS, id);
+    if (!scopedPre) throw new NotFoundException(`Session ${id} not found`);
+    const requestedScope = (dto.scope ?? 'this') as SeriesScope;
+    const preliminaryMembers = requestedScope !== 'this' && scopedPre.seriesId != null
+      ? selectSeriesScope(
+        this.db.findBy<ClassSession>(SESSIONS, (session) => session.seriesId === scopedPre.seriesId),
+        scopedPre,
+        requestedScope,
+      )
+      : [];
+    const preliminaryTargets = [scopedPre, ...preliminaryMembers];
     await this.unitOfWork.lockTargets([
       ...this.calendarLockKeys({
-        instructorIds: [pre.instructorId, dto.instructorId],
-        roomIds: [pre.roomId, dto.roomId],
-        studentIds: [...new Set([...(pre.studentIds ?? []), ...(dto.studentIds ?? [])])],
-        sessionIds: [id],
+        instructorIds: [...preliminaryTargets.map((session) => session.instructorId), dto.instructorId],
+        roomIds: [...preliminaryTargets.map((session) => session.roomId), dto.roomId],
+        studentIds: [...new Set([
+          ...preliminaryTargets.flatMap((session) => session.studentIds ?? []),
+          ...(dto.studentIds ?? []),
+        ])],
+        sessionIds: [],
       }),
-      ...(pre.seriesId != null ? [{ kind: 'series' as const, id: Number(pre.seriesId) }] : []),
+      ...preliminaryTargets.map((session) => ({ kind: 'user' as const, id: session.instructorId })),
+      ...(dto.instructorId == null ? [] : [{ kind: 'user' as const, id: dto.instructorId }]),
+      ...preliminaryTargets.map((session) => ({ kind: 'course' as const, id: session.courseId })),
+      ...(dto.courseId == null ? [] : [{ kind: 'course' as const, id: dto.courseId }]),
+      ...sessionAccountingLockKeys({ sessionIds: preliminaryTargets.map((session) => session.id) }),
     ]);
     await this.refreshAfterLock();
+    await this.courses.refreshAccountingRatesFresh();
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
     await this.assertCeoOwnedSessionMutable(cur, actorId); // [TBO-59 C3-3]
@@ -610,39 +643,16 @@ export class ScheduleService {
 
     // 1) 대상(primary) 세션의 새 필드 계산
     const primary = this.mergeFields(cur, dto);
-    this.assertDependentsCompatible(cur.id, cur, primary);
-    const approved = this.reports.isSessionReportComplete(cur.id);
-    const primaryImpact = accountingImpactOf(cur, primary, {
-      beforeApprovedReport: approved,
-      afterApprovedReport: approved,
-      beforeHourlyRate: this.read.courseOf(cur.courseId)?.hourlyRate ?? 0,
-      afterHourlyRate: this.read.courseOf(primary.courseId)?.hourlyRate ?? 0,
-    });
-    const accountingImpacts: SessionAccountingImpact[] = [primaryImpact];
-    const accountingLocked: ClassSession[] = isPayoutLocked(cur) ? [cur] : [];
 
     // 2) 시리즈 동반 편집 대상 산출(this=대상만, this_and_following=대상 이후, all=시리즈 전체)
     //    [TBO-29C C3] 대상 집합은 selectSeriesScope 순수 함수(같은 날짜의 늦은 회차도 시간·id로 판정).
     //    공통 델타: 날짜(일수)·시작시각(분). 강의실/강사/상태/시수는 절대값으로 동일 적용.
-    const scope = (dto.scope ?? 'this') as SeriesScope;
+    const scope = requestedScope;
     const dayDelta = dayDiff(primary.sessionDate, cur.sessionDate);
     const startDelta = toMin(primary.startTime) - toMin(cur.startTime ?? primary.startTime);
     let scopeMembers: ClassSession[] = [];
     if (scope !== 'this' && cur.seriesId != null) {
       scopeMembers = selectSeriesScope(this.db.findBy<ClassSession>(SESSIONS, (s) => s.seriesId === cur.seriesId), cur, scope);
-      if (scopeMembers.length) {
-        // [C3] 2단계 잠금: 모든 member 세션 + member의 현재 자원 + 목표 자원(primary 필드).
-        //  series lock을 보유한 상태라 같은 시리즈 명령끼리는 이 단계에서 경쟁하지 않는다(교착 없음).
-        await this.unitOfWork.lockTargets(this.calendarLockKeys({
-          instructorIds: [...scopeMembers.map((m) => m.instructorId), primary.instructorId],
-          roomIds: [...scopeMembers.map((m) => m.roomId), primary.roomId],
-          studentIds: [...new Set(scopeMembers.flatMap((m) => m.studentIds ?? []))],
-          sessionIds: scopeMembers.map((m) => m.id),
-        }));
-        await this.refreshAfterLock();
-        // 잠금 후 재조회·재산출 — 판정에 쓰는 member 집합/필드가 권위 상태.
-        scopeMembers = selectSeriesScope(this.db.findBy<ClassSession>(SESSIONS, (s) => s.seriesId === cur.seriesId), cur, scope);
-      }
     }
     const seriesPatches: { id: number; before: ClassSession; fields: MergedFields }[] = [];
     for (const m of scopeMembers) {
@@ -663,14 +673,36 @@ export class ScheduleService {
         },
       });
     }
+    const accountingContext = await this.accountingContext.loadFresh([
+      cur.id,
+      ...seriesPatches.map((patch) => patch.id),
+    ]);
+    this.accountingContext.assertDependentsCompatible(accountingContext, cur, primary);
+    const beforeApproved = this.accountingContext.isReportComplete(accountingContext, cur);
+    const afterApproved = this.accountingContext.isReportComplete(accountingContext, {
+      ...primary,
+      id: cur.id,
+    });
+    const primaryImpact = accountingImpactOf(cur, primary, {
+      beforeApprovedReport: beforeApproved,
+      afterApprovedReport: afterApproved,
+      beforeHourlyRate: this.read.courseOf(cur.courseId)?.hourlyRate ?? 0,
+      afterHourlyRate: this.read.courseOf(primary.courseId)?.hourlyRate ?? 0,
+    });
+    const accountingImpacts: SessionAccountingImpact[] = [primaryImpact];
+    const accountingLocked: ClassSession[] = isPayoutLocked(cur) ? [cur] : [];
     for (const patch of seriesPatches) {
       const member = patch.before;
       if (isPayoutLocked(member)) accountingLocked.push(member);
-      this.assertDependentsCompatible(member.id, member, patch.fields);
-      const memberApproved = this.reports.isSessionReportComplete(member.id);
+      this.accountingContext.assertDependentsCompatible(accountingContext, member, patch.fields);
+      const memberApproved = this.accountingContext.isReportComplete(accountingContext, member);
+      const memberAfterApproved = this.accountingContext.isReportComplete(accountingContext, {
+        ...member,
+        ...patch.fields,
+      });
       accountingImpacts.push(accountingImpactOf(member, patch.fields, {
         beforeApprovedReport: memberApproved,
-        afterApprovedReport: memberApproved,
+        afterApprovedReport: memberAfterApproved,
         beforeHourlyRate: this.read.courseOf(member.courseId)?.hourlyRate ?? 0,
         afterHourlyRate: this.read.courseOf(patch.fields.courseId)?.hourlyRate ?? 0,
       }));
@@ -795,22 +827,6 @@ export class ScheduleService {
       isPublic: dto.isPublic ?? cur.isPublic,
       price: dto.price ?? cur.price,
     };
-  }
-
-  private assertDependentsCompatible(sessionId: number, before: ClassSession, after: MergedFields): void {
-    const attendanceStudents = this.attendance.findBySession(sessionId).map((row) => row.studentId);
-    const reports = this.reports.findBySession(sessionId);
-    const dependentStudents = new Set([...attendanceStudents, ...reports.map((row) => row.studentId)]);
-    const enrollments = this.db.findAll<Enrollment>(ENROLLMENTS_COL);
-    const invalid = [...dependentStudents].filter(
-      (studentId) => !studentBelongsToSession(after as ClassSession, studentId, enrollments),
-    );
-    if (invalid.length)
-      throw new ConflictException(`세션 ${sessionId}의 출결/보고서 학생이 변경 코호트에서 제외됩니다: ${invalid.join(', ')}`);
-    if (reports.length && after.instructorId !== before.instructorId)
-      throw new ConflictException(`세션 ${sessionId}에 작성된 보고서가 있어 강사를 변경할 수 없습니다`);
-    if (reports.length && after.courseId !== before.courseId)
-      throw new ConflictException(`세션 ${sessionId}에 작성된 보고서가 있어 코스를 변경할 수 없습니다`);
   }
 
 }

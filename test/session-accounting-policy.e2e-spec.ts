@@ -1,4 +1,5 @@
 import { accountingImpactOf, countsForTeachingHours, isPayoutLocked } from '../src/modules/schedule/session-accounting.policy';
+import { sessionAccountingLockKeys } from '../src/database/calendar-unit-of-work.service';
 
 describe('session accounting policy', () => {
   it.each(['scheduled', 'canceled', 'no_show', 'makeup'] as const)('%s는 강사 출결과 무관하게 시수 제외', (status) => {
@@ -53,5 +54,17 @@ describe('session accounting policy', () => {
     expect(isPayoutLocked({ status: 'held', durationMinutes: 60, payoutId: 77 })).toBe(true);
     expect(isPayoutLocked({ status: 'held', durationMinutes: 60, payoutId: null })).toBe(false);
     expect(isPayoutLocked({ status: 'held', durationMinutes: 60 })).toBe(false);
+  });
+
+  it('회계 잠금 키는 session → report 의미 순서로 중앙 생성하고 중복 제거는 UoW에 위임한다', () => {
+    expect(sessionAccountingLockKeys({
+      sessionIds: [12, undefined, 11],
+      reportIds: [32, undefined, 31],
+    })).toEqual([
+      { kind: 'session', id: 12 },
+      { kind: 'session', id: 11 },
+      { kind: 'report', id: 32 },
+      { kind: 'report', id: 31 },
+    ]);
   });
 });

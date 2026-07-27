@@ -37,6 +37,26 @@ export const LOCK_KIND = {
 
 export type CalendarLockKey = { kind: keyof typeof LOCK_KIND; id: number };
 
+export type SessionAccountingLockTargets = {
+  sessionIds: Array<number | undefined>;
+  reportIds?: Array<number | undefined>;
+};
+
+/**
+ * 출결·보고서·스케줄 변경이 공유하는 회계 잠금 키의 단일 소스.
+ * 실제 획득 순서는 lockTargets의 LOCK_KIND 정렬(session=4 → report=18)이 보장한다.
+ */
+export function sessionAccountingLockKeys(targets: SessionAccountingLockTargets): CalendarLockKey[] {
+  return [
+    ...targets.sessionIds
+      .filter((id): id is number => id != null)
+      .map((id) => ({ kind: 'session' as const, id })),
+    ...(targets.reportIds ?? [])
+      .filter((id): id is number => id != null)
+      .map((id) => ({ kind: 'report' as const, id })),
+  ];
+}
+
 @Injectable()
 export class CalendarUnitOfWork {
   constructor(

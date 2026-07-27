@@ -80,7 +80,7 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
     });
   });
 
-  // ── J2 · 시수·정산 여정: 강사 사실 기록 → 매니저 확정 → 대표 지급 → 회수까지 ──
+  // ── J2 · 시수·정산 여정: 강사 사실 기록 → 매니저 운영 승인 → 대표 금액 확정·지급·회수 ──
   describe('J2 수업→출결→리포트→워크시트→정산 — 3역할 교차', () => {
     let S1 = 0; // 정상 진행 회차(강사 셀프 출결·리포트 승인 → auto)
     let S2 = 0; // 지각 회차(매니저 책정 필요 → 직접 int 입력)
@@ -91,7 +91,7 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
       http.get(`/api/payouts/worksheet?instructorId=1&from=${J2DAY}&to=${J2DAY2}`).set(as(who));
 
     it('① (매니저) 과거 회차 2개 개설 — scheduled로 시작', async () => {
-      baseline = (await worksheet('manager').expect(200)).body.totals; // 픽스처 잔존분 기준선(Δ 단언용)
+      baseline = (await worksheet('admin').expect(200)).body.totals; // 금액 워크시트는 대표 전용
       for (const [day, time] of [[J2DAY, '10:00'], [J2DAY2, '10:00']] as const) {
         const res = await http.post('/api/schedule').set(as('manager'))
           .send({ courseId: 10, instructorId: 1, studentIds: [1], sessionDate: day, startTime: time, durationMinutes: 60, force: true })
@@ -113,32 +113,34 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
       const report = (await http.post('/api/reports').set(as('park_inst'))
         .send({ sessionId: S1, studentId: 1, content: 'J2 수업 요약', status: 'submitted' }).expect(201)).body;
       await http.post(`/api/reports/${report.id}/approve`).set(as('park_inst')).expect(403); // 승인은 매니저 이상
-      const ws = (await worksheet('manager').expect(200)).body;
+      const ws = (await worksheet('admin').expect(200)).body;
       const row1 = ws.rows.find((r: { sessionId: number }) => r.sessionId === S1);
       expect(row1.pricing.kind).toBe('manual'); // 리포트 미승인 = 이상 → 빈칸
       expect(row1.pricing.manualReasons).toContain('report_incomplete');
-      await worksheet('park_inst').expect(403); // 워크시트는 매니저 이상(강사 시수 은닉)
+      await worksheet('manager').expect(403); // 금액 워크시트는 대표 전용
+      await worksheet('park_inst').expect(403);
       // (매니저) 승인 → auto 전환(시급 5만×1h = 5만)
       await http.post(`/api/reports/${report.id}/approve`).set(as('manager')).expect(201);
-      const after = (await worksheet('manager').expect(200)).body;
+      const after = (await worksheet('admin').expect(200)).body;
       const row1b = after.rows.find((r: { sessionId: number }) => r.sessionId === S1);
       expect(row1b.pricing).toMatchObject({ kind: 'auto', effectiveAmount: 50000 });
     });
 
-    it('④ (매니저) 지각 회차 — 출결·리포트 완결해도 지각은 빈칸 → 정수 직접 책정', async () => {
+    it('④ (매니저 운영 처리 → 대표 금액 책정) 지각 회차 — 빈칸을 대표가 정수로 확정', async () => {
       await http.patch(`/api/schedule/${S2}`).set(as('manager')).send({ instructorAttendance: 'late', force: true }).expect(200); // 자동 held
       await http.put('/api/attendance').set(as('manager')).send({ sessionId: S2, studentId: 1, status: 'present' }).expect(200);
       const report = (await http.post('/api/reports').set(as('manager'))
         .send({ sessionId: S2, studentId: 1, instructorId: 1, content: 'J2 지각 회차', status: 'submitted' }).expect(201)).body;
       await http.post(`/api/reports/${report.id}/approve`).set(as('manager')).expect(201);
-      const ws = (await worksheet('manager').expect(200)).body;
+      const ws = (await worksheet('admin').expect(200)).body;
       const row2 = ws.rows.find((r: { sessionId: number }) => r.sessionId === S2);
       expect(row2.pricing.kind).toBe('manual');
       expect(row2.pricing.manualReasons).toContain('late');
-      await http.put(`/api/schedule/${S2}/pay-amount`).set(as('park_inst')).send({ amount: 30000 }).expect(403); // 책정은 매니저 이상
-      await http.put(`/api/schedule/${S2}/pay-amount`).set(as('manager')).send({ amount: 30500.5 }).expect(400); // 정수만
-      await http.put(`/api/schedule/${S2}/pay-amount`).set(as('manager')).send({ amount: 30000 }).expect(200);
-      const priced = (await worksheet('manager').expect(200)).body;
+      await http.put(`/api/schedule/${S2}/pay-amount`).set(as('park_inst')).send({ amount: 30000 }).expect(403);
+      await http.put(`/api/schedule/${S2}/pay-amount`).set(as('manager')).send({ amount: 30000 }).expect(403);
+      await http.put(`/api/schedule/${S2}/pay-amount`).set(as('admin')).send({ amount: 30500.5 }).expect(400);
+      await http.put(`/api/schedule/${S2}/pay-amount`).set(as('admin')).send({ amount: 30000 }).expect(200);
+      const priced = (await worksheet('admin').expect(200)).body;
       // Δ 단언(기준선 상대) — auto 5만(S1) + 수기 3만(S2), 이 여정발 미책정 잔존 0
       expect(priced.totals.autoAmount).toBe(baseline.autoAmount + 50000);
       expect(priced.totals.manualAmount).toBe(baseline.manualAmount + 30000);
@@ -154,7 +156,7 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
       payoutId = payout.id;
       payoutAmount = payout.amount;
       expect(payoutAmount).toBe(baseline.totalAmount + 80000); // auto 5만 + 책정 3만 (+기준선 확정분)
-      await http.put(`/api/schedule/${S2}/pay-amount`).set(as('manager')).send({ amount: 40000 }).expect(409); // 연결 후 가격 변경 차단
+      await http.put(`/api/schedule/${S2}/pay-amount`).set(as('admin')).send({ amount: 40000 }).expect(409); // 연결 후 가격 변경 차단
       await http.post(`/api/payouts/${payoutId}/confirm`).set(as('admin')).expect(201);
       const paid = (await http.post(`/api/payouts/${payoutId}/pay`).set(as('admin')).expect(201)).body;
       expect(paid.transaction).toMatchObject({ direction: 'out', amount: payoutAmount });

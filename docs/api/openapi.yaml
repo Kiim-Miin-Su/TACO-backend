@@ -2797,7 +2797,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 재인증 필수, 연결된 회차 409. [매니저 이상]
+      summary: 회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 재인증 필수, 연결된 회차 409. [대표]
       tags:
         - scheduling
   /api/attendance:
@@ -3344,7 +3344,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 시수 워크시트 — 회차별 출결·리포트·가격 분류(자동/책정 필요/제외)·기간 합계 [매니저 이상]
+      summary: 시수 워크시트 — 회차별 출결·리포트·가격 분류(자동/책정 필요/제외)·기간 합계 [대표]
       tags:
         - payouts
   /api/payouts/{id}:
@@ -4370,7 +4370,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 강사 계약 목록(InstructorContract[]) — 계약 시수·시급·기간(계약 관리)
+      summary: 강사 계약 목록(InstructorContract[]) — 계약 시수·시급·기간 [대표]
       tags:
         - instructor-contracts
   /api/parents:

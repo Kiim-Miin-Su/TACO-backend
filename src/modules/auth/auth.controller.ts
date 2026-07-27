@@ -18,7 +18,7 @@ import { ApiBearerAuth, ApiCreatedResponse, ApiOperation, ApiTags } from '@nestj
 import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { Throttle } from '@nestjs/throttler';
 import { RolesGuard } from './roles.guard';
-import { ADMIN_ROLES, Roles, STAFF_ROLES } from './roles.decorator';
+import { ADMIN_ROLES, RequireCapabilities, Roles, STAFF_ROLES } from './roles.decorator';
 import type { Request, Response } from 'express';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { isForbiddenDemoCredential } from '../../config/production-guards';
@@ -33,7 +33,6 @@ import { ConfirmSignupPhoneChallengeDto, CreateSignupPhoneChallengeDto } from '.
 import { SignupPhoneChallengesService } from './signup-phone-challenges.service';
 import { ApproveDto } from './dto/approve.dto';
 import { RejectDto } from './dto/reject.dto';
-import { SuperAdminGuard } from './super-admin.guard';
 import { SudoGuard } from './sudo.guard'; // [TBO-34 C2-C]
 import { LoginThrottlerGuard } from './login-throttler.guard';
 import { AuthEventsService } from './auth-events.service';
@@ -448,7 +447,8 @@ export class AuthController {
   // [핫픽스 2026-07-20] 레거시 pending 계정 인증 메일 재발송 — 구 링크 가입자가 SMTP 부재기에
   //  메일을 못 받아 인증 불가 → 승인 403에 갇힌 케이스 구제(대표 실사용 보고: 강사 승인 불가).
   @Post('pending/:id/resend-verification')
-  @UseGuards(SuperAdminGuard)
+  @UseGuards(RolesGuard)
+  @RequireCapabilities('executive.manage')
   @ApiBearerAuth()
   @ApiOperation({ summary: '승인 대기 계정 인증 메일 재발송(새 48h 토큰) — 대표 전용. 미인증 pending만.' })
   async resendPendingVerification(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
@@ -474,7 +474,8 @@ export class AuthController {
   // [핫픽스 2026-07-20] 가입 신청 삭제 — pending/rejected만. 식별자 해제(같은 아이디·이메일 재가입
   //  허용)+RRN 파기+soft delete+audit. 하드 UNIQUE 때문에 반려만으론 재가입이 영구 차단되던 문제 해소.
   @Delete('pending/:id')
-  @UseGuards(SuperAdminGuard, SudoGuard)
+  @UseGuards(RolesGuard, SudoGuard)
+  @RequireCapabilities('executive.manage')
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 신청 삭제(pending·rejected만·재인증 필수) — 식별자 해제·RRN 파기·audit. 대표 전용, cookie 세션은 reauth 후 10분 내만 허용.' })
   async deletePending(@Param('id', PositiveIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {

@@ -11,7 +11,10 @@ import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Student } from '../students/student.entity';
 import { Attendance, ATTENDANCE } from './attendance.entity';
 import { UpsertAttendanceDto } from './dto/upsert-attendance.dto';
-import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import {
+  CalendarUnitOfWork,
+  sessionAccountingLockKeys,
+} from '../../database/calendar-unit-of-work.service';
 import { Enrollment } from '../enrollments/enrollment.entity';
 import { studentBelongsToSession } from '../schedule/session-participant.policy';
 import { isSessionVisibleToInstructor } from '../schedule/schedule-visibility.policy';
@@ -78,7 +81,7 @@ export class AttendanceService implements OnModuleInit {
     return this.unitOfWork.run(async () => {
       // [TBO-56 C2b] session lock + DB 재조회 — 교차 인스턴스 upsert 경쟁을 직렬화(중복 insert 500 경로 제거)
       //  하고, FK·코호트·소유권 판정을 전부 DB 기준으로 내린다(TBO-55 감사 B 항목 해소).
-      await this.unitOfWork.lockTargets([{ kind: 'session', id: dto.sessionId }]);
+      await this.unitOfWork.lockTargets(sessionAccountingLockKeys({ sessionIds: [dto.sessionId] }));
       const session = await this.sessionsStore.findByIdDb(dto.sessionId);
       if (!session) throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
       const [student] = await this.store.findActive<Student>(STUDENTS_SPEC, { where: { id: dto.studentId } as Partial<Student>, limit: 1 });
@@ -137,7 +140,10 @@ export class AttendanceService implements OnModuleInit {
 
   async removeBySession(sessionId: number, deletedBy?: number): Promise<number> {
     // [감사 전수 2026-07-16] cascade 삭제도 행별 delete 이력(⚠ 누락 경로였음 — 호출부 tx 안).
-    const rows = this.db.findByField<Attendance>(ATTENDANCE, 'sessionId', sessionId);
+    const rows = await this.store.findActive<Attendance>(ATTENDANCE_SPEC, {
+      where: { sessionId } as Partial<Attendance>,
+      orderBy: { field: 'id' },
+    });
     const count = await this.store.removeByField(ATTENDANCE_SPEC, 'sessionId', sessionId, deletedBy);
     if (deletedBy != null && deletedBy > 0) {
       for (const r of rows) {

@@ -12,7 +12,12 @@ import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { SudoGuard } from '../auth/sudo.guard';
-import { Roles, ADMIN_ROLES, STAFF_ROLES, isInstructorOnly } from '../auth/roles.decorator';
+import {
+  RequireCapabilities,
+  Roles,
+  STAFF_ROLES,
+  isInstructorOnly,
+} from '../auth/roles.decorator';
 import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
 import { OpenClassDto, OpenClassSeriesDto } from './dto/open-class.dto';
 
@@ -66,7 +71,7 @@ export class ScheduleController {
   // [TBO-19] GET /api/schedule/instructor-attendance-summary — 강사 출결 현황 집계(관리자 대시보드)
   //  정적 경로라 :id 라우트와 충돌 없음. 관리 지표(민감) → ADMIN_ROLES.
   @Get('instructor-attendance-summary')
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('calendar.manage')
   @ApiOperation({ summary: '강사 출결 현황 집계(기간·강사 필터) — 출/지/결/보강 카운트·출석률·인정 시수·총계' })
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })
   @ApiQuery({ name: 'instructorId', required: false })
@@ -119,7 +124,7 @@ export class ScheduleController {
   }
 
   @Post('open-class')
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('calendar.manage')
   @ApiOperation({ summary: '과목명 직접 입력 수업 개설 — 과목/강사별 운영단위/수강/세션/audit 원자 커밋 [매니저 이상]' })
   @ApiCreatedResponse({ description: 'subject + course + enrollments + row + conflicts' })
   openClass(@Body() dto: OpenClassDto, @Req() req: Request & { user?: JwtClaims }) {
@@ -127,7 +132,7 @@ export class ScheduleController {
   }
 
   @Post('open-class-series')
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('calendar.manage')
   @ApiOperation({ summary: '과목명 직접 입력 반복 수업 개설 — 과목/수강/시리즈 전체 원자 커밋 [매니저 이상]' })
   @ApiCreatedResponse({ description: 'subject + course + enrollments + series + rows + conflicts' })
   openClassSeries(@Body() dto: OpenClassSeriesDto, @Req() req: Request & { user?: JwtClaims }) {
@@ -136,7 +141,7 @@ export class ScheduleController {
 
   // POST /api/schedule — 세션 생성(추천→배정·수동 추가). 충돌 시 409(force=true면 적용).
   @Post()
-  @Roles(...ADMIN_ROLES) // [TBO-16 #8] 수업 배정 manager 이상 — 강사는 schedule-requests 승인 흐름으로
+  @RequireCapabilities('calendar.manage') // 강사는 schedule-requests 승인 흐름으로
   @ApiOperation({ summary: '세션 생성(추천→배정·수동). FK 검증 + 충돌 검사(409 / force=true 강제). [로그인]' })
   @ApiCreatedResponse({ description: '{ row: ScheduleRow(enriched: 강사·과목·강의실명 포함), conflicts: Conflict[] }' })
   @ApiConflictResponse({ description: '{ message, conflicts: Conflict[] } — force=false에서 충돌 시' })
@@ -148,7 +153,7 @@ export class ScheduleController {
   // [TBO-29C C2] POST /api/schedule/series — 반복 생성 bulk command. 서버가 series ID 발급,
   //  전체 conflict 선계산 후 series+occurrence+audit를 한 transaction으로 저장(중간 실패=전부 롤백).
   @Post('series')
-  @Roles(...ADMIN_ROLES) // 직접 배정 manager 이상 — 강사 반복 요청은 schedule-requests 승인 흐름
+  @RequireCapabilities('calendar.manage') // 강사 반복 요청은 schedule-requests 승인 흐름
   @ApiOperation({ summary: '반복 세션 bulk 생성 — 서버 발급 series ID + 규칙 자산화 + 원자 커밋. [로그인]' })
   @ApiCreatedResponse({ description: '{ series: ScheduleSeries, rows: ScheduleRow[], conflicts: Conflict[] }' })
   @ApiConflictResponse({ description: '{ message, conflicts: Conflict[] } — force=false에서 전체 충돌 목록' })
@@ -159,7 +164,7 @@ export class ScheduleController {
 
   // 이동·리사이즈·상세편집. 충돌 시 409 {message, conflicts} (force=true면 적용).
   @Patch(':id')
-  @Roles(...ADMIN_ROLES) // [TBO-16 #8] 수업 변경 manager 이상
+  @RequireCapabilities('calendar.manage')
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiOperation({ summary: '세션 이동·리사이즈·상세편집(반복 scope 지원). 충돌 시 409. [로그인]' })
   @ApiOkResponse({ description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }' })
@@ -184,7 +189,7 @@ export class ScheduleController {
 
   // [TBO-63 2026-07-24] 삭제 복구(캘린더 undo) — cmd/ctrl+Z 스택의 삭제 역연산.
   @Post(':id/restore')
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('calendar.manage')
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiOperation({ summary: '삭제 회차 복구(soft delete 해제) — 캘린더 undo 전용, 정산 연결 회차 불가. [매니저 이상]' })
   restore(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
@@ -194,9 +199,9 @@ export class ScheduleController {
   // [TBO-64 2026-07-24] 회차 가격 책정(시수 워크시트) — 지각·리포트 미작성 회차의 수동 금액 확정.
   @Put(':id/pay-amount')
   @UseGuards(SudoGuard)
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('finance.access')
   @ApiParam({ name: 'id', description: '세션 id' })
-  @ApiOperation({ summary: '회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 재인증 필수, 연결된 회차 409. [매니저 이상]' })
+  @ApiOperation({ summary: '회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 재인증 필수, 연결된 회차 409. [대표]' })
   setPayAmount(
     @Param('id', PositiveIntPipe) id: number,
     @Body() dto: SetSessionPayAmountDto,
@@ -207,7 +212,7 @@ export class ScheduleController {
 
   // 세션 삭제
   @Delete(':id')
-  @Roles(...ADMIN_ROLES) // [TBO-16 #8] 수업 삭제 manager 이상(soft delete)
+  @RequireCapabilities('calendar.manage') // 수업 삭제 manager 이상(soft delete)
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiQuery({ name: 'scope', required: false, enum: ['this', 'this_and_following', 'all'], description: '[TBO-29C C3] 반복 삭제 범위(기본 this). payout lock은 전 회차 사전 검증 — 하나라도 걸리면 전체 불변' })
   @ApiQuery({ name: 'expectedSeriesVersion', required: false, description: '[C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE' })

@@ -145,6 +145,32 @@ export class PostgresCollectionStore {
     return rows.map((row) => this.fromDbRow<T>(spec, row));
   }
 
+  /** 여러 부모 FK의 종속 행을 한 번에 읽는다. 반복수업 명령의 잠금 보유 중 N+1 왕복을 피한다. */
+  async findActiveByFieldValues<T extends BaseRow>(
+    spec: PostgresCollectionSpec,
+    field: keyof T & string,
+    requestedValues: readonly unknown[],
+  ): Promise<T[]> {
+    const values: unknown[] = [
+      ...new Set<unknown>(requestedValues.filter((value) => value !== undefined && value !== null)),
+    ];
+    if (!values.length) return [];
+    if (!(await this.ensureReady(spec))) {
+      const allowed = new Set(values);
+      return this.memory.findAll<T>(spec.table).filter(
+        (row) => allowed.has((row as Record<string, unknown>)[field]),
+      );
+    }
+    const table = safeTable(spec.table);
+    const column = safeColumn(field);
+    const placeholders = values.map((_, index) => `$${index + 1}`).join(', ');
+    const rows = await this.query(
+      `SELECT * FROM ${table} WHERE deleted_at IS NULL AND ${column} IN (${placeholders}) ORDER BY id ASC`,
+      values,
+    );
+    return rows.map((row) => this.fromDbRow<T>(spec, row));
+  }
+
   /** 제품 참조 데이터(countries 등) bootstrap. 업무 데이터에는 사용하지 않는다. */
   async seedReference<T extends BaseRow>(spec: PostgresCollectionSpec, rows: Array<Omit<T, keyof BaseRow> & { id: number }>): Promise<T[]> {
     if (!(await this.ensureReady(spec))) return this.memory.seedReference<T>(spec.table, rows);

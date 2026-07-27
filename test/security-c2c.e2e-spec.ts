@@ -1,4 +1,4 @@
-// [TBO-34 C2-C 2026-07-23] 보안 승격 검증 — ① 가드 토큰 추출 단일화(SuperAdminGuard cookie 결함 수정)
+// [TBO-34 C2-C → TBO-74C] 보안 승격 검증 — ① 토큰 추출과 대표 capability 중앙화
 //  ② sudo 서버측 강제(민감 계정 명령) ③ TLS 단일 진실원 production fail-closed ④ runtime DDL 재활성화
 //  금지 ⑤ RRN 키 버전 태그·이전 키 폴백. 순수 함수·정책은 직접 소비(사본 0), 라우트는 e2e로 실증.
 import { INestApplication } from '@nestjs/common';
@@ -88,8 +88,8 @@ describe('가드·sudo (e2e)', () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it('SuperAdminGuard cookie 결함 수정 — cookie-only 세션으로 대표 전용 라우트 통과(종전 401)', async () => {
-    // 강사 직접 등록은 SuperAdminGuard+SudoGuard — sudo 없으면 403 SUDO_REQUIRED(401 아님 = 인증은 통과)
+  it('중앙 RolesGuard capability — cookie-only 세션으로 대표 전용 라우트 통과(종전 401)', async () => {
+    // 강사 직접 등록은 executive.manage+SudoGuard — sudo 없으면 403 SUDO_REQUIRED(401 아님 = 인증은 통과)
     const denied = await http.post('/api/users/instructors').set('Cookie', cookieHeader())
       .send({ webId: 'c2c_guard_probe', name: '가드검증', password: 'x' });
     expect(denied.status).toBe(403);

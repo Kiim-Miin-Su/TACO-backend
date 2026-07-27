@@ -3,9 +3,8 @@ import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
-import { ADMIN_ROLES, Roles } from '../auth/roles.decorator';
+import { ADMIN_ROLES, RequireCapabilities, Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
-import { SuperAdminGuard } from '../auth/super-admin.guard';
 import { CreateInstructorDto } from './dto/create-instructor.dto';
 import { UpdateInstructorDto } from './dto/update-instructor.dto';
 import { InstructorHrService } from './instructor-hr.service'; // [TBO-68 C3]
@@ -41,7 +40,7 @@ export class InstructorsController {
   }
 
   @Post()
-  @UseGuards(SuperAdminGuard)
+  @RequireCapabilities('executive.manage')
   @ApiOperation({ summary: '강사 직접 생성. 대표 전용, users+profile+audit 원자 처리.' })
   async create(@Body() dto: CreateInstructorDto, @Req() req: Request & { user?: JwtClaims }) {
     const created = await this.signupApproval.provisionInstructor({ ...dto, role: 'instructor' }, this.actorOf(req));
@@ -49,14 +48,14 @@ export class InstructorsController {
   }
 
   @Patch(':id')
-  @UseGuards(SuperAdminGuard)
+  @RequireCapabilities('executive.manage')
   @ApiOperation({ summary: '강사 프로필·기본 페이·Kinder 수정. 대표 전용, audit 기록.' })
   update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateInstructorDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.hr.updateInstructor(id, this.actorOf(req), dto);
   }
 
   @Delete(':id')
-  @UseGuards(SuperAdminGuard)
+  @RequireCapabilities('executive.manage')
   @ApiOperation({ summary: '강사 soft delete. 대표 전용, 활성 수업·스케줄·계약은 409.' })
   remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.hr.removeInstructor(id, this.actorOf(req));

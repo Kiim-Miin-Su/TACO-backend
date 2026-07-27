@@ -4,7 +4,10 @@ import { InMemoryDatabase } from '../../database/in-memory.database';
 import { SESSION_REPORTS_SPEC } from '../../database/calendar-asset-specs';
 import { COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import {
+  CalendarUnitOfWork,
+  sessionAccountingLockKeys,
+} from '../../database/calendar-unit-of-work.service';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { AuditService } from '../audit/audit.service';
 import { ADMIN_ROLES } from '../auth/roles.decorator';
@@ -131,7 +134,7 @@ export class ReportsService implements OnModuleInit {
   async create(dto: CreateReportDto, actor?: ReportActor): Promise<SessionReportRow> {
     // [TBO-56 C2b] 판정 전부 DB 기준 + report lock 안에서(TBO-53이 전이 4종만 전환했던 갭 해소).
     return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'session', id: dto.sessionId }]);
+      await this.uow.lockTargets(sessionAccountingLockKeys({ sessionIds: [dto.sessionId] }));
       // 1) 세션 FK 검증 — DB 재조회
       const session = await this.sessionsStore.findByIdDb(dto.sessionId);
       if (!session) throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
@@ -193,7 +196,11 @@ export class ReportsService implements OnModuleInit {
     if (dto.content === undefined && dto.homework === undefined)
       throw new BadRequestException('수정할 내용(content/homework)이 필요합니다.');
     return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'report', id }]);
+      const scoped = await this.reportFromDb(id);
+      await this.uow.lockTargets(sessionAccountingLockKeys({
+        sessionIds: [scoped.sessionId],
+        reportIds: [id],
+      }));
       const r = await this.reportFromDb(id); // [C1] lock 뒤 DB 재조회 — 낡은 메모리 판정 금지
       // 소유권(H2 IDOR 차단) — 비관리자는 본인 명의 보고서만 수정 가능(submit과 동일 규칙).
       if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
@@ -225,7 +232,11 @@ export class ReportsService implements OnModuleInit {
   async submit(id: number, actor?: ReportActor): Promise<SessionReportRow> {
     this.findOne(id, actor); // 조회 스코프(IDOR 404/403) 선판정 — READ 전환은 C2
     return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'report', id }]);
+      const scoped = await this.reportFromDb(id);
+      await this.uow.lockTargets(sessionAccountingLockKeys({
+        sessionIds: [scoped.sessionId],
+        reportIds: [id],
+      }));
       const r = await this.reportFromDb(id); // [C1] lock 뒤 DB 재조회
       // 소유권(H2 IDOR 차단) — 비관리자는 본인 명의 보고서만 제출 가능.
       if (actor && !actorIsAdmin(actor) && r.instructorId !== actor.id)
@@ -259,7 +270,10 @@ export class ReportsService implements OnModuleInit {
       // 함께 잠근 뒤 fresh DB 행으로 다시 수행한다. schedule cancel/no_show도 session lock을
       // 사용하므로 두 명령은 in-memory FIFO와 Postgres advisory lock에서 같은 순서로 직렬화된다.
       const scoped = await this.reportFromDb(id);
-      await this.uow.lockTargets([{ kind: 'session', id: scoped.sessionId }, { kind: 'report', id }]);
+      await this.uow.lockTargets(sessionAccountingLockKeys({
+        sessionIds: [scoped.sessionId],
+        reportIds: [id],
+      }));
       const r = await this.reportFromDb(id); // [C1] lock 뒤 DB 재조회
       if (r.approvalStatus !== 'submitted')
         throw new BadRequestException(`승인 불가 상태(${r.approvalStatus ?? r.status}) — submitted만 승인 가능`);
@@ -321,7 +335,10 @@ export class ReportsService implements OnModuleInit {
     return this.uow.run(async () => {
       const scoped = await this.reportFromDb(id); // sessionId(불변) 확보 — 404 판정 포함
       // [C1] report + session lock — 반려와 정산 생성(claimPayout)의 적격성 경쟁 보호.
-      await this.uow.lockTargets([{ kind: 'report', id }, { kind: 'session', id: scoped.sessionId }]);
+      await this.uow.lockTargets(sessionAccountingLockKeys({
+        sessionIds: [scoped.sessionId],
+        reportIds: [id],
+      }));
       const r = await this.reportFromDb(id); // lock 뒤 DB 재조회
       // [B9 E5 2026-07-16] 종전엔 승인 보고서를 무조건 400("정산 회수 후 처리 필요")으로 막았지만
       //  회수 자체가 미구현이라 사실상 영구 잠금이었다. 이제 payout reversal이 있으므로 게이트를
@@ -358,7 +375,10 @@ export class ReportsService implements OnModuleInit {
   async removeBySession(sessionId: number, deletedBy?: number): Promise<number> {
     // [감사 전수 2026-07-16] cascade 삭제도 행별 이력(⚠ 누락 경로였음). 호출부(schedule.remove)가
     //  이미 자체 tx 안이므로 여기서는 removeByField 후 행별 log만 추가(중첩 uow는 passthrough).
-    const rows = this.db.findByField<SessionReportRow>(SESSION_REPORTS, 'sessionId', sessionId);
+    const rows = await this.store.findActive<SessionReportRow>(SESSION_REPORTS_SPEC, {
+      where: { sessionId } as Partial<SessionReportRow>,
+      orderBy: { field: 'id' },
+    });
     const count = await this.store.removeByField(SESSION_REPORTS_SPEC, 'sessionId', sessionId, deletedBy);
     if (deletedBy != null && deletedBy > 0) {
       for (const r of rows) {

@@ -22,6 +22,7 @@ import { CoursesService } from '../courses/courses.service';
 import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // 대표 schedule owner는 정산 제외
 import { InstructorPayoutRow, PayoutLine, PAYOUTS } from './payout.entity';
 import { Subject, SUBJECTS } from '../subjects/subject.entity';
+import { claimsHaveCapability } from '../auth/role-policy';
 
 // 세션 행은 정산 연결 payoutId와 사용자 책정가 override를 갖는다. 산정 스냅샷은 payout.lines가 정본이다.
 type SessionWithPayout = ClassSession & {
@@ -249,7 +250,7 @@ export class PayoutsReadService implements OnModuleInit {
 
   async getScopedDb(id: number, roles: string[], _actorId?: number): Promise<InstructorPayoutRow> {
     const row = await this.payoutFromDb(id);
-    const isPrivileged = roles.includes('super_admin');
+    const isPrivileged = claimsHaveCapability(roles, 'finance.access');
     // [기간설정 지시 ② 2026-07-24] 강사는 **단건 상세(회차별 산정 lines) 전면 불가** — 지급 완료
     //  요약(기간·시수·금액·지급일)은 목록(GET /payouts/me)으로 충분(대표: "이미 지급된 것만,
     //  상세내역은 불가"). 종전 paid 단건 200(TBO-62 ⑥)에서 한 단계 더 좁힘 — 정책 변화 명시.
@@ -337,7 +338,7 @@ export class PayoutsReadService implements OnModuleInit {
   //  동일 규약: 404 은닉이 아니라 403 명시. 존재 자체는 강사 자기 목록으로 이미 알 수 있는 정보).
   findOneScoped(id: number, roles: string[], actorId?: number): InstructorPayoutRow {
     const row = this.findOne(id);
-    const isPrivileged = roles.includes('super_admin');
+    const isPrivileged = claimsHaveCapability(roles, 'finance.access');
     if (!isPrivileged && row.instructorId !== actorId) {
       throw new ForbiddenException('본인 정산서만 조회할 수 있습니다.');
     }

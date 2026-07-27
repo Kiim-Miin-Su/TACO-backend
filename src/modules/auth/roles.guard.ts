@@ -13,7 +13,13 @@ import {
 import { Reflector } from '@nestjs/core';
 import type { Request } from 'express';
 import { AuthService, type JwtClaims } from './auth.service';
-import { ROLES_KEY, type AppRole } from './roles.decorator';
+import {
+  CAPABILITIES_KEY,
+  ROLES_KEY,
+  type AppRole,
+  type RoleCapability,
+} from './roles.decorator';
+import { claimsHaveCapability } from './role-policy';
 import { AccountStateService } from '../../database/account-state.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { extractAccessToken } from './access-token'; // [TBO-34 C2-C] 추출 단일 진실원
@@ -59,6 +65,10 @@ export class RolesGuard implements CanActivate {
       ctx.getHandler(),
       ctx.getClass(),
     ]);
+    const requiredCapabilities = this.reflector.getAllAndOverride<RoleCapability[] | undefined>(
+      CAPABILITIES_KEY,
+      [ctx.getHandler(), ctx.getClass()],
+    );
     const req = ctx.switchToHttp().getRequest<Request & { user?: JwtClaims }>();
     const route = `${req.method} ${req.path}`;
     const token = extractAccessToken(req);
@@ -75,10 +85,16 @@ export class RolesGuard implements CanActivate {
       throw new UnauthorizedException('유효하지 않은 토큰입니다.');
     }
 
-    const ok = !required?.length || (claims.roles ?? []).some((r) => required.includes(r as AppRole));
+    const roleAllowed = !required?.length || (claims.roles ?? []).some((r) => required.includes(r as AppRole));
+    const capabilitiesAllowed = !requiredCapabilities?.length
+      || requiredCapabilities.every((capability) => claimsHaveCapability(claims.roles, capability));
+    const ok = roleAllowed && capabilitiesAllowed;
     if (!ok) {
-      // 권한 부족 — 필요 역할만 남기고(참고), 사용자 역할 전체는 남기지 않음(최소 노출).
-      this.log.warn(`거부(권한부족): ${route} — 필요=${required.join('|')}`);
+      const policy = [
+        ...(required ?? []).map((role) => `role:${role}`),
+        ...(requiredCapabilities ?? []).map((capability) => `cap:${capability}`),
+      ].join('|');
+      this.log.warn(`거부(권한부족): ${route} — 필요=${policy}`);
       throw new ForbiddenException('접근 권한이 없습니다.');
     }
 

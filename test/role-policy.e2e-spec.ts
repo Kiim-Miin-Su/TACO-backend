@@ -1,8 +1,10 @@
 import {
   canDecideSignupRole,
+  claimsHaveCapability,
   isInstructorOnly,
   isStaffRole,
   roleHasCapability,
+  rolesForCapability,
 } from '../src/modules/auth/role-policy';
 
 describe('role policy', () => {
@@ -13,11 +15,15 @@ describe('role policy', () => {
   });
 
   it('keeps finance CEO-only and opens the scoped signup-decision route to admin roles', () => {
+    expect(rolesForCapability('finance.access')).toEqual(['super_admin']);
+    expect(rolesForCapability('executive.manage')).toEqual(['super_admin']);
     expect(roleHasCapability('super_admin', 'finance.access')).toBe(true);
     expect(roleHasCapability('super_admin', 'signup.decide')).toBe(true);
     expect(roleHasCapability('admin', 'finance.access')).toBe(false);
     expect(roleHasCapability('admin', 'signup.decide')).toBe(true);
     expect(roleHasCapability('manager', 'signup.decide')).toBe(true);
+    expect(claimsHaveCapability(['instructor', 'manager'], 'calendar.manage')).toBe(true);
+    expect(claimsHaveCapability(['instructor'], 'calendar.manage')).toBe(false);
   });
 
   it('enforces the signup decision target matrix without role mutation', () => {
@@ -35,6 +41,7 @@ describe('role policy', () => {
       expect(roleHasCapability(role, 'approval.manage')).toBe(true);
       expect(roleHasCapability(role, 'calendar.manage')).toBe(true);
       expect(roleHasCapability(role, 'counsel.manage')).toBe(true);
+      expect(roleHasCapability(role, 'payout.readiness')).toBe(true);
     }
     expect(roleHasCapability('instructor', 'calendar.manage')).toBe(false);
     expect(roleHasCapability('instructor', 'counsel.manage')).toBe(false);

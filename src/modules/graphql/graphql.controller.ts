@@ -7,7 +7,7 @@ import {
   type DocumentNode, type SelectionSetNode,
 } from 'graphql';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles } from '../auth/roles.decorator';
+import { RequireCapabilities } from '../auth/roles.decorator';
 import { DbAnalyticsSnapshotRepository } from '../../database/db-analytics-snapshot.repository';
 import { CounselService } from '../counsel/counsel.service';
 import { PayoutsReadService } from '../payouts/payouts-read.service'; // [TBO-69 C2] 읽기만 소비
@@ -44,6 +44,7 @@ const ceoLogger = new Logger('analytics'); // [TBO-60] 기간 파라미터 로�
 @ApiTags('graphql')
 @ApiBearerAuth()
 @UseGuards(RolesGuard)
+@RequireCapabilities('finance.access')
 @Controller('graphql')
 export class GraphqlGatewayController {
   constructor(
@@ -53,7 +54,6 @@ export class GraphqlGatewayController {
   ) {}
 
   @Post()
-  @Roles('super_admin')
   @ApiOperation({ summary: 'GraphQL 매출·경영 조회(읽기 전용·대표 전용) — revenueReport/financeSummary/counselFunnel/counselCorrelation/uncoveredPayouts. Mutation 없음, production introspection 차단. [대표]' })
   async execute(@Body() body: { query?: string; variables?: Record<string, unknown>; operationName?: string }) {
     const source = body?.query;

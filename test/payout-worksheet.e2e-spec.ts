@@ -38,7 +38,7 @@ describe('[TBO-64] 시수 워크시트 (e2e)', () => {
   };
   const worksheet = async () =>
     (await http.get('/api/payouts/worksheet').query({ instructorId: 1, from: FROM, to: TO })
-      .set(auth('manager')).expect(200)).body;
+      .set(auth('admin')).expect(200)).body;
   const rowOf = (ws: { rows: Array<{ sessionId: number }> }, id: number) =>
     (ws.rows as Array<Record<string, never>>).find((row: { sessionId?: number }) => row.sessionId === id)!;
 
@@ -95,21 +95,22 @@ describe('[TBO-64] 시수 워크시트 (e2e)', () => {
   });
 
   it('가격 책정(⑧) — 지각·리포트 미작성에 금액 확정 → 합계 반영, 해제(null) → 빈칸 복귀', async () => {
-    await http.put(`/api/schedule/${LATE}/pay-amount`).set(auth('manager')).send({ amount: 70000 }).expect(403)
+    await http.put(`/api/schedule/${LATE}/pay-amount`).set(auth('admin')).send({ amount: 70000 }).expect(403)
       .then((response) => expect(response.body.code).toBe('SUDO_REQUIRED'));
-    await http.put(`/api/schedule/${LATE}/pay-amount`).set(sudo('manager')).send({ amount: 70000 }).expect(200);
-    await http.put(`/api/schedule/${NOREP}/pay-amount`).set(sudo('manager')).send({ amount: 50000 }).expect(200);
+    await http.put(`/api/schedule/${LATE}/pay-amount`).set(sudo('manager')).send({ amount: 70000 }).expect(403);
+    await http.put(`/api/schedule/${LATE}/pay-amount`).set(sudo('admin')).send({ amount: 70000 }).expect(200);
+    await http.put(`/api/schedule/${NOREP}/pay-amount`).set(sudo('admin')).send({ amount: 50000 }).expect(200);
     let ws = await worksheet();
     expect((rowOf(ws, LATE) as { pricing: { effectiveAmount: number } }).pricing.effectiveAmount).toBe(70000);
     expect(ws.totals).toMatchObject({ includedCount: 3, totalAmount: 220000, unpricedCount: 0, manualAmount: 120000, autoAmount: 100000 });
     // 해제 → 빈칸 복귀(합계 제외)
-    await http.put(`/api/schedule/${NOREP}/pay-amount`).set(sudo('manager')).send({ amount: null }).expect(200);
+    await http.put(`/api/schedule/${NOREP}/pay-amount`).set(sudo('admin')).send({ amount: null }).expect(200);
     ws = await worksheet();
     expect(ws.totals).toMatchObject({ includedCount: 2, totalAmount: 170000, unpricedCount: 1 });
     // 가드: 결석·미진행 회차는 책정 불가, 음수 400, 강사 403
-    await http.put(`/api/schedule/${ABSENT}/pay-amount`).set(sudo('manager')).send({ amount: 10000 }).expect(400);
-    await http.put(`/api/schedule/${SCHED}/pay-amount`).set(sudo('manager')).send({ amount: 10000 }).expect(400);
-    await http.put(`/api/schedule/${LATE}/pay-amount`).set(sudo('manager')).send({ amount: -1 }).expect(400);
+    await http.put(`/api/schedule/${ABSENT}/pay-amount`).set(sudo('admin')).send({ amount: 10000 }).expect(400);
+    await http.put(`/api/schedule/${SCHED}/pay-amount`).set(sudo('admin')).send({ amount: 10000 }).expect(400);
+    await http.put(`/api/schedule/${LATE}/pay-amount`).set(sudo('admin')).send({ amount: -1 }).expect(400);
     await http.put(`/api/schedule/${LATE}/pay-amount`).set(auth('park_inst')).send({ amount: 1 }).expect(403);
     await http.get('/api/payouts/worksheet').query({ instructorId: 1, from: FROM, to: TO }).set(auth('park_inst')).expect(403);
   });
@@ -123,7 +124,7 @@ describe('[TBO-64] 시수 워크시트 (e2e)', () => {
     const lineIds = payout.lines.map((l: { sessionId: number }) => l.sessionId).sort((a: number, b: number) => a - b);
     expect(lineIds).toEqual([AUTO, LATE].sort((a, b) => a - b));
     // 연결된 회차는 가격 변경 409(확정 스냅샷 불변), 잔존 회차는 이후 책정 → 다음 산정 대상
-    await http.put(`/api/schedule/${LATE}/pay-amount`).set(sudo('manager')).send({ amount: 90000 }).expect(409);
+    await http.put(`/api/schedule/${LATE}/pay-amount`).set(sudo('admin')).send({ amount: 90000 }).expect(409);
     const ws = await worksheet();
     expect((rowOf(ws, LATE) as { pricing: { excludedReason: string } }).pricing.excludedReason).toBe('payout_linked');
     expect((rowOf(ws, NOREP) as { pricing: { kind: string } }).pricing.kind).toBe('manual'); // 잔존 — uncovered 대상 유지

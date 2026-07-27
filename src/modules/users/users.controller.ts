@@ -5,8 +5,13 @@ import type { Request } from 'express';
 import { UsersService } from './users.service';
 import { SignupApprovalService } from './signup-approval.service'; // [TBO-68 C3] 직접 등록
 import { RolesGuard } from '../auth/roles.guard';
-import { ADMIN_ROLES, Roles, STAFF_ROLES } from '../auth/roles.decorator';
-import { SuperAdminGuard } from '../auth/super-admin.guard';
+import {
+  ADMIN_ROLES,
+  RequireCapabilities,
+  Roles,
+  STAFF_ROLES,
+  claimsHaveCapability,
+} from '../auth/roles.decorator';
 import { SudoGuard } from '../auth/sudo.guard'; // [TBO-34 C2-C] 재인증 서버측 강제(리뷰 보안 ①)
 import { CreateInstructorDto } from './dto/create-instructor.dto';
 import { AdminUpdateUserDto } from './dto/admin-update-user.dto';
@@ -54,7 +59,8 @@ export class UsersController {
 
   // [운영 흐름 2026-07-14] 대표 직접 강사 등록 — 즉시 active(계정+프로필+audit 단일 tx).
   @Post('instructors')
-  @UseGuards(SuperAdminGuard, SudoGuard)
+  @UseGuards(SudoGuard)
+  @RequireCapabilities('executive.manage')
   @ApiBearerAuth()
   @ApiOperation({ summary: '강사 직접 등록(대표 전용·재인증 필수) — 즉시 active, users+instructor_profiles+audit 원자 tx. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
   async createInstructor(@Body() dto: CreateInstructorDto, @Req() req: Request & { user?: JwtClaims }) {
@@ -92,11 +98,15 @@ export class UsersController {
   @ApiOperation({ summary: '계정 상세(관리자) — super_admin에게만 rrnMasked 동봉.' })
   async detail(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     const roles = req.user?.roles ?? [];
-    return this.users.getUserDetail(id, roles.includes('super_admin') ? 'super_admin' : 'admin');
+    return this.users.getUserDetail(
+      id,
+      claimsHaveCapability(roles, 'executive.manage') ? 'super_admin' : 'admin',
+    );
   }
 
   @Patch(':id')
-  @UseGuards(SuperAdminGuard, SudoGuard)
+  @UseGuards(SudoGuard)
+  @RequireCapabilities('executive.manage')
   @ApiBearerAuth()
   @ApiOperation({ summary: '대표 직접 수정(재인증 필수) — name/phone/email/role. role·email 변경 시 대상 세션 전부 무효. super_admin 대상 400. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
   async adminUpdate(@Param('id', PositiveIntPipe) id: number, @Body() dto: AdminUpdateUserDto, @Req() req: Request & { user?: JwtClaims }) {

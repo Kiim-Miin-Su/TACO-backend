@@ -10,7 +10,7 @@ import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedRes
 import { PayoutsService } from './payouts.service';
 import { PayoutsReadService } from './payouts-read.service'; // [TBO-69 C2]
 import { RolesGuard } from '../auth/roles.guard';
-import { ADMIN_ROLES, Roles } from '../auth/roles.decorator';
+import { RequireCapabilities, Roles } from '../auth/roles.decorator';
 import { SudoGuard } from '../auth/sudo.guard'; // [TBO-59 C3-2]
 import { GeneratePayoutDto, GenerateBulkPayoutDto, AdjustPayoutDto, RejectPayoutDto, ReversePayoutDto, UnconfirmPayoutDto } from './dto/payout.dto';
 import { PayoutReadinessService } from './payout-readiness.service';
@@ -29,7 +29,7 @@ export class PayoutsController {
   ) {}
 
   @Get()
-  @Roles('super_admin') // [TBO-21 RBAC] 전체 정산 목록은 돈 관련 정보 → 대표 전용
+  @RequireCapabilities('finance.access') // 대표 전용 정책은 role-policy 단일 소스
   @ApiOperation({ summary: '정산서 목록 [대표]' })
   findAll() {
     return this.payoutsRead.listDb(); // [TBO-56 C2b] DB 권위 READ
@@ -37,7 +37,7 @@ export class PayoutsController {
 
   // GET /api/payouts/preview?instructorId=&from=&to= — 산정 미리보기(읽기 전용)
   @Get('preview')
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiOperation({ summary: '시수×시급 산정 미리보기(정산서 생성 없음). 적격: held + roster 전원 보고서 승인. [대표]' })
   @ApiQuery({ name: 'instructorId', required: true })
   @ApiQuery({ name: 'from', required: true })
@@ -60,7 +60,7 @@ export class PayoutsController {
   }
 
   @Get('readiness')
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('payout.readiness')
   @ApiOperation({ summary: '전체 또는 지정 강사의 시수·페이 누락 항목(학생별 보고서 포함) [매니저 이상]' })
   @ApiQuery({ name: 'instructorId', required: false })
   @ApiQuery({ name: 'from', required: false, description: '기본: 종료일 기준 90일 전' })
@@ -76,7 +76,7 @@ export class PayoutsController {
   // [TBO-32 C1 2026-07-20] 미정산 감지 — 최근 N개월 중 적격 세션이 남아 있는 (강사×월) 목록.
   //  ⚠ 라우트 순서: ':id' 앞에 두어야 'uncovered'가 숫자 파싱에 잡히지 않는다.
   @Get('uncovered')
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiOperation({ summary: '미정산 감지 — 적격 세션이 정산서에 미연결인 (강사×월) 목록(당월 포함 N개월). [대표]' })
   @ApiQuery({ name: 'months', required: false, description: '조회 개월 수(1~12, 기본 3)' })
   uncovered(
@@ -88,8 +88,8 @@ export class PayoutsController {
   // [TBO-64 2026-07-24] 시수 워크시트 — 강사·기간의 전 회차(출결·리포트·가격 분류·합계).
   //  ⚠ 라우트 순서: ':id' 앞. 산정 정책은 preview/generate와 동일 분류 함수(단일 진실원).
   @Get('worksheet')
-  @Roles(...ADMIN_ROLES)
-  @ApiOperation({ summary: '시수 워크시트 — 회차별 출결·리포트·가격 분류(자동/책정 필요/제외)·기간 합계 [매니저 이상]' })
+  @RequireCapabilities('finance.access')
+  @ApiOperation({ summary: '시수 워크시트 — 회차별 출결·리포트·가격 분류(자동/책정 필요/제외)·기간 합계 [대표]' })
   @ApiQuery({ name: 'instructorId', required: true })
   @ApiQuery({ name: 'from', required: true })
   @ApiQuery({ name: 'to', required: true })
@@ -102,7 +102,7 @@ export class PayoutsController {
   }
 
   @Get(':id')
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiOperation({ summary: '정산서 단건과 산정 line 조회 [대표]. 강사용 지급 요약 호환 API는 GET /payouts/me이며 UI에서는 호출하지 않음.' })
   findOne(@Param('id', PositiveIntPipe) id: number, @Req() req: Request) {
     const actor = (req as Request & { user?: JwtClaims }).user;
@@ -111,7 +111,7 @@ export class PayoutsController {
 
   // POST /api/payouts/generate — 정산서 생성 + 세션 연결(이중 계상 방지)
   @Post('generate')
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiOperation({ summary: '정산서 생성(pending) — 적격 세션 묶음·시급 조인 산정·세션 연결. [대표]' })
   @ApiCreatedResponse({ description: '생성된 정산서(InstructorPayout): status=pending, amount, sessionCount, totalMinutes, lines[]' })
   @ApiBadRequestResponse({ description: '적격 세션 0(이미 연결/기간 오류)' })
@@ -123,7 +123,7 @@ export class PayoutsController {
 
   // [TBO-32 C1 2026-07-20] 일괄 산정 — 강사별 독립 tx(부분 실패 요약: generated/skipped/failed).
   @Post('generate-bulk')
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiOperation({ summary: '일괄 정산 산정 — 기간 내 전(또는 지정) 강사, 강사별 독립 tx·부분 실패 요약. [대표]' })
   generateBulk(@Body() dto: GenerateBulkPayoutDto, @Req() req: Request) {
     const actor = (req as Request & { user?: JwtClaims }).user;
@@ -132,7 +132,7 @@ export class PayoutsController {
 
   // 대표 액션 — TBO-21: 강사 페이 확정/조정/반려/지급은 super_admin 전용.
   @Post(':id/confirm')
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiParam({ name: 'id', description: '정산서 id' })
   @ApiOperation({ summary: '대표 확정(pending → confirmed) [대표]' })
   @ApiCreatedResponse({ description: '정산서(status=confirmed)' })
@@ -142,7 +142,7 @@ export class PayoutsController {
 
   // [TBO-32 C2 2026-07-22] 확정 취소 — 지급 전 확정 실수의 출구(상태 그래프 완결: pending⇄confirmed).
   @Post(':id/unconfirm')
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiOperation({ summary: '정산 확정 취소(confirmed→pending, 사유 필수·감사 이력) [대표]. 지급 후에는 회수(reverse).' })
   unconfirm(@Param('id', PositiveIntPipe) id: number, @Body() dto: UnconfirmPayoutDto, @Req() req: Request) {
     const actor = (req as Request & { user?: JwtClaims }).user;
@@ -151,7 +151,7 @@ export class PayoutsController {
 
   @Post(':id/adjust')
   @UseGuards(SudoGuard)
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiParam({ name: 'id', description: '정산서 id' })
   @ApiOperation({ summary: '대표 급여 수정(실효 지급액 덮어쓰기, 자동 산정액 보존, 사유·재인증 필수) [대표]' })
   @ApiCreatedResponse({ description: '정산서(computedAmount 보존, adjustedAmount·amount 갱신)' })
@@ -160,7 +160,7 @@ export class PayoutsController {
   }
 
   @Post(':id/reject')
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiParam({ name: 'id', description: '정산서 id' })
   @ApiOperation({ summary: '대표 반려(→ rejected) + 연결 세션 회수(재산정 가능) [대표]' })
   @ApiCreatedResponse({ description: '정산서(status=rejected, rejectedReason)' })
@@ -171,7 +171,7 @@ export class PayoutsController {
   // [B9 E5 2026-07-16] 지급 회수(보상 command) — paid 정산의 유일한 되돌림 경로.
   @Post(':id/reverse')
   @UseGuards(SudoGuard)
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiParam({ name: 'id', description: '정산서 id' })
   @ApiOperation({ summary: '지급 회수(paid → rejected+reversedAt) — 보상 원장 입금 1건 + 연결 세션 전량 회수(재산정 가능, 재인증 필수) [대표]' })
   @ApiCreatedResponse({ description: '{ payout: rejected+reversedAt, transaction: 원장 입금(payout_reversal) 1건 }' })
@@ -182,7 +182,7 @@ export class PayoutsController {
 
   @Post(':id/pay')
   @UseGuards(SudoGuard) // [TBO-59 C3-2] 지급 확정(원장 출금) = sudo 재인증
-  @Roles('super_admin')
+  @RequireCapabilities('finance.access')
   @ApiParam({ name: 'id', description: '정산서 id' })
   @ApiOperation({ summary: '지급 완료(confirmed → paid) + 통합 원장 출금 기록(재인증 필수) [대표]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
   @ApiCreatedResponse({ description: '{ payout: status=paid, transaction: 원장 출금 1건 }' })

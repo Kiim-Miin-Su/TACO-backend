@@ -59,6 +59,12 @@ export class CoursesService implements OnModuleInit {
     return this.findAll();
   }
 
+  /** 회계 command의 단일 transaction 안에서 호출하는 순차 fresh read. */
+  async refreshAccountingRatesFresh(): Promise<void> {
+    await this.store.hydrate<StoredCourse>(COURSES_SPEC);
+    await this.profiles.hydrate();
+  }
+
   async findAllFreshForActor(instructorOnly: boolean): Promise<Array<Course | InstructorCourseView>> {
     const courses = await this.findAllFresh();
     return instructorOnly ? courses.map((course) => this.toInstructorView(course)) : courses;

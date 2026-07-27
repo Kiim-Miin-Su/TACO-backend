@@ -11,7 +11,7 @@ import { readCookie } from './browser-session';
  *  - 브라우저(cookie 세션): POST /auth/reauth 성공 시 발급되는 단명 HttpOnly sudo 쿠키 필수 —
  *    없거나 만료·타인 것이면 403(코드 SUDO_REQUIRED — FE가 재인증 모달 재출력).
  *  - Bearer API 호출도 sudo cookie가 별도로 필요하다. access token만으로 step-up을 우회할 수 없다.
- * 반드시 인증 가드(SuperAdminGuard/RolesGuard) 뒤에 배치 — req.user가 부착된 뒤 sub 대조.
+ * 반드시 중앙 인증 가드(RolesGuard) 뒤에 배치 — req.user가 부착된 뒤 sub 대조.
  */
 @Injectable()
 export class SudoGuard implements CanActivate {
