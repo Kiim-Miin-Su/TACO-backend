@@ -9,7 +9,11 @@ import { randomBytes } from 'node:crypto';
 import { chmodSync, writeFileSync } from 'node:fs';
 import { resolvePgSsl } from '../src/database/pg-ssl';
 import { loadLocalEnv } from '../src/config/load-env';
-import { directDatabaseUrl } from '../src/database/database-url';
+import {
+  buildRuntimeRoleUrl,
+  directDatabaseUrl,
+  runtimeRoleConnectionBaseUrl,
+} from '../src/database/database-url';
 
 const APPLY = process.argv.includes('--apply') || process.env.APPLY === '1';
 loadLocalEnv();
@@ -17,6 +21,8 @@ loadLocalEnv();
 async function main(): Promise<void> {
   const url = directDatabaseUrl();
   if (!url) throw new Error('DATABASE_URL(owner)이 필요합니다.');
+  const runtimeConnectionBase = runtimeRoleConnectionBaseUrl();
+  if (!runtimeConnectionBase) throw new Error('runtime connection base URL이 필요합니다.');
   const role = process.env.RUNTIME_ROLE_NAME?.trim() || 'taco_runtime';
   if (!/^[a-z_][a-z0-9_]*$/.test(role)) throw new Error('RUNTIME_ROLE_NAME은 소문자·숫자·언더스코어만 허용됩니다.');
   const outputFile = process.env.RUNTIME_ROLE_OUTPUT_FILE?.trim();
@@ -75,10 +81,8 @@ async function main(): Promise<void> {
     }
 
     if (APPLY && password) {
-      const runtimeUrl = new URL(url);
-      runtimeUrl.username = role;
-      runtimeUrl.password = password;
-      const runtime = new Client({ connectionString: runtimeUrl.toString(), ssl: resolvePgSsl() });
+      const runtimeUrl = buildRuntimeRoleUrl(url, runtimeConnectionBase, role, password);
+      const runtime = new Client({ connectionString: runtimeUrl, ssl: resolvePgSsl() });
       await runtime.connect();
       try {
         const { rows: [runtimeCheck] } = await runtime.query(`
@@ -101,7 +105,7 @@ async function main(): Promise<void> {
       }
 
       if (outputFile) {
-        writeFileSync(outputFile, `${runtimeUrl.toString()}\n`, { encoding: 'utf8', mode: 0o600 });
+        writeFileSync(outputFile, `${runtimeUrl}\n`, { encoding: 'utf8', mode: 0o600 });
         chmodSync(outputFile, 0o600);
         console.log('[provision] runtime URL을 권한 0600 임시 파일에 기록했습니다(경로·값 비출력).');
       }

@@ -5,7 +5,7 @@
  "description": "TACO ERP API (NestJS, in-memory first)",
  "scripts": {
   "dev": "nest start --watch",
-  "start": "node dist/main.js",
+  "start": "node dist/src/main.js",
   "build": "nest build",
   "db:check": "ts-node scripts/db-check.ts",
   "db:inventory": "ts-node scripts/inventory-production-data.ts",
