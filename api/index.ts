@@ -1,14 +1,11 @@
 import "reflect-metadata";
 import { NestFactory } from "@nestjs/core";
-import { ValidationPipe } from "@nestjs/common";
 import { SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "../src/app.module";
-import { AllExceptionsFilter } from "../src/common/all-exceptions.filter";
-import { webCorsOrigins } from "../src/common/cors-origin";
-import { LoggingInterceptor } from "../src/common/logging.interceptor";
 import { assertProductionBootSafety } from "../src/config/production-guards";
-import { configureTrustProxy } from "../src/common/trust-proxy";
 import { createOpenApiDocument } from "../src/config/openapi";
+import { configureApp } from "../src/config/configure-app";
+import { RidConsoleLogger } from "../src/common/request-context";
 
 // Production cold starts initialize and hydrate the Postgres-backed runtime stores before
 // the first request can be served. Vercel's default function duration can expire during that
@@ -35,18 +32,10 @@ let cachedServer: ((req: unknown, res: unknown) => void) | undefined;
 
 async function bootstrapServer() {
   assertProductionBootSafety(); // [TBO-28B] production 필수 env fail-fast(§4 — DB·JWT·SMTP)
-  const app = await NestFactory.create(AppModule);
-  configureTrustProxy(app);
-
-  // 로컬은 QA 포트가 바뀔 수 있어 전체 origin 허용(origin=true), production은 WEB_ORIGIN/Vercel allowlist.
-  app.enableCors({
-    origin: webCorsOrigins(),
-    credentials: true,
+  const app = await NestFactory.create(AppModule, {
+    logger: new RidConsoleLogger(),
   });
-  app.setGlobalPrefix("api");
-  app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
-  app.useGlobalInterceptors(new LoggingInterceptor()); // 모든 요청 로깅(docs/logging.md)
-  app.useGlobalFilters(new AllExceptionsFilter()); // 예외 응답 표준화 + category=error
+  configureApp(app);
 
   // 빌드 타임 스펙 우선(파라미터·스키마 정확). 없으면 런타임 생성으로 폴백.
   const document = staticOpenapi ?? createOpenApiDocument(app);

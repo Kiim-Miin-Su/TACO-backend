@@ -47,7 +47,7 @@ describe('Payout bulk + uncovered + is_paid (e2e, TBO-32 C1)', () => {
       expect((e as { executionMissingCount: number }).executionMissingCount + e.sessionCount).toBeGreaterThan(0); // 노출 근거 명시
     }
     await http.get('/api/payouts/uncovered').set(auth(inst)).expect(403); // 돈 정보 — 대표 전용
-    await http.get('/api/payouts/uncovered?months=99').set(auth(admin)).expect(200); // 1~12로 clamp(500 아님)
+    await http.get('/api/payouts/uncovered?months=99').set(auth(admin)).expect(400); // 범위 밖 입력은 조용히 clamp하지 않고 거부
   });
 
   it('② 진행된 수업만: scheduled·canceled 세션을 추가해도 산정(preview·uncovered)에 잡히지 않는다', async () => {

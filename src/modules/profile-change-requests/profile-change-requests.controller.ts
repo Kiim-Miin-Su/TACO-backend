@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
@@ -47,7 +48,7 @@ export class ProfileChangeRequestsController {
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '프로필 변경 요청 상세. 요청자 본인 또는 관리자.' })
   @ApiOkResponse({ type: ProfileChangeRequestResponseDto })
-  detail(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {
+  detail(@Param('id', PositiveIntPipe) id: number, @Req() req: AuthedRequest) {
     return this.requests.detail(id, this.actorOf(req), req.user?.roles);
   }
 
@@ -56,7 +57,7 @@ export class ProfileChangeRequestsController {
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '프로필 변경 요청 승인. 본인 승인 불가. [관리자]' })
   @ApiCreatedResponse({ type: ProfileChangeRequestResponseDto })
-  approve(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {
+  approve(@Param('id', PositiveIntPipe) id: number, @Req() req: AuthedRequest) {
     return this.requests.approve(id, this.actorOf(req));
   }
 
@@ -65,7 +66,7 @@ export class ProfileChangeRequestsController {
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '프로필 변경 요청 반려. 사유 필수, 본인 반려 불가. [관리자]' })
   @ApiCreatedResponse({ type: ProfileChangeRequestResponseDto })
-  reject(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectProfileChangeRequestDto, @Req() req: AuthedRequest) {
+  reject(@Param('id', PositiveIntPipe) id: number, @Body() dto: RejectProfileChangeRequestDto, @Req() req: AuthedRequest) {
     return this.requests.reject(id, this.actorOf(req), dto.reason);
   }
 

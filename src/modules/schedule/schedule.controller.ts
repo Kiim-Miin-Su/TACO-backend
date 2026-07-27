@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Patch,
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch,
   Put, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiOkResponse, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
@@ -35,17 +36,17 @@ export class ScheduleController {
     @Req() req: Request & { user?: JwtClaims },
     @Query('from') from?: string,
     @Query('to') to?: string,
-    @Query('instructorId') instructorId?: string,
-    @Query('roomId') roomId?: string,
-    @Query('studentId') studentId?: string,
+    @Query('instructorId', OptionalPositiveIntPipe) instructorId?: number,
+    @Query('roomId', OptionalPositiveIntPipe) roomId?: number,
+    @Query('studentId', OptionalPositiveIntPipe) studentId?: number,
   ) {
     await this.scheduleRead.ensureReady();
     const filters = {
       from,
       to,
-      instructorId: instructorId ? Number(instructorId) : undefined,
-      roomId: roomId ? Number(roomId) : undefined,
-      studentId: studentId ? Number(studentId) : undefined,
+      instructorId,
+      roomId,
+      studentId,
     };
     return isInstructorOnly(req.user?.roles)
       ? this.scheduleRead.listVisible({ ...filters, instructorId: undefined }, req.user!.sub)
@@ -71,11 +72,11 @@ export class ScheduleController {
   async instructorAttendanceSummary(
     @Query('from') from?: string,
     @Query('to') to?: string,
-    @Query('instructorId') instructorId?: string,
+    @Query('instructorId', OptionalPositiveIntPipe) instructorId?: number,
   ) {
     await this.scheduleRead.ensureReady();
     return this.scheduleRead.instructorAttendanceSummary({
-      from, to, instructorId: instructorId ? Number(instructorId) : undefined,
+      from, to, instructorId,
     });
   }
 
@@ -87,7 +88,7 @@ export class ScheduleController {
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiOperation({ summary: '세션 단건. 강사는 본인 배정 일반 일정만, 상담은 관리 역할만(404→403).' })
   @ApiOkResponse({ description: 'ScheduleRow — 강사·과목·강의실명·코호트 포함' })
-  async findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  async findOne(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     await this.scheduleRead.ensureReady();
     const row = this.scheduleRead.findOneEnriched(id);
     if (isInstructorOnly(req.user?.roles) && !isSessionVisibleToInstructor(row, req.user!.sub))
@@ -162,7 +163,7 @@ export class ScheduleController {
   @ApiOperation({ summary: '세션 이동·리사이즈·상세편집(반복 scope 지원). 충돌 시 409. [로그인]' })
   @ApiOkResponse({ description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }' })
   @ApiConflictResponse({ description: '{ message, conflicts } — force=false에서 충돌 시' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleDto, @Req() req: Request & { user?: JwtClaims }) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateScheduleDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.schedule.update(id, dto, req.user?.sub); // actor → audit_log(update diff)
   }
 
@@ -173,7 +174,7 @@ export class ScheduleController {
   @ApiOperation({ summary: '강사 출결 체크 — 강사는 본인 세션 최초 1회만, 관리자는 제한 없음. 수정·초기화는 매니저 이상 PATCH. [전 직원]' })
   @ApiOkResponse({ description: '{ row: ScheduleRow } — instructorAttendance 반영' })
   markInstructorAttendance(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', PositiveIntPipe) id: number,
     @Body() dto: MarkInstructorAttendanceDto,
     @Req() req: Request & { user?: JwtClaims },
   ) {
@@ -185,7 +186,7 @@ export class ScheduleController {
   @Roles(...ADMIN_ROLES)
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiOperation({ summary: '삭제 회차 복구(soft delete 해제) — 캘린더 undo 전용, 정산 연결 회차 불가. [매니저 이상]' })
-  restore(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  restore(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.schedule.restoreSession(id, req.user?.sub);
   }
 
@@ -195,7 +196,7 @@ export class ScheduleController {
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiOperation({ summary: '회차 가격 책정(정산 연결 전) — 지각·리포트 미작성 회차 수동 금액, null=해제. 연결된 회차 409. [매니저 이상]' })
   setPayAmount(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', PositiveIntPipe) id: number,
     @Body() dto: SetSessionPayAmountDto,
     @Req() req: Request & { user?: JwtClaims },
   ) {
@@ -211,19 +212,17 @@ export class ScheduleController {
   @ApiOkResponse({ description: '{ id, deleted, removedIds: number[] }' })
   @ApiOperation({ summary: '세션 삭제(반복 scope 지원) [로그인]' })
   remove(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', PositiveIntPipe) id: number,
     @Req() req: Request & { user?: JwtClaims },
     @Query('scope') scope?: string,
-    @Query('expectedSeriesVersion') expectedSeriesVersion?: string,
+    @Query('expectedSeriesVersion', OptionalPositiveIntPipe)
+    expectedSeriesVersion?: number,
   ) {
     if (scope != null && !['this', 'this_and_following', 'all'].includes(scope))
       throw new BadRequestException('scope는 this|this_and_following|all 중 하나여야 합니다');
-    const expected = expectedSeriesVersion != null ? Number(expectedSeriesVersion) : undefined;
-    if (expected != null && (!Number.isInteger(expected) || expected < 1))
-      throw new BadRequestException('expectedSeriesVersion은 1 이상의 정수여야 합니다');
     return this.schedule.remove(id, req.user?.sub, {
       scope: (scope ?? 'this') as 'this' | 'this_and_following' | 'all',
-      expectedSeriesVersion: expected,
+      expectedSeriesVersion,
     }); // actor → soft delete deletedBy + audit 스냅샷
   }
 }

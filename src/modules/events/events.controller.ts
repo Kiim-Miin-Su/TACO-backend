@@ -2,7 +2,8 @@
 //  - GET: 로그인만 필요(목록) → EventsService.findAll(시작일 오름차순).
 //  - POST: @Roles(ADMIN_ROLES) 관리자만 → CreateEventDto 검증(ValidationPipe) → 서비스가 end≥start 재검증(400).
 //  프론트 api.events가 이 라우트를 호출, EventsView 발행 폼이 POST 후 events 쿼리 무효화→하이드레이트.
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { EventsService } from './events.service';
@@ -40,7 +41,7 @@ export class EventsController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '학원 이벤트 수정(매니저 이상) — 병합 후 구간 재검증 + diff audit' })
   @ApiOkResponse({ description: '수정된 AcademyEvent' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateEventDto, @Req() req: Request & { user?: JwtClaims }) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateEventDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.events.update(id, dto, this.actorOf(req));
   }
 
@@ -48,7 +49,7 @@ export class EventsController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '학원 이벤트 삭제(매니저 이상) — soft delete + before 스냅샷 audit' })
   @ApiOkResponse({ description: '삭제된 AcademyEvent(스냅샷)' })
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.events.remove(id, this.actorOf(req));
   }
 

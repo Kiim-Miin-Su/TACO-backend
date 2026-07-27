@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { SubjectsService } from './subjects.service';
@@ -24,7 +25,7 @@ export class SubjectsController {
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '과목 카탈로그 단건 조회 [전 직원]' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id', PositiveIntPipe) id: number) {
     return this.subjects.findOneFresh(id);
   }
 
@@ -38,14 +39,14 @@ export class SubjectsController {
   @Patch(':id')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '과목 카탈로그 수정 [매니저 이상]' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateSubjectDto, @Req() req: Request & { user?: JwtClaims }) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateSubjectDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.subjects.update(id, dto, req.user?.sub);
   }
 
   @Delete(':id')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '수업 참조 확인 후 과목 삭제 [매니저 이상]' })
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.subjects.remove(id, req.user?.sub);
   }
 }

@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ReportTemplatesService } from './report-templates.service';
@@ -32,7 +33,7 @@ export class ReportTemplatesController {
   @Delete(':id')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '수업 리포트 템플릿 soft delete [전 직원]' })
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.templates.remove(id, req.user?.sub);
   }
 }

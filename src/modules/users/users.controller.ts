@@ -1,4 +1,5 @@
-import { BadRequestException, Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { UsersService } from './users.service';
@@ -84,12 +85,12 @@ export class UsersController {
   }
 
   // ── [유저 관리 2026-07-20 대표 지시] 상세 단건 + 대표 직접 수정 ──
-  //  ⚠ 'exists'보다 뒤·숫자 경로 — ParseIntPipe가 비숫자를 400으로 거른다.
+  //  ⚠ 'exists'보다 뒤·숫자 경로 — PositiveIntPipe가 비숫자를 400으로 거른다.
   @Get(':id')
   @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
   @ApiOperation({ summary: '계정 상세(관리자) — super_admin에게만 rrnMasked 동봉.' })
-  async detail(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  async detail(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     const roles = req.user?.roles ?? [];
     return this.users.getUserDetail(id, roles.includes('super_admin') ? 'super_admin' : 'admin');
   }
@@ -98,7 +99,7 @@ export class UsersController {
   @UseGuards(SuperAdminGuard, SudoGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '대표 직접 수정(재인증 필수) — name/phone/email/role. role·email 변경 시 대상 세션 전부 무효. super_admin 대상 400. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
-  async adminUpdate(@Param('id', ParseIntPipe) id: number, @Body() dto: AdminUpdateUserDto, @Req() req: Request & { user?: JwtClaims }) {
+  async adminUpdate(@Param('id', PositiveIntPipe) id: number, @Body() dto: AdminUpdateUserDto, @Req() req: Request & { user?: JwtClaims }) {
     const sub = req.user?.sub;
     if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
     return this.users.adminUpdateUser(id, sub, dto);

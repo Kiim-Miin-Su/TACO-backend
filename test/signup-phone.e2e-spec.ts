@@ -11,10 +11,11 @@
 //  실패할 수 있었다(2026-07-24 release 실측: 첫 실패 후 재시도가 오염된 상태에서 시작). 해결 =
 //  테스트 **시도마다** 유일한 전화번호·계정 팩토리(nextPhone/nextUser) — 어떤 테스트도 이전 시도·
 //  다른 테스트의 상태에 의존하지 않는다. 거대 단일 플로우도 4개 테스트로 분할해 재실행 표면 축소.
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { configureApp } from '../src/config/configure-app';
 import { createTestApp } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
@@ -183,8 +184,7 @@ describe('[TBO-57] 가입 전 휴대전화 OTP — SENS 설정 환경(필수 강
       .useValue(fake)
       .compile();
     app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    configureApp(app, { cors: false, observability: false });
     await app.init();
     http = request(app.getHttpServer());
     db = app.get(InMemoryDatabase);

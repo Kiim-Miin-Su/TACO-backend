@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { RolesGuard } from '../auth/roles.guard';
@@ -37,7 +38,7 @@ export class RegistrationsController {
   @Get(':id/aggregate')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '학생 프로필·희망 수업·보호자·수강·학사 이력 aggregate 조회 [역할별 최소화]' })
-  async getAggregate(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  async getAggregate(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     const aggregate = await this.registrations.getAggregate(id); // [TBO-54 C2] DB 권위 READ
     if (!isInstructorOnly(req.user?.roles)) return aggregate;
     const { student, interests, guardians } = aggregate;
@@ -48,7 +49,7 @@ export class RegistrationsController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '학생 프로필·희망 수업·보호자 aggregate 원자 수정 [매니저 이상]' })
   updateAggregate(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', PositiveIntPipe) id: number,
     @Body() dto: UpdateStudentAggregateDto,
     @Req() req: Request & { user?: JwtClaims },
   ) {
@@ -61,7 +62,7 @@ export class RegistrationsController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '학생 기본 프로필 수정 및 audit 기록 [매니저 이상]' })
   updateStudent(
-    @Param('id', ParseIntPipe) id: number,
+    @Param('id', PositiveIntPipe) id: number,
     @Body() student: UpdateStudentDto,
     @Req() req: Request & { user?: JwtClaims },
   ) {

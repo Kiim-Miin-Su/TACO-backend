@@ -29,7 +29,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -88,7 +91,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -258,7 +264,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -363,7 +372,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -391,7 +403,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '201':
           description: ''
@@ -409,7 +424,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -437,7 +455,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -557,7 +578,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -578,7 +602,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -649,7 +676,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -670,7 +700,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -697,7 +730,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -720,17 +756,26 @@ paths:
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: actorId
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: limit
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 500
       responses:
         '200':
           description: ''
@@ -835,7 +880,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -863,7 +911,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '201':
           description: ''
@@ -945,7 +996,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -967,7 +1021,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '201':
           description: ''
@@ -989,7 +1046,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1058,7 +1118,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1081,7 +1144,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1109,7 +1175,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1131,12 +1200,18 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: relationId
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1163,12 +1238,18 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: relationId
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1186,7 +1267,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1209,7 +1293,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1237,12 +1324,18 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: historyId
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1269,12 +1362,18 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: historyId
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1292,7 +1391,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1313,7 +1415,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1334,7 +1439,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1362,7 +1470,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1385,7 +1496,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1416,7 +1530,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1444,12 +1561,18 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: interestId
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1508,7 +1631,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1529,7 +1655,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1556,7 +1685,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1578,7 +1710,10 @@ paths:
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1624,7 +1759,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1687,7 +1825,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1708,7 +1849,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1736,7 +1880,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '201':
           description: ''
@@ -1758,7 +1905,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '201':
           description: ''
@@ -1821,7 +1971,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1842,7 +1995,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1869,7 +2025,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1932,7 +2091,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1953,7 +2115,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -1980,7 +2145,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -1998,7 +2166,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '201':
           description: ''
@@ -2020,7 +2191,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -2089,7 +2263,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -2110,7 +2287,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -2137,7 +2317,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -2168,7 +2351,10 @@ paths:
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: AvailabilityBlock[] — { id, ownerType, ownerId, kind, weekday, startTime, endTime }
@@ -2228,7 +2414,10 @@ paths:
           in: path
           description: 블록 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: '{ id, deleted: boolean }'
@@ -2256,18 +2445,27 @@ paths:
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: roomId
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: studentId
           required: false
           in: query
           description: 학생 코호트(enrollment status≠drop) 역추적
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -2340,7 +2538,10 @@ paths:
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -2359,7 +2560,10 @@ paths:
           in: path
           description: 세션 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ScheduleRow — 강사·과목·강의실명·코호트 포함
@@ -2377,7 +2581,10 @@ paths:
           in: path
           description: 세션 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -2403,7 +2610,10 @@ paths:
           in: path
           description: 세션 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: scope
           required: false
           in: query
@@ -2419,7 +2629,10 @@ paths:
           in: query
           description: '[C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE'
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: '{ id, deleted, removedIds: number[] }'
@@ -2518,7 +2731,10 @@ paths:
           in: path
           description: 세션 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -2543,7 +2759,10 @@ paths:
           in: path
           description: 세션 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '201':
           description: ''
@@ -2562,7 +2781,10 @@ paths:
           in: path
           description: 세션 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -2586,7 +2808,10 @@ paths:
           required: false
           in: query
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: Attendance[] — sessionId·studentId·status
@@ -2622,7 +2847,10 @@ paths:
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -2668,7 +2896,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -2689,7 +2920,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -2717,7 +2951,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '201':
           description: ''
@@ -2740,7 +2977,10 @@ paths:
           in: path
           description: 보고서 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -2767,7 +3007,10 @@ paths:
           in: path
           description: 보고서 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -2837,7 +3080,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: force
           required: false
           in: query
@@ -2860,7 +3106,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -2887,7 +3136,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -2905,7 +3157,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -2952,7 +3207,10 @@ paths:
           required: true
           in: query
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: from
           required: true
           in: query
@@ -3003,7 +3261,10 @@ paths:
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: from
           required: false
           in: query
@@ -3038,7 +3299,10 @@ paths:
           in: query
           description: 조회 개월 수(1~12, 기본 3)
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 12
       responses:
         '200':
           description: ''
@@ -3056,7 +3320,10 @@ paths:
           required: true
           in: query
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: from
           required: true
           in: query
@@ -3088,7 +3355,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -3155,7 +3425,10 @@ paths:
           in: path
           description: 정산서 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '201':
           description: 정산서(status=confirmed)
@@ -3173,7 +3446,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3202,7 +3478,10 @@ paths:
           in: path
           description: 정산서 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3227,7 +3506,10 @@ paths:
           in: path
           description: 정산서 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3252,7 +3534,10 @@ paths:
           in: path
           description: 정산서 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3279,7 +3564,10 @@ paths:
           in: path
           description: 정산서 id
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '201':
           description: '{ payout: status=paid, transaction: 원장 출금 1건 }'
@@ -3347,7 +3635,10 @@ paths:
           required: false
           in: query
           schema:
-            type: string
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: CounselRound[] — 회차·요약·결과·다음 액션
@@ -3423,7 +3714,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: CounselForm
@@ -3440,7 +3734,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3463,7 +3760,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -3485,7 +3785,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -3507,7 +3810,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3531,12 +3837,18 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: roundId
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3563,12 +3875,18 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: roundId
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -3627,7 +3945,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -3648,7 +3969,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3675,7 +3999,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -3693,7 +4020,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3721,12 +4051,18 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
         - name: courseId
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -3748,7 +4084,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3830,7 +4169,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3857,7 +4199,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -3920,7 +4265,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -3973,7 +4321,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -3996,7 +4347,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: 삭제된 AcademyEvent(스냅샷)
@@ -4071,7 +4425,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -4092,7 +4449,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -4119,7 +4479,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -4156,7 +4519,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:
@@ -4179,7 +4545,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -4197,7 +4566,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -4234,7 +4606,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: ''
@@ -4255,7 +4630,10 @@ paths:
           required: true
           in: path
           schema:
-            type: number
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       requestBody:
         required: true
         content:

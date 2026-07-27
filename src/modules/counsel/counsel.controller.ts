@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiTags, ApiOperation, ApiQuery, ApiOkResponse, ApiCreatedResponse, ApiBearerAuth, ApiForbiddenResponse } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { CounselService } from './counsel.service';
@@ -33,8 +34,11 @@ export class CounselController {
   @ApiOperation({ summary: '상담 회차 목록(CounselRound[]). counselFormId로 필터. [관리 역할]' })
   @ApiQuery({ name: 'counselFormId', required: false })
   @ApiOkResponse({ description: 'CounselRound[] — 회차·요약·결과·다음 액션' })
-  findRounds(@Query('counselFormId') counselFormId?: string) {
-    return this.counsel.findAllRounds(counselFormId ? Number(counselFormId) : undefined);
+  findRounds(
+    @Query('counselFormId', OptionalPositiveIntPipe)
+    counselFormId?: number,
+  ) {
+    return this.counsel.findAllRounds(counselFormId);
   }
 
   // [TBO-30D 2026-07-23] 퍼널 집계 — 순수 함수(counsel-analytics) 파생, DB 원본 무변형. ':id'보다 앞 선언.
@@ -63,14 +67,14 @@ export class CounselController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '상담 폼 단건(CounselForm) — 관리 역할 상세 화면용. 없는 id=404.' })
   @ApiOkResponse({ description: 'CounselForm' })
-  findForm(@Param('id', ParseIntPipe) id: number) {
+  findForm(@Param('id', PositiveIntPipe) id: number) {
     return this.counsel.findForm(id);
   }
 
   @Get(':id/aggregate')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '상담 폼+회차+연결 학생 aggregate [관리 역할]' })
-  findAggregate(@Param('id', ParseIntPipe) id: number) {
+  findAggregate(@Param('id', PositiveIntPipe) id: number) {
     return this.counsel.findAggregate(id);
   }
 
@@ -86,14 +90,14 @@ export class CounselController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '상담 폼 수정 [관리 역할] — 전체 입력 및 nextContactAt 예약 캘린더 동기화' })
   @ApiOkResponse({ description: '수정된 CounselForm' })
-  updateForm(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateCounselDto, @Req() req: Request & { user?: JwtClaims }) {
+  updateForm(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateCounselDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.counsel.updateForm(id, dto, req.user?.sub);
   }
 
   @Delete(':id')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '상담 폼과 회차 soft delete [관리 역할] — 감사 스냅샷 포함' })
-  removeForm(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  removeForm(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.counsel.removeForm(id, req.user!.sub);
   }
 
@@ -101,7 +105,7 @@ export class CounselController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '상담 회차 추가 [관리 역할] — roundNo 자동, 폼 nextContactAt 동기화' })
   @ApiCreatedResponse({ description: '생성된 CounselRound' })
-  createRound(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateCounselRoundDto, @Req() req: Request & { user?: JwtClaims }) {
+  createRound(@Param('id', PositiveIntPipe) id: number, @Body() dto: CreateCounselRoundDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.counsel.createRound(id, dto, req.user?.sub);
   }
 
@@ -109,8 +113,8 @@ export class CounselController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '상담 회차 수정 [관리 역할] — snapshot/다음 상담일 동기화+감사' })
   updateRound(
-    @Param('id', ParseIntPipe) id: number,
-    @Param('roundId', ParseIntPipe) roundId: number,
+    @Param('id', PositiveIntPipe) id: number,
+    @Param('roundId', PositiveIntPipe) roundId: number,
     @Body() dto: UpdateCounselRoundDto,
     @Req() req: Request & { user?: JwtClaims },
   ) {
@@ -121,8 +125,8 @@ export class CounselController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '상담 회차 soft delete [관리 역할] — 최신 다음 상담일 재계산+감사' })
   removeRound(
-    @Param('id', ParseIntPipe) id: number,
-    @Param('roundId', ParseIntPipe) roundId: number,
+    @Param('id', PositiveIntPipe) id: number,
+    @Param('roundId', PositiveIntPipe) roundId: number,
     @Req() req: Request & { user?: JwtClaims },
   ) {
     return this.counsel.removeRound(id, roundId, req.user!.sub);

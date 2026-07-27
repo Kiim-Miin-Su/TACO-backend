@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
@@ -26,7 +27,7 @@ export class ExpensesController {
   @Get(':id')
   @Roles('super_admin')
   @ApiOperation({ summary: '지출 상세 [대표]' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id', PositiveIntPipe) id: number) {
     return this.expenses.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 
@@ -41,7 +42,7 @@ export class ExpensesController {
   @Patch(':id')
   @Roles('super_admin')
   @ApiOperation({ summary: '지출 수정(requested만 — 오기입 정정) [대표]' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateExpenseDto, @Req() req: Request & { user?: JwtClaims }) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateExpenseDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.expenses.update(id, dto, req.user?.sub);
   }
 
@@ -49,7 +50,7 @@ export class ExpensesController {
   @Delete(':id')
   @Roles('super_admin')
   @ApiOperation({ summary: '지출 철회(soft delete, requested만) [대표]' })
-  withdraw(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  withdraw(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.expenses.withdraw(id, req.user?.sub);
   }
 
@@ -57,14 +58,14 @@ export class ExpensesController {
   @Post(':id/approve')
   @Roles('super_admin')
   @ApiOperation({ summary: '지출 승인 + 통합 원장 출금 기록 [대표]' })
-  approve(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  approve(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.expenses.approve(id, req.user?.sub);
   }
 
   @Post(':id/reject')
   @Roles('super_admin')
   @ApiOperation({ summary: '지출 반려(사유 필수) [대표]' })
-  reject(@Param('id', ParseIntPipe) id: number, @Body() body: RejectExpenseDto, @Req() req: Request & { user?: JwtClaims }) {
+  reject(@Param('id', PositiveIntPipe) id: number, @Body() body: RejectExpenseDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.expenses.reject(id, body.reason, req.user?.sub); // [Q2] 사유 필수(DTO 강제)
   }
 }

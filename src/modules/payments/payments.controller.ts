@@ -3,12 +3,12 @@ import {
   Controller,
   Get,
   Param,
-  ParseIntPipe,
   Patch,
   Post,
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -37,7 +37,7 @@ export class PaymentsController {
   @Get(':id')
   @Roles('super_admin')
   @ApiOperation({ summary: '결제·수납 상세 [대표]' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id', PositiveIntPipe) id: number) {
     return this.payments.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 
@@ -51,7 +51,7 @@ export class PaymentsController {
   @Patch(':id')
   @Roles('super_admin')
   @ApiOperation({ summary: '청구 금액·수단·기한 정정 [대표]' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdatePaymentDto, @Req() req: Request & { user?: JwtClaims }) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdatePaymentDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.payments.update(id, dto, req.user?.sub);
   }
 
@@ -59,14 +59,14 @@ export class PaymentsController {
   @UseGuards(SudoGuard) // [TBO-59 C3-2] 환불(원장 출금) = sudo 재인증
   @Roles('super_admin')
   @ApiOperation({ summary: '수납 환불 + 원장 역방향 출금 기록(재인증 필수) [대표]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
-  refund(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  refund(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.payments.refund(id, req.user?.sub);
   }
 
   @Post(':id/pay')
   @Roles('super_admin')
   @ApiOperation({ summary: '수납 완료 처리 + 통합 원장 입금 기록 [대표]' })
-  markPaid(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  markPaid(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.payments.markPaid(id, req.user?.sub);
   }
 }

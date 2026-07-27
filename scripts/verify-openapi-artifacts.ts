@@ -11,6 +11,22 @@ import {
 } from '../src/config/openapi';
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace']);
+const POSTGRES_INTEGER_MAX = 2_147_483_647;
+const POSITIVE_INTEGER_QUERY_NAMES = new Set([
+  'actorId',
+  'counselFormId',
+  'entityId',
+  'expectedSeriesVersion',
+  'instructorId',
+  'ownerId',
+  'roomId',
+  'sessionId',
+  'studentId',
+]);
+const BOUNDED_INTEGER_QUERIES = new Map<string, { minimum: number; maximum: number }>([
+  ['limit', { minimum: 1, maximum: 500 }],
+  ['months', { minimum: 1, maximum: 12 }],
+]);
 
 function fail(messages: string[]): never {
   throw new Error(`OpenAPI artifact verification failed:\n- ${messages.join('\n- ')}`);
@@ -68,6 +84,16 @@ function main(): void {
         tags?: string[];
         responses?: Record<string, unknown>;
         security?: Array<Record<string, string[]>>;
+        parameters?: Array<{
+          in?: string;
+          name?: string;
+          schema?: {
+            type?: string;
+            format?: string;
+            minimum?: number;
+            maximum?: number;
+          };
+        }>;
       };
       const key = `${method.toUpperCase()} ${path}`;
       if (!operation.operationId) errors.push(`${key} has no operationId`);
@@ -78,6 +104,30 @@ function main(): void {
       if (!operation.tags?.length) errors.push(`${key} has no tag`);
       if (!operation.responses || !Object.keys(operation.responses).length) errors.push(`${key} has no response`);
       if (!Array.isArray(operation.security)) errors.push(`${key} has no explicit security boundary`);
+      for (const parameter of operation.parameters ?? []) {
+        const bounded =
+          parameter.in === 'query' && parameter.name
+            ? BOUNDED_INTEGER_QUERIES.get(parameter.name)
+            : undefined;
+        const isPositiveInteger =
+          parameter.in === 'path' ||
+          (parameter.in === 'query' &&
+            parameter.name != null &&
+            POSITIVE_INTEGER_QUERY_NAMES.has(parameter.name));
+        if (!bounded && !isPositiveInteger) continue;
+        const expectedMinimum = bounded?.minimum ?? 1;
+        const expectedMaximum = bounded?.maximum ?? POSTGRES_INTEGER_MAX;
+        if (
+          parameter.schema?.type !== 'integer' ||
+          parameter.schema?.format !== 'int32' ||
+          parameter.schema?.minimum !== expectedMinimum ||
+          parameter.schema?.maximum !== expectedMaximum
+        ) {
+          errors.push(
+            `${key} ${parameter.in} ${parameter.name ?? '?'} must be int32 ${expectedMinimum}..${expectedMaximum}`,
+          );
+        }
+      }
 
       if (PUBLIC_OPENAPI_OPERATION_KEYS.has(key)) {
         seenPublic.add(key);

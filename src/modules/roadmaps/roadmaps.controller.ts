@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { RolesGuard } from '../auth/roles.guard';
@@ -29,7 +30,7 @@ export class RoadmapsController {
   @Get(':id')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '로드맵 단건(코스 조인 aggregate). 없는 id=404. [전 직원]' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id', PositiveIntPipe) id: number) {
     return this.roadmaps.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 
@@ -43,21 +44,21 @@ export class RoadmapsController {
   @Patch(':id')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '로드맵 수정(제목·설명·대상 학년·기간·활성) — audit diff [매니저 이상]' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRoadmapDto, @Req() req: Request & { user?: JwtClaims }) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateRoadmapDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.roadmaps.update(id, dto, this.actorOf(req));
   }
 
   @Delete(':id')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '로드맵 soft delete — 연결 코스 링크 캐스케이드(한 tx)·audit [매니저 이상]' })
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.roadmaps.remove(id, this.actorOf(req));
   }
 
   @Post(':id/courses')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '로드맵에 코스 연결(말단 순서) — 중복 409·없는 코스 400 [매니저 이상]' })
-  addCourse(@Param('id', ParseIntPipe) id: number, @Body() dto: AddRoadmapCourseDto, @Req() req: Request & { user?: JwtClaims }) {
+  addCourse(@Param('id', PositiveIntPipe) id: number, @Body() dto: AddRoadmapCourseDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.roadmaps.addCourse(id, dto.courseId, this.actorOf(req));
   }
 
@@ -65,8 +66,8 @@ export class RoadmapsController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '로드맵 코스 연결 해제 — 잔여 sortOrder 연속 재정렬 [매니저 이상]' })
   removeCourse(
-    @Param('id', ParseIntPipe) id: number,
-    @Param('courseId', ParseIntPipe) courseId: number,
+    @Param('id', PositiveIntPipe) id: number,
+    @Param('courseId', PositiveIntPipe) courseId: number,
     @Req() req: Request & { user?: JwtClaims },
   ) {
     return this.roadmaps.removeCourse(id, courseId, this.actorOf(req));
@@ -75,7 +76,7 @@ export class RoadmapsController {
   @Patch(':id/courses/reorder')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '로드맵 코스 전체 재정렬 — 부분 목록 400(조용한 누락 금지) [매니저 이상]' })
-  reorder(@Param('id', ParseIntPipe) id: number, @Body() dto: ReorderRoadmapCoursesDto, @Req() req: Request & { user?: JwtClaims }) {
+  reorder(@Param('id', PositiveIntPipe) id: number, @Body() dto: ReorderRoadmapCoursesDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.roadmaps.reorderCourses(id, dto.courseIds, this.actorOf(req));
   }
 }

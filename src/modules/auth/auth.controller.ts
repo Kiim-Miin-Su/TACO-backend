@@ -8,12 +8,12 @@ import {
   ForbiddenException,
   Get,
   Param,
-  ParseIntPipe,
   Post,
   Query,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { Throttle } from '@nestjs/throttler';
@@ -86,7 +86,7 @@ export class AuthController {
   @UseGuards(LoginThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: '가입 전 이메일 OTP 확인(공개) — 10회/분, 실패 5회 잠금, 성공 시 verified.' })
-  confirmSignupEmailChallenge(@Param('id', ParseIntPipe) id: number, @Body() dto: ConfirmSignupEmailChallengeDto) {
+  confirmSignupEmailChallenge(@Param('id', PositiveIntPipe) id: number, @Body() dto: ConfirmSignupEmailChallengeDto) {
     return this.signupChallenges.confirm(id, dto.email, dto.code);
   }
 
@@ -123,7 +123,7 @@ export class AuthController {
   @UseGuards(LoginThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: '가입 전 휴대전화 OTP 확인(공개) — 10회/분, 실패 5회 잠금, 성공 시 verified.' })
-  confirmSignupPhoneChallenge(@Param('id', ParseIntPipe) id: number, @Body() dto: ConfirmSignupPhoneChallengeDto) {
+  confirmSignupPhoneChallenge(@Param('id', PositiveIntPipe) id: number, @Body() dto: ConfirmSignupPhoneChallengeDto) {
     return this.signupPhoneChallenges.confirm(id, dto.phone, dto.code);
   }
 
@@ -343,7 +343,7 @@ export class AuthController {
   @UseGuards(LoginThrottlerGuard)
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @ApiOperation({ summary: '복구용 이메일 OTP 확인(공개) — 10회/분, 실패 5회 잠금, 성공 시 verified.' })
-  confirmRecoveryEmailChallenge(@Param('id', ParseIntPipe) id: number, @Body() dto: ConfirmSignupEmailChallengeDto) {
+  confirmRecoveryEmailChallenge(@Param('id', PositiveIntPipe) id: number, @Body() dto: ConfirmSignupEmailChallengeDto) {
     return this.signupChallenges.confirm(id, dto.email, dto.code, 'recovery');
   }
 
@@ -438,7 +438,7 @@ export class AuthController {
   @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 승인(요청 역할 보존, 역할별 범위 강제, 원자 tx+audit). 동시 결정은 409.' })
-  async approve(@Param('id', ParseIntPipe) id: number, @Body() dto: ApproveDto, @Req() req: Request & { user?: JwtClaims }) {
+  async approve(@Param('id', PositiveIntPipe) id: number, @Body() dto: ApproveDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.signupApproval.approve(id, this.actorOf(req), dto.reason);
   }
 
@@ -448,7 +448,7 @@ export class AuthController {
   @UseGuards(SuperAdminGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '승인 대기 계정 인증 메일 재발송(새 48h 토큰) — 대표 전용. 미인증 pending만.' })
-  async resendPendingVerification(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  async resendPendingVerification(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     const { account, verifyToken } = await this.signupApproval.resendVerificationEmail(id, this.actorOf(req));
     const base = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
     const link = `${base}/verify-email?token=${verifyToken}`;
@@ -465,7 +465,7 @@ export class AuthController {
   @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 반려(역할별 범위 강제, 사유 필수, audit 기록). 동시 결정은 409.' })
-  async reject(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
+  async reject(@Param('id', PositiveIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.signupApproval.reject(id, this.actorOf(req), dto.reason);
   }
 
@@ -475,7 +475,7 @@ export class AuthController {
   @UseGuards(SuperAdminGuard, SudoGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 신청 삭제(pending·rejected만·재인증 필수) — 식별자 해제·RRN 파기·audit. 대표 전용, cookie 세션은 reauth 후 10분 내만 허용.' })
-  async deletePending(@Param('id', ParseIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
+  async deletePending(@Param('id', PositiveIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.signupApproval.deletePendingAccount(id, this.actorOf(req), dto.reason);
   }
 

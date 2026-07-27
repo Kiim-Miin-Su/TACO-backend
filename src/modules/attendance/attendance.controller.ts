@@ -6,6 +6,7 @@ import { AttendanceService } from './attendance.service';
 import { UpsertAttendanceDto } from './dto/upsert-attendance.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
+import { OptionalPositiveIntPipe } from '../../common/positive-int.pipe';
 
 // [참조/처리] /api/attendance REST. @Roles(STAFF_ROLES) → 로그인 필수(강사 포함, 관리자 한정 아님).
 //  - RolesGuard는 @Roles 있는 라우트만 검사하므로, 로그인 강제하려면 STAFF_ROLES 명시가 필요.
@@ -23,9 +24,12 @@ export class AttendanceController {
   @ApiOperation({ summary: '출결 목록(Attendance[]) — sessionId 지정 시 해당 세션만' })
   @ApiQuery({ name: 'sessionId', required: false, type: Number })
   @ApiOkResponse({ description: 'Attendance[] — sessionId·studentId·status' })
-  findAll(@Req() req: Request & { user?: JwtClaims }, @Query('sessionId') sessionId?: string) {
+  findAll(
+    @Req() req: Request & { user?: JwtClaims },
+    @Query('sessionId', OptionalPositiveIntPipe) sessionId?: number,
+  ) {
     // [TBO-56 C2b] DB 권위 READ — 행 findActive + 강사 스코프 세션 재수화 판정
-    return this.attendance.listDbForActor(req.user?.sub, req.user?.roles, sessionId !== undefined ? Number(sessionId) : undefined);
+    return this.attendance.listDbForActor(req.user?.sub, req.user?.roles, sessionId);
   }
 
   @Put()

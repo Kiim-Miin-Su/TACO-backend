@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ViewPresetsService } from './view-presets.service';
@@ -31,14 +32,14 @@ export class ViewPresetsController {
   @Patch(':id')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '캘린더 뷰 프리셋 수정 [소유자·매니저 이상]' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: CreateViewPresetDto, @Req() req: Request & { user?: JwtClaims }) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: CreateViewPresetDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.presets.update(id, dto, req.user?.sub, req.user?.roles); // [TBO-58 P2] IDOR 가드
   }
 
   @Delete(':id')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '캘린더 뷰 프리셋 soft delete [소유자·매니저 이상]' })
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.presets.remove(id, req.user?.sub, req.user?.roles); // [TBO-58 P2] IDOR 가드
   }
 }

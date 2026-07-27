@@ -1,6 +1,7 @@
 // 강사 수업 요청 → 매니저 승인/반려 (TBO-16 #9).
 //  RBAC: 생성·조회·철회=STAFF(강사 포함 — 조회는 강사면 본인 것만 강제), 승인/반려=ADMIN(manager 이상).
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
@@ -44,7 +45,7 @@ export class ScheduleRequestsController {
   @Roles(...ADMIN_ROLES) // manager 이상(#8)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '요청 승인 → createSession 재사용(충돌 409, force=true 강제) + 역참조 + audit. [관리자]' })
-  approve(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest, @Query('force') force?: string) {
+  approve(@Param('id', PositiveIntPipe) id: number, @Req() req: AuthedRequest, @Query('force') force?: string) {
     return this.requests.approve(id, req.user!.sub, force === 'true');
   }
 
@@ -52,7 +53,7 @@ export class ScheduleRequestsController {
   @Roles(...ADMIN_ROLES)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '[C2C-b] pending 요청 수정(관리자) — 종류·대상 전환 금지, 생성과 동일 검증 재사용, audit update diff. [관리자]' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateScheduleRequestDto, @Req() req: AuthedRequest) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateScheduleRequestDto, @Req() req: AuthedRequest) {
     return this.requests.update(id, dto, req.user!.sub);
   }
 
@@ -60,7 +61,7 @@ export class ScheduleRequestsController {
   @Roles(...ADMIN_ROLES)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '요청 반려 — 사유 필수(Q2). [관리자]' })
-  reject(@Param('id', ParseIntPipe) id: number, @Body() body: RejectScheduleRequestDto, @Req() req: AuthedRequest) {
+  reject(@Param('id', PositiveIntPipe) id: number, @Body() body: RejectScheduleRequestDto, @Req() req: AuthedRequest) {
     return this.requests.reject(id, req.user!.sub, body.reason);
   }
 
@@ -68,7 +69,7 @@ export class ScheduleRequestsController {
   @Roles(...STAFF_ROLES)
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '본인 pending 요청 철회(soft delete) — 타인 요청 403. [로그인]' })
-  withdraw(@Param('id', ParseIntPipe) id: number, @Req() req: AuthedRequest) {
+  withdraw(@Param('id', PositiveIntPipe) id: number, @Req() req: AuthedRequest) {
     return this.requests.withdraw(id, req.user!.sub);
   }
 }

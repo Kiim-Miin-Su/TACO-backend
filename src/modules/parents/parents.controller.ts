@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiTags, ApiOperation, ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ParentsService } from './parents.service';
@@ -37,7 +38,7 @@ export class ParentsController {
   @Get(':id')
   @Roles(...ADMIN_ROLES) // [TBO-59 C3 · P0-5]
   @ApiOperation({ summary: '보호자 단건과 학생 연결 정보 조회 [매니저 이상]' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id', PositiveIntPipe) id: number) {
     return this.parents.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 
@@ -61,35 +62,35 @@ export class ParentsController {
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '관계 수정(대표 이전·납부자 변경) — 대표 지정 시 기존 대표 강등' })
   @ApiOkResponse({ description: '수정된 ParentStudent' })
-  updateRelation(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateRelationDto, @Req() req: Request & { user?: JwtClaims }) {
+  updateRelation(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateRelationDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.parents.updateRelation(id, dto, req.user?.sub);
   }
 
   @Delete('relations/:id')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '학생과 보호자의 연결 관계 soft delete [매니저 이상]' })
-  removeRelation(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  removeRelation(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.parents.removeRelation(id, this.actor(req));
   }
 
   @Delete('relations/:id/guardian')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '학생 연결과 미참조 보호자를 함께 soft delete [매니저 이상]' })
-  removeGuardian(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  removeGuardian(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.parents.removeGuardian(id, this.actor(req));
   }
 
   @Patch(':id')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '보호자 연락처·관계 정보를 수정하고 이력 기록 [매니저 이상]' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateParentDto, @Req() req: Request & { user?: JwtClaims }) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateParentDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.parents.update(id, dto, this.actor(req));
   }
 
   @Delete(':id')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '참조 무결성 확인 후 보호자 soft delete [매니저 이상]' })
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.parents.remove(id, this.actor(req));
   }
 

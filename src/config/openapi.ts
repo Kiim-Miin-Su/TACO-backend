@@ -35,6 +35,22 @@ export const PUBLIC_OPENAPI_OPERATION_KEYS = new Set([
 ]);
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'patch', 'delete', 'options', 'head', 'trace']);
+const POSTGRES_INTEGER_MAX = 2_147_483_647;
+const POSITIVE_INTEGER_QUERY_NAMES = new Set([
+  'actorId',
+  'counselFormId',
+  'entityId',
+  'expectedSeriesVersion',
+  'instructorId',
+  'ownerId',
+  'roomId',
+  'sessionId',
+  'studentId',
+]);
+const BOUNDED_INTEGER_QUERIES = new Map<string, { minimum: number; maximum: number }>([
+  ['limit', { minimum: 1, maximum: 500 }],
+  ['months', { minimum: 1, maximum: 12 }],
+]);
 
 export function buildOpenApiConfig() {
   return new DocumentBuilder()
@@ -70,6 +86,43 @@ export function applyOpenApiSecurity(document: OpenAPIObject): OpenAPIObject {
   return document;
 }
 
+export function applyOpenApiIntegerBounds(document: OpenAPIObject): OpenAPIObject {
+  for (const pathItem of Object.values(document.paths)) {
+    for (const [method, rawOperation] of Object.entries(pathItem ?? {})) {
+      if (!HTTP_METHODS.has(method) || !rawOperation || typeof rawOperation !== 'object') continue;
+      const operation = rawOperation as {
+        parameters?: Array<{
+          in?: string;
+          name?: string;
+          schema?: Record<string, unknown>;
+        }>;
+      };
+      for (const parameter of operation.parameters ?? []) {
+        const bounded =
+          parameter.in === 'query' && parameter.name
+            ? BOUNDED_INTEGER_QUERIES.get(parameter.name)
+            : undefined;
+        const isPositiveInteger =
+          parameter.in === 'path' ||
+          (parameter.in === 'query' &&
+            parameter.name != null &&
+            POSITIVE_INTEGER_QUERY_NAMES.has(parameter.name));
+        if (!bounded && !isPositiveInteger) continue;
+
+        parameter.schema = {
+          ...(parameter.schema ?? {}),
+          type: 'integer',
+          format: 'int32',
+          minimum: bounded?.minimum ?? 1,
+          maximum: bounded?.maximum ?? POSTGRES_INTEGER_MAX,
+        };
+      }
+    }
+  }
+  return document;
+}
+
 export function createOpenApiDocument(app: INestApplication): OpenAPIObject {
-  return applyOpenApiSecurity(SwaggerModule.createDocument(app, buildOpenApiConfig()));
+  const document = SwaggerModule.createDocument(app, buildOpenApiConfig());
+  return applyOpenApiIntegerBounds(applyOpenApiSecurity(document));
 }

@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
@@ -35,7 +36,7 @@ export class InstructorsController {
   @Get(':id')
   @Roles(...ADMIN_ROLES)
   @ApiOperation({ summary: '강사 aggregate 상세. 관리자 이상.' })
-  detail(@Param('id', ParseIntPipe) id: number) {
+  detail(@Param('id', PositiveIntPipe) id: number) {
     return this.hr.getInstructor(id);
   }
 
@@ -50,14 +51,14 @@ export class InstructorsController {
   @Patch(':id')
   @UseGuards(SuperAdminGuard)
   @ApiOperation({ summary: '강사 프로필·기본 페이·Kinder 수정. 대표 전용, audit 기록.' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateInstructorDto, @Req() req: Request & { user?: JwtClaims }) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateInstructorDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.hr.updateInstructor(id, this.actorOf(req), dto);
   }
 
   @Delete(':id')
   @UseGuards(SuperAdminGuard)
   @ApiOperation({ summary: '강사 soft delete. 대표 전용, 활성 수업·스케줄·계약은 409.' })
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.hr.removeInstructor(id, this.actorOf(req));
   }
 }

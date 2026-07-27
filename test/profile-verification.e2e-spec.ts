@@ -1,9 +1,10 @@
 // [TBO-29B-4 V4] 연락처 재인증 e2e — 발송/확인/재전송/소비 전 규칙.
 //  provider는 deterministic fake를 DI로 주입(실 발송 0 — §4). 실제 provider smoke는 opt-in 별도.
-import { INestApplication, ValidationPipe } from '@nestjs/common';
+import { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module';
+import { configureApp } from '../src/config/configure-app';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
@@ -65,8 +66,7 @@ describe('Profile contact verification (e2e, TBO-29B-4)', () => {
       .useValue(fake)
       .compile();
     app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
+    configureApp(app, { cors: false, observability: false });
     await app.init();
     seedBusinessFixtures(app);
     http = request(app.getHttpServer());

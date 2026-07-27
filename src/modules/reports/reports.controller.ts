@@ -1,4 +1,5 @@
-import { Body, Controller, Get, Param, ParseIntPipe, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiForbiddenResponse } from '@nestjs/swagger';
@@ -20,15 +21,18 @@ export class ReportsController {
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '보고서 목록(sessionId 필터). 강사는 본인 일반 일정 보고서만.' })
   @ApiQuery({ name: 'sessionId', required: false })
-  findAll(@Req() req: Request & { user?: JwtClaims }, @Query('sessionId') sessionId?: string) {
+  findAll(
+    @Req() req: Request & { user?: JwtClaims },
+    @Query('sessionId', OptionalPositiveIntPipe) sessionId?: number,
+  ) {
     const actor = req.user ? { id: req.user.sub, roles: req.user.roles } : undefined;
-    return this.reports.listDbForActor(actor, sessionId ? Number(sessionId) : undefined); // [TBO-54 C2] DB 권위 READ
+    return this.reports.listDbForActor(actor, sessionId); // [TBO-54 C2] DB 권위 READ
   }
 
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '보고서 단건 — 강사는 본인 보고서만(404→403 표준). [B7 E3 스코프 갭 수정]' })
-  findOne(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  findOne(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.reports.getDbForActor(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined); // [TBO-54 C2]
   }
 
@@ -44,14 +48,14 @@ export class ReportsController {
   @Patch(':id')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '보고서 본문/숙제 수정(승인 전) — 본인 보고서만. 기존 보고서 임시 저장 경로.' })
-  update(@Param('id', ParseIntPipe) id: number, @Body() dto: UpdateReportDto, @Req() req: Request & { user?: JwtClaims }) {
+  update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateReportDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.reports.updateContent(id, dto, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }
 
   @Post(':id/submit')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '강사 제출(draft → submitted) — 본인 보고서만' })
-  submit(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  submit(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.reports.submit(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }
 
@@ -62,7 +66,7 @@ export class ReportsController {
   @ApiOperation({ summary: '관리자 승인(submitted → approved) — 시수 적격 편입 [관리자]' })
   @ApiCreatedResponse({ description: 'SessionReport(approvalStatus=approved, approvedAt·approvedBy)' })
   @ApiForbiddenResponse({ description: '권한 없음(관리자 전용)' })
-  approve(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }, @Body() body?: ApproveReportDto) {
+  approve(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }, @Body() body?: ApproveReportDto) {
     return this.reports.approve(id, req.user?.sub ?? body?.approvedBy); // [감사 전수] actor는 토큰 권위
   }
 
@@ -71,7 +75,7 @@ export class ReportsController {
   @ApiParam({ name: 'id', description: '보고서 id' })
   @ApiOperation({ summary: '관리자 반려(→ rejected, 사유 보존) [관리자]' })
   @ApiCreatedResponse({ description: 'SessionReport(approvalStatus=rejected, rejectedReason)' })
-  reject(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }, @Body() body?: RejectReportDto) {
+  reject(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }, @Body() body?: RejectReportDto) {
     return this.reports.reject(id, body?.reason, req.user?.sub); // [감사 전수 2026-07-16]
   }
 }

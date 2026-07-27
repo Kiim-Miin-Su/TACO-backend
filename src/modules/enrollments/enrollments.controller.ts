@@ -3,12 +3,12 @@ import {
   Controller,
   Get,
   Param,
-  ParseIntPipe,
   Post,
   Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
+import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import { EnrollmentsService } from './enrollments.service';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
@@ -26,15 +26,17 @@ export class EnrollmentsController {
   @Get()
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '수강 등록 목록 조회, studentId 선택 필터 [전 직원]' })
-  findAll(@Query('studentId') studentId?: string) {
-    if (studentId) return this.enrollments.listDb(Number(studentId)); // [TBO-54 C2] DB 권위 READ
+  findAll(
+    @Query('studentId', OptionalPositiveIntPipe) studentId?: number,
+  ) {
+    if (studentId !== undefined) return this.enrollments.listDb(studentId); // [TBO-54 C2] DB 권위 READ
     return this.enrollments.listDb();
   }
 
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '수강 등록 단건 조회 [전 직원]' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
+  findOne(@Param('id', PositiveIntPipe) id: number) {
     return this.enrollments.getDb(id); // [TBO-54 C2] DB 권위 READ
   }
 

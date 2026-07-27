@@ -1,4 +1,5 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, ParseIntPipe, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiOkResponse, ApiConflictResponse, ApiBadRequestResponse } from '@nestjs/swagger';
@@ -23,13 +24,13 @@ export class AvailabilityController {
   async list(
     @Req() req: Request & { user?: JwtClaims },
     @Query('ownerType') ownerType?: AvailabilityOwner,
-    @Query('ownerId') ownerId?: string,
+    @Query('ownerId', OptionalPositiveIntPipe) ownerId?: number,
   ) {
     await this.availability.refresh();
     if (isInstructorOnly(req.user?.roles)) {
       return this.availability.list('instructor', req.user!.sub);
     }
-    return this.availability.list(ownerType, ownerId ? Number(ownerId) : undefined);
+    return this.availability.list(ownerType, ownerId);
   }
 
   @Put()
@@ -59,7 +60,7 @@ export class AvailabilityController {
   @ApiParam({ name: 'id', description: '블록 id' })
   @ApiOperation({ summary: '가용/불가 블록 삭제' })
   @ApiOkResponse({ description: '{ id, deleted: boolean }' })
-  remove(@Param('id', ParseIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+  remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.availability.remove(id, req.user?.sub, req.user?.roles); // actor → soft delete + audit
   }
 }

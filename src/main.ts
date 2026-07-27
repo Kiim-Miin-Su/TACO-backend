@@ -1,16 +1,12 @@
 import 'reflect-metadata';
 import { loadLocalEnv } from './config/load-env';
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
 import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
-import { AllExceptionsFilter } from './common/all-exceptions.filter';
-import { webCorsOrigins } from './common/cors-origin';
-import { LoggingInterceptor } from './common/logging.interceptor';
 import { assertProductionBootSafety } from './config/production-guards';
-import { configureTrustProxy } from './common/trust-proxy';
 import { createOpenApiDocument } from './config/openapi';
-import { RidConsoleLogger, requestContextMiddleware } from './common/request-context'; // [TBO-58 P2]
+import { RidConsoleLogger } from './common/request-context'; // [TBO-58 P2]
+import { configureApp } from './config/configure-app';
 
 // [env 2026-07-03] .env 로드 — 네이티브(Node 20.12+/22, 의존성 없음). AuthService 등이 process.env를
 //  읽기 전(=NestFactory.create 인스턴스화 전)에 채워야 하므로 여기서 먼저 로드한다.
@@ -24,22 +20,7 @@ async function bootstrap() {
   assertProductionBootSafety(); // [TBO-28B] production 필수 env fail-fast(§4 — DB·JWT·SMTP)
   // [TBO-58 P2] RidConsoleLogger — 전 Logger 출력(HTTP·ERROR·money 등 도메인 스코프)에 rid 자동 첨부
   const app = await NestFactory.create(AppModule, { logger: new RidConsoleLogger() });
-  configureTrustProxy(app);
-  app.use(requestContextMiddleware); // [TBO-58 P2] 요청마다 requestId 발급(X-Request-Id 수용·반환)
-
-  // 프론트(Next.js)와 분리 운영 — CORS 허용.
-  // 로컬은 QA 포트가 바뀔 수 있어 전체 origin 허용(origin=true), production은 WEB_ORIGIN/Vercel allowlist.
-  app.enableCors({
-    origin: webCorsOrigins(),
-    credentials: true,
-  });
-
-  app.setGlobalPrefix('api');
-  app.useGlobalPipes(
-    new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }) /* 미허용 필드 400(mass-assignment 방어) */,
-  );
-  app.useGlobalInterceptors(new LoggingInterceptor()); // 모든 요청 로깅 category=http(docs/logging.md)
-  app.useGlobalFilters(new AllExceptionsFilter()); // [R3] 예외 응답 표준화 + category=error(스택 응답 미노출)
+  configureApp(app);
 
   // Swagger — http://localhost:3001/docs (JSON: /docs-json)
   const document = createOpenApiDocument(app);

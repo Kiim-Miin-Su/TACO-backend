@@ -43,7 +43,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -136,7 +139,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -398,7 +404,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -567,7 +576,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -616,7 +628,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -648,7 +663,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -697,7 +715,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -904,7 +925,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -941,7 +965,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1061,7 +1088,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1098,7 +1128,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1145,7 +1178,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1185,7 +1221,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -1193,7 +1232,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -1201,7 +1243,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 500
             }
           }
         ],
@@ -1378,7 +1423,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1427,7 +1475,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1570,7 +1621,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1609,7 +1663,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1648,7 +1705,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1768,7 +1828,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1808,7 +1871,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1857,7 +1923,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1896,7 +1965,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -1904,7 +1976,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1951,7 +2026,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -1959,7 +2037,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -1991,7 +2072,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2031,7 +2115,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2080,7 +2167,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -2088,7 +2178,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2135,7 +2228,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -2143,7 +2239,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2175,7 +2274,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2212,7 +2314,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2249,7 +2354,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2298,7 +2406,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2338,7 +2449,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2391,7 +2505,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2440,7 +2557,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -2448,7 +2568,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2551,7 +2674,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2588,7 +2714,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2635,7 +2764,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2674,7 +2806,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2754,7 +2889,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2864,7 +3002,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2901,7 +3042,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2950,7 +3094,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -2989,7 +3136,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3099,7 +3249,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3136,7 +3289,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3183,7 +3339,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3293,7 +3452,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3330,7 +3492,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3377,7 +3542,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3409,7 +3577,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3448,7 +3619,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3568,7 +3742,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3605,7 +3782,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3652,7 +3832,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3704,7 +3887,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3807,7 +3993,10 @@
             "in": "path",
             "description": "블록 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3855,7 +4044,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -3863,7 +4055,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -3872,7 +4067,10 @@
             "in": "query",
             "description": "학생 코호트(enrollment status≠drop) 역추적",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -3997,7 +4195,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4030,7 +4231,10 @@
             "in": "path",
             "description": "세션 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4061,7 +4265,10 @@
             "in": "path",
             "description": "세션 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4105,7 +4312,10 @@
             "in": "path",
             "description": "세션 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -4128,7 +4338,10 @@
             "in": "query",
             "description": "[C3] series edit CAS — 불일치 시 409 SERIES_VERSION_STALE",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4299,7 +4512,10 @@
             "in": "path",
             "description": "세션 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4342,7 +4558,10 @@
             "in": "path",
             "description": "세션 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4375,7 +4594,10 @@
             "in": "path",
             "description": "세션 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4417,7 +4639,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4480,7 +4705,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4560,7 +4788,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4597,7 +4828,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4646,7 +4880,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4686,7 +4923,10 @@
             "in": "path",
             "description": "보고서 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4732,7 +4972,10 @@
             "in": "path",
             "description": "보고서 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4852,7 +5095,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -4892,7 +5138,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4939,7 +5188,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -4971,7 +5223,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5053,7 +5308,10 @@
             "required": true,
             "in": "query",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -5141,7 +5399,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -5199,7 +5460,10 @@
             "in": "query",
             "description": "조회 개월 수(1~12, 기본 3)",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 12
             }
           }
         ],
@@ -5231,7 +5495,10 @@
             "required": true,
             "in": "query",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -5286,7 +5553,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5401,7 +5671,10 @@
             "in": "path",
             "description": "정산서 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5433,7 +5706,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5483,7 +5759,10 @@
             "in": "path",
             "description": "정산서 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5526,7 +5805,10 @@
             "in": "path",
             "description": "정산서 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5569,7 +5851,10 @@
             "in": "path",
             "description": "정산서 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5615,7 +5900,10 @@
             "in": "path",
             "description": "정산서 id",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5730,7 +6018,10 @@
             "required": false,
             "in": "query",
             "schema": {
-              "type": "string"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5860,7 +6151,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5890,7 +6184,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5930,7 +6227,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -5969,7 +6269,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6008,7 +6311,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6050,7 +6356,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -6058,7 +6367,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6105,7 +6417,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -6113,7 +6428,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6216,7 +6534,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6253,7 +6574,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6300,7 +6624,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6332,7 +6659,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6381,7 +6711,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           },
           {
@@ -6389,7 +6722,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6428,7 +6764,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6571,7 +6910,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6618,7 +6960,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6728,7 +7073,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6821,7 +7169,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6861,7 +7212,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -6993,7 +7347,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -7030,7 +7387,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -7077,7 +7437,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -7142,7 +7505,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -7182,7 +7548,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -7214,7 +7583,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -7279,7 +7651,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
@@ -7316,7 +7691,10 @@
             "required": true,
             "in": "path",
             "schema": {
-              "type": "number"
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
             }
           }
         ],
