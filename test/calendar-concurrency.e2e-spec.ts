@@ -104,15 +104,17 @@ describe('Calendar concurrency + integrity (e2e, TBO-28C)', () => {
     // 블록은 저장되지 않았다
     const blocks = (await http.get('/api/availability?ownerType=instructor&ownerId=1').set(asAdmin()).expect(200)).body as Array<{ weekday: number; startTime: string }>;
     expect(blocks.some((b) => b.weekday === nextWeekday && b.startTime === '00:30')).toBe(false);
-    // 관리자는 동일 변경 직접 반영 가능(기존 규약 유지)
-    await http.put('/api/availability').set(asAdmin()).send({
+    // 관리자도 모순 상태를 직접 만들 수 없다. 승인 요청은 남길 수 있지만 실제 반영 전에
+    // 영향 수업을 먼저 변경/취소해야 한다.
+    const adminBlocked = await http.put('/api/availability').set(asAdmin()).send({
       ownerType: 'instructor', ownerId: 1, kind: 'unavailable',
       weekday: nextWeekday, startTime: '00:30', endTime: '02:00',
-    }).expect(200);
-    // 이제 같은 시간대 크로스 세션 신규 생성은 익일 세그먼트 충돌로 409 (conflict.util 이틀 검사)
-    await http.post('/api/schedule').set(asAdmin())
-      .send({ courseId: 10, instructorId: 1, sessionDate: '2099-06-15', startTime: '23:30', endTime: '01:00', topic: '크로스재시도' })
-      .expect(409);
+    }).expect(409);
+    expect(adminBlocked.body).toMatchObject({ approvalRequired: false });
+    expect((adminBlocked.body.impactedSessions as Array<{ sessionId: number }>)
+      .some((x) => x.sessionId === made.id)).toBe(true);
+    const afterAdmin = (await http.get('/api/availability?ownerType=instructor&ownerId=1').set(asAdmin()).expect(200)).body as Array<{ weekday: number; startTime: string }>;
+    expect(afterAdmin.some((b) => b.weekday === nextWeekday && b.startTime === '00:30')).toBe(false);
   });
 
   it('실패 주입 rollback — audit 실패 시 세션 미잔존, 이후 커밋은 정상(스냅샷이 남의 커밋을 삼키지 않음)', async () => {

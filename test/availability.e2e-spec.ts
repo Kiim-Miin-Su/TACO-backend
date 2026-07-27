@@ -144,6 +144,66 @@ describe('Availability API (e2e)', () => {
     expect(JSON.stringify(res.body)).toContain('unavailable');
   });
 
+  it('관리자도 기존 수업 위에 불가/대면 위에 온라인 전용을 저장할 수 없고 충돌 수업을 식별한다', async () => {
+    const sessionDate = '2099-10-08';
+    const weekday = new Date(`${sessionDate}T00:00:00Z`).getUTCDay();
+    const inPerson = (await http.post('/api/schedule').set(TH())
+      .send({
+        courseId: 10,
+        instructorId: 1,
+        sessionDate,
+        startTime: '03:00',
+        endTime: '03:30',
+        topic: '불가시간 역방향 충돌 QA',
+        force: true,
+      })
+      .expect(201)).body.row;
+
+    const unavailable = await http.put('/api/availability').set(asAdmin())
+      .send({
+        ownerType: 'instructor',
+        ownerId: 1,
+        kind: 'unavailable',
+        weekday,
+        startTime: '03:00',
+        endTime: '03:30',
+        effectiveFrom: sessionDate,
+        effectiveTo: sessionDate,
+      })
+      .expect(409);
+    expect(unavailable.body).toMatchObject({
+      approvalRequired: false,
+      impactedSessions: expect.arrayContaining([expect.objectContaining({
+        sessionId: inPerson.id,
+        instructorId: 1,
+        instructorName: expect.any(String),
+        topic: '불가시간 역방향 충돌 QA',
+        reason: 'unavailable_overlap',
+      })]),
+    });
+    expect(String(unavailable.body.message)).toContain(`수업 #${inPerson.id}`);
+
+    const onlineOnly = await http.put('/api/availability').set(asAdmin())
+      .send({
+        ownerType: 'instructor',
+        ownerId: 1,
+        kind: 'online_only',
+        weekday,
+        startTime: '03:00',
+        endTime: '03:30',
+        effectiveFrom: sessionDate,
+        effectiveTo: sessionDate,
+      })
+      .expect(409);
+    expect(onlineOnly.body.impactedSessions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ sessionId: inPerson.id, reason: 'online_only_overlap' }),
+    ]));
+
+    const rows = (await http.get('/api/availability?ownerType=instructor&ownerId=1').set(asAdmin()).expect(200)).body;
+    expect(rows.some((row: { effectiveFrom?: string; startTime: string }) =>
+      row.effectiveFrom === sessionDate && row.startTime === '03:00')).toBe(false);
+  });
+
   it('겹침 방지(버그2): 같은 오너·요일 겹치는 블록 → 409, 인접(안 겹침)은 통과', async () => {
     // 학생4 화요일 10:00–11:00 불가 지정
     await http.put('/api/availability')

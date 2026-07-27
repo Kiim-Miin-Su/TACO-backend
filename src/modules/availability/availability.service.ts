@@ -25,6 +25,10 @@ export type AvailabilityImpact = {
   sessionDate: string;
   startTime?: string;
   endTime?: string;
+  instructorId?: number;
+  instructorName?: string;
+  courseId?: number;
+  topic?: string;
   reason: 'available_removed' | 'unavailable_overlap' | 'online_only_overlap';
 };
 
@@ -195,13 +199,10 @@ export class AvailabilityService implements OnModuleInit {
     return this.ownerSessions(b.ownerType, Number(b.ownerId))
       .filter((s) => this.segmentsHitBlock(s, b))
       .filter((s) => b.kind === 'unavailable' || (s.mode ?? 'in_person') !== 'online')
-      .map((s) => ({
-        sessionId: s.id,
-        sessionDate: s.sessionDate,
-        startTime: s.startTime,
-        endTime: s.endTime,
-        reason: b.kind === 'online_only' ? 'online_only_overlap' : 'unavailable_overlap',
-      }));
+      .map((s) => this.impactOfSession(
+        s,
+        b.kind === 'online_only' ? 'online_only_overlap' : 'unavailable_overlap',
+      ));
   }
 
   private impactOfAvailableRemoval(before: AvailabilityBlock, after: AvailabilityBlockEx | null): AvailabilityImpact[] {
@@ -213,7 +214,22 @@ export class AvailabilityService implements OnModuleInit {
         after.ownerType !== before.ownerType ||
         Number(after.ownerId) !== Number(before.ownerId) ||
         !this.segmentsHitBlock(s, after))
-      .map((s) => ({ sessionId: s.id, sessionDate: s.sessionDate, startTime: s.startTime, endTime: s.endTime, reason: 'available_removed' }));
+      .map((s) => this.impactOfSession(s, 'available_removed'));
+  }
+
+  private impactOfSession(s: ClassSession, reason: AvailabilityImpact['reason']): AvailabilityImpact {
+    const instructor = this.db.findById<StaffAccount>(USERS, s.instructorId);
+    return {
+      sessionId: s.id,
+      sessionDate: s.sessionDate,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      instructorId: s.instructorId,
+      instructorName: instructor?.name,
+      courseId: s.courseId,
+      topic: s.topic,
+      reason,
+    };
   }
 
   private dedupeImpact(items: AvailabilityImpact[]): AvailabilityImpact[] {
@@ -226,10 +242,21 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   private assertApprovalNotRequired(dto: UpsertAvailabilityDto, actorRoles?: string[]): void {
-    if (hasAdminRole(actorRoles)) return;
     const impacted = this.previewUpsertImpact(dto);
-    if (impacted.length)
+    if (!impacted.length) return;
+    if (!hasAdminRole(actorRoles)) {
       throw new ConflictException({ message: '매니저 승인 필요', approvalRequired: true, impactedSessions: impacted });
+    }
+    const restrictive = impacted.filter((row) => row.reason !== 'available_removed');
+    if (!restrictive.length) return;
+    const first = restrictive[0];
+    const instructor = first.instructorName ?? (first.instructorId != null ? `강사 #${first.instructorId}` : '담당 강사');
+    const topic = first.topic?.trim() ? `"${first.topic}"` : `수업 #${first.sessionId}`;
+    throw new ConflictException({
+      message: `${instructor}의 ${topic} 수업 #${first.sessionId} (${first.sessionDate} ${first.startTime ?? '—'}–${first.endTime ?? '—'})과 겹쳐 저장할 수 없습니다. 먼저 수업을 변경하거나 취소해 주세요.`,
+      approvalRequired: false,
+      impactedSessions: restrictive,
+    });
   }
 
   private assertDeleteApprovalNotRequired(id: number, actorRoles?: string[]): void {
