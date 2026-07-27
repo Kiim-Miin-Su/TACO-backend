@@ -31,8 +31,13 @@ async function bootstrapServer() {
   console.log("[boot] serverless bootstrap start");
   assertProductionBootSafety(); // [TBO-28B] production 필수 env fail-fast(§4 — DB·JWT·SMTP)
   console.log("[boot] production guard passed");
+  const logger = new RidConsoleLogger();
+  // Nest route discovery emits hundreds of lines on every cold start. Keep the
+  // finite Vercel invocation log budget for lifecycle failures, then restore
+  // normal operational logging after initialization.
+  logger.setLogLevels(["error", "warn"]);
   const app = await NestFactory.create(AppModule, {
-    logger: new RidConsoleLogger(),
+    logger,
   });
   console.log("[boot] Nest application created");
   configureApp(app);
@@ -51,6 +56,7 @@ async function bootstrapServer() {
 
   console.log("[boot] Nest application init start");
   await app.init();
+  logger.setLogLevels(["log", "error", "warn"]);
   console.log("[boot] serverless bootstrap ready");
   return app.getHttpAdapter().getInstance() as (req: unknown, res: unknown) => void;
 }
