@@ -25,6 +25,25 @@ describe('Catalog CRUD and RBAC (e2e)', () => {
     await http.delete('/api/courses/10').set(auth(instructor)).expect(403);
   });
 
+  it('강사 수업 조회는 가격·시급 필드를 서버 응답에서 제외하고 관리자는 유지한다', async () => {
+    const instructorRows = (await http.get('/api/courses').set(auth(instructor)).expect(200)).body as Array<Record<string, unknown>>;
+    expect(instructorRows.length).toBeGreaterThan(0);
+    for (const row of instructorRows) {
+      expect(row).not.toHaveProperty('price');
+      expect(row).not.toHaveProperty('hourlyRate');
+      expect(row).not.toHaveProperty('hourlyRateOverride');
+    }
+    const instructorDetail = (await http.get('/api/courses/10').set(auth(instructor)).expect(200)).body;
+    expect(instructorDetail).not.toHaveProperty('price');
+    expect(instructorDetail).not.toHaveProperty('hourlyRate');
+    expect(instructorDetail).not.toHaveProperty('hourlyRateOverride');
+
+    const adminDetail = (await http.get('/api/courses/10').set(auth(admin)).expect(200)).body;
+    expect(adminDetail).toHaveProperty('price');
+    expect(adminDetail).toHaveProperty('hourlyRate');
+    expect(adminDetail).toHaveProperty('hourlyRateOverride');
+  });
+
   it('관리자는 과목·코스를 수정하고 미참조 자산을 soft delete할 수 있다', async () => {
     await http.patch('/api/instructors/1').set(auth(admin))
       .send({ defaultHourlyRate: 50000, canTeachKinder: true }).expect(200);

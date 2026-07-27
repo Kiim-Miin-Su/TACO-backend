@@ -13,6 +13,7 @@ import { RegisterStudentDto } from './dto/register-student.dto';
 import { StudentInterestsService } from '../students/student-interests.service';
 import { UpdateStudentAggregateDto } from '../students/dto/update-student-aggregate.dto';
 import { studentGradeBirthDateError } from '../students/student-grade.policy';
+import type { InstructorStudentAggregate } from '../students/students.service';
 
 export type RegistrationResult = {
   student: Student;
@@ -90,6 +91,14 @@ export class RegistrationsService {
 
   getAggregate(studentId: number): Promise<StudentAggregate> {
     return this.students.findAggregateDb(studentId); // [TBO-54 C2] DB 권위 READ
+  }
+
+  getAggregateForActor(
+    studentId: number,
+    actorId?: number,
+    roles: string[] = [],
+  ): Promise<StudentAggregate | InstructorStudentAggregate> {
+    return this.students.findAggregateDbForActor(studentId, actorId, roles);
   }
 
   async updateAggregate(studentId: number, dto: UpdateStudentAggregateDto, actorId: number): Promise<StudentAggregate> {

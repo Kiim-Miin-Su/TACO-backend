@@ -6,7 +6,7 @@ import { CoursesService } from './courses.service';
 import { CreateCourseDto } from './dto/create-course.dto';
 import { UpdateCourseDto } from './dto/update-course.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES, isInstructorOnly } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 
 @ApiTags('courses')
@@ -18,15 +18,15 @@ export class CoursesController {
   @Get()
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '수업 목록 조회 [전 직원]' })
-  findAll() {
-    return this.courses.findAllFresh();
+  findAll(@Req() req: Request & { user?: JwtClaims }) {
+    return this.courses.findAllFreshForActor(isInstructorOnly(req.user?.roles));
   }
 
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '수업 단건 및 담당 강사별 페이 override 조회 [전 직원]' })
-  findOne(@Param('id', PositiveIntPipe) id: number) {
-    return this.courses.findOneFresh(id);
+  findOne(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.courses.findOneFreshForActor(id, isInstructorOnly(req.user?.roles));
   }
 
   @Post()

@@ -24,6 +24,8 @@ import { UpdateCourseDto } from './dto/update-course.dto';
 import { InstructorProfilesStore } from '../users/instructor-profiles.store';
 import { withEffectiveCourseRate } from './course-pay.resolver';
 
+export type InstructorCourseView = Omit<Course, 'price' | 'hourlyRate' | 'hourlyRateOverride'>;
+
 @Injectable()
 export class CoursesService implements OnModuleInit {
   constructor(
@@ -57,6 +59,11 @@ export class CoursesService implements OnModuleInit {
     return this.findAll();
   }
 
+  async findAllFreshForActor(instructorOnly: boolean): Promise<Array<Course | InstructorCourseView>> {
+    const courses = await this.findAllFresh();
+    return instructorOnly ? courses.map((course) => this.toInstructorView(course)) : courses;
+  }
+
   findOne(id: number): Course {
     const row = this.db.findById<StoredCourse>(COURSES, id);
     if (!row) throw new NotFoundException(`Course ${id} not found`);
@@ -71,9 +78,22 @@ export class CoursesService implements OnModuleInit {
     return this.findOne(id);
   }
 
+  async findOneFreshForActor(id: number, instructorOnly: boolean): Promise<Course | InstructorCourseView> {
+    const course = await this.findOneFresh(id);
+    return instructorOnly ? this.toInstructorView(course) : course;
+  }
+
   findOptional(id: number): Course | undefined {
     const row = this.db.findById<StoredCourse>(COURSES, id);
     return row ? this.effective(row) : undefined;
+  }
+
+  private toInstructorView(course: Course): InstructorCourseView {
+    const safe: Partial<Course> = { ...course };
+    delete safe.price;
+    delete safe.hourlyRate;
+    delete safe.hourlyRateOverride;
+    return safe as InstructorCourseView;
   }
 
   /** 과목명 기반 composite 수업 개설이 인스턴스 간 같은 과목을 중복 생성하지 않도록 쓰는 안정 잠금 키. */

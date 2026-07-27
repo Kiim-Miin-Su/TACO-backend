@@ -16,9 +16,11 @@ describe('[TBO-35 35C] student aggregate CRUD/RBAC/audit', () => {
   let ownerToken = '';
   let managerToken = '';
   let instructorToken = '';
+  let foreignInstructorToken = '';
 
   const owner = () => ({ Authorization: `Bearer ${ownerToken}` });
   const instructor = () => ({ Authorization: `Bearer ${instructorToken}` });
+  const foreignInstructor = () => ({ Authorization: `Bearer ${foreignInstructorToken}` });
   const manager = () => ({ Authorization: `Bearer ${managerToken}` });
   const profile = (name: string, country = 'KR') => ({
     name, gender: 'female', birthDate: '2012-03-15', grade: 8, country,
@@ -38,6 +40,7 @@ describe('[TBO-35 35C] student aggregate CRUD/RBAC/audit', () => {
     ownerToken = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     managerToken = (await http.post('/api/auth/login').send({ webId: 'manager', password: 'demo1234' }).expect(201)).body.accessToken;
     instructorToken = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
+    foreignInstructorToken = (await http.post('/api/auth/login').send({ webId: 'jung_inst', password: 'demo1234' }).expect(201)).body.accessToken;
   });
   afterAll(async () => { await app.close(); });
 
@@ -64,8 +67,23 @@ describe('[TBO-35 35C] student aggregate CRUD/RBAC/audit', () => {
 
     const detail = (await http.get(`/api/students/${studentId}/aggregate`).set(instructor()).expect(200)).body;
     expect(detail.student).toMatchObject({ name: '35C 학생', status: 'new_inquiry' });
+    const instructorStudentKeys = [
+      'id', 'name', 'englishName', 'grade', 'country', 'schoolName', 'status', 'createdAt', 'updatedAt',
+    ];
+    expect(Object.keys(detail.student).every((key) => instructorStudentKeys.includes(key))).toBe(true);
+    expect(detail.student).not.toHaveProperty('phone');
+    expect(detail.student).not.toHaveProperty('address');
+    expect(detail.student).not.toHaveProperty('birthDate');
     expect(detail.interests.map((row: { priority: number }) => row.priority)).toEqual([1, 2]);
-    expect(detail.guardians).toHaveLength(1);
+    expect(detail.guardians).toEqual([]);
+    expect(detail.familyRelations).toEqual([]);
+    expect(detail.academicHistories).toEqual([]);
+    expect(JSON.stringify(detail)).not.toContain('010-8222-3333');
+    await http.get(`/api/students/${studentId}/aggregate`).set(foreignInstructor()).expect(403);
+
+    const ownerDetail = (await http.get(`/api/students/${studentId}/aggregate`).set(owner()).expect(200)).body;
+    expect(ownerDetail.guardians).toHaveLength(1);
+    expect(ownerDetail.student.phone).toBe('010-8123-4567');
 
     await http.patch(`/api/students/${studentId}/aggregate`).set(instructor())
       .send({ student: { status: 'enrolled' } }).expect(403);

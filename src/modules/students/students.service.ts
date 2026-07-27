@@ -34,6 +34,10 @@ import { CreateStudentAcademicHistoryDto, UpdateStudentAcademicHistoryDto } from
 import { CounselForm, COUNSEL_FORMS } from '../counsel/counsel.entity';
 import type { StudentFamilyAggregate, StudentFamilyMember } from './student-family.types';
 
+export type InstructorStudentAggregate = Omit<StudentAggregate, 'student'> & {
+  student: Partial<Student>;
+};
+
 @Injectable()
 export class StudentsService implements OnModuleInit {
   constructor(
@@ -126,6 +130,30 @@ export class StudentsService implements OnModuleInit {
     const allowed = await this.instructorStudentIds(actorId);
     if (!allowed.has(id)) throw new ForbiddenException('담당 수업의 학생만 조회할 수 있습니다.');
     return this.toInstructorSafe(await this.getDb(id));
+  }
+
+  /**
+   * Aggregate READ도 단건 READ와 같은 담당 학생 경계를 사용한다.
+   * 강사 응답은 수업 준비에 필요한 최소 프로필과 희망 수업만 포함하며,
+   * 보호자 PII·가족 관계·학사 이력은 서버에서 반환하지 않는다.
+   */
+  async findAggregateDbForActor(
+    id: number,
+    actorId?: number,
+    roles: string[] = [],
+  ): Promise<StudentAggregate | InstructorStudentAggregate> {
+    if (hasAdminRole(roles)) return this.findAggregateDb(id);
+    const student = await this.getDbForActor(id, actorId, roles);
+    const interests = (await this.store.findActive<StudentInterest>(STUDENT_INTERESTS_SPEC, {
+      where: { studentId: id } as Partial<StudentInterest>,
+    })).sort((a, b) => a.priority - b.priority || a.id - b.id);
+    return {
+      student,
+      interests,
+      guardians: [],
+      familyRelations: [],
+      academicHistories: [],
+    };
   }
 
   /** aggregate 구성 표 5종을 전부 findActive로 조립 — 조인·정렬 계약은 메모리판과 동일. */

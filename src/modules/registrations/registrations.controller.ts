@@ -3,7 +3,7 @@ import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES, STAFF_ROLES, isInstructorOnly } from '../auth/roles.decorator';
+import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 import { RegistrationsService } from './registrations.service';
 import { RegisterStudentDto } from './dto/register-student.dto';
@@ -38,11 +38,8 @@ export class RegistrationsController {
   @Get(':id/aggregate')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '학생 프로필·희망 수업·보호자·수강·학사 이력 aggregate 조회 [역할별 최소화]' })
-  async getAggregate(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
-    const aggregate = await this.registrations.getAggregate(id); // [TBO-54 C2] DB 권위 READ
-    if (!isInstructorOnly(req.user?.roles)) return aggregate;
-    const { student, interests, guardians } = aggregate;
-    return { student, interests, guardians };
+  getAggregate(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.registrations.getAggregateForActor(id, req.user?.sub, req.user?.roles ?? []);
   }
 
   @Patch(':id/aggregate')
