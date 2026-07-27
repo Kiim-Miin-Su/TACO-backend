@@ -14,12 +14,15 @@ delete process.env.POSTGRES_URL_NON_POOLING;
 process.env.NODE_ENV = 'test';
 
 import { createTestApp } from './setup-app';
+import { seedQaPendingPayoutFixture } from './fixtures/seed-qa-payout-fixture';
 
 async function main() {
   const port = Number(process.env.PORT) || 3001;
   const app = await createTestApp();
+  const payoutFixture = await seedQaPendingPayoutFixture(app);
   await app.listen(port);
   console.log(`[qa] fixture server on :${port} — in-memory·업무 픽스처 시드(재시작=초기화)`);
+  console.log(`[qa] editable pending payout #${payoutFixture.payout.id} — service/UoW 생성`);
   console.log('[qa] 데모 계정: admin(대표) · manager(매니저) · park_inst/jung_inst(강사) — 비밀번호는 데모 공통값');
 }
 main().catch((e) => { console.error(e); process.exit(1); });
