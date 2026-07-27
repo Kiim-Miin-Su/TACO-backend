@@ -35,9 +35,16 @@ export type ActiveFindOptions<T extends BaseRow> = {
   limit?: number;
 };
 
+export const safeSqlIdentifier = (identifier: string): string => {
+  if (!/^[a-z][a-z0-9_]*$/.test(identifier)) throw new Error(`Unsafe SQL identifier: ${identifier}`);
+  return identifier;
+};
+
+const safeTable = (table: string): string => safeSqlIdentifier(table);
+
 const safeColumn = (field: string): string => {
   if (!/^[A-Za-z][A-Za-z0-9]*$/.test(field)) throw new Error(`Unsafe query field: ${field}`);
-  return camelToSnake(field);
+  return safeSqlIdentifier(camelToSnake(field));
 };
 
 @Injectable()
@@ -99,7 +106,8 @@ export class PostgresCollectionStore {
       }
     }
     if (!(await this.ensureReady(spec))) return [];
-    const rows = await this.query(`SELECT * FROM ${spec.table} ORDER BY id ASC`);
+    const table = safeTable(spec.table);
+    const rows = await this.query(`SELECT * FROM ${table} ORDER BY id ASC`);
     const parsed = rows.map((row) => this.fromDbRow<T>(spec, row));
     this.memory.replaceExact<T>(spec.table, parsed);
     return parsed;
@@ -129,8 +137,9 @@ export class PostgresCollectionStore {
     const conditions = where.map(([field], index) => `${safeColumn(field)} = $${index + 1}`);
     const order = options.orderBy ? ` ORDER BY ${safeColumn(options.orderBy.field)} ${direction}` : '';
     const limitSql = limit == null ? '' : ` LIMIT ${limit}`;
+    const table = safeTable(spec.table);
     const rows = await this.query(
-      `SELECT * FROM ${spec.table} WHERE deleted_at IS NULL${conditions.length ? ` AND ${conditions.join(' AND ')}` : ''}${order}${limitSql}`,
+      `SELECT * FROM ${table} WHERE deleted_at IS NULL${conditions.length ? ` AND ${conditions.join(' AND ')}` : ''}${order}${limitSql}`,
       values,
     );
     return rows.map((row) => this.fromDbRow<T>(spec, row));
@@ -183,15 +192,16 @@ export class PostgresCollectionStore {
 
     const payload = this.toDbPayload(spec, data as Record<string, unknown>);
     const keys = Object.keys(payload);
-    const columns = keys.map(camelToSnake);
+    const columns = keys.map(safeColumn);
     const conflictColumns = conflictFields.map(safeColumn);
     const conflictSet = new Set(conflictColumns);
     const updateColumns = columns.filter((column) => !conflictSet.has(column) && column !== 'id');
     if (!updateColumns.length) throw new Error('upsertActive requires at least one update field');
     const placeholders = keys.map((_, index) => `$${index + 1}`);
     const values = keys.map((key) => payload[key]);
+    const table = safeTable(spec.table);
     const [row] = await this.query(
-      `INSERT INTO ${spec.table} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+      `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
        ON CONFLICT (${conflictColumns.join(', ')}) WHERE deleted_at IS NULL
        DO UPDATE SET ${updateColumns.map((column) => `${column} = EXCLUDED.${column}`).join(', ')}, updated_at = now()
        RETURNING *`,
@@ -208,11 +218,12 @@ export class PostgresCollectionStore {
     const payload = this.toDbPayload(spec, patch as Record<string, unknown>);
     const keys = Object.keys(payload);
     if (!keys.length) return this.memory.findById<T>(spec.table, id);
-    const assignments = keys.map((key, i) => `${camelToSnake(key)} = $${i + 1}`);
+    const assignments = keys.map((key, i) => `${safeColumn(key)} = $${i + 1}`);
     const values = keys.map((key) => payload[key]);
     values.push(id);
+    const table = safeTable(spec.table);
     const [row] = await this.query(
-      `UPDATE ${spec.table} SET ${assignments.join(', ')}, updated_at = now() WHERE id = $${values.length} AND deleted_at IS NULL RETURNING *`,
+      `UPDATE ${table} SET ${assignments.join(', ')}, updated_at = now() WHERE id = $${values.length} AND deleted_at IS NULL RETURNING *`,
       values,
     );
     if (!row) return undefined;
@@ -223,8 +234,9 @@ export class PostgresCollectionStore {
 
   async remove(spec: PostgresCollectionSpec, id: number, deletedBy?: number): Promise<boolean> {
     if (!(await this.ensureReady(spec))) return this.memory.remove(spec.table, id, deletedBy);
+    const table = safeTable(spec.table);
     const rows = await this.query(
-      `UPDATE ${spec.table} SET deleted_at = now(), deleted_by = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL RETURNING id`,
+      `UPDATE ${table} SET deleted_at = now(), deleted_by = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL RETURNING id`,
       [deletedBy ?? null, id],
     );
     if (!rows.length) return false;
@@ -236,9 +248,10 @@ export class PostgresCollectionStore {
       const rows = this.memory.findByField<BaseRow>(spec.table, field as keyof BaseRow & string, value);
       return rows.reduce((count, row) => count + (this.memory.remove(spec.table, row.id, deletedBy) ? 1 : 0), 0);
     }
+    const table = safeTable(spec.table);
     const rows = await this.query(
-      `UPDATE ${spec.table} SET deleted_at = now(), deleted_by = $1, updated_at = now()
-        WHERE ${camelToSnake(field)} = $2 AND deleted_at IS NULL RETURNING id`,
+      `UPDATE ${table} SET deleted_at = now(), deleted_by = $1, updated_at = now()
+        WHERE ${safeColumn(field)} = $2 AND deleted_at IS NULL RETURNING id`,
       [deletedBy ?? null, value],
     );
     for (const row of rows) this.memory.remove(spec.table, Number(row.id), deletedBy);
@@ -262,15 +275,16 @@ export class PostgresCollectionStore {
     const expectedKeys = Object.keys(expectedPayload);
     if (!patchKeys.length) return this.memory.findById<T>(spec.table, id);
     const values = patchKeys.map((key) => payload[key]);
-    const assignments = patchKeys.map((key, index) => `${camelToSnake(key)} = $${index + 1}`);
+    const assignments = patchKeys.map((key, index) => `${safeColumn(key)} = $${index + 1}`);
     values.push(id);
     const idParam = values.length;
     const conditions = expectedKeys.map((key) => {
       values.push(expectedPayload[key]);
-      return `${camelToSnake(key)} = $${values.length}`;
+      return `${safeColumn(key)} = $${values.length}`;
     });
+    const table = safeTable(spec.table);
     const [row] = await this.query(
-      `UPDATE ${spec.table} SET ${assignments.join(', ')}, updated_at = now()
+      `UPDATE ${table} SET ${assignments.join(', ')}, updated_at = now()
         WHERE id = $${idParam} AND deleted_at IS NULL${conditions.length ? ` AND ${conditions.join(' AND ')}` : ''}
         RETURNING *`,
       values,
@@ -289,7 +303,7 @@ export class PostgresCollectionStore {
     const payload = this.toDbPayload(spec, data);
     if (!withId) delete payload.id;
     const keys = Object.keys(payload);
-    const columns = keys.map(camelToSnake);
+    const columns = keys.map(safeColumn);
     const placeholders = keys.map((_, i) => `$${i + 1}`);
     const updates = columns
       .filter((c) => c !== 'id')
@@ -300,15 +314,17 @@ export class PostgresCollectionStore {
       : withId
         ? ' ON CONFLICT (id) DO NOTHING'
         : '';
+    const table = safeTable(spec.table);
     const rows = await this.query(
-      `INSERT INTO ${spec.table} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})${conflict} RETURNING *`,
+      `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders.join(', ')})${conflict} RETURNING *`,
       values,
     );
     return rows.map((row) => this.fromDbRow<T>(spec, row));
   }
 
   private async syncSequence(table: string): Promise<void> {
-    await this.query(`SELECT setval(pg_get_serial_sequence('${table}', 'id'), COALESCE((SELECT MAX(id) FROM ${table}), 1), true)`);
+    const safe = safeTable(table);
+    await this.query(`SELECT setval(pg_get_serial_sequence('${safe}', 'id'), COALESCE((SELECT MAX(id) FROM ${safe}), 1), true)`);
   }
 
   private async query(sql: string, params: unknown[] = []): Promise<PostgresRow[]> {

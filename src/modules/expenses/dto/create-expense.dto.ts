@@ -34,8 +34,4 @@ export class CreateExpenseDto implements CreateExpenseInput {
   @MaxLength(TEXT.memo)
   memo?: string;
 
-  @IsOptional()
-  @IsString()
-  @MaxLength(TEXT.url)
-  receiptUrl?: string;
 }

@@ -9128,10 +9128,6 @@
           "memo": {
             "type": "string",
             "maxLength": 500
-          },
-          "receiptUrl": {
-            "type": "string",
-            "maxLength": 500
           }
         },
         "required": [
@@ -9175,10 +9171,6 @@
             "maxLength": 100
           },
           "memo": {
-            "type": "string",
-            "maxLength": 500
-          },
-          "receiptUrl": {
             "type": "string",
             "maxLength": 500
           }

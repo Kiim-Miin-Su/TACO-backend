@@ -17,6 +17,7 @@ import type {
   ProviderCheckResult,
   SendChallengeInput,
 } from './contact-verification.provider';
+import { fetchTrustedOrigin } from '../../common/trusted-fetch';
 
 const TWILIO_BASE = 'https://verify.twilio.com/v2';
 const SENS_BASE = 'https://sens.apigw.ntruss.com';
@@ -71,7 +72,7 @@ export class DefaultContactVerificationProvider implements ContactVerificationPr
       throw new Error('SENS 채널 확인은 서비스 hash 대조를 사용합니다.');
     }
     const { sid, auth, serviceSid } = this.twilioConfig();
-    const res = await fetch(`${TWILIO_BASE}/Services/${serviceSid}/VerificationCheck`, {
+    const res = await fetchTrustedOrigin(`${TWILIO_BASE}/Services/${serviceSid}/VerificationCheck`, TWILIO_BASE, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${Buffer.from(`${sid}:${auth}`).toString('base64')}`,
@@ -90,7 +91,7 @@ export class DefaultContactVerificationProvider implements ContactVerificationPr
     const path = `/sms/v2/services/${encodeURIComponent(sens.serviceId)}/messages`;
     const timestamp = String(Date.now());
     const { countryCode, to } = sensRecipientOf(input.target);
-    const res = await fetch(`${SENS_BASE}${path}`, {
+    const res = await fetchTrustedOrigin(`${SENS_BASE}${path}`, SENS_BASE, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json; charset=utf-8',
@@ -132,7 +133,7 @@ export class DefaultContactVerificationProvider implements ContactVerificationPr
   // ── Twilio Verify (legacy fallback) ──────────────────────────────────────
   private async sendViaTwilio(input: SendChallengeInput): Promise<ProviderChallenge> {
     const { sid, auth, serviceSid } = this.twilioConfig();
-    const res = await fetch(`${TWILIO_BASE}/Services/${serviceSid}/Verifications`, {
+    const res = await fetchTrustedOrigin(`${TWILIO_BASE}/Services/${serviceSid}/Verifications`, TWILIO_BASE, {
       method: 'POST',
       headers: {
         Authorization: `Basic ${Buffer.from(`${sid}:${auth}`).toString('base64')}`,

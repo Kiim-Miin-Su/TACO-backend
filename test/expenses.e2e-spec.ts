@@ -53,6 +53,17 @@ describe('[TBO-58] expenses 홈 스위트 (e2e)', () => {
     await http.delete(`/api/expenses/${row.id}`).set(auth('admin')).expect(400);
   });
 
+  it('영수증 문자열은 자산 저장소 연결 전까지 create/update 모두 400으로 차단한다', async () => {
+    await http.post('/api/expenses').set(auth('admin')).send({
+      ...newExpense('data URL 차단'),
+      receiptUrl: 'data:image/svg+xml,<svg onload=alert(1)>',
+    }).expect(400);
+    const row = (await http.post('/api/expenses').set(auth('admin')).send(newExpense('URL 수정 차단')).expect(201)).body;
+    await http.patch(`/api/expenses/${row.id}`).set(auth('admin')).send({
+      receiptUrl: 'https://attacker.example/track.png',
+    }).expect(400);
+  });
+
   it('수정(PATCH) — requested만, 필드 정정 후 승인하면 정정된 금액으로 원장 기록', async () => {
     const row = (await http.post('/api/expenses').set(auth('admin')).send(newExpense('오기입 정정', 90_000)).expect(201)).body;
     // 빈 patch 400

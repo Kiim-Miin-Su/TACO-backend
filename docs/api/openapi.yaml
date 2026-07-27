@@ -5701,9 +5701,6 @@ components:
         memo:
           type: string
           maxLength: 500
-        receiptUrl:
-          type: string
-          maxLength: 500
       required:
         - category
         - title
@@ -5737,9 +5734,6 @@ components:
           type: string
           maxLength: 100
         memo:
-          type: string
-          maxLength: 500
-        receiptUrl:
           type: string
           maxLength: 500
     RejectExpenseDto:

@@ -22,6 +22,7 @@ import { ADMIN_ROLES, Roles, STAFF_ROLES } from './roles.decorator';
 import type { Request, Response } from 'express';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { isForbiddenDemoCredential } from '../../config/production-guards';
+import { buildWebAppUrl } from '../../common/web-origin';
 import { RecoverIdDto, RecoverPasswordDto, ResetPasswordDto } from './dto/recovery.dto';
 import { AuthService, JwtClaims } from './auth.service';
 import { LoginDto } from './dto/login.dto';
@@ -306,8 +307,7 @@ export class AuthController {
     const { account, resetToken } = await this.users.beginPasswordReset(dto.webId, dto.email);
     let devResetUrl: string | undefined;
     if (account?.email && resetToken) {
-      const base = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
-      const link = `${base}/reset-password?token=${resetToken}`;
+      const link = buildWebAppUrl('/reset-password', { token: resetToken });
       const sentResult = await this.mail.sendPasswordResetEmail(account.email, link);
       if (!isProduction()) /* [P2 M4] */ devResetUrl = sentResult.devLink;
     }
@@ -450,8 +450,7 @@ export class AuthController {
   @ApiOperation({ summary: '승인 대기 계정 인증 메일 재발송(새 48h 토큰) — 대표 전용. 미인증 pending만.' })
   async resendPendingVerification(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     const { account, verifyToken } = await this.signupApproval.resendVerificationEmail(id, this.actorOf(req));
-    const base = process.env.WEB_ORIGIN ?? 'http://localhost:3000';
-    const link = `${base}/verify-email?token=${verifyToken}`;
+    const link = buildWebAppUrl('/verify-email', { token: verifyToken });
     const sent = await this.mail.sendVerifyEmail(account.email as string, link);
     return {
       ok: true as const,

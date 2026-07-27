@@ -3,6 +3,7 @@
 //  main.ts와 api/index.ts(서버리스) 양쪽 부트 경로에서 호출한다.
 import { runtimeDatabaseUrl } from '../database/database-url';
 import { isProduction } from '../common/env'; // [P2 M4]
+import { webAppOrigin } from '../common/web-origin';
 
 export function assertProductionBootSafety(): void {
   if (!isProduction()) return; // [P2 M4]
@@ -13,6 +14,11 @@ export function assertProductionBootSafety(): void {
   if (!process.env.JWT_SECRET) missing.push('JWT_SECRET');
   // (c) 인증 메일 전달 수단 없음 → devLink 노출 경로뿐 — 부팅 차단.
   if (!process.env.SMTP_HOST) missing.push('SMTP_HOST(+SMTP_PORT/USER/PASS)');
+  try {
+    webAppOrigin();
+  } catch {
+    missing.push('WEB_ORIGIN(https origin only)');
+  }
   // (c-2) client IP 기반 보안 이벤트/공유 throttle은 proxy 신뢰 경계가 명시돼야 한다.
   if (!process.env.TRUST_PROXY) missing.push('TRUST_PROXY(hop 수 또는 CIDR)');
   // (d) [TBO-31 C1 D2] 주민등록번호 암호화 키 — 미설정이면 개발용 파생 키 폴백뿐이라 부팅 차단

@@ -56,7 +56,6 @@ export class ExpensesService implements OnModuleInit {
         spentAt: dto.spentAt,
         vendor: dto.vendor,
         memo: dto.memo,
-        receiptUrl: dto.receiptUrl,
         status: 'requested',
       });
       // [감사 전수 2026-07-16] 지출 요청 생성 이력.
@@ -79,7 +78,7 @@ export class ExpensesService implements OnModuleInit {
       if (row.status !== 'requested')
         throw new BadRequestException(`수정 불가 상태(${row.status}) — requested만 수정 가능(승인된 지출은 원장 정합을 위해 불변)`);
       const patch: Partial<Expense> = {};
-      for (const key of ['category', 'title', 'amount', 'spentAt', 'vendor', 'memo', 'receiptUrl'] as const) {
+      for (const key of ['category', 'title', 'amount', 'spentAt', 'vendor', 'memo'] as const) {
         if (dto[key] !== undefined) (patch as Record<string, unknown>)[key] = dto[key];
       }
       if (Object.keys(patch).length === 0) throw new BadRequestException('수정할 필드가 없습니다.');
