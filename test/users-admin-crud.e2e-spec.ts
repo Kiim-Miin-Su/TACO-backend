@@ -3,7 +3,7 @@
 //  전멸(auth_version+1)·rrnMasked는 super_admin 응답에만·email 원문은 audit에 미기록.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { verifiedSignupChallenge } from './signup-helper';
 
@@ -15,6 +15,7 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
   let manager = '';
   let inst = '';
   const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+  const sudoAdmin = () => sudoAuthHeaders(app, admin);
   const login = async (webId: string, password = 'demo1234') =>
     (await http.post('/api/auth/login').send({ webId, password }).expect(201)).body.accessToken as string;
 
@@ -52,7 +53,7 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
   });
 
   it('③ 직접 등록 역할 확장: manager 생성 → 즉시 active·로그인 가능 (Create 버튼 경로)', async () => {
-    const created = (await http.post('/api/users/instructors').set(auth(admin)).send({
+    const created = (await http.post('/api/users/instructors').set(sudoAdmin()).send({
       webId: 'crud_mgr', name: '직접매니저', password: 'password123', role: 'manager', email: 'crud-mgr@t32.test',
     }).expect(201)).body;
     expect(created).toMatchObject({ role: 'manager', status: 'active', emailVerified: true });
@@ -68,17 +69,17 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
     const targetToken = await login('crud_mgr', 'password123');
     const target = db.findBy<{ id: number; webId: string }>('users', (u) => (u as { webId?: string }).webId === 'crud_mgr')[0];
 
-    const renamed = (await http.patch(`/api/users/${target.id}`).set(auth(admin))
+    const renamed = (await http.patch(`/api/users/${target.id}`).set(sudoAdmin())
       .send({ name: '직접매니저 개명', phone: '010-9999-8888' }).expect(200)).body;
     expect(renamed).toMatchObject({ name: '직접매니저 개명', phone: '010-9999-8888' });
     await http.get('/api/auth/me').set(auth(targetToken)).expect(200); // name/phone만 — 세션 유지
 
     // 이메일 중복 → 400
-    await http.patch(`/api/users/${target.id}`).set(auth(admin))
+    await http.patch(`/api/users/${target.id}`).set(sudoAdmin())
       .send({ email: 'admin@tnacademy.test' }).expect(400);
 
     // role 변경 → 대상 세션 전멸(auth_version+1)
-    const promoted = (await http.patch(`/api/users/${target.id}`).set(auth(admin))
+    const promoted = (await http.patch(`/api/users/${target.id}`).set(sudoAdmin())
       .send({ role: 'admin' }).expect(200)).body;
     expect(promoted.role).toBe('admin');
     await http.get('/api/auth/me').set(auth(targetToken)).expect(401);
@@ -86,9 +87,9 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
   });
 
   it('⑤ 가드: super_admin 대상 수정 400 · 매니저 수정 403 · 전화 형식 400', async () => {
-    await http.patch('/api/users/3').set(auth(admin)).send({ name: '대표 개명 시도' }).expect(400); // admin=super_admin id 3
+    await http.patch('/api/users/3').set(sudoAdmin()).send({ name: '대표 개명 시도' }).expect(400); // admin=super_admin id 3
     const target = db.findBy<{ id: number }>('users', (u) => (u as { webId?: string }).webId === 'crud_mgr')[0];
     await http.patch(`/api/users/${target.id}`).set(auth(manager)).send({ name: 'x' }).expect(403);
-    await http.patch(`/api/users/${target.id}`).set(auth(admin)).send({ phone: '02-123' }).expect(400);
+    await http.patch(`/api/users/${target.id}`).set(sudoAdmin()).send({ phone: '02-123' }).expect(400);
   });
 });

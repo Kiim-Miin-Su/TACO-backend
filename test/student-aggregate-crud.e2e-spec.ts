@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresCollectionStore } from '../src/database/postgres-collection.store';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
@@ -18,7 +18,7 @@ describe('[TBO-35 35C] student aggregate CRUD/RBAC/audit', () => {
   let instructorToken = '';
   let foreignInstructorToken = '';
 
-  const owner = () => ({ Authorization: `Bearer ${ownerToken}` });
+  const owner = () => sudoAuthHeaders(app, ownerToken);
   const instructor = () => ({ Authorization: `Bearer ${instructorToken}` });
   const foreignInstructor = () => ({ Authorization: `Bearer ${foreignInstructorToken}` });
   const manager = () => ({ Authorization: `Bearer ${managerToken}` });

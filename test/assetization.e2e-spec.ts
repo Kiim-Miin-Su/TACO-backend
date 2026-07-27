@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { studentAggregateBody } from './fixtures/student-profile';
 
 // ─────────────────────────────────────────────────────────────
@@ -15,7 +15,7 @@ describe('Assetization sweep 2 (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let ADMIN = '';
-  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
+  const asAdmin = () => sudoAuthHeaders(app, ADMIN);
 
   beforeAll(async () => {
     app = await createTestApp();

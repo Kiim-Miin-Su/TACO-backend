@@ -3,7 +3,7 @@
 //  메모리 read model만 읽으면 통과해 버리므로, PG 모드에서는 **재수화(hydrate) 후** 상태를 판정한다.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresCollectionStore } from '../src/database/postgres-collection.store';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
@@ -25,25 +25,24 @@ describe('[TBO-29D D0] student remove cascades enrollments (write-through)', () 
   });
   afterAll(async () => { await app.close(); });
 
-  const auth = { Authorization: '' };
-  beforeEach(() => { auth.Authorization = `Bearer ${token}`; });
+  const auth = () => sudoAuthHeaders(app, token);
 
   it('soft delete + 활성 수강 전부 canceled(같은 tx)', async () => {
-    const student = (await http.post('/api/students').set(auth)
+    const student = (await http.post('/api/students').set(auth())
       .send(studentAggregateBody('D0 카스케이드', { student: { grade: 11 } })).expect(201)).body.student;
-    const enrollment = (await http.post('/api/enrollments').set(auth).send({ studentId: student.id, courseId: 10 }).expect(201)).body;
+    const enrollment = (await http.post('/api/enrollments').set(auth()).send({ studentId: student.id, courseId: 10 }).expect(201)).body;
 
-    await http.delete(`/api/students/${student.id}`).set(auth).expect(200);
+    await http.delete(`/api/students/${student.id}`).set(auth()).expect(200);
 
     const row = db.findById<Enrollment>('enrollments', enrollment.id)!;
     expect(row.status).toBe('canceled');
   });
 
   it('[회귀 핵심] PG 재수화 후에도 취소가 유지된다 — 메모리 전용 쓰기였다면 되살아난다', async () => {
-    const student = (await http.post('/api/students').set(auth)
+    const student = (await http.post('/api/students').set(auth())
       .send(studentAggregateBody('D0 재수화', { student: { grade: 12 } })).expect(201)).body.student;
-    const enrollment = (await http.post('/api/enrollments').set(auth).send({ studentId: student.id, courseId: 10 }).expect(201)).body;
-    await http.delete(`/api/students/${student.id}`).set(auth).expect(200);
+    const enrollment = (await http.post('/api/enrollments').set(auth()).send({ studentId: student.id, courseId: 10 }).expect(201)).body;
+    await http.delete(`/api/students/${student.id}`).set(auth()).expect(200);
 
     const pg = app.get(PostgresConnectionService);
     expect(typeof pg.ready).toBe('boolean'); // 속성명 오타로 vacuous pass가 되는 것 방지
@@ -57,7 +56,7 @@ describe('[TBO-29D D0] student remove cascades enrollments (write-through)', () 
 
   it('미존재 학생 404 — 수강 행 변화 0', async () => {
     const before = db.findAll<Enrollment>('enrollments').map((e) => `${e.id}:${e.status}`).join(',');
-    await http.delete('/api/students/999999').set(auth).expect(404);
+    await http.delete('/api/students/999999').set(auth()).expect(404);
     const after = db.findAll<Enrollment>('enrollments').map((e) => `${e.id}:${e.status}`).join(',');
     expect(after).toBe(before);
   });

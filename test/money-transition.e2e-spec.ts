@@ -4,7 +4,7 @@
 //  2-instance 경쟁의 실증은 money-race.e2e-spec(PG 전용)이 담당한다.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { LOCK_KIND } from '../src/database/calendar-unit-of-work.service';
 import type { Transaction } from '../src/modules/transactions/transaction.entity';
@@ -14,7 +14,7 @@ describe('[TBO-53 C1] Money transitions — DB-authoritative CAS (e2e)', () => {
   let http: ReturnType<typeof request>;
   let db: InMemoryDatabase;
   let admin = '';
-  const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+  const auth = (token: string) => sudoAuthHeaders(app, token);
   const ledgerOf = (paymentId: number) =>
     db.findAll<Transaction>('transactions').filter((tx) => tx.paymentId === paymentId);
 

@@ -5,7 +5,7 @@
 //  ⑥ uncovered가 비활성 강사 미지급분도 감지(instructorStatus 동봉 — 리뷰 P1-2).
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 
 describe('Payout unconfirm + reversal cycle (e2e, TBO-32 C2)', () => {
@@ -15,7 +15,7 @@ describe('Payout unconfirm + reversal cycle (e2e, TBO-32 C2)', () => {
   let admin = '';
   let inst = '';
   let payoutId = 0;
-  const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+  const auth = (t: string) => sudoAuthHeaders(app, t);
   const JUNE = { from: '2026-06-01', to: '2026-06-30' };
 
   beforeAll(async () => {

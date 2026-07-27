@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { studentAggregateBody } from './fixtures/student-profile';
 import { dateInTimeZone } from '../src/modules/students/student-grade.policy';
@@ -20,7 +20,7 @@ describe('Students Soft-Delete (e2e)', () => {
   let http: ReturnType<typeof request>;
   let ADMIN = '';
   let INSTRUCTOR = '';
-  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
+  const asAdmin = () => sudoAuthHeaders(app, ADMIN);
 
   beforeAll(async () => {
     app = await createTestApp();

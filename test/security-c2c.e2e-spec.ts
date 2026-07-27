@@ -126,12 +126,24 @@ describe('가드·sudo (e2e)', () => {
     expect([401, 403]).toContain(forged.status);
   });
 
-  it('Bearer 경로는 sudo 면제(테스트·이행 호환) — 기존 e2e 계약 보존', async () => {
+  it('Bearer access token도 sudo 없이는 거부되고 별도 재인증 cookie가 있어야 통과한다', async () => {
     const bearer = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' })).body.accessToken;
     const target = 1;
     const before = (await http.get(`/api/users/${target}`).set({ Authorization: `Bearer ${bearer}` })).body;
-    await http.patch(`/api/users/${target}`).set({ Authorization: `Bearer ${bearer}` })
-      .send({ name: before.name }).expect(200); // no-op 수정 — sudo 없이 통과
+    const denied = await http.patch(`/api/users/${target}`).set({ Authorization: `Bearer ${bearer}` })
+      .send({ name: before.name }).expect(403);
+    expect(JSON.stringify(denied.body)).toContain('SUDO_REQUIRED');
+
+    const reauth = await http.post('/api/auth/reauth')
+      .set({ Authorization: `Bearer ${bearer}` })
+      .send({ currentPassword: 'demo1234' }).expect(201);
+    const sudoCookie = (reauth.headers['set-cookie'] as unknown as string[])
+      .map((value) => value.split(';')[0])
+      .find((value) => value.startsWith('sudo_token='));
+    expect(sudoCookie).toBeDefined();
+    await http.patch(`/api/users/${target}`)
+      .set({ Authorization: `Bearer ${bearer}`, Cookie: sudoCookie! })
+      .send({ name: before.name }).expect(200);
   });
 
   it('로그아웃은 sudo 쿠키도 함께 만료시킨다', async () => {

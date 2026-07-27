@@ -5,7 +5,7 @@ import { createHash } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { studentAggregateBody } from './fixtures/student-profile';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { signupWithOtp } from './signup-helper';
@@ -21,7 +21,7 @@ describe('Audit coverage — 전 테이블 CRUD 이력 (e2e)', () => {
 
   const audits = (entity: string, entityId?: number) =>
     db.findAll<Audit>('audit_log').filter((a) => a.entity === entity && (entityId == null || a.entityId === entityId));
-  const auth = () => ({ Authorization: `Bearer ${admin}` });
+  const auth = () => sudoAuthHeaders(app, admin);
 
   beforeAll(async () => {
     app = await createTestApp();

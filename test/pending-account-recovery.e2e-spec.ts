@@ -7,7 +7,7 @@
 //  ④ 가드: 재발송은 미인증 pending만 · 삭제는 pending/rejected만 · 강사 403
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresCollectionStore } from '../src/database/postgres-collection.store';
 import { USERS_SPEC } from '../src/database/calendar-asset-specs';
@@ -25,7 +25,7 @@ describe('Legacy pending account recovery + delete (e2e, hotfix 2026-07-20)', ()
   let store: PostgresCollectionStore;
   let admin = '';
   let inst = '';
-  const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+  const auth = (t: string) => sudoAuthHeaders(app, t);
 
   // 레거시(구 링크 가입) 시뮬레이션 — TBO-31 이후 생성 경로는 전부 verified라 직접 삽입으로 재현.
   const insertLegacyPending = async (webId: string, email: string) =>

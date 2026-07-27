@@ -1,13 +1,13 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { assertExpectedAfter } from '../src/common/expected-after.util';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 
 describe('payout concurrent transition integrity (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let token = '';
-  const auth = () => ({ Authorization: `Bearer ${token}` });
+  const auth = () => sudoAuthHeaders(app, token);
 
   beforeAll(async () => {
     app = await createTestApp();

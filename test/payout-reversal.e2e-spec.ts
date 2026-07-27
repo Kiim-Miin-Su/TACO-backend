@@ -5,7 +5,7 @@
 //  ④ 회수 후 같은 기간 재산정(generate) 가능 ⑤ 재회수 400 · 강사 403.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 
 describe('Payout reversal (e2e, B9 E5)', () => {
@@ -16,7 +16,7 @@ describe('Payout reversal (e2e, B9 E5)', () => {
   let inst = '';
   let payoutId = 0;
   let lineSessionIds: number[] = [];
-  const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+  const auth = (t: string) => sudoAuthHeaders(app, t);
 
   beforeAll(async () => {
     app = await createTestApp();

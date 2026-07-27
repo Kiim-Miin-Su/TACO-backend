@@ -4,6 +4,8 @@ import { INestApplication } from "@nestjs/common";
 import { Test } from "@nestjs/testing";
 import { AppModule } from "../src/app.module";
 import { configureApp } from "../src/config/configure-app";
+import { AuthService } from "../src/modules/auth/auth.service";
+import { SUDO_COOKIE } from "../src/modules/auth/browser-session";
 import { seedBusinessFixtures } from "./fixtures/seed-business-fixtures";
 
 // main.ts와 동일한 부트 설정으로 e2e 앱 인스턴스 생성.
@@ -34,6 +36,16 @@ export async function createTestApp(): Promise<INestApplication> {
   await app.init();
   if (shouldSeedFixtures) seedBusinessFixtures(app);
   return app;
+}
+
+/** 도메인 무결성 테스트용 step-up header. SudoGuard 자체 흐름은 security-c2c가 HTTP reauth로 검증한다. */
+export function sudoAuthHeaders(app: INestApplication, accessToken: string): { Authorization: string; Cookie: string } {
+  const auth = app.get(AuthService);
+  const actorId = auth.verify(accessToken).sub;
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    Cookie: `${SUDO_COOKIE}=${auth.signSudo(actorId)}`,
+  };
 }
 
 // 결정론적: 현재 주의 월요일(UTC) — 백엔드 시드와 동일 규칙.

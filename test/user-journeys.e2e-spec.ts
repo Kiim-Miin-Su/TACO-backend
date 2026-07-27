@@ -4,7 +4,7 @@
 //  여정 중간에 심어 방어선(403/400/409)이 흐름 안에서 실제로 작동함을 검증한다.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp, mondayISO, addDaysISO } from './setup-app';
+import { createTestApp, mondayISO, addDaysISO, sudoAuthHeaders } from './setup-app';
 
 jest.setTimeout(20000); // 여정 스위트 — 단계 수가 많다(풀런 부하 대비)
 
@@ -12,7 +12,7 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   const tokens: Record<string, string> = {};
-  const as = (who: string) => ({ Authorization: `Bearer ${tokens[who]}` });
+  const as = (who: string) => sudoAuthHeaders(app, tokens[who]);
   // 2주 전 월·화 — 주의: 픽스처 비시리즈 세션은 절대 날짜(6~7월 고정)라 실행 주에 따라 이 기간과
   //  겹칠 수 있다(실측: 07-06 강사1 late 미책정 행이 침입해 totals 절대값 단언이 깨졌다).
   //  → J2의 합계 단언은 전부 "①에서 캡처한 기준선 + Δ"로 작성한다(날짜 회피는 주가 바뀌면 재발).

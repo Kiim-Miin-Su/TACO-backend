@@ -10,8 +10,3 @@ export function extractAccessToken(req: Pick<Request, 'headers'>): string | unde
   const bearer = req.headers.authorization?.replace(/^Bearer\s+/i, '');
   return bearer || readCookie(req, ACCESS_COOKIE);
 }
-
-/** 이 요청이 Bearer 헤더로 인증했는가 — sudo 게이트의 테스트·이행 호환 판정(브라우저는 항상 cookie). */
-export function isBearerRequest(req: Pick<Request, 'headers'>): boolean {
-  return !!req.headers.authorization?.replace(/^Bearer\s+/i, '');
-}

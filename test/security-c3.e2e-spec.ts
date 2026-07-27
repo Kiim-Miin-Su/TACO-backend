@@ -73,7 +73,7 @@ describe('[TBO-59 C3] SECURITY-P0 (e2e)', () => {
     await http.get('/api/parents/relations').set(auth('manager')).expect(200);
   });
 
-  it('C3-2 sudo — cookie 세션은 sudo 재인증 없이 원부 삭제·환불·지급 거부(bearer 이행 호환은 유지)', async () => {
+  it('C3-2 sudo — cookie/Bearer 모두 재인증 없이 원부 삭제·환불·지급을 거부한다', async () => {
     // cookie 로그인(브라우저 경로) — SudoGuard 강제 대상
     const agent = request.agent(app.getHttpServer());
     await agent.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201);
@@ -88,9 +88,10 @@ describe('[TBO-59 C3] SECURITY-P0 (e2e)', () => {
     expect([400, 404]).toContain(afterRefund.status);
     const afterPay = await agent.post('/api/payouts/999999/pay');
     expect([400, 404]).toContain(afterPay.status);
-    // bearer 경로는 이행 호환(기존 e2e·CLI) — guard bypass 유지
+    // Bearer access token도 step-up을 우회할 수 없다.
     const bearerDelete = await http.delete('/api/students/999999').set(auth('admin'));
-    expect([400, 404]).toContain(bearerDelete.status);
+    expect(bearerDelete.status).toBe(403);
+    expect(JSON.stringify(bearerDelete.body)).toContain('SUDO_REQUIRED');
   });
 
   it('C3-3 대표 소유 스케줄 — manager 변경/삭제 403, 대표 본인 200', async () => {

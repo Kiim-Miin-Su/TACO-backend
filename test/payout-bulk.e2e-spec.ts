@@ -6,7 +6,7 @@
 //    는 이력 유지) → 같은 기간 재산정 금액 동일
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 
 type SessionRow = {
@@ -19,7 +19,7 @@ describe('Payout bulk + uncovered + is_paid (e2e, TBO-32 C1)', () => {
   let db: InMemoryDatabase;
   let admin = '';
   let inst = '';
-  const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+  const auth = (t: string) => sudoAuthHeaders(app, t);
   const JUNE = { periodStart: '2026-06-01', periodEnd: '2026-06-30' };
   const sessionOf = (id: number) => db.findById<SessionRow>('class_sessions', id)!;
 

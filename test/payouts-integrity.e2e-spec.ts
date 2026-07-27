@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { createTestApp } from "./setup-app";
+import { createTestApp, sudoAuthHeaders } from "./setup-app";
 
 // TBO-05 참조 무결성 검증 — 데모 시드 + 관리자 승인·급여수정·지급 완료 경로.
 // "관리자의 승인과 지급 완료와 수정까지 참조 무결성을 지키는지" 집중 검증.
@@ -13,7 +13,7 @@ describe("Payouts 참조 무결성 (e2e)", () => {
 
   // 관리자 액션은 RolesGuard(super_admin/manager/admin) 보호 → 데모 admin 토큰 사용.
   let ADMIN = "";
-  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
+  const asAdmin = () => sudoAuthHeaders(app, ADMIN);
 
   beforeAll(async () => {
     app = await createTestApp();

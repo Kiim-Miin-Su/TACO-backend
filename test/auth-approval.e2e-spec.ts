@@ -5,7 +5,7 @@
 import { createHash } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { AuditService } from '../src/modules/audit/audit.service';
@@ -325,7 +325,7 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     // 비대표 → 403
     await http.post('/api/users/instructors').set('Authorization', `Bearer ${inst}`).send(body).expect(403);
     // 대표 → 201
-    const created = (await http.post('/api/users/instructors').set('Authorization', `Bearer ${admin}`).send(body).expect(201)).body;
+    const created = (await http.post('/api/users/instructors').set(sudoAuthHeaders(app, admin)).send(body).expect(201)).body;
     expect(created).toMatchObject({ status: 'active', role: 'instructor', name: '김직접', approvedBy: 3 });
     const profile = profileOf(created.id);
     expect(profile).toMatchObject({ active: true, university: '한국대학교', major: '수학교육', birthYear: 1998 });
@@ -338,6 +338,6 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     expect(found).toHaveLength(1);
     await http.post('/api/auth/login').send({ webId: 'direct_inst', password: 'securepw1' }).expect(201);
     // 중복 webId → 400
-    await http.post('/api/users/instructors').set('Authorization', `Bearer ${admin}`).send(body).expect(400);
+    await http.post('/api/users/instructors').set(sudoAuthHeaders(app, admin)).send(body).expect(400);
   });
 });

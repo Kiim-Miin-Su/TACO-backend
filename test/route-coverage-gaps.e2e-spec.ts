@@ -3,7 +3,7 @@
 //  각 연산 최소: 정상 경로 + (역할 게이트가 있으면) 강사 403 + 없는 id 404/400.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 
 describe('Route coverage gaps (e2e, B8 E4)', () => {
@@ -14,7 +14,7 @@ describe('Route coverage gaps (e2e, B8 E4)', () => {
   let inst = '';
   let inst2 = ''; // [TBO-32 C4] 타인 강사(jung_inst=강사2) — 단건 스코프 403 검증용
   let adminId = 0;
-  const auth = (t: string) => ({ Authorization: `Bearer ${t}` });
+  const auth = (t: string) => sudoAuthHeaders(app, t);
 
   beforeAll(async () => {
     app = await createTestApp();
