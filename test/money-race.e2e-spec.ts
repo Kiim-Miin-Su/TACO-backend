@@ -8,7 +8,7 @@ import { INestApplication } from '@nestjs/common';
 import { config } from 'dotenv';
 import * as bcrypt from 'bcryptjs';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { PostgresCollectionStore } from '../src/database/postgres-collection.store';
@@ -129,8 +129,8 @@ describeDb('[TBO-53 C1] Money race — 2-instance PG (e2e)', () => {
       .send({ studentId, amount: 150000 }).expect(201)).body.id);
     cleanupIds.push({ table: 'payments', id: paymentId });
     const [ra, rb] = await Promise.all([
-      httpA.post(`/api/payments/${paymentId}/pay`).set(auth(admin)),
-      httpB.post(`/api/payments/${paymentId}/pay`).set(auth(adminB)),
+      httpA.post(`/api/payments/${paymentId}/pay`).set(sudoAuthHeaders(appA, admin)),
+      httpB.post(`/api/payments/${paymentId}/pay`).set(sudoAuthHeaders(appB, adminB)),
     ]);
     const statuses = [ra.status, rb.status].sort();
     expect(statuses[0]).toBe(201);
@@ -146,7 +146,7 @@ describeDb('[TBO-53 C1] Money race — 2-instance PG (e2e)', () => {
     cleanupIds.push({ table: 'payments', id: paymentId });
     // B 인스턴스에서 정정(130,000) — A 메모리는 여전히 100,000을 기억한다.
     await httpB.patch(`/api/payments/${paymentId}`).set(auth(adminB)).send({ amount: 130000 }).expect(200);
-    const paid = (await httpA.post(`/api/payments/${paymentId}/pay`).set(auth(admin)).expect(201)).body;
+    const paid = (await httpA.post(`/api/payments/${paymentId}/pay`).set(sudoAuthHeaders(appA, admin)).expect(201)).body;
     expect(paid).toMatchObject({ amount: 130000, paidAmount: 130000 }); // DB 재조회 증명(종전엔 100,000 수납)
     const ledger = await ledgerRows(paymentId);
     expect(ledger).toEqual([{ direction: 'in', amount: 130000 }]);
@@ -156,10 +156,10 @@ describeDb('[TBO-53 C1] Money race — 2-instance PG (e2e)', () => {
     const paymentId = Number((await httpA.post('/api/payments').set(auth(admin))
       .send({ studentId, amount: 80000 }).expect(201)).body.id);
     cleanupIds.push({ table: 'payments', id: paymentId });
-    await httpA.post(`/api/payments/${paymentId}/pay`).set(auth(admin)).expect(201);
+    await httpA.post(`/api/payments/${paymentId}/pay`).set(sudoAuthHeaders(appA, admin)).expect(201);
     const [ra, rb] = await Promise.all([
-      httpA.post(`/api/payments/${paymentId}/refund`).set(auth(admin)),
-      httpB.post(`/api/payments/${paymentId}/refund`).set(auth(adminB)),
+      httpA.post(`/api/payments/${paymentId}/refund`).set(sudoAuthHeaders(appA, admin)),
+      httpB.post(`/api/payments/${paymentId}/refund`).set(sudoAuthHeaders(appB, adminB)),
     ]);
     expect([ra.status, rb.status].filter((s) => s === 201)).toHaveLength(1);
     const ledger = await ledgerRows(paymentId);

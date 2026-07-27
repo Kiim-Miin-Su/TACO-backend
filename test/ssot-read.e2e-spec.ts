@@ -6,7 +6,7 @@ import { INestApplication } from '@nestjs/common';
 import { config } from 'dotenv';
 import * as bcrypt from 'bcryptjs';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { PostgresCollectionStore } from '../src/database/postgres-collection.store';
 import { USERS_SPEC } from '../src/database/calendar-asset-specs';
 import { AuthService } from '../src/modules/auth/auth.service';
@@ -115,7 +115,7 @@ describeDb('[TBO-54 C2] SSOT read-after-write — 2-instance PG (e2e)', () => {
       .send({ studentId, enrollmentId: enrollment.id, amount: 150000 }).expect(201)).body;
     const paymentB = (await httpB.get(`/api/payments/${payment.id}`).set(auth(adminB)).expect(200)).body;
     expect(paymentB.amount).toBe(150000);
-    await httpB.post(`/api/payments/${payment.id}/pay`).set(auth(adminB)).expect(201); // 타 인스턴스 결재
+    await httpB.post(`/api/payments/${payment.id}/pay`).set(sudoAuthHeaders(appB, adminB)).expect(201); // 타 인스턴스 결재
     const ledgerA = (await httpA.get('/api/transactions').set(auth(admin)).expect(200)).body as Array<{ paymentId?: number; amount: number }>;
     expect(ledgerA.filter((tx) => tx.paymentId === payment.id)).toHaveLength(1); // A도 즉시 원장 확인
     // 로드맵
@@ -249,7 +249,7 @@ describeDb('[TBO-54 C2] SSOT read-after-write — 2-instance PG (e2e)', () => {
       })).expect(201)).body.student.id);
     const payment = (await httpA.post('/api/payments').set(auth(admin))
       .send({ studentId, amount: 77000 }).expect(201)).body;
-    await httpA.post(`/api/payments/${payment.id}/pay`).set(auth(admin)).expect(201);
+    await httpA.post(`/api/payments/${payment.id}/pay`).set(sudoAuthHeaders(appA, admin)).expect(201);
     const query = `query { revenueReport { realizedTotal byStudent { key amount } } }`;
     const [ga, gb] = await Promise.all([
       httpA.post('/api/graphql').set(auth(admin)).send({ query }).expect(201),

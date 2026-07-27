@@ -1919,7 +1919,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 수납 완료 처리 + 통합 원장 입금 기록 [대표]
+      summary: 수납 완료 처리 + 통합 원장 입금 기록(재인증 필수) [대표]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).
       tags:
         - payments
   /api/subjects:
@@ -2180,7 +2180,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 지출 승인 + 통합 원장 출금 기록 [대표]
+      summary: 지출 승인 + 통합 원장 출금 기록(재인증 필수) [대표]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).
       tags:
         - expenses
   /api/expenses/{id}/reject:

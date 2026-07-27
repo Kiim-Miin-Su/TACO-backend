@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { signupWithOtp } from './signup-helper';
 import { studentAggregateBody } from './fixtures/student-profile';
 
@@ -15,7 +15,7 @@ describe('Asset persistence sweep (e2e)', () => {
   let http: ReturnType<typeof request>;
   let ADMIN = '';
   let persistenceAttempt = 0;
-  const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
+  const asAdmin = () => sudoAuthHeaders(app, ADMIN);
 
   const listLen = async (path: string) => ((await http.get(path).set(asAdmin()).expect(200)).body as unknown[]).length;
 

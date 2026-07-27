@@ -3,13 +3,13 @@
 //  응집 검증. 지출은 super_admin 전용(TBO-21 RBAC — manager도 403).
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 
 describe('[TBO-58] expenses 홈 스위트 (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   const tokens: Record<string, string> = {};
-  const auth = (who: string) => ({ Authorization: `Bearer ${tokens[who]}` });
+  const auth = (who: string) => sudoAuthHeaders(app, tokens[who]);
 
   beforeAll(async () => {
     app = await createTestApp();

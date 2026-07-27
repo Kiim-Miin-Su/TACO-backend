@@ -153,4 +153,26 @@ describe('가드·sudo (e2e)', () => {
     const cleared = (logout.headers['set-cookie'] as unknown as string[]) ?? [];
     expect(cleared.some((c) => c.startsWith('sudo_token=;') || (c.startsWith('sudo_token=') && /Max-Age=0/i.test(c)))).toBe(true);
   });
+
+  it('새 로그인은 이전 로그인에서 발급된 sudo 쿠키를 승계하지 않는다', async () => {
+    const first = await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201);
+    const reauth = await http
+      .post('/api/auth/reauth')
+      .set({ Authorization: `Bearer ${first.body.accessToken}` })
+      .send({ currentPassword: 'demo1234' })
+      .expect(201);
+    const oldSudo = ((reauth.headers['set-cookie'] as unknown as string[]) ?? [])
+      .map((value) => value.split(';')[0])
+      .find((value) => value.startsWith('sudo_token='));
+    expect(oldSudo).toBeDefined();
+
+    const next = await http
+      .post('/api/auth/login')
+      .set('Cookie', oldSudo!)
+      .send({ webId: 'admin', password: 'demo1234' })
+      .expect(201);
+    const setCookies = (next.headers['set-cookie'] as unknown as string[]) ?? [];
+    expect(setCookies.some((value) =>
+      value.startsWith('sudo_token=') && /Max-Age=0/i.test(value))).toBe(true);
+  });
 });

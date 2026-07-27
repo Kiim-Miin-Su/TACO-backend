@@ -47,6 +47,7 @@ import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
   clearBrowserSession,
+  clearSudoCookie,
   readCookie,
   setAccessCookie,
   setRefreshCookie,
@@ -212,6 +213,8 @@ export class AuthController {
     setRefreshCookie(res, issued.raw, issued.row.expiresAt);
     const accessToken = this.auth.sign(claims);
     const accessClaims = this.auth.verify(accessToken);
+    // 새 로그인은 새 인증 세션이다. 같은 브라우저에 남은 이전 step-up 권한을 승계하지 않는다.
+    clearSudoCookie(res);
     setAccessCookie(res, accessToken, (accessClaims.exp ?? Math.floor(Date.now() / 1000) + 3600) * 1000);
     return {
       ...(!isProduction() ? { accessToken } : {}),

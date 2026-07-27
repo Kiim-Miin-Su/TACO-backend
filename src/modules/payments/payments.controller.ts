@@ -64,8 +64,9 @@ export class PaymentsController {
   }
 
   @Post(':id/pay')
+  @UseGuards(SudoGuard)
   @Roles('super_admin')
-  @ApiOperation({ summary: '수납 완료 처리 + 통합 원장 입금 기록 [대표]' })
+  @ApiOperation({ summary: '수납 완료 처리 + 통합 원장 입금 기록(재인증 필수) [대표]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
   markPaid(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.payments.markPaid(id, req.user?.sub);
   }

@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { createTestApp } from "./setup-app";
+import { createTestApp, sudoAuthHeaders } from "./setup-app";
 
 // 권한 매트릭스 e2e (#6) — 데모 역할별 토큰으로 주요 엔드포인트 호출 → 기대 응답 검증.
 // 가드 현황(2026-07-21): /auth/pending·approve·reject = 관리자 역할 진입 후 서비스가 target role 범위 강제.
@@ -265,7 +265,7 @@ describe("Permission matrix (e2e)", () => {
         await http.post(path).set(auth("manager")).send({}).expect(403);
       });
       it(`super_admin → POST ${path} 통과(가드 허용, 403/401 아님)`, async () => {
-        const res = await http.post(path).set(auth("super_admin")).send({});
+        const res = await http.post(path).set(sudoAuthHeaders(app, tokens.super_admin)).send({});
         expect([401, 403]).not.toContain(res.status);
       });
     }

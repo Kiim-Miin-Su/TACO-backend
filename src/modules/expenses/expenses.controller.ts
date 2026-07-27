@@ -9,6 +9,7 @@ import { RejectExpenseDto } from './dto/reject-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { SudoGuard } from '../auth/sudo.guard';
 
 @ApiTags('expenses')
 @ApiBearerAuth()
@@ -56,8 +57,9 @@ export class ExpensesController {
 
   // 대표 승인/반려 — TBO-21: 지출 승인권은 super_admin 전용.
   @Post(':id/approve')
+  @UseGuards(SudoGuard)
   @Roles('super_admin')
-  @ApiOperation({ summary: '지출 승인 + 통합 원장 출금 기록 [대표]' })
+  @ApiOperation({ summary: '지출 승인 + 통합 원장 출금 기록(재인증 필수) [대표]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
   approve(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.expenses.approve(id, req.user?.sub);
   }
