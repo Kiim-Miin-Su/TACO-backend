@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { createTestApp, mondayISO, addDaysISO, sudoAuthHeaders } from "./setup-app";
+import { createTestApp, mondayISO, addDaysISO, sudoAuthHeaders, patchSessionAckingImpact } from "./setup-app";
 
 // TBO-05 시수 측정·페이 정산 e2e.
 // 시나리오(요구 #5): 스케줄 생성 → 수업 진행(held)+report 승인 → 수업 취소 →
@@ -42,7 +42,8 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
   }
   async function setStatus(id: number, status: string): Promise<void> {
     // [TBO-66 C1] 리포트 승인이 세션을 held로 자동 확정 — 이후 취소 전환은 회계 영향 ack 필요(정합)
-    await http.patch(`/api/schedule/${id}`).set(asAdmin()).send({ status, force: true, acknowledgeAccountingImpact: true }).expect(200);
+    const response = await patchSessionAckingImpact(http, asAdmin(), id, { status, force: true });
+    expect(response.status).toBe(200);
   }
   // 보고서 작성(submitted) → 반환 id
   async function makeReport(sessionId: number): Promise<number> {

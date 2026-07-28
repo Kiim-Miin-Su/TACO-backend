@@ -163,10 +163,27 @@ describe('Counsel API (e2e)', () => {
     await http.post('/api/counsel/1/rounds').set(asAdmin()).send({ counselorId: 99999, summary: 'x' }).expect(400);
   });
 
-  it('PATCH /counsel/:id — 상태 전환(pending→registered)', async () => {
-    const token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
-    const r = (await http.patch('/api/counsel/1').set({ Authorization: `Bearer ${token}` }).send({ status: 'registered' }).expect(200)).body;
-    expect(r.status).toBe('registered');
+  it('PATCH /counsel/:id — 생성한 상담을 requested→pending→registered로 전이·영속화한다', async () => {
+    const created = (await http.post('/api/counsel').set(asAdmin())
+      .send({ studentId: 1, source: 'manual' }).expect(201)).body;
+
+    const pending = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin())
+      .send({ status: 'pending' }).expect(200)).body;
+    expect(pending).toMatchObject({ id: created.id, status: 'pending' });
+
+    const registered = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin())
+      .send({ status: 'registered' }).expect(200)).body;
+    expect(registered).toMatchObject({ id: created.id, status: 'registered' });
+
+    const readback = (await http.get(`/api/counsel/${created.id}`).set(asAdmin()).expect(200)).body;
+    expect(readback.status).toBe('registered');
+    const audit = (await http.get(`/api/audit?entity=counsel_forms&entityId=${created.id}`)
+      .set(asAdmin()).expect(200)).body;
+    expect(audit.filter((row: { action: string }) => row.action === 'update')
+      .map((row: { changes?: { status?: { after?: string } } }) => row.changes?.status?.after))
+      .toEqual(expect.arrayContaining(['pending', 'registered']));
+
+    await http.delete(`/api/counsel/${created.id}`).set(asAdmin()).expect(200);
   });
 
   it('POST /counsel/:id/rounds — 회차 자동 증가 + 폼 nextContactAt 동기화', async () => {
