@@ -23,6 +23,7 @@ import {
   computeCounselCorrelation, computeCounselFunnel,
   type CounselAnalyticsRange, type CounselAnalyticsSnapshot, type CounselCorrelation, type CounselFunnel,
 } from './counsel-analytics';
+import { normalizeCounselInstant } from './counsel-instant';
 
 const snapshotOfForm = (form: CounselFormSnapshot): CounselFormSnapshot => ({
   studentId: form.studentId,
@@ -31,7 +32,7 @@ const snapshotOfForm = (form: CounselFormSnapshot): CounselFormSnapshot => ({
   source: form.source,
   submitterType: form.submitterType,
   referenceNotes: form.referenceNotes ?? null,
-  nextContactAt: form.nextContactAt ?? null,
+  nextContactAt: normalizeCounselInstant(form.nextContactAt) ?? null,
 });
 
 @Injectable()
@@ -89,6 +90,7 @@ export class CounselService implements OnModuleInit {
     return this.uow.run(async () => {
       const row = await this.store.insert<CounselForm>(COUNSEL_FORMS_SPEC, {
         ...dto,
+        nextContactAt: normalizeCounselInstant(dto.nextContactAt),
         submitterType: dto.submitterType ?? 'unknown',
         status: 'requested',
       } as Omit<CounselForm, 'id' | 'createdAt' | 'updatedAt'>);
@@ -110,7 +112,13 @@ export class CounselService implements OnModuleInit {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'counselForm', id }]);
       const before = { ...(await this.findForm(id)) };
-      const after = (await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, id, dto)) as CounselForm;
+      const patch = {
+        ...dto,
+        ...(dto.nextContactAt !== undefined
+          ? { nextContactAt: normalizeCounselInstant(dto.nextContactAt) }
+          : {}),
+      };
+      const after = (await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, id, patch)) as CounselForm;
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
       // referenceNotes 등 상담 민감 텍스트는 audit 원문 금지.
       if (actorId != null) {
@@ -128,8 +136,10 @@ export class CounselService implements OnModuleInit {
   async createRound(formId: number, dto: CreateCounselRoundDto, actorId?: number): Promise<CounselRound> {
     if (dto.counselorId != null) await this.assertActiveStaff(dto.counselorId, 'counselorId');
     if (dto.formSnapshot) await this.assertRefs(dto.formSnapshot);
-    if (dto.nextContactAt !== undefined && dto.formSnapshot?.nextContactAt !== undefined
-      && dto.nextContactAt !== dto.formSnapshot.nextContactAt) {
+    const nextContactAt = normalizeCounselInstant(dto.nextContactAt);
+    const snapshotNextContactAt = normalizeCounselInstant(dto.formSnapshot?.nextContactAt);
+    if (nextContactAt !== undefined && snapshotNextContactAt !== undefined
+      && nextContactAt !== snapshotNextContactAt) {
       throw new BadRequestException('nextContactAt과 formSnapshot.nextContactAt이 일치해야 합니다');
     }
     // [원자성] 회차 기록 + 폼 nextContactAt 동기화가 함께(다음 일정 불일치 방지)
@@ -145,7 +155,10 @@ export class CounselService implements OnModuleInit {
         ...snapshotOfForm(beforeForm),
         ...dto.formSnapshot,
       };
-      if (dto.nextContactAt !== undefined) formSnapshot.nextContactAt = dto.nextContactAt;
+      if (dto.formSnapshot?.nextContactAt !== undefined) {
+        formSnapshot.nextContactAt = snapshotNextContactAt ?? null;
+      }
+      if (nextContactAt !== undefined) formSnapshot.nextContactAt = nextContactAt;
       const round = await this.store.insert<CounselRound>(COUNSEL_ROUNDS_SPEC, {
         counselFormId: formId, roundNo, counselorId: dto.counselorId,
         completedAt: todayKst(), isCompleted: true, // [TBO-65 M2] KST 기준
@@ -180,8 +193,10 @@ export class CounselService implements OnModuleInit {
   async updateRound(formId: number, roundId: number, dto: UpdateCounselRoundDto, actorId: number): Promise<CounselRound> {
     if (dto.counselorId != null) await this.assertActiveStaff(dto.counselorId, 'counselorId');
     if (dto.formSnapshot) await this.assertRefs(dto.formSnapshot);
-    if (dto.nextContactAt !== undefined && dto.formSnapshot?.nextContactAt !== undefined
-      && dto.nextContactAt !== dto.formSnapshot.nextContactAt) {
+    const nextContactAt = normalizeCounselInstant(dto.nextContactAt);
+    const snapshotNextContactAt = normalizeCounselInstant(dto.formSnapshot?.nextContactAt);
+    if (nextContactAt !== undefined && snapshotNextContactAt !== undefined
+      && nextContactAt !== snapshotNextContactAt) {
       throw new BadRequestException('nextContactAt과 formSnapshot.nextContactAt이 일치해야 합니다');
     }
     return this.uow.run(async () => {
@@ -191,7 +206,7 @@ export class CounselService implements OnModuleInit {
       const formSnapshot = dto.formSnapshot == null
         ? { ...before.formSnapshot }
         : snapshotOfForm({ ...before.formSnapshot, ...dto.formSnapshot });
-      if (dto.nextContactAt !== undefined) formSnapshot.nextContactAt = dto.nextContactAt;
+      if (nextContactAt !== undefined) formSnapshot.nextContactAt = nextContactAt;
       const patch = {
         ...(dto.counselorId !== undefined ? { counselorId: dto.counselorId } : {}),
         ...(dto.scheduledAt !== undefined ? { scheduledAt: dto.scheduledAt } : {}),
@@ -201,7 +216,7 @@ export class CounselService implements OnModuleInit {
         ...(dto.detail !== undefined ? { detail: dto.detail } : {}),
         ...(dto.result !== undefined ? { result: dto.result } : {}),
         ...(dto.nextAction !== undefined ? { nextAction: dto.nextAction } : {}),
-        ...(dto.nextContactAt !== undefined ? { nextContactAt: dto.nextContactAt } : {}),
+        ...(dto.nextContactAt !== undefined ? { nextContactAt } : {}),
         ...(dto.formSnapshot !== undefined || dto.nextContactAt !== undefined ? { formSnapshot } : {}),
       };
       const after = await this.store.update<CounselRound>(COUNSEL_ROUNDS_SPEC, roundId, patch);

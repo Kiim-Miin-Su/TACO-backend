@@ -81,7 +81,7 @@ describe('Asset persistence sweep (e2e)', () => {
     const counsel = (await http.post('/api/counsel').set(asAdmin())
       .send({ studentId: 1, source: 'manual' }).expect(201)).body;
     await http.post(`/api/counsel/${counsel.id}/rounds`).set(asAdmin())
-      .send({ summary: '1차 상담 기록', nextContactAt: '2099-01-06' }).expect(201);
+      .send({ summary: '1차 상담 기록', nextContactAt: '2099-01-06T00:00:00.000Z' }).expect(201);
     const report = (await http.post('/api/reports').set(asAdmin())
       .send({ sessionId: ses.id, studentId: 1, instructorId: ses.instructorId, content: '자산 리포트', status: 'submitted' }).expect(201)).body;
     const event = (await http.post('/api/events').set(asAdmin())

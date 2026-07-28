@@ -500,12 +500,12 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
           source: 'manual',
           studentId: qaStudentId,
           referenceNotes: `DBCRUD 상담 ${Date.now()} · 비공개 참고`,
-          nextContactAt: '2099-01-10',
+          nextContactAt: '2099-01-10T00:00:00.000Z',
         })
         .expect(201)).body.id);
       roundId = Number((await http.post(`/api/counsel/${qaCounselId}/rounds`)
         .set(auth(ceo))
-        .send({ summary: 'DB CRUD 1차', nextContactAt: '2099-01-11' })
+        .send({ summary: 'DB CRUD 1차', nextContactAt: '2099-01-11T00:00:00.000Z' })
         .expect(201)).body.id);
       await closeApp(app);
     }
@@ -523,7 +523,11 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
       expect(related.familyRelations.some((row: { id: number }) => row.id === familyRelationId)).toBe(true);
 
       const counsel = (await http.get(`/api/counsel/${qaCounselId}/aggregate`).set(auth(ceo)).expect(200)).body;
-      expect(counsel.form).toMatchObject({ id: qaCounselId, studentId: qaStudentId, nextContactAt: '2099-01-11' });
+      expect(counsel.form).toMatchObject({
+        id: qaCounselId,
+        studentId: qaStudentId,
+        nextContactAt: '2099-01-11T00:00:00.000Z',
+      });
       expect(counsel.student.student.id).toBe(qaStudentId);
       expect(counsel.rounds).toEqual(expect.arrayContaining([expect.objectContaining({ id: roundId })]));
 
@@ -532,14 +536,17 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
       await http.patch(`/api/students/${qaStudentId}/academic-histories/${academicHistoryId}`)
         .set(auth(ceo)).send({ grade: 12, schoolName: `${schoolName} Updated` }).expect(200);
       await http.patch(`/api/counsel/${qaCounselId}/rounds/${roundId}`)
-        .set(auth(ceo)).send({ summary: 'DB CRUD 1차 수정', nextContactAt: '2099-01-12' }).expect(200);
+        .set(auth(ceo)).send({
+          summary: 'DB CRUD 1차 수정',
+          nextContactAt: '2099-01-12T00:00:00.000Z',
+        }).expect(200);
       await closeApp(app);
     }
 
     {
       const { app, http, ceo } = await boot();
       const counsel = (await http.get(`/api/counsel/${qaCounselId}/aggregate`).set(auth(ceo)).expect(200)).body;
-      expect(counsel.form.nextContactAt).toBe('2099-01-12');
+      expect(counsel.form.nextContactAt).toBe('2099-01-12T00:00:00.000Z');
       expect(counsel.rounds.find((row: { id: number }) => row.id === roundId)?.summary).toBe('DB CRUD 1차 수정');
 
       for (const [entity, entityId] of [

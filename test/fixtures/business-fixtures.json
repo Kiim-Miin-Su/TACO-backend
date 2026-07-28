@@ -1705,7 +1705,7 @@
    "source": "internal_form",
    "submitterType": "parent",
    "referenceNotes": "독해 속도와 어휘량 확인",
-   "nextContactAt": "2026-06-29",
+   "nextContactAt": "2026-06-29T00:00:00.000Z",
    "createdAt": "2026-07-22T02:36:06.029Z",
    "updatedAt": "2026-07-22T02:36:06.029Z"
   },
@@ -1742,7 +1742,7 @@
    "detail": "현 성적·목표 파악. 레벨테스트 권유.",
    "result": "neutral",
    "nextAction": "레벨테스트 일정 조율",
-   "nextContactAt": "2026-06-23",
+   "nextContactAt": "2026-06-23T00:00:00.000Z",
    "formSnapshot": {
     "studentId": 1,
     "assignedStaffId": 1,
@@ -1750,7 +1750,7 @@
     "source": "internal_form",
     "submitterType": "parent",
     "referenceNotes": "독해 속도와 어휘량 확인",
-    "nextContactAt": "2026-06-23"
+    "nextContactAt": "2026-06-23T00:00:00.000Z"
    },
    "createdAt": "2026-07-22T02:36:06.029Z",
    "updatedAt": "2026-07-22T02:36:06.029Z"
@@ -1766,7 +1766,7 @@
    "detail": "독해 보강 필요. SAT Reading 정규 제안.",
    "result": "positive",
    "nextAction": "수강 등록 안내",
-   "nextContactAt": "2026-06-29",
+   "nextContactAt": "2026-06-29T00:00:00.000Z",
    "formSnapshot": {
     "studentId": 1,
     "assignedStaffId": 1,
@@ -1774,7 +1774,7 @@
     "source": "internal_form",
     "submitterType": "parent",
     "referenceNotes": "독해 속도와 어휘량 확인",
-    "nextContactAt": "2026-06-29"
+    "nextContactAt": "2026-06-29T00:00:00.000Z"
    },
    "createdAt": "2026-07-22T02:36:06.029Z",
    "updatedAt": "2026-07-22T02:36:06.029Z"

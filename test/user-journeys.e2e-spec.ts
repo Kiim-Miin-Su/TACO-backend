@@ -54,7 +54,11 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
       await http.post('/api/counsel').set(as('park_inst')).send({ studentId, source: 'manual' }).expect(403);
       const form = (await http.post('/api/counsel').set(as('manager')).send({ studentId, source: 'manual' }).expect(201)).body;
       await http.post(`/api/counsel/${form.id}/rounds`).set(as('manager'))
-        .send({ summary: '레벨 테스트 안내', result: 'positive', nextContactAt: addDaysISO(mondayISO(), 3) }).expect(201);
+        .send({
+          summary: '레벨 테스트 안내',
+          result: 'positive',
+          nextContactAt: `${addDaysISO(mondayISO(), 3)}T00:00:00.000Z`,
+        }).expect(201);
       const updated = (await http.patch(`/api/counsel/${form.id}`).set(as('manager')).send({ status: 'registered' }).expect(200)).body;
       expect(updated.status).toBe('registered');
     });

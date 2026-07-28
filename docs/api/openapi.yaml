@@ -6941,6 +6941,12 @@ components:
     CreateCounselDto:
       type: object
       properties:
+        nextContactAt:
+          type: string
+          format: date-time
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:\d{2})$
+          example: '2026-07-28T09:30:00+09:00'
+          nullable: false
         studentId:
           type: number
         source:
@@ -6963,14 +6969,18 @@ components:
         referenceNotes:
           type: string
           maxLength: 2000
-        nextContactAt:
-          type: string
       required:
         - studentId
         - source
     UpdateCounselDto:
       type: object
       properties:
+        nextContactAt:
+          type: string
+          nullable: true
+          format: date-time
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:\d{2})$
+          example: '2026-07-28T09:30:00+09:00'
         status:
           type: string
           enum:
@@ -7002,12 +7012,15 @@ components:
           type: string
           nullable: true
           maxLength: 2000
-        nextContactAt:
-          type: string
-          nullable: true
     CounselFormSnapshotDto:
       type: object
       properties:
+        nextContactAt:
+          type: string
+          nullable: true
+          format: date-time
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:\d{2})$
+          example: '2026-07-28T09:30:00+09:00'
         studentId:
           type: number
         assignedStaffId:
@@ -7039,9 +7052,6 @@ components:
           type: string
           nullable: true
           maxLength: 2000
-        nextContactAt:
-          type: string
-          nullable: true
       required:
         - studentId
         - status
@@ -7050,6 +7060,12 @@ components:
     CreateCounselRoundDto:
       type: object
       properties:
+        nextContactAt:
+          type: string
+          format: date-time
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:\d{2})$
+          example: '2026-07-28T09:30:00+09:00'
+          nullable: false
         counselorId:
           type: number
         summary:
@@ -7069,14 +7085,17 @@ components:
         nextAction:
           type: string
           maxLength: 500
-        nextContactAt:
-          type: string
-          pattern: ^\d{4}-\d{2}-\d{2}$
         formSnapshot:
           $ref: '#/components/schemas/CounselFormSnapshotDto'
     UpdateCounselRoundDto:
       type: object
       properties:
+        nextContactAt:
+          type: string
+          nullable: true
+          format: date-time
+          pattern: ^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,6})?)?(?:Z|[+-]\d{2}:\d{2})$
+          example: '2026-07-28T09:30:00+09:00'
         counselorId:
           type: number
           nullable: true
@@ -7109,9 +7128,6 @@ components:
           type: string
           nullable: true
           maxLength: 500
-        nextContactAt:
-          type: string
-          nullable: true
         formSnapshot:
           $ref: '#/components/schemas/CounselFormSnapshotDto'
     CreateRoadmapDto:

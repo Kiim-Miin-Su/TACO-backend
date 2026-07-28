@@ -13,7 +13,7 @@ export const COUNSEL_FORMS_CANONICAL_TABLE_SQL = `
     submitter_type varchar(16) NOT NULL DEFAULT 'unknown'
       CHECK (submitter_type IN ('parent','student','staff','unknown')),
     reference_notes text,
-    next_contact_at date,
+    next_contact_at timestamptz,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
@@ -74,4 +74,3 @@ export const COUNSEL_STUDENT_SSOT_CONTRACT_SQL: readonly string[] = [
   `ALTER TABLE students DROP COLUMN IF EXISTS grade`,
   `ALTER TABLE students DROP COLUMN IF EXISTS school_name`,
 ];
-

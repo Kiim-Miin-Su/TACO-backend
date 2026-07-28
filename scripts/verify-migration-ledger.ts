@@ -33,6 +33,7 @@ import { PAYMENTS_MONEY_CONSTRAINTS_MIGRATION_ID } from '../src/database/migrati
 import { SIGNUP_PHONE_CHALLENGES_MIGRATION_ID } from '../src/database/migrations/signup-phone-challenges.migration';
 import { VIEW_PRESET_OWNER_MIGRATION_ID } from '../src/database/migrations/view-preset-owner.migration';
 import { ATTENDANCE_REPORTS_CONSTRAINTS_MIGRATION_ID } from '../src/database/migrations/attendance-reports-constraints.migration';
+import { COUNSEL_NEXT_CONTACT_DATETIME_MIGRATION_ID } from '../src/database/migrations/counsel-next-contact-datetime.migration';
 
 loadLocalEnv();
 
@@ -67,6 +68,7 @@ export const EXPECTED_MIGRATION_IDS = [
   SIGNUP_PHONE_CHALLENGES_MIGRATION_ID, // [TBO-57] 가입 전 휴대전화 OTP challenge 표
   VIEW_PRESET_OWNER_MIGRATION_ID, // [TBO-58 P2] calendar_view_presets 소유자 FK
   ATTENDANCE_REPORTS_CONSTRAINTS_MIGRATION_ID, // [74D-1] attendance/session_reports FK 7·CHECK 3·역방향 index
+  COUNSEL_NEXT_CONTACT_DATETIME_MIGRATION_ID, // [76A-1] counsel next_contact_at date→timestamptz
 ] as const;
 
 const url = directDatabaseUrl();

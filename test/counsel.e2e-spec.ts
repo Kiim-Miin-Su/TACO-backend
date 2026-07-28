@@ -75,18 +75,18 @@ describe('Counsel API (e2e)', () => {
   it('POST/PATCH /counsel — 학생 SSOT 연결과 다음 상담일을 저장·해제하고 audit에 남긴다', async () => {
     const created = (await http.post('/api/counsel').set(asAdmin()).send({
       studentId: 1, source: 'manual', submitterType: 'parent', assignedStaffId: 3,
-      referenceNotes: '해외 거주로 카카오 우선', nextContactAt: '2099-07-21',
+      referenceNotes: '해외 거주로 카카오 우선', nextContactAt: '2099-07-21T09:30:00+09:00',
     }).expect(201)).body;
     expect(created).toMatchObject({
       studentId: 1, submitterType: 'parent', assignedStaffId: 3,
-      referenceNotes: '해외 거주로 카카오 우선', nextContactAt: '2099-07-21',
+      referenceNotes: '해외 거주로 카카오 우선', nextContactAt: '2099-07-21T00:30:00.000Z',
     });
 
     const updated = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin()).send({
-      studentId: 2, source: 'google_form', submitterType: 'student', nextContactAt: '2099-07-22',
+      studentId: 2, source: 'google_form', submitterType: 'student', nextContactAt: '2099-07-22T10:00:00+09:00',
     }).expect(200)).body;
     expect(updated).toMatchObject({
-      studentId: 2, source: 'google_form', submitterType: 'student', nextContactAt: '2099-07-22',
+      studentId: 2, source: 'google_form', submitterType: 'student', nextContactAt: '2099-07-22T01:00:00.000Z',
     });
 
     const cleared = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin())
@@ -100,7 +100,7 @@ describe('Counsel API (e2e)', () => {
       row.action === 'update' && row.changes?.studentId);
     expect(update).toBeDefined();
     expect(update.actorId).toBe(3);
-    expect(update.changes.nextContactAt.after).toBe('2099-07-22');
+    expect(update.changes.nextContactAt.after).toBe('2099-07-22T01:00:00.000Z');
     const createAudit = audit.find((row: { action: string }) => row.action === 'create');
     expect(createAudit.changes.referenceNotes.after).toBe('[masked]');
   });
@@ -109,24 +109,34 @@ describe('Counsel API (e2e)', () => {
     const form = (await http.post('/api/counsel').set(asAdmin())
       .send({ studentId: 1, source: 'manual', referenceNotes: '상담 참고' }).expect(201)).body;
     const first = (await http.post(`/api/counsel/${form.id}/rounds`).set(asAdmin())
-      .send({ summary: '1차', nextContactAt: '2099-08-01' }).expect(201)).body;
+      .send({ summary: '1차', nextContactAt: '2099-08-01T00:00:00.000Z' }).expect(201)).body;
     const second = (await http.post(`/api/counsel/${form.id}/rounds`).set(asAdmin())
-      .send({ summary: '2차', nextContactAt: '2099-08-02' }).expect(201)).body;
+      .send({ summary: '2차', nextContactAt: '2099-08-02T00:00:00.000Z' }).expect(201)).body;
     const aggregate = (await http.get(`/api/counsel/${form.id}/aggregate`).set(asAdmin()).expect(200)).body;
-    expect(aggregate.form).toMatchObject({ id: form.id, referenceNotes: '상담 참고', nextContactAt: '2099-08-02' });
+    expect(aggregate.form).toMatchObject({
+      id: form.id,
+      referenceNotes: '상담 참고',
+      nextContactAt: '2099-08-02T00:00:00.000Z',
+    });
     expect(aggregate.rounds.map((row: { id: number }) => row.id)).toEqual([first.id, second.id]);
 
     await http.patch(`/api/counsel/${form.id}/rounds/${first.id}`).set(asAdmin())
-      .send({ nextContactAt: '2099-09-01' }).expect(200);
-    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt).toBe('2099-08-02');
+      .send({ nextContactAt: '2099-09-01T00:00:00.000Z' }).expect(200);
+    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt)
+      .toBe('2099-08-02T00:00:00.000Z');
 
     await http.patch(`/api/counsel/${form.id}/rounds/${second.id}`).set(asAdmin())
-      .send({ summary: '2차 수정', nextContactAt: '2099-08-03' }).expect(200)
-      .expect(({ body }) => expect(body).toMatchObject({ summary: '2차 수정', nextContactAt: '2099-08-03' }));
-    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt).toBe('2099-08-03');
+      .send({ summary: '2차 수정', nextContactAt: '2099-08-03T00:00:00.000Z' }).expect(200)
+      .expect(({ body }) => expect(body).toMatchObject({
+        summary: '2차 수정',
+        nextContactAt: '2099-08-03T00:00:00.000Z',
+      }));
+    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt)
+      .toBe('2099-08-03T00:00:00.000Z');
 
     await http.delete(`/api/counsel/${form.id}/rounds/${second.id}`).set(asAdmin()).expect(200);
-    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt).toBe('2099-09-01');
+    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt)
+      .toBe('2099-09-01T00:00:00.000Z');
     const audit = (await http.get(`/api/audit?entity=counsel_rounds&entityId=${second.id}`).set(asAdmin()).expect(200)).body;
     expect(audit.map((row: { action: string }) => row.action).sort()).toEqual(['create', 'delete', 'update']);
   });
@@ -168,19 +178,24 @@ describe('Counsel API (e2e)', () => {
         summary: '추가 상담', result: 'positive',
         formSnapshot: {
           studentId: 2, status: 'registered', source: 'naver_form',
-          submitterType: 'student', referenceNotes: '1차에서 확인된 참고점', nextContactAt: '2026-09-01',
+          submitterType: 'student',
+          referenceNotes: '1차에서 확인된 참고점',
+          nextContactAt: '2026-09-01T00:00:00.000Z',
         },
       }).expect(201)).body;
     expect(round.roundNo).toBe(maxNo + 1);
     expect(round.counselFormId).toBe(2);
     expect(round.formSnapshot).toMatchObject({
-      studentId: 2, submitterType: 'student', referenceNotes: '1차에서 확인된 참고점', nextContactAt: '2026-09-01',
+      studentId: 2,
+      submitterType: 'student',
+      referenceNotes: '1차에서 확인된 참고점',
+      nextContactAt: '2026-09-01T00:00:00.000Z',
     });
     const form = (await http.get('/api/counsel').set(asAdmin()).expect(200)).body.find((f: { id: number }) => f.id === 2);
-    expect(form.nextContactAt).toBe('2026-09-01'); // 폼 동기화
+    expect(form.nextContactAt).toBe('2026-09-01T00:00:00.000Z'); // 폼 동기화
     const audit = (await http.get('/api/audit?entity=counsel_forms&entityId=2').set(asAdmin()).expect(200)).body;
     const sync = audit.find((row: { action: string; changes?: { nextContactAt?: { after?: string } } }) =>
-      row.action === 'update' && row.changes?.nextContactAt?.after === '2026-09-01');
+      row.action === 'update' && row.changes?.nextContactAt?.after === '2026-09-01T00:00:00.000Z');
     expect(sync).toMatchObject({ actorId: 3 });
     const roundAudit = (await http.get(`/api/audit?entity=counsel_rounds&entityId=${round.id}`).set(asAdmin()).expect(200)).body[0];
     expect(roundAudit.changes.formSnapshot.after.studentId).toBe(2);
@@ -196,7 +211,7 @@ describe('Counsel API (e2e)', () => {
     const audit = app.get(AuditService);
     const fail = jest.spyOn(audit, 'log').mockRejectedValueOnce(new Error('injected counsel sync audit failure'));
     await http.post('/api/counsel/3/rounds').set(asAdmin())
-      .send({ summary: '롤백 대상', nextContactAt: '2026-09-02' }).expect(500);
+      .send({ summary: '롤백 대상', nextContactAt: '2026-09-02T00:00:00.000Z' }).expect(500);
     fail.mockRestore();
 
     const afterForm = (await http.get('/api/counsel/3').set(asAdmin()).expect(200)).body;
@@ -251,9 +266,13 @@ describe('Counsel API (e2e)', () => {
       expect(f.status).toBe('requested'); // 서비스가 강제
     });
 
-    it('POST/PATCH /counsel — nextContactAt 형식 오류 → 400', async () => {
+    it('POST/PATCH /counsel — nextContactAt은 타임존 포함 ISO instant만 허용한다', async () => {
       await http.post('/api/counsel').set(TH())
         .send({ studentId: 1, source: 'manual', nextContactAt: '21-07-2026' }).expect(400);
+      await http.post('/api/counsel').set(TH())
+        .send({ studentId: 1, source: 'manual', nextContactAt: '2026-07-21' }).expect(400);
+      await http.post('/api/counsel').set(TH())
+        .send({ studentId: 1, source: 'manual', nextContactAt: '2026-02-31T09:00:00+09:00' }).expect(400);
       await http.patch('/api/counsel/1').set(TH()).send({ nextContactAt: 'tomorrow' }).expect(400);
     });
 

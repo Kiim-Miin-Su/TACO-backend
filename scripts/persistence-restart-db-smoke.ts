@@ -87,7 +87,11 @@ async function main(): Promise<void> {
       .send({ studentId, source: 'manual' }).expect(201)).body;
     formId = form.id;
     const round = (await http.post(`/api/counsel/${formId}/rounds`).set(auth(admin))
-      .send({ summary: '재기동 생존 검증 상담', result: 'positive', nextContactAt: '2026-08-01' }).expect(201)).body;
+      .send({
+        summary: '재기동 생존 검증 상담',
+        result: 'positive',
+        nextContactAt: '2026-08-01T00:00:00.000Z',
+      }).expect(201)).body;
     roundId = round.id;
 
     const template = (await http.post('/api/report-templates').set(auth(admin))

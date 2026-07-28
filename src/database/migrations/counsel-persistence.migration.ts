@@ -29,7 +29,7 @@ export const COUNSEL_FORMS_TABLE_SQL = `
     deleted_by integer
   )`;
 
-export const COUNSEL_ROUNDS_TABLE_SQL = `
+const counselRoundsTableSql = (nextContactType: 'date' | 'timestamptz') => `
   CREATE TABLE IF NOT EXISTS counsel_rounds (
     id serial PRIMARY KEY,
     counsel_form_id integer NOT NULL REFERENCES counsel_forms(id),
@@ -42,7 +42,7 @@ export const COUNSEL_ROUNDS_TABLE_SQL = `
     detail text,
     result varchar(32),
     next_action varchar(500),
-    next_contact_at date,
+    next_contact_at ${nextContactType},
     form_snapshot jsonb NOT NULL DEFAULT '{}'::jsonb
       CHECK (jsonb_typeof(form_snapshot) = 'object'),
     created_at timestamptz NOT NULL DEFAULT now(),
@@ -50,6 +50,13 @@ export const COUNSEL_ROUNDS_TABLE_SQL = `
     deleted_at timestamptz,
     deleted_by integer
   )`;
+
+/** 20260720 migration 원문. 적용된 migration의 의미는 변경하지 않는다. */
+export const COUNSEL_ROUNDS_TABLE_SQL = counselRoundsTableSql('date');
+
+/** Fresh database/runtime bootstrap용 현재 canonical schema. */
+export const COUNSEL_ROUNDS_CANONICAL_TABLE_SQL =
+  counselRoundsTableSql('timestamptz');
 
 export const COUNSEL_PERSISTENCE_INDEX_SQL: readonly string[] = [
   `CREATE INDEX IF NOT EXISTS idx_counsel_forms_status ON counsel_forms (status) WHERE deleted_at IS NULL`,

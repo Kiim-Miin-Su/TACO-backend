@@ -70,7 +70,8 @@
   "db:migrate:view-preset-owner": "ts-node scripts/migrate-view-preset-owner.ts",
   "qa:server": "ts-node --transpile-only test/qa-fixture-server.ts",
   "db:inventory:attendance-reports": "ts-node scripts/db-inventory-attendance-reports.ts",
-  "db:migrate:attendance-reports-constraints": "ts-node scripts/migrate-attendance-reports-constraints.ts"
+  "db:migrate:attendance-reports-constraints": "ts-node scripts/migrate-attendance-reports-constraints.ts",
+  "db:migrate:counsel-next-contact-datetime": "ts-node scripts/migrate-counsel-next-contact-datetime.ts"
  },
  "dependencies": {
   "@kms545487/contracts": "^0.2.17",

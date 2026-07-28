@@ -10,11 +10,12 @@ import {
 import { ACADEMY_EVENTS_TABLE_SQL, ACADEMY_EVENTS_INDEX_SQL } from './migrations/academy-events.migration';
 import { COUNTRIES_TABLE_SQL } from './migrations/countries.migration';
 import {
-  COUNSEL_ROUNDS_TABLE_SQL,
+  COUNSEL_ROUNDS_CANONICAL_TABLE_SQL,
   COUNSEL_PERSISTENCE_INDEX_SQL,
 } from './migrations/counsel-persistence.migration';
 import { COUNSEL_FORM_INPUTS_MIGRATION_SQL } from './migrations/counsel-form-inputs.migration';
 import { COUNSEL_ROUND_SNAPSHOTS_RUNTIME_SQL } from './migrations/counsel-round-snapshots.migration';
+import { COUNSEL_NEXT_CONTACT_DATETIME_MIGRATION_SQL } from './migrations/counsel-next-contact-datetime.migration';
 import {
   COUNSEL_FORMS_CANONICAL_TABLE_SQL,
   COUNSEL_STUDENT_SSOT_CONTRACT_SQL,
@@ -613,18 +614,27 @@ export const REPORT_TEMPLATES_SPEC: PostgresCollectionSpec = {
 export const COUNSEL_FORMS_SPEC: PostgresCollectionSpec = {
   table: 'counsel_forms',
   createSql: COUNSEL_FORMS_CANONICAL_TABLE_SQL,
-  migrations: [...COUNSEL_FORM_INPUTS_MIGRATION_SQL, COUNSEL_FAMILY_ACADEMIC_EXPAND_SQL[0], ...COUNSEL_STUDENT_SSOT_CONTRACT_SQL.slice(0, -3)],
+  migrations: [
+    ...COUNSEL_FORM_INPUTS_MIGRATION_SQL,
+    COUNSEL_FAMILY_ACADEMIC_EXPAND_SQL[0],
+    ...COUNSEL_STUDENT_SSOT_CONTRACT_SQL.slice(0, -3),
+    ...COUNSEL_NEXT_CONTACT_DATETIME_MIGRATION_SQL.slice(0, 1),
+  ],
   indexes: COUNSEL_PERSISTENCE_INDEX_SQL.slice(0, 3),
-  dateFields: ['nextContactAt'],
+  timestampFields: ['nextContactAt'],
 };
 
 export const COUNSEL_ROUNDS_SPEC: PostgresCollectionSpec = {
   table: 'counsel_rounds',
-  createSql: COUNSEL_ROUNDS_TABLE_SQL,
-  migrations: [...COUNSEL_ROUND_SNAPSHOTS_RUNTIME_SQL],
+  createSql: COUNSEL_ROUNDS_CANONICAL_TABLE_SQL,
+  migrations: [
+    ...COUNSEL_ROUND_SNAPSHOTS_RUNTIME_SQL,
+    ...COUNSEL_NEXT_CONTACT_DATETIME_MIGRATION_SQL.slice(1),
+  ],
   indexes: COUNSEL_PERSISTENCE_INDEX_SQL.slice(4),
   jsonFields: ['formSnapshot'],
-  dateFields: ['scheduledAt', 'completedAt', 'nextContactAt'],
+  dateFields: ['scheduledAt', 'completedAt'],
+  timestampFields: ['nextContactAt'],
 };
 
 export const ROOMS_SPEC: PostgresCollectionSpec = {

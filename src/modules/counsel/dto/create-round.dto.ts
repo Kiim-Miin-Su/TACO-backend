@@ -1,8 +1,9 @@
 import { Type } from 'class-transformer';
 import { COUNSEL_RESULTS } from '../counsel.entity'; // [P2 M5]
-import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, ValidateNested } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, MaxLength, ValidateNested } from 'class-validator';
 import type { CreateCounselRoundInput } from '@kms545487/contracts';
 import { CounselFormSnapshotDto } from './counsel-form-snapshot.dto';
+import { CounselInstantField } from '../counsel-instant';
 
 // [참조/처리] POST /counsel/:id/rounds — 상담 회차 추가. roundNo는 서비스가 자동 증가, 부모 폼 nextContactAt 동기화.
 const RESULT = COUNSEL_RESULTS; // [P2 M5]
@@ -15,6 +16,6 @@ export class CreateCounselRoundDto implements CreateCounselRoundInput {
   @IsOptional() @IsString() @MaxLength(ROUND_TEXT.detail) detail?: string;
   @IsOptional() @IsIn(RESULT as unknown as string[]) result?: CreateCounselRoundInput['result'];
   @IsOptional() @IsString() @MaxLength(ROUND_TEXT.nextAction) nextAction?: string;
-  @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/) nextContactAt?: string;
+  @IsOptional() @CounselInstantField() nextContactAt?: string;
   @IsOptional() @ValidateNested() @Type(() => CounselFormSnapshotDto) formSnapshot?: CounselFormSnapshotDto;
 }
