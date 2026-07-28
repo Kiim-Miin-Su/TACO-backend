@@ -1,7 +1,7 @@
 import { INestApplication } from '@nestjs/common';
 import { config } from 'dotenv';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app'; // [74D-1] SudoGuard 라우트는 Bearer+sudo cookie 필수
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { normalizeQueryRows } from '../src/database/postgres-row.util';
 import { AuthService } from '../src/modules/auth/auth.service';
@@ -166,8 +166,10 @@ async function cleanupFixtures(): Promise<void> {
     if (qaCourseId) await http.delete(`/api/courses/${qaCourseId}`).set(auth(manager));
     if (qaRoomId) await http.delete(`/api/rooms/${qaRoomId}`).set(auth(manager));
     if (qaSubjectId) await http.delete(`/api/subjects/${qaSubjectId}`).set(auth(manager));
-    if (qaStudentId) await http.delete(`/api/students/${qaStudentId}`).set(auth(manager));
-    if (qaRelatedStudentId) await http.delete(`/api/students/${qaRelatedStudentId}`).set(auth(manager));
+    // [74D-1] DELETE /students/:id는 SudoGuard(원부 삭제 재인증) — Bearer만이면 403으로
+    //  API 경로가 조용히 실패하고 fallbackSoftDelete가 가려준다. 정규 경로를 살린다.
+    if (qaStudentId) await http.delete(`/api/students/${qaStudentId}`).set(sudoAuthHeaders(cleanupApp, manager));
+    if (qaRelatedStudentId) await http.delete(`/api/students/${qaRelatedStudentId}`).set(sudoAuthHeaders(cleanupApp, manager));
     if (qaInstructorId) await http.delete(`/api/instructors/${qaInstructorId}`).set(auth(ceo));
 
     // API 도중 실패/프로세스 재시도에도 테스트 자산을 active 상태로 남기지 않는다.
@@ -233,8 +235,9 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
     const managerToken = tokenFor(app, managerActorId);
     const ceoToken = tokenFor(app, ceoActorId);
     const stamp = `${Date.now()}_${process.pid}`;
+    // [74D-1] 강사 직접 등록은 SudoGuard(대표 전용·재인증 필수) — Bearer 단독은 403 SUDO_REQUIRED.
     qaInstructorId = Number((await http.post('/api/users/instructors')
-      .set(auth(ceoToken))
+      .set(sudoAuthHeaders(app, ceoToken))
       .send({
         webId: `dbcrud_inst_${stamp}`,
         name: `DB CRUD 강사 ${stamp}`,

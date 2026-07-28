@@ -82,7 +82,8 @@ describeDb('[TBO-53 C1] Money race — 2-instance PG (e2e)', () => {
     adminB = tokenFor(appB, ceoId, 'super_admin', 'RACE 대표');
 
     // QA aggregate 준비(전부 A 인스턴스 API 경유 — B 메모리에는 없음 = stale 재현 장치)
-    instructorId = Number((await httpA.post('/api/users/instructors').set(auth(admin)).send({
+    // [74D-1] 강사 직접 등록은 SudoGuard — Bearer 단독은 403 SUDO_REQUIRED.
+    instructorId = Number((await httpA.post('/api/users/instructors').set(sudoAuthHeaders(appA, admin)).send({
       webId: `race_inst_${stamp}`, name: `RACE 강사 ${stamp}`, password: `Race!${stamp}x`,
       defaultHourlyRate: 40000, canTeachKinder: false, countryCode: 'KR', timeZone: 'Asia/Seoul',
     }).expect(201)).body.id);
