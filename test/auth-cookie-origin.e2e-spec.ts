@@ -28,6 +28,7 @@ describe('TBO-34 browser session + Origin defense (e2e)', () => {
     expect(access).toContain('SameSite=Lax');
     expect(access).toContain('Path=/');
     expect(refresh).toContain('HttpOnly');
+    expect(refresh).toContain('SameSite=Lax'); // [75B] refresh도 Lax — 4자 대조(계약↔e2e) 공백 보강
     expect(refresh).toContain('Path=/api/auth');
 
     await agent.get('/api/auth/me').expect(200).expect(({ body }) => {

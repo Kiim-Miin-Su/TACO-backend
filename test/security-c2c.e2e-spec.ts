@@ -101,8 +101,14 @@ describe('가드·sudo (e2e)', () => {
     // 1) reauth로 sudo 쿠키 획득
     const reauth = await http.post('/api/auth/reauth').set('Cookie', cookieHeader())
       .send({ currentPassword: 'demo1234' }).expect(201);
-    const sudoCookie = (reauth.headers['set-cookie'] as unknown as string[])
-      .map((c) => c.split(';')[0]).find((c) => c.startsWith('sudo_token='));
+    const sudoRaw = (reauth.headers['set-cookie'] as unknown as string[])
+      .find((c) => c.startsWith('sudo_token='));
+    // [75B] 발급 속성 회귀 고정 — 4자 대조(계약↔e2e) 공백 보강: HttpOnly·Lax·Path=/·TTL 10분(600s)
+    expect(sudoRaw).toContain('HttpOnly');
+    expect(sudoRaw).toContain('SameSite=Lax');
+    expect(sudoRaw).toContain('Path=/');
+    expect(sudoRaw).toContain('Max-Age=600');
+    const sudoCookie = sudoRaw?.split(';')[0];
     expect(sudoCookie).toBeDefined();
 
     // 2) sudo 쿠키 포함 → 대표 직접 수정 통과(대상: 강사 계정 1 이름 변경 후 원복)
