@@ -3,7 +3,7 @@
 //  generate 정합(같은 분류 소비)·연결 후 가격 불변·권한.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp, sudoAuthHeaders } from './setup-app';
+import { createTestApp, sudoAuthHeaders , patchSessionAckingImpact } from './setup-app';
 
 describe('[TBO-64] 시수 워크시트 (e2e)', () => {
   let app: INestApplication;
@@ -57,10 +57,9 @@ describe('[TBO-64] 시수 워크시트 (e2e)', () => {
     SCHED = (await makeSession({ startTime: '18:00' })).id;
     for (const id of [AUTO, LATE, NOREP, ABSENT]) await held(id);
     // 강사 출결 수정(워크시트 요건 ③·⑥ — 기존 PATCH 재사용, 매니저)
-    await http.patch(`/api/schedule/${LATE}`).set(auth('manager')).send({ instructorAttendance: 'late', force: true, acknowledgeAccountingImpact: true }).expect(200);
+    expect((await patchSessionAckingImpact(http, auth('manager'), LATE, { instructorAttendance: 'late', force: true })).status).toBe(200); // [74D-0]
     // held 회차의 출결 변경은 회계 영향 확인(ack) 규약 — FE 모달 확인과 동일 플래그 동반.
-    await http.patch(`/api/schedule/${ABSENT}`).set(auth('manager'))
-      .send({ instructorAttendance: 'absent', force: true, acknowledgeAccountingImpact: true }).expect(200);
+    expect((await patchSessionAckingImpact(http, auth('manager'), ABSENT, { instructorAttendance: 'absent', force: true })).status).toBe(200); // [74D-0]
     AUTO_REPORT = await approveReport(AUTO);
     await approveReport(LATE);
     // 학생 출결도 워크시트 화면에서 수정 가능(기존 PUT 재사용) — 참가자 출결 표시 검증용

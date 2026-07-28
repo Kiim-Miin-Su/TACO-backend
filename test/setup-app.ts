@@ -61,3 +61,21 @@ export function addDaysISO(iso: string, n: number): string {
   d.setUTCDate(d.getUTCDate() + n);
   return d.toISOString().slice(0, 10);
 }
+
+// [74D-0] 회계 영향 ack 신계약(hash 결속) 공용 헬퍼 — FE confirm 흐름과 동형:
+//  1차는 ack 없이 시도 → 409 ACCOUNTING_IMPACT_ACK_REQUIRED면 서버가 준 impactHash로 1회 결속 재시도.
+//  (맹목 acknowledgeAccountingImpact:true는 74D-0부터 서버가 거부한다 — stale 확인 차단)
+export async function patchSessionAckingImpact(
+  http: ReturnType<typeof import('supertest')>,
+  headers: Record<string, string>,
+  sessionId: number,
+  body: Record<string, unknown>,
+) {
+  const first = await http.patch(`/api/schedule/${sessionId}`).set(headers).send(body);
+  if (first.status !== 409 || first.body?.code !== 'ACCOUNTING_IMPACT_ACK_REQUIRED') return first;
+  return http.patch(`/api/schedule/${sessionId}`).set(headers).send({
+    ...body,
+    acknowledgeAccountingImpact: true,
+    expectedAccountingImpactHash: first.body.impactHash,
+  });
+}

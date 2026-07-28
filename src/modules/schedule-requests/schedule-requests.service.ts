@@ -137,6 +137,16 @@ export class ScheduleRequestsService {
       durationMinutes: merged.durationMinutes, instructorId: merged.instructorId, roomId: merged.roomId,
       studentIds: merged.studentIds, ignoreSessionId: target.id, mode: merged.mode,
     });
+    // [74D-0] 반복 update 요청도 생성 시 대상 집합 snapshot(삭제와 동일) — 승인 시 drift 판정의 기준.
+    const updateScope = (dto.scope ?? 'this') as 'this' | 'this_and_following' | 'all';
+    const updateScopeMembers = updateScope !== 'this' && target.seriesId != null
+      ? selectSeriesScope(
+        this.schedule.list({}).filter((session) => session.seriesId === target.seriesId),
+        target,
+        updateScope,
+      )
+      : [];
+    const updateImpactSessionIds = [target.id, ...updateScopeMembers.map((session) => session.id)];
     const row = await this.store.transaction(async () => {
       const created = await this.store.insert<RequestRow>({
         requesterId,
@@ -156,7 +166,8 @@ export class ScheduleRequestsService {
         studentIds: merged.studentIds,
         requestReason: dto.requestReason,
         scope: dto.scope ?? 'this',
-        impactSessionIds: [target.id],
+        // [74D-0] scope 대상 snapshot — 승인 잠금 후 대상이 달라지면 REQUEST_SCOPE_STALE 전체 rollback(삭제와 동일).
+        impactSessionIds: updateImpactSessionIds,
         changeSummary: this.sessionUpdateSummary(target, merged),
         status: 'pending',
       } as unknown as Omit<RequestRow, keyof BaseRow>);
@@ -324,7 +335,8 @@ export class ScheduleRequestsService {
     if (req.targetSessionId == null) throw new BadRequestException('변경할 세션 id가 없습니다.');
     return this.store.transaction(async () => {
       const before = { ...req };
-      const { conflicts } = await this.scheduleCmd.update(req.targetSessionId!, {
+      // [74D-0] 승인=direct PATCH와 같은 계약 — ack는 승인자가 본 impactHash에 결속, 대상은 요청 snapshot에 결속.
+      const { conflicts, accountingImpact, accountingImpactHash } = await this.scheduleCmd.update(req.targetSessionId!, {
         courseId: req.courseId, instructorId: req.instructorId, roomId: req.roomId,
         sessionDate: req.sessionDate, startTime: req.startTime, endTime: req.endTime,
         durationMinutes: req.durationMinutes, topic: req.topic, studentIds: req.studentIds,
@@ -332,11 +344,21 @@ export class ScheduleRequestsService {
         kind: req.kind, mode: req.mode, scope: req.scope,
         force: options.forceConflicts,
         acknowledgeAccountingImpact: options.acknowledgeAccountingImpact,
-      }, decidedBy);
+        expectedAccountingImpactHash: options.expectedAccountingImpactHash,
+      }, decidedBy, {
+        expectedTargetIds: req.impactSessionIds?.length ? req.impactSessionIds : undefined,
+      });
       const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
         status: 'approved', decidedBy, decidedAt: new Date().toISOString(),
       }));
-      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
+      const changes = this.audit.diffOf(before, updated);
+      if (accountingImpact && accountingImpactHash) {
+        changes.accountingImpactAcknowledgement = {
+          before: null,
+          after: { hash: accountingImpactHash, impact: accountingImpact },
+        };
+      }
+      await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: req.id, action: 'approve', actorId: decidedBy, changes });
       return { request: updated, conflicts };
     });
   }

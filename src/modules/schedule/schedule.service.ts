@@ -636,7 +636,13 @@ export class ScheduleService {
     return this.update(id, { instructorAttendance: status } as UpdateScheduleDto, actorId);
   }
 
-  async update(id: number, dto: UpdateScheduleDto, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }> {
+  async update(
+    id: number,
+    dto: UpdateScheduleDto,
+    actorId?: number,
+    // [74D-0] 승인 경로 전용 — 요청 생성 시 snapshot한 대상 집합과 잠금 후 실제 대상을 결속(drift=전체 rollback).
+    internalOpts?: { expectedTargetIds?: readonly number[] },
+  ): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number; accountingImpact?: SessionAccountingImpact; accountingImpactHash?: string }> {
     await this.read.ensureReady();
     // [명시 코호트 v0.1.13] 부분집합 검증 — create와 동일 규칙(함수 통일: activeStudentIds 단일 소스)
     if (dto.studentIds?.length) {
@@ -735,6 +741,22 @@ export class ScheduleService {
         },
       });
     }
+    // [74D-0] 승인 경로: 요청 생성 시점 대상 snapshot과 잠금 후 실제 대상 대조 — 달라졌으면 전체 rollback(삭제와 동일).
+    if (internalOpts?.expectedTargetIds) {
+      const expectedTargetIds = [...internalOpts.expectedTargetIds].sort((a, b) => a - b);
+      const currentTargetIds = [cur.id, ...seriesPatches.map((patch) => patch.id)].sort((a, b) => a - b);
+      if (
+        expectedTargetIds.length !== currentTargetIds.length
+        || expectedTargetIds.some((targetId, index) => targetId !== currentTargetIds[index])
+      ) {
+        throw new ConflictException({
+          code: 'REQUEST_SCOPE_STALE',
+          message: '요청 이후 반복 수업 대상이 변경되었습니다. 현재 범위를 확인한 새 요청이 필요합니다.',
+          expectedTargetIds,
+          currentTargetIds,
+        });
+      }
+    }
     const accountingContext = await this.accountingContext.loadFresh([
       cur.id,
       ...seriesPatches.map((patch) => patch.id),
@@ -770,6 +792,8 @@ export class ScheduleService {
       }));
     }
     const impact = combineAccountingImpacts(accountingImpacts);
+    // [74D-0] update도 삭제와 같은 영향 지문 — 사용자가 본 미리보기와 잠금 후 실행 대상·영향을 결속.
+    const impactHash = accountingImpactHash([cur.id, ...seriesPatches.map((patch) => patch.id)], impact);
     const requiresAccountingAck = impact.changed && ([cur, ...seriesPatches.map((patch) => patch.before)]
       .some((session) => session?.status === 'held' || (session ? isPayoutLocked(session) : false)));
     if (accountingLocked.length) {
@@ -777,13 +801,21 @@ export class ScheduleService {
         code: 'PAYOUT_REVERSAL_REQUIRED',
         message: `정산서에 연결된 수업(${accountingLocked.map((session) => session.id).join(', ')})은 정산 회수 또는 보정 거래 후 변경할 수 있습니다.`,
         impact,
+        impactHash,
       });
     }
-    if (requiresAccountingAck && !dto.acknowledgeAccountingImpact) {
+    // [74D-0] force(충돌 강행)·ack(회계 확인)·정산 잠금은 독립 옵션 — ack는 hash 일치까지 요구(stale 확인 차단).
+    if (requiresAccountingAck && (
+      !dto.acknowledgeAccountingImpact
+      || dto.expectedAccountingImpactHash !== impactHash
+    )) {
       throw new ConflictException({
         code: 'ACCOUNTING_IMPACT_ACK_REQUIRED',
-        message: '완료 수업 변경으로 시수 또는 정산 예상액이 달라집니다. 변경 결과를 확인해 주세요.',
+        message: dto.acknowledgeAccountingImpact
+          ? '확인한 회계 영향이 현재 상태와 달라졌습니다. 최신 영향 미리보기를 다시 확인하세요.'
+          : '완료 수업 변경으로 시수 또는 정산 예상액이 달라집니다. 변경 결과를 확인해 주세요.',
         impact,
+        impactHash,
       });
     }
 
@@ -820,7 +852,14 @@ export class ScheduleService {
       memberAfters.push({ before: p.before, after });
     }
     if (actorId != null) {
-      const diff = this.audit.diffOf(beforeSnap, updated);
+      const diff = this.audit.diffOf(beforeSnap, updated) as Record<string, { before?: unknown; after?: unknown }>;
+      // [74D-0] 확인 지문을 감사에 영속 — "무엇을 보고 승인했는가"가 재구성된다(삭제와 동일 규약).
+      if (requiresAccountingAck) {
+        diff.accountingImpactAcknowledgement = {
+          before: null,
+          after: { hash: impactHash, impact },
+        };
+      }
       if (Object.keys(diff).length)
         await this.audit.log({ entity: SESSIONS, entityId: id, action: 'update', actorId, changes: diff, reason: correlation });
       for (const { before, after } of memberAfters) {
@@ -842,7 +881,12 @@ export class ScheduleService {
     }
 
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
-    return { row: this.read.enrich(updated, roomsMap), conflicts, updated: 1 + seriesPatches.length };
+    return {
+      row: this.read.enrich(updated, roomsMap), conflicts, updated: 1 + seriesPatches.length,
+      // [74D-0] 적용된 영향·지문을 응답에도 — 승인 감사(요청 경로)와 FE 표시가 같은 값을 재사용.
+      accountingImpact: impact.changed ? impact : undefined,
+      accountingImpactHash: impact.changed ? impactHash : undefined,
+    };
       });
   }
 

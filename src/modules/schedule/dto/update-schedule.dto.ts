@@ -102,6 +102,11 @@ export class UpdateScheduleDto implements UpdateClassSessionInput {
   @IsOptional() @IsBoolean()
   acknowledgeAccountingImpact?: boolean;
 
+  // [74D-0] ack를 "사용자가 본 영향"에 결속 — 직전 409의 impactHash를 회신해야 적용된다(삭제와 동일 규약).
+  @ApiPropertyOptional({ example: 'a1b2…(64 hex)', description: '[74D-0] 직전 409 ACCOUNTING_IMPACT_ACK_REQUIRED의 impactHash — ack는 이 지문과 일치할 때만 유효' })
+  @IsOptional() @Matches(/^[a-f0-9]{64}$/, { message: 'expectedAccountingImpactHash는 64자리 sha256 hex여야 합니다' })
+  expectedAccountingImpactHash?: string;
+
   @ApiPropertyOptional({ enum: SESSION_KINDS, example: 'counsel', description: '[v0.1.14] 세션 종류 변경' })
   @IsOptional() @IsIn(SESSION_KINDS)
   kind?: SessionKind;

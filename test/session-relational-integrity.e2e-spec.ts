@@ -4,7 +4,7 @@ import { assertExpectedAfter } from '../src/common/expected-after.util';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { SESSIONS, type ClassSession } from '../src/modules/schedule/schedule.entity';
-import { createTestApp } from './setup-app';
+import { createTestApp, patchSessionAckingImpact } from './setup-app';
 
 const FROM = '2026-06-01';
 const TO = '2026-06-30';
@@ -51,8 +51,7 @@ describe('session joined-table expected/after integrity (e2e)', () => {
     });
     assertExpectedAfter('ack 전 관계 무변경', beforeRelations, await relations(line.sessionId));
 
-    await http.patch(`/api/schedule/${line.sessionId}`).set(auth())
-      .send({ instructorAttendance: 'absent', acknowledgeAccountingImpact: true }).expect(200);
+    expect((await patchSessionAckingImpact(http, auth(), line.sessionId, { instructorAttendance: 'absent' })).status).toBe(200); // [74D-0]
     const afterPreview = await preview();
     const afterSummary = await summary();
     assertExpectedAfter('강사 결석 후 파생값', {
@@ -69,8 +68,7 @@ describe('session joined-table expected/after integrity (e2e)', () => {
       relations: await relations(line.sessionId),
     });
 
-    await http.patch(`/api/schedule/${line.sessionId}`).set(auth())
-      .send({ clearInstructorAttendance: true, acknowledgeAccountingImpact: true }).expect(200);
+    expect((await patchSessionAckingImpact(http, auth(), line.sessionId, { clearInstructorAttendance: true })).status).toBe(200); // [74D-0]
     const restored = await preview();
     assertExpectedAfter('강사 출결 clear 복원', {
       sessionCount: beforePreview.sessionCount,

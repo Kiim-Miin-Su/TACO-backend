@@ -10118,6 +10118,12 @@
             "example": false,
             "description": "완료 수업의 시수·정산 예상 변화 확인 후 적용 동의"
           },
+          "expectedAccountingImpactHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$",
+            "example": "a1b2…(64 hex)",
+            "description": "[74D-0] 직전 409 ACCOUNTING_IMPACT_ACK_REQUIRED의 impactHash — ack는 이 지문과 일치할 때만 유효"
+          },
           "kind": {
             "enum": [
               "class",

@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { createTestApp, mondayISO, addDaysISO } from "./setup-app";
+import { createTestApp, mondayISO, addDaysISO , patchSessionAckingImpact } from "./setup-app";
 
 // ─────────────────────────────────────────────────────────────
 // 전체 플로우 통합 e2e — 관리자 로그인 → 스케줄 생성(독립·커스텀 반복) →
@@ -229,7 +229,7 @@ describe("Full Flow (e2e)", () => {
     const r = (await http.post("/api/reports").set(asAdmin()).send({ sessionId: s.id, studentId: 1, content: "ok" }).expect(201)).body;
     await http.post(`/api/reports/${r.id}/approve`).set(asAdmin()).expect(201);
     // 진행 상태였다가 취소로 변경 → 시수 제외
-    await http.patch(`/api/schedule/${s.id}`).set(asAdmin()).send({ status: "canceled", force: true, acknowledgeAccountingImpact: true }).expect(200);
+    expect((await patchSessionAckingImpact(http, asAdmin(), s.id, { status: "canceled", force: true })).status).toBe(200); // [74D-0] hash 결속 ack 헬퍼
     const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${w5mon}&to=${w5sun}`).set(asAdmin()).expect(200)).body;
     expect(m.sessionCount).toBe(0);
   });
