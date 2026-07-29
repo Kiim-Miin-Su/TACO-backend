@@ -3,6 +3,9 @@ import request from "supertest";
 import { createTestApp, mondayISO, addDaysISO } from "./setup-app";
 
 // 스케줄 API e2e — 참조 무결성(FK)·충돌(409/force)·시리즈 스코프·학생 코호트 필터 중심.
+// 캘린더·정산 경계의 flaky 응답을 전역 retry가 숨기지 않도록 첫 시도 결과만 판정한다.
+jest.retryTimes(0);
+
 describe("Schedule API (e2e)", () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;

@@ -10,6 +10,7 @@ import { PostgresCollectionStore } from '../src/database/postgres-collection.sto
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { ROADMAPS_SPEC, ROADMAP_COURSES_SPEC } from '../src/database/calendar-asset-specs';
 import type { Roadmap, RoadmapCourse } from '../src/modules/roadmaps/roadmap.entity';
+import { studentAggregateBody } from './fixtures/student-profile';
 
 type AggregateCourse = { linkId: number; courseId: number; sortOrder: number; courseName: string; subjectId: number };
 type Aggregate = Roadmap & { courses: AggregateCourse[] };
@@ -83,6 +84,58 @@ describe('[TBO-47] Roadmaps — 코스 묶음 카탈로그 (e2e)', () => {
     await http.post('/api/roadmaps').set(auth(admin))
       .send({ title: '중복 로드맵', courseIds: [10, 10] }).expect(400);
     expect(db.findAll<Roadmap>('roadmaps').length).toBe(before); // 로드맵 본체도 잔존 금지
+  });
+
+  it('수강 roadmapId 무결성 — 활성 로드맵 포함 코스만 연결되고 실패 시 수강·감사 잔존 0', async () => {
+    const student = (await http.post('/api/students').set(auth(admin))
+      .send(studentAggregateBody('로드맵수강학생')).expect(201)).body.student as { id: number };
+    const active = (await http.post('/api/roadmaps').set(auth(admin))
+      .send({ title: '수강 연결 검증', courseIds: [10] }).expect(201)).body as Aggregate;
+    const inactive = (await http.post('/api/roadmaps').set(auth(admin))
+      .send({ title: '비활성 수강 연결 검증', courseIds: [12] }).expect(201)).body as Aggregate;
+    await http.patch(`/api/roadmaps/${inactive.id}`).set(auth(admin))
+      .send({ isActive: false }).expect(200);
+
+    const before = db.findAll<{ studentId: number }>('enrollments')
+      .filter((row) => row.studentId === student.id).length;
+    await http.post('/api/enrollments').set(auth(admin))
+      .send({ studentId: student.id, courseId: 11, roadmapId: active.id }).expect(400);
+    await http.post('/api/enrollments').set(auth(admin))
+      .send({ studentId: student.id, courseId: 12, roadmapId: inactive.id }).expect(400);
+    await http.post('/api/enrollments').set(auth(admin))
+      .send({ studentId: student.id, courseId: 11, roadmapId: 999999 }).expect(400);
+    expect(db.findAll<{ studentId: number }>('enrollments')
+      .filter((row) => row.studentId === student.id)).toHaveLength(before);
+
+    const created = (await http.post('/api/enrollments').set(auth(admin))
+      .send({ studentId: student.id, courseId: 10, roadmapId: active.id, totalSessions: 8 })
+      .expect(201)).body;
+    expect(created).toMatchObject({
+      studentId: student.id,
+      courseId: 10,
+      roadmapId: active.id,
+      totalSessions: 8,
+      completedSessions: 0,
+      status: 'active',
+    });
+    expect(
+      db.findAll<Audit>('audit_log')
+        .some((row) => row.entity === 'enrollments' && row.entityId === created.id && row.action === 'create'),
+    ).toBe(true);
+
+    await http.patch(`/api/roadmaps/${active.id}`).set(auth(admin))
+      .send({ isActive: false }).expect(409);
+    await http.delete(`/api/roadmaps/${active.id}/courses/10`).set(auth(admin)).expect(409);
+    await http.delete(`/api/roadmaps/${active.id}`).set(auth(admin)).expect(409);
+    expect((await http.get(`/api/roadmaps/${active.id}`).set(auth(admin)).expect(200)).body)
+      .toMatchObject({ isActive: true });
+
+    await http.patch(`/api/enrollments/${created.id}`).set(auth(admin))
+      .send({ status: 'canceled', reason: '로드맵 비활성화 정책 검증' }).expect(200);
+    expect((await http.patch(`/api/roadmaps/${active.id}`).set(auth(admin))
+      .send({ isActive: false }).expect(200)).body).toMatchObject({ isActive: false });
+    await http.delete(`/api/roadmaps/${active.id}/courses/10`).set(auth(admin)).expect(409);
+    await http.delete(`/api/roadmaps/${active.id}`).set(auth(admin)).expect(409);
   });
 
   it('코스 연결 — 중복 409 · 없는 코스 400 · 말단 sortOrder · 해제 시 연속 재정렬', async () => {

@@ -9535,16 +9535,20 @@
         "type": "object",
         "properties": {
           "studentId": {
-            "type": "number"
+            "type": "number",
+            "minimum": 1
           },
           "courseId": {
-            "type": "number"
+            "type": "number",
+            "minimum": 1
           },
           "counselCardId": {
-            "type": "number"
+            "type": "number",
+            "minimum": 1
           },
           "roadmapId": {
-            "type": "number"
+            "type": "number",
+            "minimum": 1
           },
           "startDate": {
             "type": "string"

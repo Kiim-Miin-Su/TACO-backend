@@ -1,11 +1,17 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { COURSES_SPEC as COURSES_SPEC_REF, ROADMAPS_SPEC, ROADMAP_COURSES_SPEC } from '../../database/calendar-asset-specs';
+import {
+  COURSES_SPEC as COURSES_SPEC_REF,
+  ENROLLMENTS_SPEC,
+  ROADMAPS_SPEC,
+  ROADMAP_COURSES_SPEC,
+} from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
 import { Roadmap, RoadmapCourse, ROADMAPS, ROADMAP_COURSES } from './roadmap.entity';
 import { Course } from '../courses/course.entity';
 import { CreateRoadmapDto, UpdateRoadmapDto } from './dto/roadmap.dto';
+import type { Enrollment } from '../enrollments/enrollment.entity';
 
 export type RoadmapAggregate = Roadmap & {
   /** sortOrder 정렬된 연결 코스(조인 파생 — 코스 원부는 courses SSOT). */
@@ -49,6 +55,20 @@ export class RoadmapsService implements OnModuleInit {
   private async linksOfDb(roadmapId: number): Promise<RoadmapCourse[]> {
     const links = await this.store.findActive<RoadmapCourse>(ROADMAP_COURSES_SPEC, { where: { roadmapId } as Partial<RoadmapCourse> });
     return links.sort((a, b) => a.sortOrder - b.sortOrder || a.id - b.id);
+  }
+
+  private async enrollmentRefsDb(
+    roadmapId: number,
+    courseId?: number,
+    activeLifecycleOnly = false,
+  ): Promise<Enrollment[]> {
+    const rows = await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, {
+      where: {
+        roadmapId,
+        ...(courseId == null ? {} : { courseId }),
+      } as Partial<Enrollment>,
+    });
+    return activeLifecycleOnly ? rows.filter((row) => row.status === 'active') : rows;
   }
 
   /** [TBO-54 C2] 목록/단건 READ = DB 권위 — 로드맵·링크·코스명 조인을 전부 findActive로 조립. */
@@ -115,6 +135,14 @@ export class RoadmapsService implements OnModuleInit {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'roadmap', id }]);
       const before = await this.getDb(id); // [TBO-56 C2b] before = lock 후 DB 재조회(diff 정확성)
+      if (dto.isActive === false && before.isActive === true) {
+        const activeRefs = await this.enrollmentRefsDb(id, undefined, true);
+        if (activeRefs.length) {
+          throw new ConflictException(
+            `활성 수강 ${activeRefs.length}건이 연결되어 로드맵을 비활성화할 수 없습니다.`,
+          );
+        }
+      }
       const patch: Partial<Roadmap> = {
         ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
         ...(dto.description !== undefined ? { description: dto.description?.trim() || null } : {}),
@@ -139,6 +167,12 @@ export class RoadmapsService implements OnModuleInit {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'roadmap', id }]);
       const before = await this.getDb(id); // [TBO-56 C2b] 스냅샷·캐스케이드 대상 = lock 후 DB 기준
+      const enrollmentRefs = await this.enrollmentRefsDb(id);
+      if (enrollmentRefs.length) {
+        throw new ConflictException(
+          `수강 이력 ${enrollmentRefs.length}건이 연결되어 로드맵을 삭제할 수 없습니다. 비활성화를 사용하세요.`,
+        );
+      }
       for (const link of await this.linksOfDb(id)) {
         await this.store.remove(ROADMAP_COURSES_SPEC, link.id, actorId);
       }
@@ -177,6 +211,12 @@ export class RoadmapsService implements OnModuleInit {
       await this.roadmapInDbOrThrow(roadmapId); // [TBO-56 C2b] lock 후 DB 기준
       const link = (await this.linksOfDb(roadmapId)).find((row) => row.courseId === courseId);
       if (!link) throw new NotFoundException(`로드맵 ${roadmapId}에 코스 ${courseId} 연결 없음`);
+      const enrollmentRefs = await this.enrollmentRefsDb(roadmapId, courseId);
+      if (enrollmentRefs.length) {
+        throw new ConflictException(
+          `수강 이력 ${enrollmentRefs.length}건이 연결되어 이 코스를 로드맵에서 해제할 수 없습니다.`,
+        );
+      }
       await this.store.remove(ROADMAP_COURSES_SPEC, link.id, actorId);
       await this.audit.log({
         entity: ROADMAP_COURSES, entityId: link.id, action: 'delete', actorId,

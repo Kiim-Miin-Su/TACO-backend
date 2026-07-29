@@ -2,7 +2,13 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException, 
 import { ClassSessionsStore } from '../schedule/class-sessions.store'; // [TBO-66 R3]
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
+import {
+  COURSES_SPEC,
+  ENROLLMENTS_SPEC,
+  ROADMAP_COURSES_SPEC,
+  ROADMAPS_SPEC,
+  STUDENTS_SPEC,
+} from '../../database/calendar-asset-specs';
 import { COUNSEL_FORMS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
@@ -14,10 +20,10 @@ import { STUDENTS } from '../students/student.entity';
 import { Student } from '../students/student.entity';
 import { COURSES, StoredCourse } from '../courses/course.entity';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
-import { buildCohortIndex, studentBelongsToSessionIndexed } from '../schedule/session-participant.policy';
 import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
 import { CounselForm } from '../counsel/counsel.entity';
-import { enrollmentLifecyclePatch } from './enrollment-lifecycle.policy';
+import { enrollmentIncludesSessionDate, enrollmentLifecyclePatch } from './enrollment-lifecycle.policy';
+import type { Roadmap, RoadmapCourse } from '../roadmaps/roadmap.entity';
 
 @Injectable()
 export class EnrollmentsService implements OnModuleInit {
@@ -75,6 +81,7 @@ export class EnrollmentsService implements OnModuleInit {
         { kind: 'student', id: dto.studentId },
         { kind: 'course', id: dto.courseId },
         ...(dto.counselCardId == null ? [] : [{ kind: 'counselForm' as const, id: dto.counselCardId }]),
+        ...(dto.roadmapId == null ? [] : [{ kind: 'roadmap' as const, id: dto.roadmapId }]),
       ]);
       await this.store.hydrate<Student>(STUDENTS_SPEC);
       await this.store.hydrate<StoredCourse>(COURSES_SPEC);
@@ -97,6 +104,20 @@ export class EnrollmentsService implements OnModuleInit {
         });
         if (!counsel || Number(counsel.studentId) !== Number(dto.studentId))
           throw new BadRequestException('상담카드가 없거나 대상 학생과 일치하지 않습니다.');
+      }
+      if (dto.roadmapId != null) {
+        const [roadmap] = await this.store.findActive<Roadmap>(ROADMAPS_SPEC, {
+          where: { id: dto.roadmapId } as Partial<Roadmap>,
+          limit: 1,
+        });
+        if (!roadmap || roadmap.isActive !== true)
+          throw new BadRequestException('활성 로드맵이 없거나 더 이상 수강에 사용할 수 없습니다.');
+        const [link] = await this.store.findActive<RoadmapCourse>(ROADMAP_COURSES_SPEC, {
+          where: { roadmapId: dto.roadmapId, courseId: dto.courseId } as Partial<RoadmapCourse>,
+          limit: 1,
+        });
+        if (!link)
+          throw new BadRequestException('선택한 코스가 해당 로드맵에 포함되어 있지 않습니다.');
       }
       const duplicate = this.db.findBy<Enrollment>(ENROLLMENTS, (row) =>
         Number(row.studentId) === Number(dto.studentId) && Number(row.courseId) === Number(dto.courseId),
@@ -209,14 +230,12 @@ export class EnrollmentsService implements OnModuleInit {
     });
   }
 
-  // [EP1 2026-07-16] 파생 N² 제거 — 종전엔 **행마다** enrollments findAll + 세션 전체 스캔
-  //  (O(수강×(수강+세션)), useAppData가 구독하는 핫패스). 지금은 호출당 1회:
-  //  ① 활성 수강 코호트 인덱스(courseId→studentId Set — 정책은 session-participant.policy 단일 소스)
-  //  ② held 세션을 courseId로 그룹핑(status 세컨더리 인덱스 조회 1회)
-  //  → 행별 판정은 자기 코스의 held 세션만 O(1) 멤버십 체크. 의미(명시 코호트 우선)는 동일.
+  // [TBO-77 E-2] 완료 회차는 enrollment 자체의 기간과 당시 세션 코호트가 권위다.
+  // held 세션을 코스별로 한 번 그룹핑한 뒤, 시작일(없으면 enrolledAt)~종료일과 명시
+  // studentIds를 적용한다. 현재 활성 수강 목록을 쓰면 오늘 등록한 학생에게 과거 회차가
+  // 소급되거나 completed/canceled 수강의 역사 회차가 0이 되므로 사용하지 않는다.
   private withDerivedCompletedSessions(rows: Enrollment[]): Enrollment[] {
     if (!rows.length) return rows;
-    const cohortIndex = buildCohortIndex(this.db.findAll<Enrollment>(ENROLLMENTS));
     const heldByCourse = new Map<number, ClassSession[]>();
     for (const session of this.db.findByField<ClassSession>(SESSIONS, 'status', 'held')) {
       if (!heldByCourse.has(session.courseId)) heldByCourse.set(session.courseId, []);
@@ -224,9 +243,10 @@ export class EnrollmentsService implements OnModuleInit {
     }
     return rows.map((row) => ({
       ...row,
-      completedSessions: (heldByCourse.get(row.courseId) ?? []).filter((session) =>
-        studentBelongsToSessionIndexed(session, row.studentId, cohortIndex),
-      ).length,
+      completedSessions: (heldByCourse.get(row.courseId) ?? []).filter((session) => {
+        if (!enrollmentIncludesSessionDate(row, session.sessionDate)) return false;
+        return !session.studentIds?.length || session.studentIds.map(Number).includes(Number(row.studentId));
+      }).length,
     }));
   }
 }

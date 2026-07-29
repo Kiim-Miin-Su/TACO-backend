@@ -5934,12 +5934,16 @@ components:
       properties:
         studentId:
           type: number
+          minimum: 1
         courseId:
           type: number
+          minimum: 1
         counselCardId:
           type: number
+          minimum: 1
         roadmapId:
           type: number
+          minimum: 1
         startDate:
           type: string
         endDate:

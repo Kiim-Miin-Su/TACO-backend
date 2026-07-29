@@ -4,17 +4,21 @@ import { TEXT, MAX_COUNT } from '../../../common/validation-limits'; // [보안]
 
 export class CreateEnrollmentDto implements CreateEnrollmentInput {
   @IsInt()
+  @Min(1)
   studentId!: number;
 
   @IsInt()
+  @Min(1)
   courseId!: number;
 
   @IsOptional()
   @IsInt()
+  @Min(1)
   counselCardId?: number;
 
   @IsOptional()
   @IsInt()
+  @Min(1)
   roadmapId?: number;
 
   @IsOptional()

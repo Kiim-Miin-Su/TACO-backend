@@ -81,7 +81,8 @@
   "db:migrate:auth-refresh-token-integrity": "ts-node scripts/migrate-auth-refresh-token-integrity.ts",
   "db:migrate:instructor-contract-integrity": "ts-node scripts/migrate-instructor-contract-integrity.ts",
   "db:migrate:transaction-source-integrity": "ts-node scripts/migrate-transaction-source-integrity.ts",
-  "db:migrate:report-template-owner": "ts-node scripts/migrate-report-template-owner.ts"
+  "db:migrate:report-template-owner": "ts-node scripts/migrate-report-template-owner.ts",
+  "db:migrate:enrollment-roadmap-integrity": "ts-node scripts/migrate-enrollment-roadmap-integrity.ts"
  },
  "dependencies": {
   "@kms545487/contracts": "0.2.34",

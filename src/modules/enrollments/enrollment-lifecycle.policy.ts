@@ -3,6 +3,15 @@ import type { Enrollment, UpdateEnrollmentInput } from '@kms545487/contracts';
 
 type EnrollmentPatch = Omit<UpdateEnrollmentInput, 'reason'>;
 
+/** 수강 회차 파생의 기간 경계. startDate가 없으면 실제 등록일을 시작점으로 사용한다. */
+export function enrollmentIncludesSessionDate(
+  enrollment: Pick<Enrollment, 'startDate' | 'endDate' | 'enrolledAt'>,
+  sessionDate: string,
+): boolean {
+  const startsOn = enrollment.startDate ?? enrollment.enrolledAt;
+  return sessionDate >= startsOn && (enrollment.endDate == null || sessionDate <= enrollment.endDate);
+}
+
 export function enrollmentLifecyclePatch(
   current: Enrollment,
   input: UpdateEnrollmentInput,

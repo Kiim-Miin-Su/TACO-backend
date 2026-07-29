@@ -27,6 +27,7 @@ const APP_FK: Array<{ child: string; field: string; parent: string }> = [
   { child: 'class_sessions', field: 'roomId', parent: 'rooms' },
   { child: 'enrollments', field: 'studentId', parent: 'students' },
   { child: 'enrollments', field: 'courseId', parent: 'courses' },
+  { child: 'enrollments', field: 'roadmapId', parent: 'roadmaps' },
   { child: 'payments', field: 'studentId', parent: 'students' },
   { child: 'payments', field: 'enrollmentId', parent: 'enrollments' },
   { child: 'parent_student_relations', field: 'parentId', parent: 'parents' },
@@ -99,6 +100,47 @@ async function main() {
       if (!target) push(issues, 'APP_FK_ORPHAN', child, row.id, `${field}=${ref} → ${parent} 없음`);
       else if ((target as BaseRow).deletedAt != null)
         push(issues, 'SOFT_DELETED_PARENT_REF', child, row.id, `${field}=${ref} → ${parent} 삭제됨(활성 자식 잔존)`);
+    }
+  }
+
+  // ②-1 [TBO-77 E-2] 선택 로드맵은 활성 원부이며 해당 수강 코스를 포함해야 한다.
+  // DB FK는 본체 존재만 강제하므로 soft-delete/is_active/roadmap_courses 관계는 운영 센서가 맡는다.
+  {
+    const roadmapById = new Map(
+      rows<BaseRow & { isActive?: boolean }>('roadmaps', true).map((row) => [row.id, row]),
+    );
+    const roadmapCourses = new Set(
+      rows<BaseRow & { roadmapId: number; courseId: number }>('roadmap_courses')
+        .map((row) => `${row.roadmapId}¦${row.courseId}`),
+    );
+    for (const enrollment of rows<BaseRow & {
+      roadmapId?: number | null;
+      courseId: number;
+      status?: string;
+    }>('enrollments')) {
+      if (enrollment.roadmapId == null) continue;
+      const roadmap = roadmapById.get(Number(enrollment.roadmapId));
+      if (
+        !roadmap
+        || roadmap.deletedAt != null
+        || (enrollment.status === 'active' && roadmap.isActive !== true)
+      ) {
+        push(
+          issues,
+          'ENROLLMENT_ROADMAP_INACTIVE',
+          'enrollments',
+          enrollment.id,
+          `roadmapId=${enrollment.roadmapId} 활성 로드맵 없음`,
+        );
+      } else if (!roadmapCourses.has(`${enrollment.roadmapId}¦${enrollment.courseId}`)) {
+        push(
+          issues,
+          'ENROLLMENT_ROADMAP_COURSE_MISMATCH',
+          'enrollments',
+          enrollment.id,
+          `roadmapId=${enrollment.roadmapId}에 courseId=${enrollment.courseId} 연결 없음`,
+        );
+      }
     }
   }
 
