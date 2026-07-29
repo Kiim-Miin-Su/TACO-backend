@@ -24,7 +24,7 @@ describe('Counsel API (e2e)', () => {
     await http.get('/api/counsel').set(asInstructor).expect(403);
     await http.get('/api/counsel/rounds').set(asInstructor).expect(403);
     await http.get('/api/counsel/1').set(asInstructor).expect(403);
-    await http.post('/api/counsel').set(asInstructor).send({ studentId: 1, source: 'manual' }).expect(403);
+    await http.post('/api/counsel').set(asInstructor).send({ studentId: 1 }).expect(403);
     await http.patch('/api/counsel/1').set(asInstructor).send({ studentId: 2 }).expect(403);
     await http.delete('/api/counsel/1').set(asInstructor).expect(403);
     await http.post('/api/counsel/1/rounds').set(asInstructor).send({ summary: '권한차단' }).expect(403);
@@ -64,29 +64,36 @@ describe('Counsel API (e2e)', () => {
 
   // ── CRUD (B단계) ──
   it('POST /counsel — 접수 생성(status=requested), 권한: 비로그인 401', async () => {
-    await http.post('/api/counsel').send({ studentId: 1, source: 'manual' }).expect(401);
+    await http.post('/api/counsel').send({ studentId: 1 }).expect(401);
     const token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     const f = (await http.post('/api/counsel').set({ Authorization: `Bearer ${token}` })
-      .send({ studentId: 1, source: 'manual' }).expect(201)).body;
-    expect(f).toMatchObject({ studentId: 1, status: 'requested' });
+      .send({ studentId: 1 }).expect(201)).body;
+    expect(f).toMatchObject({
+      studentId: 1,
+      assignedStaffId: 3,
+      status: 'requested',
+      source: 'manual',
+      submitterType: 'staff',
+    });
     expect(f.id).toBeGreaterThan(3);
   });
 
   it('POST/PATCH /counsel — 학생 SSOT 연결과 다음 상담일을 저장·해제하고 audit에 남긴다', async () => {
     const created = (await http.post('/api/counsel').set(asAdmin()).send({
-      studentId: 1, source: 'manual', submitterType: 'parent', assignedStaffId: 3,
+      studentId: 1,
       referenceNotes: '해외 거주로 카카오 우선', nextContactAt: '2099-07-21T09:30:00+09:00',
     }).expect(201)).body;
     expect(created).toMatchObject({
-      studentId: 1, submitterType: 'parent', assignedStaffId: 3,
+      studentId: 1, source: 'manual', submitterType: 'staff', assignedStaffId: 3,
       referenceNotes: '해외 거주로 카카오 우선', nextContactAt: '2099-07-21T00:30:00.000Z',
     });
 
     const updated = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin()).send({
-      studentId: 2, source: 'google_form', submitterType: 'student', nextContactAt: '2099-07-22T10:00:00+09:00',
+      studentId: 2, nextContactAt: '2099-07-22T10:00:00+09:00',
     }).expect(200)).body;
     expect(updated).toMatchObject({
-      studentId: 2, source: 'google_form', submitterType: 'student', nextContactAt: '2099-07-22T01:00:00.000Z',
+      studentId: 2, source: 'manual', submitterType: 'staff', assignedStaffId: 3,
+      nextContactAt: '2099-07-22T01:00:00.000Z',
     });
 
     const cleared = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin())
@@ -107,7 +114,7 @@ describe('Counsel API (e2e)', () => {
 
   it('상담 aggregate를 읽고 회차 수정·삭제 시 최신 nextContactAt과 회차별 audit를 보존한다', async () => {
     const form = (await http.post('/api/counsel').set(asAdmin())
-      .send({ studentId: 1, source: 'manual', referenceNotes: '상담 참고' }).expect(201)).body;
+      .send({ studentId: 1, referenceNotes: '상담 참고' }).expect(201)).body;
     const first = (await http.post(`/api/counsel/${form.id}/rounds`).set(asAdmin())
       .send({ summary: '1차', nextContactAt: '2099-08-01T00:00:00.000Z' }).expect(201)).body;
     const second = (await http.post(`/api/counsel/${form.id}/rounds`).set(asAdmin())
@@ -144,28 +151,32 @@ describe('Counsel API (e2e)', () => {
   it('POST /counsel — 제거된 legacy 관심 코스 필드는 whitelist에서 400', async () => {
     const token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     await http.post('/api/counsel').set({ Authorization: `Bearer ${token}` })
-      .send({ studentId: 1, source: 'manual', interestCourseId: 10 }).expect(400);
+      .send({ studentId: 1, interestCourseId: 10 }).expect(400);
   });
 
   it('POST /counsel — 학생 FK 필수·존재 검증과 legacy 보호자 중복 필드를 방어한다', async () => {
     await http.post('/api/counsel').set(asAdmin())
-      .send({ source: 'manual', studentId: 99999 }).expect(400);
+      .send({ studentId: 99999 }).expect(400);
     await http.post('/api/counsel').set(asAdmin())
-      .send({ source: 'manual' }).expect(400);
+      .send({}).expect(400);
     await http.post('/api/counsel').set(asAdmin())
-      .send({ source: 'manual', studentId: 2, parentId: 1 }).expect(400);
+      .send({ studentId: 2, parentId: 1 }).expect(400);
   });
 
-  it('POST/PATCH/round — 존재하지 않는 담당 직원 FK는 400', async () => {
-    await http.post('/api/counsel').set(asAdmin())
-      .send({ studentId: 1, source: 'manual', assignedStaffId: 99999 }).expect(400);
-    await http.patch('/api/counsel/1').set(asAdmin()).send({ assignedStaffId: 99999 }).expect(400);
+  it('POST/PATCH/round — 서버 소유 메타데이터 spoof는 모두 400', async () => {
+    for (const field of ['source', 'submitterType', 'assignedStaffId']) {
+      await http.post('/api/counsel').set(asAdmin())
+        .send({ studentId: 1, [field]: field === 'assignedStaffId' ? 99999 : 'spoofed' }).expect(400);
+      await http.patch('/api/counsel/1').set(asAdmin())
+        .send({ [field]: field === 'assignedStaffId' ? 99999 : 'spoofed' }).expect(400);
+    }
     await http.post('/api/counsel/1/rounds').set(asAdmin()).send({ counselorId: 99999, summary: 'x' }).expect(400);
+    await http.patch('/api/counsel/1/rounds/1').set(asAdmin()).send({ counselorId: 99999 }).expect(400);
   });
 
   it('PATCH /counsel/:id — 생성한 상담을 requested→pending→registered로 전이·영속화한다', async () => {
     const created = (await http.post('/api/counsel').set(asAdmin())
-      .send({ studentId: 1, source: 'manual' }).expect(201)).body;
+      .send({ studentId: 1 }).expect(201)).body;
 
     const pending = (await http.patch(`/api/counsel/${created.id}`).set(asAdmin())
       .send({ status: 'pending' }).expect(200)).body;
@@ -194,8 +205,7 @@ describe('Counsel API (e2e)', () => {
       .send({
         summary: '추가 상담', result: 'positive',
         formSnapshot: {
-          studentId: 2, status: 'registered', source: 'naver_form',
-          submitterType: 'student',
+          studentId: 2, status: 'registered',
           referenceNotes: '1차에서 확인된 참고점',
           nextContactAt: '2026-09-01T00:00:00.000Z',
         },
@@ -245,7 +255,7 @@ describe('Counsel API (e2e)', () => {
   it('DELETE /counsel/:id — 폼과 연결 회차를 함께 soft delete한다', async () => {
     const token = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     const created = (await http.post('/api/counsel').set({ Authorization: `Bearer ${token}` })
-      .send({ studentId: 1, source: 'manual' }).expect(201)).body;
+      .send({ studentId: 1 }).expect(201)).body;
     await http.post(`/api/counsel/${created.id}/rounds`).set({ Authorization: `Bearer ${token}` })
       .send({ summary: '삭제될 회차' }).expect(201);
 
@@ -266,10 +276,10 @@ describe('Counsel API (e2e)', () => {
 
     it('POST /counsel — referenceNotes 자유 텍스트 상한을 방어한다', async () => {
       await http.post('/api/counsel').set(TH())
-        .send({ studentId: 1, source: 'manual', referenceNotes: 'w'.repeat(2001) }).expect(400);
+        .send({ studentId: 1, referenceNotes: 'w'.repeat(2001) }).expect(400);
       // 경계값(정확히 상한)은 통과
       await http.post('/api/counsel').set(TH())
-        .send({ studentId: 1, source: 'manual', referenceNotes: 'w'.repeat(2000) }).expect(201);
+        .send({ studentId: 1, referenceNotes: 'w'.repeat(2000) }).expect(201);
     });
 
     it('POST /counsel/:id/rounds — detail 상한(2000) 초과 → 400', async () => {
@@ -279,41 +289,41 @@ describe('Counsel API (e2e)', () => {
 
     it('POST /counsel — 생성 시 status는 항상 requested(정상 생성)', async () => {
       const f = (await http.post('/api/counsel').set(TH())
-        .send({ studentId: 1, source: 'manual' }).expect(201)).body;
+        .send({ studentId: 1 }).expect(201)).body;
       expect(f.status).toBe('requested'); // 서비스가 강제
     });
 
     it('POST/PATCH /counsel — nextContactAt은 타임존 포함 ISO instant만 허용한다', async () => {
       await http.post('/api/counsel').set(TH())
-        .send({ studentId: 1, source: 'manual', nextContactAt: '21-07-2026' }).expect(400);
+        .send({ studentId: 1, nextContactAt: '21-07-2026' }).expect(400);
       await http.post('/api/counsel').set(TH())
-        .send({ studentId: 1, source: 'manual', nextContactAt: '2026-07-21' }).expect(400);
+        .send({ studentId: 1, nextContactAt: '2026-07-21' }).expect(400);
       await http.post('/api/counsel').set(TH())
-        .send({ studentId: 1, source: 'manual', nextContactAt: '2026-02-31T09:00:00+09:00' }).expect(400);
+        .send({ studentId: 1, nextContactAt: '2026-02-31T09:00:00+09:00' }).expect(400);
       await http.patch('/api/counsel/1').set(TH()).send({ nextContactAt: 'tomorrow' }).expect(400);
     });
 
-    it('POST/PATCH /counsel — 작성 주체 enum 밖의 값 → 400', async () => {
+    it('POST/PATCH /counsel — 작성 주체는 값과 무관하게 미허용 필드 → 400', async () => {
       await http.post('/api/counsel').set(TH())
-        .send({ studentId: 1, source: 'manual', submitterType: 'anonymous' }).expect(400);
-      await http.patch('/api/counsel/1').set(TH()).send({ submitterType: 'anonymous' }).expect(400);
+        .send({ studentId: 1, submitterType: 'staff' }).expect(400);
+      await http.patch('/api/counsel/1').set(TH()).send({ submitterType: 'staff' }).expect(400);
     });
 
     it('POST /counsel/:id/rounds — 스냅샷 내부 미허용 키·필수값 누락 → 400', async () => {
       await http.post('/api/counsel/1/rounds').set(TH()).send({
-        formSnapshot: { studentId: 1, status: 'pending', source: 'manual', submitterType: 'staff', hackerField: 1 },
+        formSnapshot: { studentId: 1, status: 'pending', source: 'manual' },
       }).expect(400);
       await http.post('/api/counsel/1/rounds').set(TH()).send({
-        formSnapshot: { status: 'pending', source: 'manual', submitterType: 'staff' },
+        formSnapshot: { status: 'pending' },
       }).expect(400);
     });
 
     it('POST /counsel — 미허용 필드(status·임의 키)는 forbidNonWhitelisted로 400(상태 주입 차단)', async () => {
       // CreateCounselDto에 status 필드가 없어 클라가 초기 상태를 주입할 수 없다(400).
       await http.post('/api/counsel').set(TH())
-        .send({ studentId: 1, source: 'manual', status: 'registered' }).expect(400);
+        .send({ studentId: 1, status: 'registered' }).expect(400);
       await http.post('/api/counsel').set(TH())
-        .send({ studentId: 1, source: 'manual', hackerField: 1 }).expect(400);
+        .send({ studentId: 1, hackerField: 1 }).expect(400);
     });
 
     it('PATCH /counsel/:id — 제거된 legacy 관심 과목 필드는 400', async () => {

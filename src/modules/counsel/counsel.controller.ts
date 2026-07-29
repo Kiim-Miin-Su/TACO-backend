@@ -83,7 +83,7 @@ export class CounselController {
   @ApiOperation({ summary: '상담 접수 생성 [관리 역할] — 전체 폼 저장, status=requested, nextContactAt은 예약 캘린더 단일 소스' })
   @ApiCreatedResponse({ description: '생성된 CounselForm' })
   createForm(@Body() dto: CreateCounselDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.counsel.createForm(dto, req.user?.sub);
+    return this.counsel.createForm(dto, req.user!.sub);
   }
 
   @Patch(':id')
@@ -91,7 +91,7 @@ export class CounselController {
   @ApiOperation({ summary: '상담 폼 수정 [관리 역할] — 전체 입력 및 nextContactAt 예약 캘린더 동기화' })
   @ApiOkResponse({ description: '수정된 CounselForm' })
   updateForm(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateCounselDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.counsel.updateForm(id, dto, req.user?.sub);
+    return this.counsel.updateForm(id, dto, req.user!.sub);
   }
 
   @Delete(':id')
@@ -106,7 +106,7 @@ export class CounselController {
   @ApiOperation({ summary: '상담 회차 추가 [관리 역할] — roundNo 자동, 폼 nextContactAt 동기화' })
   @ApiCreatedResponse({ description: '생성된 CounselRound' })
   createRound(@Param('id', PositiveIntPipe) id: number, @Body() dto: CreateCounselRoundDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.counsel.createRound(id, dto, req.user?.sub);
+    return this.counsel.createRound(id, dto, req.user!.sub);
   }
 
   @Patch(':id/rounds/:roundId')

@@ -10733,36 +10733,13 @@
           "studentId": {
             "type": "number"
           },
-          "source": {
-            "type": "string",
-            "enum": [
-              "internal_form",
-              "naver_form",
-              "google_form",
-              "manual",
-              "etc"
-            ]
-          },
-          "submitterType": {
-            "type": "string",
-            "enum": [
-              "parent",
-              "student",
-              "staff",
-              "unknown"
-            ]
-          },
-          "assignedStaffId": {
-            "type": "number"
-          },
           "referenceNotes": {
             "type": "string",
             "maxLength": 2000
           }
         },
         "required": [
-          "studentId",
-          "source"
+          "studentId"
         ]
       },
       "UpdateCounselDto": {
@@ -10784,31 +10761,8 @@
               "dropped"
             ]
           },
-          "source": {
-            "type": "string",
-            "enum": [
-              "internal_form",
-              "naver_form",
-              "google_form",
-              "manual",
-              "etc"
-            ]
-          },
-          "submitterType": {
-            "type": "string",
-            "enum": [
-              "parent",
-              "student",
-              "staff",
-              "unknown"
-            ]
-          },
           "studentId": {
             "type": "number"
-          },
-          "assignedStaffId": {
-            "type": "number",
-            "nullable": true
           },
           "referenceNotes": {
             "type": "string",
@@ -10830,10 +10784,6 @@
           "studentId": {
             "type": "number"
           },
-          "assignedStaffId": {
-            "type": "number",
-            "nullable": true
-          },
           "status": {
             "type": "string",
             "enum": [
@@ -10841,25 +10791,6 @@
               "pending",
               "registered",
               "dropped"
-            ]
-          },
-          "source": {
-            "type": "string",
-            "enum": [
-              "internal_form",
-              "naver_form",
-              "google_form",
-              "manual",
-              "etc"
-            ]
-          },
-          "submitterType": {
-            "type": "string",
-            "enum": [
-              "parent",
-              "student",
-              "staff",
-              "unknown"
             ]
           },
           "referenceNotes": {
@@ -10870,9 +10801,7 @@
         },
         "required": [
           "studentId",
-          "status",
-          "source",
-          "submitterType"
+          "status"
         ]
       },
       "CreateCounselRoundDto": {
@@ -10884,9 +10813,6 @@
             "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,6})?)?(?:Z|[+-]\\d{2}:\\d{2})$",
             "example": "2026-07-28T09:30:00+09:00",
             "nullable": false
-          },
-          "counselorId": {
-            "type": "number"
           },
           "summary": {
             "type": "string",
@@ -10924,10 +10850,6 @@
             "format": "date-time",
             "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,6})?)?(?:Z|[+-]\\d{2}:\\d{2})$",
             "example": "2026-07-28T09:30:00+09:00"
-          },
-          "counselorId": {
-            "type": "number",
-            "nullable": true
           },
           "scheduledAt": {
             "type": "string",

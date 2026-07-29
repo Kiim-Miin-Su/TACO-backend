@@ -84,30 +84,30 @@ export class CounselService implements OnModuleInit {
     };
   }
 
-  // 상담 접수 생성 — 최초 status='requested'(미지정 시). actorId 없으면(시드·내부 경로) audit 생략.
-  async createForm(dto: CreateCounselDto, actorId?: number): Promise<CounselForm> {
-    await this.assertRefs(dto);
+  // 내부 상담 접수 — 작성 메타데이터는 body가 아니라 검증된 JWT actor에서만 파생한다.
+  async createForm(dto: CreateCounselDto, actorId: number): Promise<CounselForm> {
+    await this.assertRefs({ studentId: dto.studentId, assignedStaffId: actorId });
     return this.uow.run(async () => {
       const row = await this.store.insert<CounselForm>(COUNSEL_FORMS_SPEC, {
         ...dto,
         nextContactAt: normalizeCounselInstant(dto.nextContactAt),
-        submitterType: dto.submitterType ?? 'unknown',
+        source: 'manual',
+        submitterType: 'staff',
+        assignedStaffId: actorId,
         status: 'requested',
       } as Omit<CounselForm, 'id' | 'createdAt' | 'updatedAt'>);
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
-      if (actorId != null) {
-        await this.audit.log({
-          entity: 'counsel_forms', entityId: row.id, action: 'create', actorId,
-          changes: this.audit.maskContactPii(this.audit.diffOf({}, row)),
-        });
-      }
-      this.domainLog.log(`action=createForm form=${row.id} actor=${actorId ?? 0} status=${row.status} result=created`); // [TBO-58 P2]
+      await this.audit.log({
+        entity: 'counsel_forms', entityId: row.id, action: 'create', actorId,
+        changes: this.audit.maskContactPii(this.audit.diffOf({}, row)),
+      });
+      this.domainLog.log(`action=createForm form=${row.id} actor=${actorId} status=${row.status} result=created`); // [TBO-58 P2]
       return row;
     });
   }
 
-  // 상담 폼 수정(상태 전환·담당자·관심사). 존재 검증 + 관심 FK 검증.
-  async updateForm(id: number, dto: UpdateCounselDto, actorId?: number): Promise<CounselForm> {
+  // 상담 폼 수정(상태·학생·상담 내용·예정 시각). 존재 검증 + 학생 FK 검증.
+  async updateForm(id: number, dto: UpdateCounselDto, actorId: number): Promise<CounselForm> {
     await this.assertRefs(dto);
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'counselForm', id }]);
@@ -121,20 +121,18 @@ export class CounselService implements OnModuleInit {
       const after = (await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, id, patch)) as CounselForm;
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
       // referenceNotes 등 상담 민감 텍스트는 audit 원문 금지.
-      if (actorId != null) {
-        await this.audit.log({
-          entity: 'counsel_forms', entityId: id, action: 'update', actorId,
-          changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
-        });
-      }
-      this.domainLog.log(`action=updateForm form=${id} actor=${actorId ?? 0} status=${after.status} result=updated`); // [TBO-58 P2]
+      await this.audit.log({
+        entity: 'counsel_forms', entityId: id, action: 'update', actorId,
+        changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
+      });
+      this.domainLog.log(`action=updateForm form=${id} actor=${actorId} status=${after.status} result=updated`); // [TBO-58 P2]
       return after;
     });
   }
 
   // 회차 추가 — roundNo 자동 증가, 부모 폼 FK 검증 + nextContactAt 동기화(배지 단일 소스).
-  async createRound(formId: number, dto: CreateCounselRoundDto, actorId?: number): Promise<CounselRound> {
-    if (dto.counselorId != null) await this.assertActiveStaff(dto.counselorId, 'counselorId');
+  async createRound(formId: number, dto: CreateCounselRoundDto, actorId: number): Promise<CounselRound> {
+    await this.assertActiveStaff(actorId, 'counselorId');
     if (dto.formSnapshot) await this.assertRefs(dto.formSnapshot);
     const nextContactAt = normalizeCounselInstant(dto.nextContactAt);
     const snapshotNextContactAt = normalizeCounselInstant(dto.formSnapshot?.nextContactAt);
@@ -160,7 +158,7 @@ export class CounselService implements OnModuleInit {
       }
       if (nextContactAt !== undefined) formSnapshot.nextContactAt = nextContactAt;
       const round = await this.store.insert<CounselRound>(COUNSEL_ROUNDS_SPEC, {
-        counselFormId: formId, roundNo, counselorId: dto.counselorId,
+        counselFormId: formId, roundNo, counselorId: actorId,
         completedAt: todayKst(), isCompleted: true, // [TBO-65 M2] KST 기준
         summary: dto.summary, detail: dto.detail, result: dto.result,
         nextAction: dto.nextAction, nextContactAt: formSnapshot.nextContactAt ?? null,
@@ -185,13 +183,12 @@ export class CounselService implements OnModuleInit {
           changes: this.audit.maskContactPii(this.audit.diffOf({}, round)),
         });
       }
-      this.domainLog.log(`action=createRound form=${formId} round=${round.id} roundNo=${round.roundNo} actor=${actorId ?? 0} result=created`); // [TBO-58 P2]
+      this.domainLog.log(`action=createRound form=${formId} round=${round.id} roundNo=${round.roundNo} actor=${actorId} result=created`); // [TBO-58 P2]
       return round;
     });
   }
 
   async updateRound(formId: number, roundId: number, dto: UpdateCounselRoundDto, actorId: number): Promise<CounselRound> {
-    if (dto.counselorId != null) await this.assertActiveStaff(dto.counselorId, 'counselorId');
     if (dto.formSnapshot) await this.assertRefs(dto.formSnapshot);
     const nextContactAt = normalizeCounselInstant(dto.nextContactAt);
     const snapshotNextContactAt = normalizeCounselInstant(dto.formSnapshot?.nextContactAt);
@@ -208,7 +205,6 @@ export class CounselService implements OnModuleInit {
         : snapshotOfForm({ ...before.formSnapshot, ...dto.formSnapshot });
       if (nextContactAt !== undefined) formSnapshot.nextContactAt = nextContactAt;
       const patch = {
-        ...(dto.counselorId !== undefined ? { counselorId: dto.counselorId } : {}),
         ...(dto.scheduledAt !== undefined ? { scheduledAt: dto.scheduledAt } : {}),
         ...(dto.completedAt !== undefined ? { completedAt: dto.completedAt } : {}),
         ...(dto.isCompleted !== undefined ? { isCompleted: dto.isCompleted } : {}),

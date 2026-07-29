@@ -37,7 +37,7 @@ describe('Family join SSOT (TBO-30G)', () => {
       .send({ name: '가족母', phone: '010-3030-4040', studentId: bId, relation: '모', isPrimary: true })
       .expect(201)).body.parent.id;
     counselId = (await http.post('/api/counsel').set(auth(admin))
-      .send({ studentId: bId, source: 'manual', submitterType: 'staff' }).expect(201)).body.id;
+      .send({ studentId: bId }).expect(201)).body.id;
   });
   afterAll(async () => { await app.close(); });
 
