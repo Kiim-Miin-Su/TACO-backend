@@ -2889,6 +2889,41 @@ paths:
       summary: 출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장
       tags:
         - attendance
+  /api/attendance/{sessionId}/{studentId}:
+    delete:
+      operationId: AttendanceController_clear
+      parameters:
+        - name: sessionId
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+        - name: studentId
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClearAttendanceDto'
+      responses:
+        '200':
+          description: '{ id, sessionId, studentId, deleted: true }'
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 학생 출결 초기화 — 담당 강사 또는 관리자, 사유·감사 이력 필수
+      tags:
+        - attendance
   /api/reports:
     get:
       operationId: ReportsController_findAll
@@ -6722,6 +6757,15 @@ components:
         - sessionId
         - studentId
         - status
+    ClearAttendanceDto:
+      type: object
+      properties:
+        reason:
+          type: string
+          minLength: 2
+          maxLength: 500
+      required:
+        - reason
     CreateReportDto:
       type: object
       properties:

@@ -1,12 +1,13 @@
-import { Body, Controller, Get, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Put, Query, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiQuery } from '@nestjs/swagger';
 import { AttendanceService } from './attendance.service';
 import { UpsertAttendanceDto } from './dto/upsert-attendance.dto';
+import { ClearAttendanceDto } from './dto/clear-attendance.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
-import { OptionalPositiveIntPipe } from '../../common/positive-int.pipe';
+import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 
 // [참조/처리] /api/attendance REST. @Roles(STAFF_ROLES) → 로그인 필수(강사 포함, 관리자 한정 아님).
 //  - RolesGuard는 @Roles 있는 라우트만 검사하므로, 로그인 강제하려면 STAFF_ROLES 명시가 필요.
@@ -39,5 +40,18 @@ export class AttendanceController {
   upsert(@Body() dto: UpsertAttendanceDto, @Req() req: Request & { user?: JwtClaims }) {
     // actor(sub·roles) → 소유권 검증(H1 IDOR) + audit_log(출결 변경 이력)
     return this.attendance.upsert(dto, req.user?.sub, req.user?.roles);
+  }
+
+  @Delete(':sessionId/:studentId')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '학생 출결 초기화 — 담당 강사 또는 관리자, 사유·감사 이력 필수' })
+  @ApiOkResponse({ description: '{ id, sessionId, studentId, deleted: true }' })
+  clear(
+    @Param('sessionId', PositiveIntPipe) sessionId: number,
+    @Param('studentId', PositiveIntPipe) studentId: number,
+    @Body() dto: ClearAttendanceDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.attendance.clear(sessionId, studentId, dto.reason, req.user?.sub, req.user?.roles);
   }
 }

@@ -9,6 +9,7 @@ describe('Attendance API (e2e)', () => {
   let ADMIN = '';
   const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
   let TOKEN = '';
+  let FOREIGN_INSTRUCTOR = '';
   const auth = () => ({ Authorization: `Bearer ${TOKEN}` });
 
   beforeAll(async () => {
@@ -16,6 +17,7 @@ describe('Attendance API (e2e)', () => {
     http = request(app.getHttpServer());
     ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     TOKEN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
+    FOREIGN_INSTRUCTOR = (await http.post('/api/auth/login').send({ webId: 'jung_inst', password: 'demo1234' }).expect(201)).body.accessToken;
   });
   afterAll(async () => { await app.close(); });
 
@@ -68,6 +70,34 @@ describe('Attendance API (e2e)', () => {
   it('권한: 비로그인 접근 401', async () => {
     await http.get('/api/attendance').expect(401);
     await http.put('/api/attendance').send({ sessionId: 1, studentId: 1, status: 'present' }).expect(401);
+    await http.delete('/api/attendance/1/1').send({ reason: '비로그인 초기화' }).expect(401);
+  });
+
+  it('DELETE /attendance/:sessionId/:studentId — 미선택 복귀·상태 자동전이·권한·감사 이력', async () => {
+    await http.patch('/api/schedule/1').set(auth())
+      .send({ instructorAttendance: 'present' }).expect(200);
+    expect((await http.get('/api/schedule/1').set(auth()).expect(200)).body.status).toBe('held');
+
+    await http.delete('/api/attendance/1/1').set(auth()).send({}).expect(400);
+    await http.delete('/api/attendance/1/1')
+      .set({ Authorization: `Bearer ${FOREIGN_INSTRUCTOR}` })
+      .send({ reason: '타 강사 출결 초기화 시도' }).expect(403);
+
+    const cleared = (await http.delete('/api/attendance/1/1').set(auth())
+      .send({ reason: '학생 출결 오입력 정정' }).expect(200)).body;
+    expect(cleared).toMatchObject({ id: 1, sessionId: 1, studentId: 1, deleted: true });
+    const after = (await http.get('/api/attendance?sessionId=1').set(auth()).expect(200)).body;
+    expect(after.some((row: { studentId: number }) => row.studentId === 1)).toBe(false);
+    expect((await http.get('/api/schedule/1').set(auth()).expect(200)).body.status).toBe('scheduled');
+
+    const logs = (await http.get('/api/audit?entity=attendance').set(asAdmin()).expect(200)).body;
+    expect(logs.some((row: { entityId: number; action: string; reason?: string }) =>
+      row.entityId === 1 && row.action === 'delete' && row.reason === '학생 출결 오입력 정정')).toBe(true);
+    await http.delete('/api/attendance/1/1').set(auth())
+      .send({ reason: '이미 초기화된 출결 재시도' }).expect(404);
+
+    await http.put('/api/attendance').set(auth())
+      .send({ sessionId: 1, studentId: 1, status: 'present' }).expect(200);
   });
 
   // [출결 이력 2026-07-07] 학생 출결 변경이 audit_log에 기록되는지(스케줄 audit과 대칭)

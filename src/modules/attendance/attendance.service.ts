@@ -1,4 +1,4 @@
-import { BadRequestException, ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { ATTENDANCE_SPEC } from '../../database/calendar-asset-specs';
@@ -22,6 +22,7 @@ import {
   attendanceCompletionHoldPatch,
   TEMPORAL_RESET_AUDIT_REASON,
 } from '../schedule/session-temporal-transition.policy';
+import { isPayoutLocked } from '../schedule/session-accounting.policy';
 
 /**
  * [참조/처리] 출결. 프론트 목데이터 이관 + 참조 무결성 게이트.
@@ -85,18 +86,12 @@ export class AttendanceService implements OnModuleInit {
     return this.unitOfWork.run(async () => {
       // [TBO-56 C2b] session lock + DB 재조회 — 교차 인스턴스 upsert 경쟁을 직렬화(중복 insert 500 경로 제거)
       //  하고, FK·코호트·소유권 판정을 전부 DB 기준으로 내린다(TBO-55 감사 B 항목 해소).
-      await this.unitOfWork.lockTargets(sessionAccountingLockKeys({ sessionIds: [dto.sessionId] }));
-      const session = await this.sessionsStore.findByIdDb(dto.sessionId);
-      if (!session) throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
-      const [student] = await this.store.findActive<Student>(STUDENTS_SPEC, { where: { id: dto.studentId } as Partial<Student>, limit: 1 });
-      if (!student) throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
-      const enrollments = await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC);
-      if (!studentBelongsToSession(session, dto.studentId, enrollments))
-        throw new BadRequestException(`studentId ${dto.studentId}는 세션 ${dto.sessionId}의 수강생이 아닙니다`);
-      // 소유권(IDOR 방지) — 비관리자는 담당 강사 세션만. actorId 미상(무인증 컨텍스트)이면 검사 생략.
-      const isAdmin = hasAdminRole(actorRoles);
-      if (actorId != null && !isAdmin && !isSessionVisibleToInstructor(session, actorId))
-        throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 기록할 수 있습니다.');
+      const { session, enrollments } = await this.commandContext(
+        dto.sessionId,
+        dto.studentId,
+        actorId,
+        actorRoles,
+      );
 
       // (세션, 학생) 유니크 — DB 기준 판별: 있으면 갱신, 없으면 삽입(lock이 교차 인스턴스 경쟁 직렬화).
       const [existing] = await this.store.findActive<Attendance>(ATTENDANCE_SPEC, {
@@ -147,6 +142,89 @@ export class AttendanceService implements OnModuleInit {
       this.domainLog.log(`action=upsert session=${dto.sessionId} student=${dto.studentId} status=${dto.status} actor=${actorId ?? 0} autoHeld=${autoHeld ? 1 : 0} result=${result}`);
       return saved;
     });
+  }
+
+  async clear(
+    sessionId: number,
+    studentId: number,
+    reason: string,
+    actorId?: number,
+    actorRoles?: string[],
+  ): Promise<{ id: number; sessionId: number; studentId: number; deleted: true }> {
+    return this.unitOfWork.run(async () => {
+      await this.unitOfWork.lockTargets(sessionAccountingLockKeys({ sessionIds: [sessionId] }));
+      const { session } = await this.commandContext(
+        sessionId,
+        studentId,
+        actorId,
+        actorRoles,
+        false,
+      );
+      if (isPayoutLocked(session)) {
+        throw new BadRequestException('정산에 연결되거나 지급 완료된 수업의 출결은 정산 회수 후 초기화할 수 있습니다.');
+      }
+      const [existing] = await this.store.findActive<Attendance>(ATTENDANCE_SPEC, {
+        where: { sessionId, studentId } as Partial<Attendance>,
+        limit: 1,
+      });
+      if (!existing) throw new NotFoundException('초기화할 학생 출결 기록이 없습니다.');
+
+      const deleted = await this.store.remove(ATTENDANCE_SPEC, existing.id, actorId);
+      if (!deleted) throw new NotFoundException('초기화할 학생 출결 기록이 없습니다.');
+      if (actorId != null) {
+        await this.audit.log({
+          entity: ATTENDANCE,
+          entityId: existing.id,
+          action: 'delete',
+          actorId,
+          reason,
+        });
+      }
+      if (session.status === 'held') {
+        await this.sessionsStore.update(session.id, { status: 'scheduled' });
+        if (actorId != null) {
+          await this.audit.log({
+            entity: SESSIONS,
+            entityId: session.id,
+            action: 'update',
+            actorId,
+            changes: { status: { before: 'held', after: 'scheduled' } },
+            reason: '학생 출결 초기화에 따른 완료 상태 해제',
+          });
+        }
+      }
+      this.domainLog.log(
+        `action=clear session=${sessionId} student=${studentId} actor=${actorId ?? 0} sessionReset=${session.status === 'held' ? 1 : 0} result=deleted`,
+      );
+      return { id: existing.id, sessionId, studentId, deleted: true };
+    });
+  }
+
+  private async commandContext(
+    sessionId: number,
+    studentId: number,
+    actorId?: number,
+    actorRoles?: string[],
+    lock = true,
+  ): Promise<{ session: ClassSession; enrollments: Enrollment[] }> {
+    if (lock) {
+      await this.unitOfWork.lockTargets(sessionAccountingLockKeys({ sessionIds: [sessionId] }));
+    }
+    const session = await this.sessionsStore.findByIdDb(sessionId);
+    if (!session) throw new BadRequestException(`sessionId ${sessionId} 없음(존재하지 않는 수업)`);
+    const [student] = await this.store.findActive<Student>(STUDENTS_SPEC, {
+      where: { id: studentId } as Partial<Student>,
+      limit: 1,
+    });
+    if (!student) throw new BadRequestException(`studentId ${studentId} 없음(존재하지 않는 학생)`);
+    const enrollments = await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC);
+    if (!studentBelongsToSession(session, studentId, enrollments)) {
+      throw new BadRequestException(`studentId ${studentId}는 세션 ${sessionId}의 수강생이 아닙니다`);
+    }
+    if (actorId != null && !hasAdminRole(actorRoles) && !isSessionVisibleToInstructor(session, actorId)) {
+      throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 기록할 수 있습니다.');
+    }
+    return { session, enrollments };
   }
 
   async removeBySession(sessionId: number, deletedBy?: number, reason?: string): Promise<number> {
