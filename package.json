@@ -67,6 +67,7 @@
   "db:verify-persistence-docs": "ts-node scripts/verify-persistence-docs.ts",
   "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts",
   "verify:runtime-data": "ts-node scripts/verify-runtime-data-boundary.ts",
+  "verify:crud-surfaces": "ts-node scripts/verify-crud-surfaces.ts",
   "db:provision-runtime-role": "ts-node scripts/provision-runtime-role.ts",
   "db:smoke:runtime-role": "ts-node scripts/runtime-role-db-smoke.ts",
   "db:rotate-rrn-key": "ts-node scripts/rotate-rrn-key.ts",
