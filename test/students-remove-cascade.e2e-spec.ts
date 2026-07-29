@@ -10,6 +10,7 @@ import { PostgresConnectionService } from '../src/database/postgres-connection.s
 import { ENROLLMENTS_SPEC } from '../src/database/calendar-asset-specs';
 import type { Enrollment } from '../src/modules/enrollments/enrollment.entity';
 import { studentAggregateBody } from './fixtures/student-profile';
+import { AuditService } from '../src/modules/audit/audit.service';
 
 describe('[TBO-29D D0] student remove cascades enrollments (write-through)', () => {
   let app: INestApplication;
@@ -59,5 +60,52 @@ describe('[TBO-29D D0] student remove cascades enrollments (write-through)', () 
     await http.delete('/api/students/999999').set(auth()).expect(404);
     const after = db.findAll<Enrollment>('enrollments').map((e) => `${e.id}:${e.status}`).join(',');
     expect(after).toBe(before);
+  });
+
+  it('cascade 마지막 audit 실패 시 학생·수강·관심·보호자·가족·학사·audit가 전부 before로 롤백된다', async () => {
+    const firstBody = {
+      ...studentAggregateBody('D0 전체롤백A'),
+      guardian: { name: 'D0 보호자', phone: '010-9333-0000', relation: '모' },
+    };
+    const first = (await http.post('/api/students').set(auth()).send(firstBody).expect(201)).body.student;
+    const second = (await http.post('/api/students').set(auth())
+      .send(studentAggregateBody('D0 전체롤백B')).expect(201)).body.student;
+    await http.post('/api/enrollments').set(auth())
+      .send({ studentId: first.id, courseId: 10 })
+      .expect(201);
+    await http.post(`/api/students/${first.id}/family-relations`).set(auth())
+      .send({ relatedStudentId: second.id, relationType: 'sibling' })
+      .expect(201);
+
+    const tables = [
+      'students',
+      'enrollments',
+      'student_interests',
+      'parent_student_relations',
+      'student_family_relations',
+      'student_academic_histories',
+      'audit_log',
+    ] as const;
+    const snapshot = () => Object.fromEntries(tables.map((table) => [
+      table,
+      db.findAll<Record<string, unknown>>(table, { withDeleted: true })
+        .map((row) => JSON.stringify(row))
+        .sort(),
+    ]));
+    const before = snapshot();
+    const audit = app.get(AuditService);
+    const original = audit.log.bind(audit);
+    const failure = jest.spyOn(audit, 'log').mockImplementation(async (entry) => {
+      if (entry.entity === 'students' && entry.entityId === first.id && entry.action === 'delete') {
+        throw new Error('injected final student delete audit failure');
+      }
+      return original(entry);
+    });
+
+    await http.delete(`/api/students/${first.id}`).set(auth()).expect(500);
+    failure.mockRestore();
+
+    expect(snapshot()).toEqual(before);
+    await http.get(`/api/students/${first.id}/aggregate`).set(auth()).expect(200);
   });
 });

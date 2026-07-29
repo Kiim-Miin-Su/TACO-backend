@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -15,10 +16,11 @@ import type { JwtClaims } from '../auth/auth.service';
 import { StudentsService } from './students.service';
 import { RolesGuard } from '../auth/roles.guard';
 import { SudoGuard } from '../auth/sudo.guard'; // [TBO-59 C3-2] 파괴 명령 재인증
-import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import { RequireCapabilities, Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import { CreateStudentFamilyRelationDto, UpdateStudentFamilyRelationDto } from './dto/student-family-relation.dto';
 import { CreateStudentAcademicHistoryDto, UpdateStudentAcademicHistoryDto } from './dto/student-academic-history.dto';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ListStudentsQueryDto } from './dto/list-students-query.dto';
 
 @ApiTags('students')
 @UseGuards(RolesGuard)
@@ -29,9 +31,16 @@ export class StudentsController {
   @Get()
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
   @ApiOperation({ summary: '학생 원부 목록 — 관리자 전체 / 강사는 담당 학생만+안전 필드(P0-5) [전 직원]' })
-  findAll(@Req() req: Request & { user?: JwtClaims }) {
+  findAll(
+    @Query() query: ListStudentsQueryDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
     // [TBO-59 C3] 강사 = 본인 담당 코스 수강생·세션 참여 학생만, PII 필드 제거(allowlist)
-    return this.students.listDbForActor(req.user?.sub, req.user?.roles ?? []);
+    return this.students.listDbForActor(
+      req.user?.sub,
+      req.user?.roles ?? [],
+      query.includeInactive === 'true',
+    );
   }
 
   @Get(':id/family-relations')
@@ -133,8 +142,8 @@ export class StudentsController {
 
   @Delete(':id')
   @UseGuards(SudoGuard) // [TBO-59 C3-2] 원부 삭제 = sudo 재인증(브라우저 cookie 경로 강제)
-  @Roles(...ADMIN_ROLES)
-  @ApiOperation({ summary: '학생 soft delete 및 관련 활성 관계 정리(재인증 필수) [매니저 이상]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
+  @RequireCapabilities('student.hard-delete')
+  @ApiOperation({ summary: '학생 원부 soft delete 및 관련 활성 관계 정리(재인증 필수) [대표/관리자]. 매니저는 퇴원 상태 변경만 가능.' })
   remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.students.remove(id, req.user?.sub);
   }

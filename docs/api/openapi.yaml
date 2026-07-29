@@ -1072,7 +1072,15 @@ paths:
   /api/students:
     get:
       operationId: StudentsController_findAll
-      parameters: []
+      parameters:
+        - name: includeInactive
+          required: false
+          in: query
+          schema:
+            type: string
+            enum:
+              - 'true'
+              - 'false'
       responses:
         '200':
           description: ''
@@ -1426,7 +1434,7 @@ paths:
             application/json:
               schema:
                 type: object
-      summary: 학생 soft delete 및 관련 활성 관계 정리(재인증 필수) [매니저 이상]. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).
+      summary: 학생 원부 soft delete 및 관련 활성 관계 정리(재인증 필수) [대표/관리자]. 매니저는 퇴원 상태 변경만 가능.
       tags:
         - students
       security:

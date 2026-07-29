@@ -34,6 +34,7 @@ import { projectStudentAcademicProfile } from './student-academic-projection';
 // [TBO-30G] 가족 조인 파생 — counsel_forms는 읽기 전용 조인(entity 상수만 — 서비스 순환 없음).
 import { CounselForm, COUNSEL_FORMS } from '../counsel/counsel.entity';
 import type { StudentFamilyAggregate, StudentFamilyMember } from './student-family.types';
+import { isScheduleVisibleStudentStatus } from './student-status.policy';
 
 export type InstructorStudentAggregate = Pick<StudentAggregate, 'interests'> & {
   student: Partial<Student>;
@@ -68,7 +69,7 @@ export class StudentsService implements OnModuleInit {
   }
 
   /** [TBO-54 C2] 목록/상세/aggregate READ = DB 권위(다른 인스턴스의 등록·퇴원 즉시 반영). */
-  async listDb(): Promise<Student[]> {
+  async listDb(includeInactive = false): Promise<Student[]> {
     const [students, histories] = await Promise.all([
       this.store.findActive<Student>(STUDENTS_SPEC, { orderBy: { field: 'id' } }),
       this.store.findActive<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC),
@@ -80,8 +81,10 @@ export class StudentsService implements OnModuleInit {
       historiesByStudent.set(history.studentId, rows);
     }
     const today = this.today();
-    return students.map((student) =>
-      projectStudentAcademicProfile(student, historiesByStudent.get(student.id) ?? [], today));
+    return students
+      .filter((student) => includeInactive || isScheduleVisibleStudentStatus(student.status))
+      .map((student) =>
+        projectStudentAcademicProfile(student, historiesByStudent.get(student.id) ?? [], today));
   }
 
   async getDb(id: number): Promise<Student> {
@@ -131,12 +134,16 @@ export class StudentsService implements OnModuleInit {
   }
 
   /** 목록 READ — 관리자는 전체(full), 강사는 본인 스코프 + 안전 필드만(P0-5). */
-  async listDbForActor(actorId?: number, roles: string[] = []): Promise<Array<Student | Partial<Student>>> {
+  async listDbForActor(
+    actorId?: number,
+    roles: string[] = [],
+    includeInactive = false,
+  ): Promise<Array<Student | Partial<Student>>> {
     const isPrivileged = hasAdminRole(roles) /* [감사 M3] role-policy 단일 진실원 */;
-    if (isPrivileged) return this.listDb();
+    if (isPrivileged) return this.listDb(includeInactive);
     if (actorId == null) throw new ForbiddenException('학생 원부 조회 권한이 없습니다.');
     const allowed = await this.instructorStudentIds(actorId);
-    const rows = await this.listDb();
+    const rows = await this.listDb(includeInactive);
     return rows.filter((row) => allowed.has(row.id)).map((row) => this.toInstructorSafe(row));
   }
 

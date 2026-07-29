@@ -19,13 +19,19 @@ describe('Students Soft-Delete (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let ADMIN = '';
+  let PROF_ADMIN = '';
+  let MANAGER = '';
   let INSTRUCTOR = '';
   const asAdmin = () => sudoAuthHeaders(app, ADMIN);
+  const asProfAdmin = () => sudoAuthHeaders(app, PROF_ADMIN);
+  const asManager = () => sudoAuthHeaders(app, MANAGER);
 
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
     ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
+    PROF_ADMIN = (await http.post('/api/auth/login').send({ webId: 'prof_admin', password: 'demo1234' }).expect(201)).body.accessToken;
+    MANAGER = (await http.post('/api/auth/login').send({ webId: 'manager', password: 'demo1234' }).expect(201)).body.accessToken;
     INSTRUCTOR = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
   });
   afterAll(async () => { await app.close(); });
@@ -68,19 +74,50 @@ describe('Students Soft-Delete (e2e)', () => {
     await http.patch(`/api/students/${withdrawn.id}`).set(asAdmin()).send({ status: 'withdrawn' }).expect(200);
     await http.patch(`/api/students/${lost.id}`).set(asAdmin()).send({ status: 'registration_lost' }).expect(200);
 
-    const afterStatus = (await http.get('/api/students').set(asAdmin()).expect(200)).body;
+    const activeOnly = (await http.get('/api/students').set(asAdmin()).expect(200)).body;
+    expect(activeOnly.some((row: { id: number }) => row.id === withdrawn.id)).toBe(false);
+    expect(activeOnly.some((row: { id: number }) => row.id === lost.id)).toBe(false);
+
+    const afterStatus = (await http.get('/api/students?includeInactive=true').set(asAdmin()).expect(200)).body;
     expect(afterStatus).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: withdrawn.id, status: 'withdrawn' }),
       expect.objectContaining({ id: lost.id, status: 'registration_lost' }),
     ]));
+    await http.get('/api/students?includeInactive=yes').set(asAdmin()).expect(400);
     await http.get(`/api/students/${withdrawn.id}/aggregate`).set(asAdmin()).expect(200);
     await http.get(`/api/students/${lost.id}/aggregate`).set(asAdmin()).expect(200);
 
     await http.delete(`/api/students/${withdrawn.id}`).set(asAdmin()).expect(200);
-    const afterDelete = (await http.get('/api/students').set(asAdmin()).expect(200)).body;
+    const afterDelete = (await http.get('/api/students?includeInactive=true').set(asAdmin()).expect(200)).body;
     expect(afterDelete.some((row: { id: number }) => row.id === withdrawn.id)).toBe(false);
     expect(afterDelete.some((row: { id: number }) => row.id === lost.id)).toBe(true);
     await http.get(`/api/students/${withdrawn.id}/aggregate`).set(asAdmin()).expect(404);
+  });
+
+  it('manager는 퇴원 상태만 변경하고 원부 삭제는 admin/CEO+sudo만 가능하다', async () => {
+    const managerStudent = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('매니저퇴원학생')).expect(201)).body.student;
+    await http.patch(`/api/students/${managerStudent.id}`)
+      .set({ Authorization: `Bearer ${MANAGER}` })
+      .send({ status: 'withdrawn' })
+      .expect(200);
+    await http.post('/api/enrollments')
+      .set({ Authorization: `Bearer ${MANAGER}` })
+      .send({ studentId: managerStudent.id, courseId: 10 })
+      .expect(400);
+    await http.delete(`/api/students/${managerStudent.id}`).set(asManager()).expect(403);
+    await http.get(`/api/students/${managerStudent.id}/aggregate`)
+      .set({ Authorization: `Bearer ${MANAGER}` })
+      .expect(200)
+      .expect(({ body }) => expect(body.student.status).toBe('withdrawn'));
+
+    const adminStudent = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('관리자삭제학생')).expect(201)).body.student;
+    await http.delete(`/api/students/${adminStudent.id}`)
+      .set({ Authorization: `Bearer ${PROF_ADMIN}` })
+      .expect(403)
+      .expect(({ body }) => expect(body.code).toBe('SUDO_REQUIRED'));
+    await http.delete(`/api/students/${adminStudent.id}`).set(asProfAdmin()).expect(200);
   });
 
   it('프로필 입력을 컬럼 계약대로 저장하고 유효하지 않은 날짜·성별·상태는 400으로 차단한다', async () => {

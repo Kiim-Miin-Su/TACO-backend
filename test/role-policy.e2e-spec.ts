@@ -47,6 +47,14 @@ describe('role policy', () => {
     expect(roleHasCapability('instructor', 'counsel.manage')).toBe(false);
   });
 
+  it('limits destructive student registry deletion to CEO and admin', () => {
+    expect(rolesForCapability('student.hard-delete')).toEqual(['super_admin', 'admin']);
+    expect(roleHasCapability('super_admin', 'student.hard-delete')).toBe(true);
+    expect(roleHasCapability('admin', 'student.hard-delete')).toBe(true);
+    expect(roleHasCapability('manager', 'student.hard-delete')).toBe(false);
+    expect(roleHasCapability('instructor', 'student.hard-delete')).toBe(false);
+  });
+
   it('detects instructor-only claims without granting mixed admin claims', () => {
     expect(isInstructorOnly(['instructor'])).toBe(true);
     expect(isInstructorOnly(['instructor', 'manager'])).toBe(false);

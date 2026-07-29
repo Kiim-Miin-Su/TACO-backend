@@ -56,6 +56,7 @@ const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 let managerActorId = 0;
 let operationActorId = 0;
+let studentDeleteActorId = 0;
 let qaInstructorId = 0;
 let qaStudentId = 0;
 let qaRelatedStudentId = 0;
@@ -84,7 +85,7 @@ function tokenFor(app: INestApplication, actorId: number): string {
   });
 }
 
-async function boot(): Promise<{ app: INestApplication; http: ReturnType<typeof request>; manager: string; operator: string }> {
+async function boot(): Promise<{ app: INestApplication; http: ReturnType<typeof request>; manager: string; operator: string; studentDeleter: string }> {
   const app = await createTestApp();
   openApps.add(app);
   const pg = app.get(PostgresConnectionService);
@@ -95,6 +96,7 @@ async function boot(): Promise<{ app: INestApplication; http: ReturnType<typeof 
     http,
     manager: tokenFor(app, managerActorId),
     operator: tokenFor(app, operationActorId),
+    studentDeleter: tokenFor(app, studentDeleteActorId),
   };
 }
 
@@ -160,7 +162,7 @@ async function cleanupFixtures(): Promise<void> {
   try {
     const booted = await boot();
     cleanupApp = booted.app;
-    const { http, manager, operator } = booted;
+    const { http, manager, operator, studentDeleter } = booted;
     if (qaCounselId) await http.delete(`/api/counsel/${qaCounselId}`).set(auth(operator));
     if (qaIntakeCounselId) await http.delete(`/api/counsel/${qaIntakeCounselId}`).set(auth(operator));
     for (const id of qaSessionIds) await http.delete(`/api/schedule/${id}`).set(auth(manager));
@@ -171,9 +173,9 @@ async function cleanupFixtures(): Promise<void> {
     if (qaSubjectId) await http.delete(`/api/subjects/${qaSubjectId}`).set(auth(manager));
     // [74D-1] DELETE /students/:id는 SudoGuard(원부 삭제 재인증) — Bearer만이면 403으로
     //  API 경로가 조용히 실패하고 fallbackSoftDelete가 가려준다. 정규 경로를 살린다.
-    if (qaStudentId) await http.delete(`/api/students/${qaStudentId}`).set(sudoAuthHeaders(cleanupApp, manager));
-    if (qaRelatedStudentId) await http.delete(`/api/students/${qaRelatedStudentId}`).set(sudoAuthHeaders(cleanupApp, manager));
-    if (qaIntakeStudentId) await http.delete(`/api/students/${qaIntakeStudentId}`).set(sudoAuthHeaders(cleanupApp, manager));
+    if (qaStudentId) await http.delete(`/api/students/${qaStudentId}`).set(sudoAuthHeaders(cleanupApp, studentDeleter));
+    if (qaRelatedStudentId) await http.delete(`/api/students/${qaRelatedStudentId}`).set(sudoAuthHeaders(cleanupApp, studentDeleter));
+    if (qaIntakeStudentId) await http.delete(`/api/students/${qaIntakeStudentId}`).set(sudoAuthHeaders(cleanupApp, studentDeleter));
 
     // API 도중 실패/프로세스 재시도에도 테스트 자산을 active 상태로 남기지 않는다.
     // 물리 DELETE는 금지하고, fallback도 audit_log를 남기는 soft-delete만 수행한다.
@@ -229,13 +231,16 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
     const users = initialApp.get(UsersService).findAll();
     const manager = users.find((row) => row.role === 'manager' && row.status === 'active'
       && row.deletedAt == null && row.mustChangePassword !== true);
+    const studentDeleter = users.find((row) => (row.role === 'super_admin' || row.role === 'admin')
+      && row.status === 'active' && row.deletedAt == null && row.mustChangePassword !== true);
     const instructor = users.find((row) => row.role === 'instructor' && row.status === 'active'
       && row.deletedAt == null);
-    if (!manager || !instructor) {
-      throw new Error('DB CRUD requires one business-ready manager and one active instructor; no credentials are read.');
+    if (!manager || !studentDeleter || !instructor) {
+      throw new Error('DB CRUD requires one business-ready manager, admin/CEO student deleter, and active instructor; no credentials are read.');
     }
     managerActorId = manager.id;
     operationActorId = manager.id;
+    studentDeleteActorId = studentDeleter.id;
     qaInstructorId = instructor.id;
     await cleanupStaleFixtures(initialApp.get(PostgresConnectionService), operationActorId);
     await closeApp(initialApp);
@@ -619,6 +624,41 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
         .set(auth(operator)).expect(200)).body as AuditRow[];
       expect(familyAudit.some((row) => row.action === 'delete' && row.actorId === operationActorId)).toBe(true);
       expect(academicAudit.some((row) => row.action === 'delete' && row.actorId === operationActorId)).toBe(true);
+      await closeApp(app);
+    }
+  });
+
+  it('persists withdrawn history while excluding it from default lists and new enrollment', async () => {
+    let historyStudentId = 0;
+    {
+      const { app, http, manager } = await boot();
+      historyStudentId = Number((await http.post('/api/students').set(auth(manager))
+        .send(studentAggregateBody(`DBCRUD역사${String(Date.now()).slice(-8)}`, { interests: [] }))
+        .expect(201)).body.student.id);
+      await http.patch(`/api/students/${historyStudentId}`).set(auth(manager))
+        .send({ status: 'withdrawn' })
+        .expect(200);
+      await closeApp(app);
+    }
+
+    {
+      const { app, http, manager, studentDeleter } = await boot();
+      const active = (await http.get('/api/students').set(auth(manager)).expect(200)).body;
+      expect(active.some((row: { id: number }) => row.id === historyStudentId)).toBe(false);
+      const history = (await http.get('/api/students?includeInactive=true').set(auth(manager)).expect(200)).body;
+      expect(history).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: historyStudentId, status: 'withdrawn' }),
+      ]));
+      await http.get(`/api/students/${historyStudentId}/aggregate`).set(auth(manager)).expect(200);
+      await http.post('/api/enrollments').set(auth(manager))
+        .send({ studentId: historyStudentId, courseId: qaCourseId })
+        .expect(400);
+      await http.delete(`/api/students/${historyStudentId}`)
+        .set(sudoAuthHeaders(app, manager))
+        .expect(403);
+      await http.delete(`/api/students/${historyStudentId}`)
+        .set(sudoAuthHeaders(app, studentDeleter))
+        .expect(200);
       await closeApp(app);
     }
   });

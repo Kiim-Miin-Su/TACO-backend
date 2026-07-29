@@ -72,8 +72,11 @@ export class EnrollmentsService implements OnModuleInit {
       await this.store.hydrate<StoredCourse>(COURSES_SPEC);
       await this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
       // FK·중복 판정은 lock 뒤 실제 DB readback이 권위다.
-      if (!this.db.findById(STUDENTS, dto.studentId))
+      const student = this.db.findById<Student>(STUDENTS, dto.studentId);
+      if (!student)
         throw new BadRequestException(`존재하지 않는 학생입니다 (studentId=${dto.studentId})`);
+      if (!isScheduleVisibleStudentStatus(student.status))
+        throw new BadRequestException(`수업에 연결할 수 없는 학생입니다 (studentId=${dto.studentId})`);
       if (!this.db.findById(COURSES, dto.courseId))
         throw new BadRequestException(`존재하지 않는 코스입니다 (courseId=${dto.courseId})`);
       const duplicate = this.db.findBy<Enrollment>(ENROLLMENTS, (row) =>
