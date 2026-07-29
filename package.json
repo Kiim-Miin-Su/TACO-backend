@@ -65,6 +65,8 @@
   "e2e:coverage": "E2E_ROUTE_LOG=/tmp/e2e-routes.log jest --config test/jest-e2e.json --runInBand && npm run route-coverage -- /tmp/e2e-routes.log",
   "db:integrity": "ts-node scripts/db-integrity-check.ts",
   "db:verify-persistence-docs": "ts-node scripts/verify-persistence-docs.ts",
+  "db:verify-schema-shape": "ts-node scripts/verify-schema-shape.ts",
+  "db:migrate-schema-shape-integrity": "ts-node scripts/migrate-schema-shape-integrity.ts",
   "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts",
   "verify:runtime-data": "ts-node scripts/verify-runtime-data-boundary.ts",
   "verify:crud-surfaces": "ts-node scripts/verify-crud-surfaces.ts",

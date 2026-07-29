@@ -46,6 +46,7 @@ import { SCHEDULE_REQUEST_INTEGRITY_V2_MIGRATION_ID } from '../src/database/migr
 import { ENROLLMENT_PAYOUT_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/enrollment-payout-integrity.migration';
 import { SCHEDULE_REQUEST_BATCH_MIGRATION_ID } from '../src/database/migrations/schedule-request-batch.migration';
 import { SCHEDULE_REQUEST_BATCH_STRICT_MIGRATION_ID } from '../src/database/migrations/schedule-request-batch-strict.migration';
+import { SCHEMA_SHAPE_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/schema-shape-integrity.migration';
 
 loadLocalEnv();
 
@@ -93,6 +94,7 @@ export const EXPECTED_MIGRATION_IDS = [
   SCHEDULE_REQUEST_INTEGRITY_V2_MIGRATION_ID, // [77E-3a audit] delete snapshots + strict decision/domain/time invariants
   SCHEDULE_REQUEST_BATCH_MIGRATION_ID, // [78C2] repeated request batch idempotency fields + unique item index
   SCHEDULE_REQUEST_BATCH_STRICT_MIGRATION_ID, // [78C2] CHECK NULL semantics hardening
+  SCHEMA_SHAPE_INTEGRITY_MIGRATION_ID, // [78C3] enum domains + join FKs + event default
 ] as const;
 
 const url = directDatabaseUrl();
