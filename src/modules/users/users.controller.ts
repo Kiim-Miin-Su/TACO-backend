@@ -20,6 +20,7 @@ import { ProfileResponseDto } from './dto/profile-response.dto';
 import { smsChallengeAvailable } from '../profile-verifications/sms-availability';
 import { profileVersionOf } from './user.entity';
 import { UserLifecycleDto } from './dto/user-lifecycle.dto';
+import { StaffAccountResponseDto } from './dto/staff-account-response.dto';
 
 @UseGuards(RolesGuard)
 @Controller('users')
@@ -87,6 +88,7 @@ export class UsersController {
   @Roles(...ADMIN_ROLES) // 직원 이메일·승인 metadata·마지막 로그인 포함 — 관리자만
   @ApiOperation({ summary: '직원 계정 목록과 승인 상태 조회 [매니저 이상]' })
   @ApiQuery({ name: 'includeTerminated', required: false, type: Boolean })
+  @ApiOkResponse({ type: StaffAccountResponseDto, isArray: true })
   async list(
     @Query('includeTerminated') includeTerminated: string | undefined,
     @Req() req: Request & { user?: JwtClaims },
@@ -105,6 +107,7 @@ export class UsersController {
   @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
   @ApiOperation({ summary: '계정 상세(관리자) — super_admin에게만 rrnMasked 동봉.' })
+  @ApiOkResponse({ type: StaffAccountResponseDto })
   async detail(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     const roles = req.user?.roles ?? [];
     return this.users.getUserDetail(

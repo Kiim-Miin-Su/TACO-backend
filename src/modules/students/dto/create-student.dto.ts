@@ -44,10 +44,9 @@ export class CreateStudentDto implements CreateStudentInput {
   @Max(13)
   grade!: number;
 
-  @IsOptional()
   @IsString()
   @MaxLength(100)
-  schoolName?: string;
+  schoolName!: string;
 
   @IsOptional()
   @IsIn(['domestic', 'overseas'])

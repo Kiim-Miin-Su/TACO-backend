@@ -85,7 +85,7 @@
   "db:migrate:enrollment-roadmap-integrity": "ts-node scripts/migrate-enrollment-roadmap-integrity.ts"
  },
  "dependencies": {
-  "@kms545487/contracts": "0.2.35",
+  "@kms545487/contracts": "0.2.36",
   "@neondatabase/serverless": "^1.1.0",
   "@nestjs/common": "^11.1.27",
   "@nestjs/core": "^11.1.27",

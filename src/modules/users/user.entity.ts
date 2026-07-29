@@ -3,7 +3,7 @@
 //  가입 신청·승인 이력이 단일 DB(자산) 밖에 있었다 → 컬렉션으로 이관(전 도메인과 동일 패턴).
 //  비밀번호 해시·인증 토큰은 이 레코드에만 있고 외부 응답은 SafeAccount(안전 필드)로 변환.
 import type { BaseRow } from '../../common/types/base';
-import type { Account } from '@kms545487/contracts';
+import type { Account, StaffAccountSummary } from '@kms545487/contracts';
 import { isStaffRole, type AppRole } from '../auth/role-policy';
 import { decryptRrn, maskRrn } from '../../common/rrn-crypto.util'; // [TBO-68 C3] rrnMaskedOf
 
@@ -64,6 +64,8 @@ export type SafeAccount = Omit<StaffAccount, 'passwordHash' | 'emailVerifyTokenH
 export const toSafe = (a: StaffAccount): SafeAccount => {
   const { passwordHash: _ph, emailVerifyTokenHash: _th, emailVerifyExpiresAt: _te, passwordResetTokenHash: _rt, passwordResetExpiresAt: _re, rrnEncrypted: _rrn, ...safe } = a;
   void _ph; void _th; void _te;
+  const contract: StaffAccountSummary = safe;
+  void contract;
   return safe;
 };
 

@@ -546,7 +546,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/StaffAccountResponseDto"
                   }
                 }
               }
@@ -594,12 +594,12 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffAccountResponseDto"
                 }
               }
             }
@@ -681,12 +681,12 @@
           }
         },
         "responses": {
-          "201": {
+          "200": {
             "description": "",
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffAccountResponseDto"
                 }
               }
             }
@@ -1001,7 +1001,7 @@
                 "schema": {
                   "type": "array",
                   "items": {
-                    "type": "object"
+                    "$ref": "#/components/schemas/StaffAccountResponseDto"
                   }
                 }
               }
@@ -1044,7 +1044,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "type": "object"
+                  "$ref": "#/components/schemas/StaffAccountResponseDto"
                 }
               }
             }
@@ -8829,6 +8829,114 @@
           "currentPassword"
         ]
       },
+      "StaffAccountResponseDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 1
+          },
+          "webId": {
+            "type": "string",
+            "example": "manager01"
+          },
+          "name": {
+            "type": "string",
+            "example": "이지원"
+          },
+          "email": {
+            "type": "string",
+            "nullable": true,
+            "example": "manager@tnacademy.test"
+          },
+          "phone": {
+            "type": "string",
+            "nullable": true,
+            "example": "010-1234-5678"
+          },
+          "role": {
+            "enum": [
+              "instructor",
+              "manager",
+              "admin",
+              "super_admin"
+            ],
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "active",
+              "rejected"
+            ],
+            "type": "string"
+          },
+          "emailVerified": {
+            "type": "boolean",
+            "example": true
+          },
+          "profileVersion": {
+            "type": "number",
+            "example": 1,
+            "minimum": 1
+          },
+          "countryCode": {
+            "type": "string",
+            "nullable": true,
+            "example": "KR"
+          },
+          "timeZone": {
+            "type": "string",
+            "nullable": true,
+            "example": "Asia/Seoul"
+          },
+          "university": {
+            "type": "string",
+            "nullable": true,
+            "example": "서울대학교"
+          },
+          "major": {
+            "type": "string",
+            "nullable": true,
+            "example": "수학교육"
+          },
+          "birthYear": {
+            "type": "number",
+            "nullable": true,
+            "example": 1992
+          },
+          "rrnMasked": {
+            "type": "string",
+            "nullable": true,
+            "example": "199201-1******",
+            "description": "대표 상세·승인 조회에서만 제공"
+          },
+          "createdAt": {
+            "type": "string",
+            "example": "2026-07-29T00:00:00.000Z"
+          },
+          "updatedAt": {
+            "type": "string",
+            "example": "2026-07-29T00:00:00.000Z"
+          },
+          "deletedAt": {
+            "type": "string",
+            "nullable": true,
+            "example": null
+          }
+        },
+        "required": [
+          "id",
+          "webId",
+          "name",
+          "role",
+          "status",
+          "emailVerified",
+          "profileVersion",
+          "createdAt",
+          "updatedAt"
+        ]
+      },
       "ApproveDto": {
         "type": "object",
         "properties": {
@@ -12240,7 +12348,8 @@
         "required": [
           "name",
           "birthDate",
-          "grade"
+          "grade",
+          "schoolName"
         ]
       },
       "RegistrationGuardianDto": {

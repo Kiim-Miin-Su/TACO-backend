@@ -357,7 +357,7 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
+                  $ref: '#/components/schemas/StaffAccountResponseDto'
       security:
         - bearer: []
         - access_token: []
@@ -383,12 +383,12 @@ paths:
             schema:
               $ref: '#/components/schemas/ApproveDto'
       responses:
-        '201':
+        '200':
           description: ''
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/StaffAccountResponseDto'
       security:
         - bearer: []
         - access_token: []
@@ -435,12 +435,12 @@ paths:
             schema:
               $ref: '#/components/schemas/RejectDto'
       responses:
-        '201':
+        '200':
           description: ''
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/StaffAccountResponseDto'
       security:
         - bearer: []
         - access_token: []
@@ -631,7 +631,7 @@ paths:
               schema:
                 type: array
                 items:
-                  type: object
+                  $ref: '#/components/schemas/StaffAccountResponseDto'
       summary: 직원 계정 목록과 승인 상태 조회 [매니저 이상]
       tags:
         - Users
@@ -656,7 +656,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/StaffAccountResponseDto'
       security:
         - bearer: []
         - access_token: []
@@ -5373,6 +5373,91 @@ components:
           description: 현재 비밀번호
       required:
         - currentPassword
+    StaffAccountResponseDto:
+      type: object
+      properties:
+        id:
+          type: number
+          example: 1
+        webId:
+          type: string
+          example: manager01
+        name:
+          type: string
+          example: 이지원
+        email:
+          type: string
+          nullable: true
+          example: manager@tnacademy.test
+        phone:
+          type: string
+          nullable: true
+          example: 010-1234-5678
+        role:
+          enum:
+            - instructor
+            - manager
+            - admin
+            - super_admin
+          type: string
+        status:
+          enum:
+            - pending
+            - active
+            - rejected
+          type: string
+        emailVerified:
+          type: boolean
+          example: true
+        profileVersion:
+          type: number
+          example: 1
+          minimum: 1
+        countryCode:
+          type: string
+          nullable: true
+          example: KR
+        timeZone:
+          type: string
+          nullable: true
+          example: Asia/Seoul
+        university:
+          type: string
+          nullable: true
+          example: 서울대학교
+        major:
+          type: string
+          nullable: true
+          example: 수학교육
+        birthYear:
+          type: number
+          nullable: true
+          example: 1992
+        rrnMasked:
+          type: string
+          nullable: true
+          example: 199201-1******
+          description: 대표 상세·승인 조회에서만 제공
+        createdAt:
+          type: string
+          example: '2026-07-29T00:00:00.000Z'
+        updatedAt:
+          type: string
+          example: '2026-07-29T00:00:00.000Z'
+        deletedAt:
+          type: string
+          nullable: true
+          example: null
+      required:
+        - id
+        - webId
+        - name
+        - role
+        - status
+        - emailVerified
+        - profileVersion
+        - createdAt
+        - updatedAt
     ApproveDto:
       type: object
       properties:
@@ -7976,6 +8061,7 @@ components:
         - name
         - birthDate
         - grade
+        - schoolName
     RegistrationGuardianDto:
       type: object
       properties:

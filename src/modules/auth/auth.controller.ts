@@ -14,7 +14,8 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
-import { ApiBearerAuth, ApiCreatedResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { StaffAccountResponseDto } from '../users/dto/staff-account-response.dto';
+import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { Throttle } from '@nestjs/throttler';
 import { RolesGuard } from './roles.guard';
@@ -444,6 +445,7 @@ export class AuthController {
   @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
   @ApiOperation({ summary: '처리 가능한 승인 대기 계정 목록(매니저=강사, 관리자=강사·매니저, 대표=대표 외).' })
+  @ApiOkResponse({ type: StaffAccountResponseDto, isArray: true })
   pending(@Req() req: Request & { user?: JwtClaims }) {
     return this.signupApproval.listPending(this.actorOf(req));
   }
@@ -455,6 +457,7 @@ export class AuthController {
   @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 승인(요청 역할 보존, 역할별 범위 강제, 원자 tx+audit). 동시 결정은 409.' })
+  @ApiOkResponse({ type: StaffAccountResponseDto })
   async approve(@Param('id', PositiveIntPipe) id: number, @Body() dto: ApproveDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.signupApproval.approve(id, this.actorOf(req), dto.reason);
   }
@@ -482,6 +485,7 @@ export class AuthController {
   @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 반려(역할별 범위 강제, 사유 필수, audit 기록). 동시 결정은 409.' })
+  @ApiOkResponse({ type: StaffAccountResponseDto })
   async reject(@Param('id', PositiveIntPipe) id: number, @Body() dto: RejectDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.signupApproval.reject(id, this.actorOf(req), dto.reason);
   }
