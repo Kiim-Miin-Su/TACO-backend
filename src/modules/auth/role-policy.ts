@@ -12,7 +12,8 @@ export type RoleCapability =
   | 'calendar.manage'
   | 'calendar.request-own'
   | 'counsel.manage'
-  | 'student.hard-delete';
+  | 'student.hard-delete'
+  | 'security.events.read';
 
 export const ROLE_GROUPS = {
   executive: ['super_admin'],
@@ -36,6 +37,7 @@ export const CAPABILITY_ROLES: Record<RoleCapability, readonly AppRole[]> = {
   'calendar.request-own': STAFF_ROLES,
   'counsel.manage': ADMIN_ROLES,
   'student.hard-delete': ['super_admin', 'admin'],
+  'security.events.read': ['super_admin', 'admin'],
 };
 
 export const rolesForCapability = (capability: RoleCapability): readonly AppRole[] =>

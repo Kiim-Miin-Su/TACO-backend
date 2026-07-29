@@ -42,6 +42,7 @@ import { authVersionOf, isStaffRole, type StaffAccount } from '../users/user.ent
 import { MailService } from '../mail/mail.service';
 import { LoginResponseDto } from './dto/login-response.dto';
 import { Public } from './public.decorator';
+import { ListAuthEventsQueryDto } from './dto/list-auth-events.dto';
 import {
   ACCESS_COOKIE,
   REFRESH_COOKIE,
@@ -501,6 +502,15 @@ export class AuthController {
     const sub = req.user?.sub;
     if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
     return sub;
+  }
+
+  @Get('events')
+  @UseGuards(RolesGuard, SudoGuard)
+  @RequireCapabilities('security.events.read')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '인증 보안 이벤트 조회/검색(최대 200건) — 대표·관리자 재인증 필수, append-only.' })
+  listAuthEvents(@Query() query: ListAuthEventsQueryDto) {
+    return this.events.list(query);
   }
 
   // 토큰 검증(claims 반환) — [A5 2026-07-06] 수동 Bearer 파싱 → RolesGuard 패턴 통일
