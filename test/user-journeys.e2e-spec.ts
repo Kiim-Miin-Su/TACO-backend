@@ -7,6 +7,9 @@ import request from 'supertest';
 import { createTestApp, mondayISO, addDaysISO, sudoAuthHeaders } from './setup-app';
 
 jest.setTimeout(20000); // 여정 스위트 — 단계 수가 많다(풀런 부하 대비)
+// 상태를 여러 it에 걸쳐 이어가는 유기 여정은 개별 it retry가 이전 시도의 DB 변경을 승계해
+// report duplicate 409 등 거짓 실패를 만든다. 이 스위트는 최초 실패를 그대로 노출한다.
+jest.retryTimes(0);
 
 describe('[TBO-67] 유저 여정 (e2e)', () => {
   let app: INestApplication;
