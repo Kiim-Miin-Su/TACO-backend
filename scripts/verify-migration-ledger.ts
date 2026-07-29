@@ -44,6 +44,8 @@ import { ENROLLMENT_ROADMAP_INTEGRITY_MIGRATION_ID } from '../src/database/migra
 import { SCHEDULE_REQUEST_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/schedule-request-integrity.migration';
 import { SCHEDULE_REQUEST_INTEGRITY_V2_MIGRATION_ID } from '../src/database/migrations/schedule-request-integrity-v2.migration';
 import { ENROLLMENT_PAYOUT_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/enrollment-payout-integrity.migration';
+import { SCHEDULE_REQUEST_BATCH_MIGRATION_ID } from '../src/database/migrations/schedule-request-batch.migration';
+import { SCHEDULE_REQUEST_BATCH_STRICT_MIGRATION_ID } from '../src/database/migrations/schedule-request-batch-strict.migration';
 
 loadLocalEnv();
 
@@ -89,6 +91,8 @@ export const EXPECTED_MIGRATION_IDS = [
   SCHEDULE_REQUEST_INTEGRITY_MIGRATION_ID, // [77E-3a] schedule request FK + kind/decision/time invariants
   ENROLLMENT_PAYOUT_INTEGRITY_MIGRATION_ID, // [77E-3b] enrollment/payout/session refs + lifecycle/money invariants
   SCHEDULE_REQUEST_INTEGRITY_V2_MIGRATION_ID, // [77E-3a audit] delete snapshots + strict decision/domain/time invariants
+  SCHEDULE_REQUEST_BATCH_MIGRATION_ID, // [78C2] repeated request batch idempotency fields + unique item index
+  SCHEDULE_REQUEST_BATCH_STRICT_MIGRATION_ID, // [78C2] CHECK NULL semantics hardening
 ] as const;
 
 const url = directDatabaseUrl();

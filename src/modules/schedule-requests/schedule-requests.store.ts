@@ -173,10 +173,23 @@ export class ScheduleRequestsStore implements OnModuleInit {
         decided_by integer,
         decided_at timestamptz,
         created_session_id integer,
+        batch_key uuid,
+        batch_fingerprint varchar(64),
+        batch_index integer,
         created_at timestamptz NOT NULL DEFAULT now(),
         updated_at timestamptz NOT NULL DEFAULT now(),
         deleted_at timestamptz,
-        deleted_by integer
+        deleted_by integer,
+        CONSTRAINT c_schedule_requests_batch_complete CHECK (
+          (batch_key IS NULL AND batch_fingerprint IS NULL AND batch_index IS NULL)
+          OR (
+            batch_key IS NOT NULL
+            AND batch_fingerprint IS NOT NULL
+            AND batch_fingerprint ~ '^[a-f0-9]{64}$'
+            AND batch_index IS NOT NULL
+            AND batch_index >= 0
+          )
+        )
       )
     `);
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_status ON ${TABLE} (status) WHERE deleted_at IS NULL`);
@@ -191,6 +204,7 @@ export class ScheduleRequestsStore implements OnModuleInit {
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_status_id ON ${TABLE} (status, id DESC) WHERE deleted_at IS NULL`);
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_id_desc ON ${TABLE} (requester_id, id DESC) WHERE deleted_at IS NULL`);
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_status_id ON ${TABLE} (requester_id, status, id DESC) WHERE deleted_at IS NULL`);
+    await this.postgres.ddl(`CREATE UNIQUE INDEX IF NOT EXISTS uq_schedule_requests_batch_item ON ${TABLE} (requester_id, batch_key, batch_index) WHERE batch_key IS NOT NULL`);
     this.schemaReady = true;
     this.logger.log('schedule_requests table ready (Postgres-backed)');
   }
@@ -198,6 +212,30 @@ export class ScheduleRequestsStore implements OnModuleInit {
   private async query(sql: string, params: unknown[] = []): Promise<PostgresRow[]> {
     const result = await this.postgres.query(sql, params);
     return normalizeQueryRows(result);
+  }
+
+  async lockBatch(requesterId: number, batchKey: string): Promise<void> {
+    if (!this.durable) return;
+    await this.query('SELECT pg_advisory_xact_lock($1, hashtext($2))', [requesterId, batchKey]);
+  }
+
+  async findBatch<T extends BaseRow & { batchIndex?: number }>(
+    requesterId: number,
+    batchKey: string,
+  ): Promise<T[]> {
+    if (!this.durable) {
+      return this.memory.findAll<T>(TABLE, { withDeleted: true })
+        .filter((row) => Number((row as Record<string, unknown>).requesterId) === requesterId)
+        .filter((row) => (row as Record<string, unknown>).batchKey === batchKey)
+        .sort((left, right) => Number(left.batchIndex ?? 0) - Number(right.batchIndex ?? 0));
+    }
+    const rows = await this.query(
+      `SELECT * FROM ${TABLE}
+        WHERE requester_id = $1 AND batch_key = $2
+        ORDER BY batch_index ASC`,
+      [requesterId, batchKey],
+    );
+    return rows.map((row) => this.fromDbRow<T>(row));
   }
 
   private toDbPayload(src: Record<string, unknown>): Record<string, unknown> {

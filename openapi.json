@@ -3082,7 +3082,7 @@
             }
           }
         },
-        "summary": "수강 등록 목록 조회, studentId 선택 필터 [전 직원]",
+        "summary": "수강 등록 목록 조회, studentId 선택 필터. 강사는 본인 세션 참여 학생 범위만. [전 직원]",
         "tags": [
           "enrollments"
         ],
@@ -3162,7 +3162,7 @@
             }
           }
         },
-        "summary": "수강 등록 단건 조회 [전 직원]",
+        "summary": "수강 등록 단건 조회. 강사는 본인 세션 참여 학생 범위만(404→403). [전 직원]",
         "tags": [
           "enrollments"
         ],
@@ -5189,7 +5189,7 @@
             "access_token": []
           }
         ],
-        "summary": "보고서 작성(세션 FK·중복·강사 일치·소유권 검증). 기본 submitted(승인요청).",
+        "summary": "보고서 작성(강사 본인 또는 관리자 대리 작성, 세션 FK·중복·담당 강사·참여 학생 검증). 기본 submitted(승인요청).",
         "tags": [
           "reports"
         ]
@@ -5530,6 +5530,46 @@
           }
         ],
         "summary": "요청 목록(최신순) — 강사는 본인 요청만, 관리자는 전체(status 필터). [로그인]",
+        "tags": [
+          "schedule-requests"
+        ]
+      }
+    },
+    "/api/schedule-requests/bulk": {
+      "post": {
+        "operationId": "ScheduleRequestsController_createBulk",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateScheduleRequestBulkDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScheduleRequestBulkResultDto"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "반복 수업 승인 요청 bulk 생성 — 전체 원자 저장 + requester별 idempotency. [로그인]",
         "tags": [
           "schedule-requests"
         ]
@@ -11498,6 +11538,70 @@
             "example": "2026-08-31"
           }
         }
+      },
+      "CreateScheduleRequestBulkDto": {
+        "type": "object",
+        "properties": {
+          "idempotencyKey": {
+            "type": "string",
+            "format": "uuid",
+            "example": "2f84826a-33c4-4aa5-9a12-30d9994ee6e3",
+            "description": "한 제출 시도에 한 번 발급하고 network retry에 재사용하는 UUID v4"
+          },
+          "requests": {
+            "minItems": 2,
+            "maxItems": 50,
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CreateScheduleRequestDto"
+            }
+          }
+        },
+        "required": [
+          "idempotencyKey",
+          "requests"
+        ]
+      },
+      "ScheduleRequestBulkConflictDto": {
+        "type": "object",
+        "properties": {
+          "requestIndex": {
+            "type": "number",
+            "minimum": 0
+          },
+          "conflict": {
+            "type": "object"
+          }
+        },
+        "required": [
+          "requestIndex",
+          "conflict"
+        ]
+      },
+      "ScheduleRequestBulkResultDto": {
+        "type": "object",
+        "properties": {
+          "rows": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ScheduleRequestBulkConflictDto"
+            }
+          },
+          "replayed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "rows",
+          "conflicts",
+          "replayed"
+        ]
       },
       "UpdateScheduleRequestDto": {
         "type": "object",

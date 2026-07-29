@@ -2,7 +2,7 @@
 //  RBAC: 생성·조회·철회=STAFF(강사 포함 — 조회는 강사면 본인 것만 강제), 승인/반려=ADMIN(manager 이상).
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
-import { ApiBearerAuth, ApiConflictResponse, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConflictResponse, ApiCreatedResponse, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ScheduleRequestsService } from './schedule-requests.service';
@@ -12,6 +12,10 @@ import { UpdateScheduleRequestDto } from './dto/update-schedule-request.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import { SessionAccountingImpactConflictResponseDto } from '../schedule/dto/accounting-impact-response.dto';
+import {
+  CreateScheduleRequestBulkDto,
+  ScheduleRequestBulkResultDto,
+} from './dto/create-schedule-request-bulk.dto';
 
 type AuthedRequest = Request & { user?: JwtClaims };
 
@@ -36,6 +40,14 @@ export class ScheduleRequestsController {
   @ApiOperation({ summary: '요청 생성(pending) — 수업 생성 또는 가용시간 변경 승인 요청. [로그인]' })
   create(@Body() dto: CreateScheduleRequestDto, @Req() req: AuthedRequest) {
     return this.requests.create(dto, req.user!.sub, req.user!.roles);
+  }
+
+  @Post('bulk')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '반복 수업 승인 요청 bulk 생성 — 전체 원자 저장 + requester별 idempotency. [로그인]' })
+  @ApiCreatedResponse({ type: ScheduleRequestBulkResultDto })
+  createBulk(@Body() dto: CreateScheduleRequestBulkDto, @Req() req: AuthedRequest) {
+    return this.requests.createBulk(dto, req.user!.sub, req.user!.roles);
   }
 
   @Get()

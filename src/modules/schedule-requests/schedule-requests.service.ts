@@ -4,11 +4,12 @@
 //  - 승인: [상태 갱신 + createSession(충돌 409·force) + createdSessionId 역참조 + audit] 단일 tx 원자화.
 //  - 반려: 사유 **필수**(Q2). 승인/반려 모두 audit_log 기록(approve/reject).
 //  - 배지: pending 건수는 프론트 lib/tasks.ts 단일 소스에 편입(R1 — 별도 카운트 금지).
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import type {
   Conflict,
   ScheduleRequest,
   ScheduleRequestApprovalOptions,
+  ScheduleRequestBulkResult,
   ScheduleRequestKind,
 } from '@kms545487/contracts';
 import type { BaseRow } from '../../database/in-memory.database';
@@ -23,11 +24,18 @@ import { UpsertAvailabilityDto } from '../availability/dto/upsert-availability.d
 import { ScheduleRequestsStore } from './schedule-requests.store';
 import { normalizeSessionTime } from '../schedule/session-time.policy';
 import { selectSeriesScope } from '../schedule/series-scope.policy';
+import { CreateScheduleRequestBulkDto } from './dto/create-schedule-request-bulk.dto';
+import { scheduleRequestBatchFingerprint } from './schedule-request-idempotency.policy';
 
 export const SCHEDULE_REQUESTS = 'schedule_requests';
 
-type RequestRow = ScheduleRequest & BaseRow;
+type RequestRow = ScheduleRequest & BaseRow & { batchFingerprint?: string };
 type ApprovalOptions = ScheduleRequestApprovalOptions;
+type BatchMetadata = {
+  batchKey: string;
+  batchFingerprint: string;
+  batchIndex: number;
+};
 
 @Injectable()
 export class ScheduleRequestsService {
@@ -40,7 +48,12 @@ export class ScheduleRequestsService {
   ) {}
 
   /** 요청 생성(pending) — 세션과 동일 검증 + 참고용 충돌 목록 반환. */
-  async create(dto: CreateScheduleRequestDto, requesterId: number, requesterRoles?: string[]): Promise<{ row: RequestRow; conflicts: Conflict[] }> {
+  async create(
+    dto: CreateScheduleRequestDto,
+    requesterId: number,
+    requesterRoles?: string[],
+    batch?: BatchMetadata,
+  ): Promise<{ row: RequestRow; conflicts: Conflict[] }> {
     await this.schedule.ensureReady();
     if (dto.requestKind === 'availability_upsert' || dto.requestKind === 'availability_delete') {
       return { row: await this.createAvailabilityRequest(dto, requesterId, requesterRoles), conflicts: [] };
@@ -81,12 +94,56 @@ export class ScheduleRequestsService {
         memo: dto.memo,
         studentIds: dto.studentIds,
         requestReason: dto.requestReason,
+        ...batch,
         status: 'pending',
       } as unknown as Omit<RequestRow, keyof BaseRow>);
       await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: created.id, action: 'create', actorId: requesterId, changes: this.audit.snapshotOf(created) as never });
       return created;
     });
     return { row, conflicts };
+  }
+
+  /** 반복 session_create 요청 전체를 한 transaction으로 저장하고 같은 key 재시도를 재생한다. */
+  async createBulk(
+    dto: CreateScheduleRequestBulkDto,
+    requesterId: number,
+    requesterRoles?: string[],
+  ): Promise<ScheduleRequestBulkResult> {
+    if (dto.requests.some((request) => request.requestKind && request.requestKind !== 'session_create')) {
+      throw new BadRequestException('반복 bulk 요청은 session_create만 지원합니다.');
+    }
+    const fingerprint = scheduleRequestBatchFingerprint(requesterId, dto.requests);
+    return this.store.transaction(async () => {
+      await this.store.lockBatch(requesterId, dto.idempotencyKey);
+      const existing = await this.store.findBatch<RequestRow>(requesterId, dto.idempotencyKey);
+      if (existing.length) {
+        const matches = existing.length === dto.requests.length
+          && existing.every((row) => row.batchFingerprint === fingerprint)
+          && existing.every((row, index) => row.batchIndex === index);
+        if (!matches) {
+          throw new ConflictException('같은 idempotency key가 다른 반복 요청에 이미 사용되었습니다.');
+        }
+        return { rows: existing, conflicts: [], replayed: true };
+      }
+
+      const rows: RequestRow[] = [];
+      const conflicts: ScheduleRequestBulkResult['conflicts'] = [];
+      for (let requestIndex = 0; requestIndex < dto.requests.length; requestIndex += 1) {
+        const result = await this.create(
+          dto.requests[requestIndex],
+          requesterId,
+          requesterRoles,
+          {
+            batchKey: dto.idempotencyKey,
+            batchFingerprint: fingerprint,
+            batchIndex: requestIndex,
+          },
+        );
+        rows.push(result.row);
+        conflicts.push(...result.conflicts.map((conflict) => ({ requestIndex, conflict })));
+      }
+      return { rows, conflicts, replayed: false };
+    });
   }
 
   private async createSessionUpdateRequest(dto: CreateScheduleRequestDto, requesterId: number, requesterRoles?: string[]): Promise<{ row: RequestRow; conflicts: Conflict[] }> {

@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { completeSessionByAttendance, createTestApp } from './setup-app';
 import { AuditService } from '../src/modules/audit/audit.service';
+import { randomUUID } from 'crypto';
 
 // TBO-16 #9 — 강사 수업 요청 → 매니저 승인/반려 + soft delete(v9) + audit_log(#7).
 //  검증 축: ① 요청=세션과 동일 FK·코호트 검증 ② 승인=createSession 재사용(충돌 409 → tx 원자 롤백)
@@ -32,6 +33,71 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       .send({ ...SLOT, endTime: '10:30', topic: '보충 요청', memo: '교재 3장 지참', kind: 'class' }).expect(201);
     expect(res.body.row).toMatchObject({ status: 'pending', courseId: 10, instructorId: 1, requesterId: expect.any(Number), durationMinutes: 90, memo: '교재 3장 지참' });
     expect(Array.isArray(res.body.conflicts)).toBe(true);
+  });
+
+  it('강사 반복 요청 bulk는 전체 원자 저장되고 같은 key 재시도는 중복 없이 재생된다', async () => {
+    const idempotencyKey = randomUUID();
+    const body = {
+      idempotencyKey,
+      requests: [
+        { ...SLOT, sessionDate: '2099-02-01', topic: 'bulk 원자 요청 1' },
+        { ...SLOT, sessionDate: '2099-02-08', topic: 'bulk 원자 요청 2' },
+      ],
+    };
+    const first = (await http.post('/api/schedule-requests/bulk').set(asInst())
+      .send(body).expect(201)).body;
+    expect(first).toMatchObject({
+      replayed: false,
+      rows: [
+        { status: 'pending', batchKey: idempotencyKey, batchIndex: 0 },
+        { status: 'pending', batchKey: idempotencyKey, batchIndex: 1 },
+      ],
+    });
+
+    const replay = (await http.post('/api/schedule-requests/bulk').set(asInst())
+      .send(body).expect(201)).body;
+    expect(replay.replayed).toBe(true);
+    expect(replay.rows.map((row: { id: number }) => row.id))
+      .toEqual(first.rows.map((row: { id: number }) => row.id));
+
+    await http.post('/api/schedule-requests/bulk').set(asInst())
+      .send({
+        ...body,
+        requests: [body.requests[0], { ...body.requests[1], topic: '다른 payload' }],
+      })
+      .expect(409);
+  });
+
+  it('강사 반복 요청 bulk는 두 번째 audit 실패 시 request와 audit를 모두 rollback한다', async () => {
+    const marker = `bulk rollback ${randomUUID()}`;
+    const audit = app.get(AuditService);
+    const originalLog = audit.log.bind(audit);
+    let matchingCreateCount = 0;
+    const auditSpy = jest.spyOn(audit, 'log').mockImplementation(async (entry) => {
+      const topic = (entry.changes?.__row?.before as { topic?: string } | undefined)?.topic;
+      if (entry.entity === 'schedule_requests' && entry.action === 'create' && topic?.startsWith(marker)) {
+        matchingCreateCount += 1;
+        if (matchingCreateCount === 2) throw new Error('injected bulk request audit failure');
+      }
+      return originalLog(entry);
+    });
+    try {
+      await http.post('/api/schedule-requests/bulk').set(asInst()).send({
+        idempotencyKey: randomUUID(),
+        requests: [
+          { ...SLOT, sessionDate: '2099-02-15', topic: `${marker} 1` },
+          { ...SLOT, sessionDate: '2099-02-22', topic: `${marker} 2` },
+        ],
+      }).expect(500);
+    } finally {
+      auditSpy.mockRestore();
+    }
+    const requests = (await http.get('/api/schedule-requests').set(asInst()).expect(200)).body;
+    expect(requests.filter((row: { topic?: string }) => row.topic?.startsWith(marker))).toHaveLength(0);
+    const audits = await audit.list({ entity: 'schedule_requests', actorId: requests[0]?.requesterId });
+    expect(audits.filter((row) =>
+      ((row.changes?.__row?.before as { topic?: string } | undefined)?.topic ?? '').startsWith(marker)))
+      .toHaveLength(0);
   });
 
   it('FK·코호트 무결성: 없는 코스 400 · 비수강생 코호트 400 (세션과 동일 규칙 재사용)', async () => {
@@ -79,7 +145,12 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
   it('승인: 충돌 시 409 + 요청 pending 유지(tx 원자 롤백) → force 승인 시 세션 생성+역참조', async () => {
     // 같은 강사·시간에 세션 선점(double_book 보장)
     await http.post('/api/schedule').set(asAdmin()).send({ ...SLOT, force: true }).expect(201);
-    const pending = (await http.get('/api/schedule-requests?status=pending').set(asAdmin()).expect(200)).body[0];
+    const pending = (await http.get('/api/schedule-requests?status=pending').set(asAdmin()).expect(200)).body
+      .find((row: { sessionDate?: string; startTime?: string; topic?: string }) =>
+        row.sessionDate === SLOT.sessionDate
+        && row.startTime === SLOT.startTime
+        && row.topic === '보충 요청');
+    expect(pending).toBeDefined();
 
     // force 없이 승인 → 409, 요청은 여전히 pending(부분 반영 없음 — 원자성)
     await http.post(`/api/schedule-requests/${pending.id}/approve`).set(asAdmin()).expect(409);
