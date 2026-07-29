@@ -37,6 +37,7 @@ import {
   STUDENT_FAMILY_RELATIONS_TABLE_SQL,
 } from './migrations/counsel-family-academic-expand.migration';
 import { PAYMENTS_MONEY_CONSTRAINTS_MIGRATION_SQL, TRANSACTIONS_PAYMENT_FK_SQL } from './migrations/payments-money-constraints.migration';
+import { AUTH_REFRESH_TOKEN_INTEGRITY_SQL } from './migrations/auth-refresh-token-integrity.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -458,6 +459,7 @@ export const AUTH_REFRESH_TOKENS_SPEC: PostgresCollectionSpec = {
       deleted_by integer
     )
   `,
+  migrations: [...AUTH_REFRESH_TOKEN_INTEGRITY_SQL],
   indexes: [
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_auth_refresh_tokens_hash ON auth_refresh_tokens (token_hash)`,
     `CREATE INDEX IF NOT EXISTS idx_auth_refresh_tokens_user ON auth_refresh_tokens (user_id)`,

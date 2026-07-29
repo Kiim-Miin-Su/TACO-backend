@@ -14,8 +14,8 @@
   "db:smoke:audit-log": "ts-node scripts/audit-log-db-smoke.ts",
   "db:smoke:attendance-reports": "ts-node scripts/attendance-reports-db-smoke.ts",
   "db:smoke:report-view": "ts-node scripts/report-view-db-smoke.ts",
-    "db:smoke:temporal-transition": "ts-node scripts/temporal-transition-db-smoke.ts",
-    "db:smoke:schedule-freshness": "ts-node scripts/schedule-freshness-db-smoke.ts",
+  "db:smoke:temporal-transition": "ts-node scripts/temporal-transition-db-smoke.ts",
+  "db:smoke:schedule-freshness": "ts-node scripts/schedule-freshness-db-smoke.ts",
   "db:smoke:schedule-approval": "ts-node scripts/schedule-approval-db-smoke.ts",
   "db:smoke:finance": "ts-node scripts/finance-db-smoke.ts",
   "db:cleanup:qa": "ts-node scripts/cleanup-qa-data.ts",
@@ -75,7 +75,9 @@
   "db:inventory:attendance-reports": "ts-node scripts/db-inventory-attendance-reports.ts",
   "db:migrate:attendance-reports-constraints": "ts-node scripts/migrate-attendance-reports-constraints.ts",
   "db:migrate:counsel-next-contact-datetime": "ts-node scripts/migrate-counsel-next-contact-datetime.ts",
-  "db:migrate:session-report-progress-page": "ts-node scripts/migrate-session-report-progress-page.ts"
+  "db:migrate:session-report-progress-page": "ts-node scripts/migrate-session-report-progress-page.ts",
+  "db:inventory:auth-refresh-tokens": "ts-node scripts/db-inventory-auth-refresh-tokens.ts",
+  "db:migrate:auth-refresh-token-integrity": "ts-node scripts/migrate-auth-refresh-token-integrity.ts"
  },
  "dependencies": {
   "@kms545487/contracts": "0.2.23",
