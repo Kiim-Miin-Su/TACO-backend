@@ -16,7 +16,14 @@ const S: Record<string, Surface> = {
   schema_migrations: { lifecycle: 'system', verdict: 'by-design', note: 'migration ledger; user CRUD forbidden' },
   signup_email_challenges: { lifecycle: 'system', api: ['POST /auth/signup-email-challenge'], verdict: 'by-design', note: 'OTP command lifecycle' },
   signup_phone_challenges: { lifecycle: 'system', api: ['POST /auth/signup-phone-challenge'], verdict: 'by-design', note: 'OTP command lifecycle' },
-  users: { lifecycle: 'direct', contract: ['Account'], api: ['GET /users', 'PATCH /users/{id}'], frontend: ['api.users', 'UsersView'], verdict: 'complete', note: 'account/admin aggregate CRUD' },
+  users: {
+    lifecycle: 'direct',
+    contract: ['Account'],
+    api: ['GET /users', 'PATCH /users/{id}', 'DELETE /users/{id}', 'POST /users/{id}/restore'],
+    frontend: ['api.users', 'UsersView', 'useTerminateUser', 'useRestoreUser'],
+    verdict: 'complete',
+    note: 'account/admin aggregate CRUD plus executive-only atomic termination/restore',
+  },
   countries: { lifecycle: 'reference', contract: ['Country'], api: ['GET /catalog/countries'], frontend: ['api.catalog.countries'], verdict: 'by-design', note: 'seeded read-only reference' },
   instructor_profiles: { lifecycle: 'aggregate-child', contract: ['InstructorAggregate'], api: ['GET /instructors/{id}', 'PATCH /instructors/{id}'], frontend: ['api.instructors'], verdict: 'complete', note: 'instructor aggregate owns writes' },
   auth_events: {
