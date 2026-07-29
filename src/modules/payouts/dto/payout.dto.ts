@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ArrayMaxSize, IsArray, IsInt, IsOptional, IsString, Matches, Min, MinLength, Max, MaxLength } from 'class-validator';
 import { TEXT, MAX_AMOUNT } from '../../../common/validation-limits'; // [보안] 상한 단일 소스
+import type { GenerateBulkPayoutInput } from '@kms545487/contracts';
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -22,7 +23,7 @@ export class GeneratePayoutDto {
 
 // [TBO-32 C1 2026-07-20] POST /payouts/generate-bulk — 기간 내 전(또는 지정) 강사 일괄 산정.
 //  강사별 독립 tx — 부분 실패 요약 응답(generated/skipped/failed). 대상 미지정 = 활성 강사 전원.
-export class GenerateBulkPayoutDto {
+export class GenerateBulkPayoutDto implements GenerateBulkPayoutInput {
   @ApiProperty({ example: '2026-06-01', description: '정산 기간 시작(YYYY-MM-DD)' })
   @Matches(DATE, { message: 'periodStart must be YYYY-MM-DD' })
   periodStart!: string;

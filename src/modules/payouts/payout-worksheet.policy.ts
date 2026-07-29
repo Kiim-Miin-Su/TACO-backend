@@ -16,6 +16,15 @@
 import type { SessionReportRow } from '../reports/report.entity';
 import type { ClassSession } from '../schedule/schedule.entity';
 import { payoutAmountOf } from '../schedule/session-accounting.policy';
+import type {
+  PayoutWorksheet as SharedPayoutWorksheet,
+  PayoutWorksheetExcludedReason,
+  PayoutWorksheetManualReason,
+  PayoutWorksheetParticipant as SharedPayoutWorksheetParticipant,
+  PayoutWorksheetPricing,
+  PayoutWorksheetPricingKind,
+  PayoutWorksheetRow as SharedPayoutWorksheetRow,
+} from '@kms545487/contracts';
 
 export type WorksheetSession = ClassSession & {
   payoutId?: number | null;
@@ -23,31 +32,10 @@ export type WorksheetSession = ClassSession & {
   instructorPayAmount?: number | null;
 };
 
-export type WorksheetPricingKind = 'auto' | 'manual' | 'excluded';
-
-export type WorksheetManualReason =
-  | 'late'                 // 강사 지각 — 페이 정책 미정(대표 지시 ⑤)
-  | 'attendance_missing'   // 학생 출결 미기록 — 출결 현황 이상(기간설정 지시 ① 2026-07-24)
-  | 'report_incomplete'    // 코호트 리포트 미작성/미승인/반려
-  | 'roster_missing'       // 참가 학생 확인 불가
-  | 'rate_missing';        // 코스 시급 미설정
-
-export type WorksheetExcludedReason =
-  | 'not_held'             // 취소/노쇼/미진행(scheduled)/보강 예정
-  | 'instructor_absent'    // 강사 결석 — 시수 0(기존 규칙 유지)
-  | 'payout_linked';       // 이미 정산 연결(이중 계상 방지)
-
-export type WorksheetClassification = {
-  kind: WorksheetPricingKind;
-  manualReasons: WorksheetManualReason[];
-  excludedReason?: WorksheetExcludedReason;
-  /** 자동 기본값(시급×시간) — manual/excluded면 null. */
-  autoAmount: number | null;
-  /** 책정가(class_sessions.instructor_pay_amount, 연결 전 override). */
-  overrideAmount: number | null;
-  /** 합계에 들어가는 확정 금액 — override ?? auto, manual 미책정이면 null. */
-  effectiveAmount: number | null;
-};
+export type WorksheetPricingKind = PayoutWorksheetPricingKind;
+export type WorksheetManualReason = PayoutWorksheetManualReason;
+export type WorksheetExcludedReason = PayoutWorksheetExcludedReason;
+export type WorksheetClassification = PayoutWorksheetPricing;
 
 export type ClassifyInput = {
   /** 세션의 실제 참가자 id 목록(코호트 판정 결과). */
@@ -97,45 +85,6 @@ export function classifySessionForPayout(session: WorksheetSession, input: Class
   return { kind: 'auto', manualReasons: [], autoAmount, effectiveAmount: override ?? autoAmount, ...base };
 }
 
-// ── 워크시트 응답 형태(BE 로컬 계약 — FE는 lib 타입으로 미러) ──
-export type PayoutWorksheetParticipant = {
-  studentId: number;
-  name: string;
-  attendance: string | null; // 학생 출결(미표시 null)
-  reportId: number | null; // 상세 페이지 재사용을 위한 실제 session_reports.id
-  reportApproval: string | null; // approved/submitted/rejected/draft, null = 미작성
-};
-
-export type PayoutWorksheetRow = {
-  sessionId: number;
-  sessionDate: string;
-  startTime: string | null;
-  durationMinutes: number;
-  courseId: number;
-  courseName: string;
-  subjectId: number | null;
-  subjectName: string;
-  hourlyRate: number | null;
-  status: string;
-  instructorAttendance: string | null;
-  payoutId: number | null;
-  participants: PayoutWorksheetParticipant[];
-  pricing: WorksheetClassification;
-};
-
-export type PayoutWorksheet = {
-  instructorId: number;
-  periodStart: string;
-  periodEnd: string;
-  rows: PayoutWorksheetRow[];
-  totals: {
-    sessionCount: number;
-    includedCount: number;
-    totalMinutes: number;
-    autoAmount: number;
-    manualAmount: number;
-    totalAmount: number;
-    unpricedCount: number;
-    excludedCount: number;
-  };
-};
+export type PayoutWorksheetParticipant = SharedPayoutWorksheetParticipant;
+export type PayoutWorksheetRow = SharedPayoutWorksheetRow;
+export type PayoutWorksheet = SharedPayoutWorksheet;

@@ -23,6 +23,7 @@ import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.enti
 import { InstructorPayoutRow, PayoutLine, PAYOUTS } from './payout.entity';
 import { Subject, SUBJECTS } from '../subjects/subject.entity';
 import { claimsHaveCapability } from '../auth/role-policy';
+import type { PayoutMeasure } from '@kms545487/contracts';
 
 // 세션 행은 정산 연결 payoutId와 사용자 책정가 override를 갖는다. 산정 스냅샷은 payout.lines가 정본이다.
 type SessionWithPayout = ClassSession & {
@@ -30,15 +31,7 @@ type SessionWithPayout = ClassSession & {
   isPaid?: boolean; paidPayoutId?: number | null;
 };
 
-export type MeasureResult = {
-  instructorId: number;
-  periodStart: string;
-  periodEnd: string;
-  sessionCount: number;
-  totalMinutes: number;
-  computedAmount: number;
-  lines: PayoutLine[];
-};
+export type MeasureResult = PayoutMeasure;
 
 @Injectable()
 export class PayoutsReadService implements OnModuleInit {

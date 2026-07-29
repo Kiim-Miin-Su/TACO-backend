@@ -20,6 +20,7 @@ import {
 } from '../auth/roles.decorator';
 import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
 import { OpenClassDto, OpenClassSeriesDto } from './dto/open-class.dto';
+import { SessionAccountingImpactConflictResponseDto } from './dto/accounting-impact-response.dto';
 
 @ApiTags('scheduling')
 @ApiBearerAuth()
@@ -172,7 +173,10 @@ export class ScheduleController {
   @ApiParam({ name: 'id', description: '세션 id' })
   @ApiOperation({ summary: '세션 이동·리사이즈·상세편집(반복 scope 지원). 충돌 시 409. [로그인]' })
   @ApiOkResponse({ description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }' })
-  @ApiConflictResponse({ description: '{ message, conflicts } — force=false에서 충돌 시' })
+  @ApiConflictResponse({
+    type: SessionAccountingImpactConflictResponseDto,
+    description: '시간·자원 충돌 또는 시수·정산 영향 확인/지급 회수 필요.',
+  })
   update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateScheduleDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.schedule.update(id, dto, req.user?.sub); // actor → audit_log(update diff)
   }
@@ -223,6 +227,10 @@ export class ScheduleController {
   @ApiQuery({ name: 'acknowledgeAccountingImpact', required: false, type: Boolean, description: '시수·정산 영향 미리보기를 확인한 뒤 true로 재요청' })
   @ApiQuery({ name: 'expectedAccountingImpactHash', required: false, description: '직전 409 영향 미리보기의 impactHash. 잠금 후 값이 달라지면 재확인 409' })
   @ApiOkResponse({ description: '{ id, deleted, removedIds: number[] }' })
+  @ApiConflictResponse({
+    type: SessionAccountingImpactConflictResponseDto,
+    description: '시수·정산 영향 확인 또는 지급 회수 필요.',
+  })
   @ApiOperation({ summary: '세션 삭제(반복 scope 지원) [로그인]' })
   remove(
     @Param('id', PositiveIntPipe) id: number,

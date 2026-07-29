@@ -17,18 +17,8 @@ import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { sessionEndMin } from '../schedule/conflict.util';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { ENROLLMENTS_SPEC, ROOMS_SPEC, STUDENTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
-
-export type AvailabilityImpact = {
-  sessionId: number;
-  sessionDate: string;
-  startTime?: string;
-  endTime?: string;
-  instructorId?: number;
-  instructorName?: string;
-  courseId?: number;
-  topic?: string;
-  reason: 'available_removed' | 'unavailable_overlap' | 'online_only_overlap';
-};
+import type { AvailabilityImpact } from '@kms545487/contracts';
+export type { AvailabilityImpact } from '@kms545487/contracts';
 
 @Injectable()
 export class AvailabilityService implements OnModuleInit {

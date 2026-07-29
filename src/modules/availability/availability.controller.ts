@@ -8,6 +8,10 @@ import { AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { isInstructorOnly, Roles, STAFF_ROLES } from '../auth/roles.decorator';
+import {
+  AvailabilityImpactConflictResponseDto,
+  AvailabilityImpactResponseDto,
+} from './dto/availability-impact-response.dto';
 
 @ApiTags('availability')
 @UseGuards(RolesGuard)
@@ -37,7 +41,10 @@ export class AvailabilityController {
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '가용/불가 블록 생성·수정(id 있으면 수정). 같은 오너·요일 겹침 시 409.' })
   @ApiOkResponse({ description: 'AvailabilityBlock(생성/수정 결과)' })
-  @ApiConflictResponse({ description: '이미 지정된 가용/불가 시간과 겹침(겹친 시각 메시지 포함)' })
+  @ApiConflictResponse({
+    type: AvailabilityImpactConflictResponseDto,
+    description: '기존 수업 침범으로 승인 요청 필요. 단순 블록 겹침도 409 메시지로 반환.',
+  })
   @ApiBadRequestResponse({ description: '존재하지 않는 강의실 owner 등' })
   upsert(@Body() dto: UpsertAvailabilityDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.availability.upsert(dto, req.user?.sub, req.user?.roles); // actor → audit_log(Q3)
@@ -46,7 +53,7 @@ export class AvailabilityController {
   @Post('impact')
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '가용/불가 변경 영향 미리보기 — 강사는 본인 블록만, 기존 수업 침범 시 승인 요청 모달용' })
-  @ApiOkResponse({ description: '{ impactedSessions: AvailabilityImpact[] }' })
+  @ApiOkResponse({ type: AvailabilityImpactResponseDto })
   async impact(@Body() dto: UpsertAvailabilityDto, @Req() req: Request & { user?: JwtClaims }) {
     if (isInstructorOnly(req.user?.roles) && (dto.ownerType !== 'instructor' || dto.ownerId !== req.user!.sub)) {
       throw new ForbiddenException('강사는 본인 가용시간의 영향만 조회할 수 있습니다.');

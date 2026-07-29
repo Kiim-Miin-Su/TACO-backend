@@ -16,6 +16,7 @@ import {
   InstructorPayoutRow,
   TransactionRow,
 } from './payout.entity';
+import type { BulkGeneratePayoutResult } from '@kms545487/contracts';
 
 // 세션 행은 정산 연결 payoutId와 사용자 책정가 override를 갖는다. 산정 스냅샷은 payout.lines가 정본이다.
 type SessionWithPayout = ClassSession & {
@@ -151,11 +152,7 @@ export class PayoutsService {
     periodEnd: string,
     instructorIds: number[] | undefined,
     actorId?: number,
-  ): Promise<{
-    generated: Array<{ instructorId: number; payoutId: number; amount: number; sessionCount: number }>;
-    skipped: Array<{ instructorId: number; reason: string }>;
-    failed: Array<{ instructorId: number; error: string }>;
-  }> {
+  ): Promise<BulkGeneratePayoutResult> {
     const targets = instructorIds?.length ? instructorIds : this.read.activeInstructorIds();
     const generated: Array<{ instructorId: number; payoutId: number; amount: number; sessionCount: number }> = [];
     const skipped: Array<{ instructorId: number; reason: string }> = [];

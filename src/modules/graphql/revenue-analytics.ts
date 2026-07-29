@@ -1,3 +1,13 @@
+import type {
+  CeoDashboard,
+  CourseProfitRow,
+  EnrollmentTrendRow,
+  FinanceSummary,
+  RevenueAgingBucket,
+  RevenueKeyAmount,
+  RevenueReport,
+} from '@kms545487/contracts';
+
 // [TBO-46 G1 2026-07-23] 매출·재무 집계의 **단일 진실원 순수 함수** — GraphQL 리졸버와 e2e가 같은
 //  함수를 소비한다(counsel-analytics·payout-integrity와 동일 규약). FE RevenueCharts가 브라우저에서
 //  하던 전 목록 5개 클라 조인을 서버 파생으로 승격한 것.
@@ -17,18 +27,7 @@ export type RevenueSnapshot = {
 };
 
 export type RevenueRange = { from?: string | null; to?: string | null };
-export type KeyAmount = { key: string; amount: number; count: number };
-
-export type RevenueReport = {
-  from: string | null; to: string | null;
-  realizedTotal: number; unpaidTotal: number; unpaidCount: number;
-  byMonth: KeyAmount[]; bySubject: KeyAmount[]; byCourse: KeyAmount[]; byStudent: KeyAmount[];
-};
-
-export type FinanceSummary = {
-  from: string | null; to: string | null;
-  revenue: number; expenses: number; payouts: number; net: number;
-};
+export type KeyAmount = RevenueKeyAmount;
 
 import { dayOf } from '../../common/day-range'; // [TBO-34 C3] 날짜 파생 단일 진실원
 const inRange = (iso: string | null | undefined, range: RevenueRange): boolean => {
@@ -44,7 +43,7 @@ const accumulate = (bucket: Map<string, { amount: number; count: number }>, key:
   row.amount += amount; row.count += 1;
   bucket.set(key, row);
 };
-const sortedDesc = (bucket: Map<string, { amount: number; count: number }>): KeyAmount[] =>
+const sortedDesc = (bucket: Map<string, { amount: number; count: number }>): RevenueKeyAmount[] =>
   [...bucket.entries()].sort((a, b) => b[1].amount - a[1].amount || a[0].localeCompare(b[0]))
     .map(([key, v]) => ({ key, ...v }));
 
@@ -98,17 +97,6 @@ export function computeFinanceSummary(snapshot: RevenueSnapshot, range: RevenueR
 // ── [TBO-60 2026-07-24] 대표 대시보드 파생(순수 함수) — D2 미수금 aging · D3 수강생 증감 ·
 //  D6 코스 수익성. D1(financeSummary)·D4(counselFunnel)·D5(출결 요약)는 기존 파생 소비.
 //  같은 RevenueSnapshot(REPEATABLE READ 한 tx)에서 전부 파생 — 리졸버 계산 금지 규약(FABLE §4.5).
-export type AgingBucket = { bucket: string; amount: number; count: number };
-export type EnrollmentTrendRow = { month: string; started: number; ended: number; net: number };
-export type CourseProfitRow = { courseId: number; courseName: string; revenue: number; cost: number; profit: number };
-export type CeoDashboard = {
-  from: string | null; to: string | null;
-  finance: FinanceSummary;
-  receivables: AgingBucket[];
-  enrollmentTrend: EnrollmentTrendRow[];
-  courseProfit: CourseProfitRow[];
-};
-
 export function computeCeoDashboard(snapshot: RevenueSnapshot, range: RevenueRange, todayIso: string): CeoDashboard {
   // D2 — 미수금 aging: 미납(paid 아님) 청구를 기한 경과일 기준 30/60/90 구간으로.
   const AGING = [
@@ -117,7 +105,7 @@ export function computeCeoDashboard(snapshot: RevenueSnapshot, range: RevenueRan
     { bucket: '61-90일', min: 61, max: 90 },
     { bucket: '90일+', min: 91, max: Infinity },
   ];
-  const receivables: AgingBucket[] = AGING.map((b) => ({ bucket: b.bucket, amount: 0, count: 0 }));
+  const receivables: RevenueAgingBucket[] = AGING.map((b) => ({ bucket: b.bucket, amount: 0, count: 0 }));
   const dayMs = 86_400_000;
   for (const payment of snapshot.payments) {
     if (payment.status === 'paid') continue;

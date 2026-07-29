@@ -2,7 +2,7 @@
 //  RBAC: 생성·조회·철회=STAFF(강사 포함 — 조회는 강사면 본인 것만 강제), 승인/반려=ADMIN(manager 이상).
 import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
-import { ApiBearerAuth, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiConflictResponse, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ScheduleRequestsService } from './schedule-requests.service';
@@ -11,6 +11,7 @@ import { RejectScheduleRequestDto } from './dto/reject-schedule-request.dto';
 import { UpdateScheduleRequestDto } from './dto/update-schedule-request.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import { SessionAccountingImpactConflictResponseDto } from '../schedule/dto/accounting-impact-response.dto';
 
 type AuthedRequest = Request & { user?: JwtClaims };
 
@@ -55,6 +56,10 @@ export class ScheduleRequestsController {
   @ApiQuery({ name: 'forceConflicts', required: false, type: Boolean, description: '시간·자원 충돌 강제 승인' })
   @ApiQuery({ name: 'acknowledgeAccountingImpact', required: false, type: Boolean, description: '409 회계 영향 미리보기 확인' })
   @ApiQuery({ name: 'expectedAccountingImpactHash', required: false, description: '직전 409의 impactHash' })
+  @ApiConflictResponse({
+    type: SessionAccountingImpactConflictResponseDto,
+    description: '시간·자원 충돌 또는 시수·정산 영향 확인/지급 회수 필요.',
+  })
   approve(
     @Param('id', PositiveIntPipe) id: number,
     @Req() req: AuthedRequest,

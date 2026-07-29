@@ -6,13 +6,18 @@ import {
 } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiUnauthorizedResponse, ApiForbiddenResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiOkResponse } from '@nestjs/swagger';
 import { PayoutsService } from './payouts.service';
 import { PayoutsReadService } from './payouts-read.service'; // [TBO-69 C2]
 import { RolesGuard } from '../auth/roles.guard';
 import { RequireCapabilities, Roles } from '../auth/roles.decorator';
 import { SudoGuard } from '../auth/sudo.guard'; // [TBO-59 C3-2]
 import { GeneratePayoutDto, GenerateBulkPayoutDto, AdjustPayoutDto, RejectPayoutDto, ReversePayoutDto, UnconfirmPayoutDto } from './dto/payout.dto';
+import {
+  BulkGeneratePayoutResponseDto,
+  PayoutMeasureResponseDto,
+  PayoutWorksheetResponseDto,
+} from './dto/payout-response.dto';
 import { PayoutReadinessService } from './payout-readiness.service';
 
 const OPTIONAL_PAYOUT_MONTHS = new OptionalBoundedIntPipe(1, 12, 'months');
@@ -42,6 +47,7 @@ export class PayoutsController {
   @ApiQuery({ name: 'instructorId', required: true })
   @ApiQuery({ name: 'from', required: true })
   @ApiQuery({ name: 'to', required: true })
+  @ApiOkResponse({ type: PayoutMeasureResponseDto })
   preview(
     @Query('instructorId', PositiveIntPipe) instructorId: number,
     @Query('from') from: string,
@@ -93,6 +99,7 @@ export class PayoutsController {
   @ApiQuery({ name: 'instructorId', required: true })
   @ApiQuery({ name: 'from', required: true })
   @ApiQuery({ name: 'to', required: true })
+  @ApiOkResponse({ type: PayoutWorksheetResponseDto })
   worksheet(
     @Query('instructorId', PositiveIntPipe) instructorId: number,
     @Query('from') from: string,
@@ -125,6 +132,7 @@ export class PayoutsController {
   @Post('generate-bulk')
   @RequireCapabilities('finance.access')
   @ApiOperation({ summary: '일괄 정산 산정 — 기간 내 전(또는 지정) 강사, 강사별 독립 tx·부분 실패 요약. [대표]' })
+  @ApiCreatedResponse({ type: BulkGeneratePayoutResponseDto })
   generateBulk(@Body() dto: GenerateBulkPayoutDto, @Req() req: Request) {
     const actor = (req as Request & { user?: JwtClaims }).user;
     return this.payouts.generateBulk(dto.periodStart, dto.periodEnd, dto.instructorIds, actor?.sub);

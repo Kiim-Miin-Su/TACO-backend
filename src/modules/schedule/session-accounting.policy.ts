@@ -1,24 +1,18 @@
 import { createHash } from 'node:crypto';
 import type { ClassSession } from './schedule.entity';
+import type {
+  SessionAccountingImpact,
+  SessionAccountingProjection,
+} from '@kms545487/contracts';
+export type {
+  SessionAccountingImpact,
+  SessionAccountingProjection,
+} from '@kms545487/contracts';
 
 export type AccountingSession = Pick<ClassSession, 'status' | 'durationMinutes'> & {
   instructorAttendance?: ClassSession['instructorAttendance'] | null;
   payoutId?: number | null;
   isPaid?: boolean;
-};
-
-export type SessionAccountingProjection = {
-  teachingMinutes: number;
-  payoutEligibleMinutes: number;
-  computedAmount: number;
-};
-
-export type SessionAccountingImpact = {
-  changed: boolean;
-  payoutId?: number | null;
-  before: SessionAccountingProjection;
-  after: SessionAccountingProjection;
-  delta: SessionAccountingProjection;
 };
 
 /** 시수와 정산이 공유하는 수업 인정 규칙의 단일 소스. */

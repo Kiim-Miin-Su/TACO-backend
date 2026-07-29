@@ -2566,7 +2566,11 @@ paths:
         '400':
           description: 존재하지 않는 강의실 owner 등
         '409':
-          description: 이미 지정된 가용/불가 시간과 겹침(겹친 시각 메시지 포함)
+          description: 기존 수업 침범으로 승인 요청 필요. 단순 블록 겹침도 409 메시지로 반환.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityImpactConflictResponseDto'
       summary: 가용/불가 블록 생성·수정(id 있으면 수정). 같은 오너·요일 겹침 시 409.
       tags:
         - availability
@@ -2585,7 +2589,11 @@ paths:
               $ref: '#/components/schemas/UpsertAvailabilityDto'
       responses:
         '200':
-          description: '{ impactedSessions: AvailabilityImpact[] }'
+          description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityImpactResponseDto'
       summary: 가용/불가 변경 영향 미리보기 — 강사는 본인 블록만, 기존 수업 침범 시 승인 요청 모달용
       tags:
         - availability
@@ -2786,7 +2794,11 @@ paths:
         '200':
           description: '{ row: ScheduleRow, conflicts: Conflict[], updated: number(시리즈 동반 수) }'
         '409':
-          description: '{ message, conflicts } — force=false에서 충돌 시'
+          description: 시간·자원 충돌 또는 시수·정산 영향 확인/지급 회수 필요.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionAccountingImpactConflictResponseDto'
       security:
         - bearer: []
         - access_token: []
@@ -2839,6 +2851,12 @@ paths:
       responses:
         '200':
           description: '{ id, deleted, removedIds: number[] }'
+        '409':
+          description: 시수·정산 영향 확인 또는 지급 회수 필요.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionAccountingImpactConflictResponseDto'
       security:
         - bearer: []
         - access_token: []
@@ -3370,6 +3388,12 @@ paths:
       responses:
         '201':
           description: ''
+        '409':
+          description: 시간·자원 충돌 또는 시수·정산 영향 확인/지급 회수 필요.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionAccountingImpactConflictResponseDto'
       security:
         - bearer: []
         - access_token: []
@@ -3505,7 +3529,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/PayoutMeasureResponseDto'
       security:
         - bearer: []
         - access_token: []
@@ -3618,7 +3642,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/PayoutWorksheetResponseDto'
       security:
         - bearer: []
         - access_token: []
@@ -3688,6 +3712,10 @@ paths:
       responses:
         '201':
           description: ''
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BulkGeneratePayoutResponseDto'
       security:
         - bearer: []
         - access_token: []
@@ -6385,6 +6413,62 @@ components:
         - weekday
         - startTime
         - endTime
+    AvailabilityImpactDto:
+      type: object
+      properties:
+        sessionId:
+          type: number
+        sessionDate:
+          type: string
+          format: date
+        startTime:
+          type: string
+        endTime:
+          type: string
+        instructorId:
+          type: number
+        instructorName:
+          type: string
+        courseId:
+          type: number
+        topic:
+          type: string
+        reason:
+          enum:
+            - available_removed
+            - unavailable_overlap
+            - online_only_overlap
+          type: string
+      required:
+        - sessionId
+        - sessionDate
+        - reason
+    AvailabilityImpactConflictResponseDto:
+      type: object
+      properties:
+        impactedSessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailabilityImpactDto'
+        message:
+          type: string
+        approvalRequired:
+          type: boolean
+          enum:
+            - true
+      required:
+        - impactedSessions
+        - message
+        - approvalRequired
+    AvailabilityImpactResponseDto:
+      type: object
+      properties:
+        impactedSessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailabilityImpactDto'
+      required:
+        - impactedSessions
     ConflictCheckDto:
       type: object
       properties:
@@ -7017,6 +7101,60 @@ components:
           type: boolean
           example: true
           description: 공통 일정 조회 공개 여부
+    SessionAccountingProjectionResponseDto:
+      type: object
+      properties:
+        teachingMinutes:
+          type: number
+        payoutEligibleMinutes:
+          type: number
+        computedAmount:
+          type: number
+      required:
+        - teachingMinutes
+        - payoutEligibleMinutes
+        - computedAmount
+    SessionAccountingImpactResponseDto:
+      type: object
+      properties:
+        changed:
+          type: boolean
+        payoutId:
+          type: number
+          nullable: true
+        before:
+          $ref: '#/components/schemas/SessionAccountingProjectionResponseDto'
+        after:
+          $ref: '#/components/schemas/SessionAccountingProjectionResponseDto'
+        delta:
+          $ref: '#/components/schemas/SessionAccountingProjectionResponseDto'
+      required:
+        - changed
+        - before
+        - after
+        - delta
+    SessionAccountingImpactConflictResponseDto:
+      type: object
+      properties:
+        code:
+          enum:
+            - ACCOUNTING_IMPACT_ACK_REQUIRED
+            - PAYOUT_REVERSAL_REQUIRED
+          type: string
+        message:
+          type: string
+        impact:
+          $ref: '#/components/schemas/SessionAccountingImpactResponseDto'
+        impactHash:
+          type: string
+        sessionIds:
+          type: array
+          items:
+            type: number
+      required:
+        - code
+        - message
+        - impact
     MarkInstructorAttendanceDto:
       type: object
       properties:
@@ -7384,6 +7522,228 @@ components:
           description: 반려 사유(필수)
       required:
         - reason
+    PayoutLineResponseDto:
+      type: object
+      properties:
+        sessionId:
+          type: number
+        courseId:
+          type: number
+        courseName:
+          type: string
+        sessionDate:
+          type: string
+          format: date
+        durationMinutes:
+          type: number
+        hourlyRate:
+          type: number
+        amount:
+          type: number
+      required:
+        - sessionId
+        - courseId
+        - courseName
+        - sessionDate
+        - durationMinutes
+        - hourlyRate
+        - amount
+    PayoutMeasureResponseDto:
+      type: object
+      properties:
+        instructorId:
+          type: number
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        sessionCount:
+          type: number
+        totalMinutes:
+          type: number
+        computedAmount:
+          type: number
+        lines:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayoutLineResponseDto'
+      required:
+        - instructorId
+        - periodStart
+        - periodEnd
+        - sessionCount
+        - totalMinutes
+        - computedAmount
+        - lines
+    PayoutWorksheetParticipantResponseDto:
+      type: object
+      properties:
+        studentId:
+          type: number
+        name:
+          type: string
+        attendance:
+          type: string
+          nullable: true
+        reportId:
+          type: number
+          nullable: true
+        reportApproval:
+          type: string
+          nullable: true
+      required:
+        - studentId
+        - name
+        - attendance
+        - reportId
+        - reportApproval
+    PayoutWorksheetPricingResponseDto:
+      type: object
+      properties:
+        kind:
+          enum:
+            - auto
+            - manual
+            - excluded
+          type: string
+        manualReasons:
+          type: array
+          items:
+            type: string
+            enum:
+              - late
+              - attendance_missing
+              - report_incomplete
+              - roster_missing
+              - rate_missing
+        excludedReason:
+          enum:
+            - not_held
+            - instructor_absent
+            - payout_linked
+          type: string
+        autoAmount:
+          type: number
+          nullable: true
+        overrideAmount:
+          type: number
+          nullable: true
+        effectiveAmount:
+          type: number
+          nullable: true
+      required:
+        - kind
+        - manualReasons
+        - autoAmount
+        - overrideAmount
+        - effectiveAmount
+    PayoutWorksheetRowResponseDto:
+      type: object
+      properties:
+        sessionId:
+          type: number
+        sessionDate:
+          type: string
+          format: date
+        startTime:
+          type: string
+          nullable: true
+        durationMinutes:
+          type: number
+        courseId:
+          type: number
+        courseName:
+          type: string
+        subjectId:
+          type: number
+          nullable: true
+        subjectName:
+          type: string
+        hourlyRate:
+          type: number
+          nullable: true
+        status:
+          type: string
+        instructorAttendance:
+          type: string
+          nullable: true
+        payoutId:
+          type: number
+          nullable: true
+        participants:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayoutWorksheetParticipantResponseDto'
+        pricing:
+          $ref: '#/components/schemas/PayoutWorksheetPricingResponseDto'
+      required:
+        - sessionId
+        - sessionDate
+        - startTime
+        - durationMinutes
+        - courseId
+        - courseName
+        - subjectId
+        - subjectName
+        - hourlyRate
+        - status
+        - instructorAttendance
+        - payoutId
+        - participants
+        - pricing
+    PayoutWorksheetTotalsResponseDto:
+      type: object
+      properties:
+        sessionCount:
+          type: number
+        includedCount:
+          type: number
+        totalMinutes:
+          type: number
+        autoAmount:
+          type: number
+        manualAmount:
+          type: number
+        totalAmount:
+          type: number
+        unpricedCount:
+          type: number
+        excludedCount:
+          type: number
+      required:
+        - sessionCount
+        - includedCount
+        - totalMinutes
+        - autoAmount
+        - manualAmount
+        - totalAmount
+        - unpricedCount
+        - excludedCount
+    PayoutWorksheetResponseDto:
+      type: object
+      properties:
+        instructorId:
+          type: number
+        periodStart:
+          type: string
+          format: date
+        periodEnd:
+          type: string
+          format: date
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/PayoutWorksheetRowResponseDto'
+        totals:
+          $ref: '#/components/schemas/PayoutWorksheetTotalsResponseDto'
+      required:
+        - instructorId
+        - periodStart
+        - periodEnd
+        - rows
+        - totals
     GeneratePayoutDto:
       type: object
       properties:
@@ -7423,6 +7783,61 @@ components:
       required:
         - periodStart
         - periodEnd
+    GeneratedPayoutResponseDto:
+      type: object
+      properties:
+        instructorId:
+          type: number
+        payoutId:
+          type: number
+        amount:
+          type: number
+        sessionCount:
+          type: number
+      required:
+        - instructorId
+        - payoutId
+        - amount
+        - sessionCount
+    SkippedPayoutResponseDto:
+      type: object
+      properties:
+        instructorId:
+          type: number
+        reason:
+          type: string
+      required:
+        - instructorId
+        - reason
+    FailedPayoutResponseDto:
+      type: object
+      properties:
+        instructorId:
+          type: number
+        error:
+          type: string
+      required:
+        - instructorId
+        - error
+    BulkGeneratePayoutResponseDto:
+      type: object
+      properties:
+        generated:
+          type: array
+          items:
+            $ref: '#/components/schemas/GeneratedPayoutResponseDto'
+        skipped:
+          type: array
+          items:
+            $ref: '#/components/schemas/SkippedPayoutResponseDto'
+        failed:
+          type: array
+          items:
+            $ref: '#/components/schemas/FailedPayoutResponseDto'
+      required:
+        - generated
+        - skipped
+        - failed
     UnconfirmPayoutDto:
       type: object
       properties:
