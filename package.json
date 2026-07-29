@@ -83,7 +83,7 @@
   "db:migrate:transaction-source-integrity": "ts-node scripts/migrate-transaction-source-integrity.ts"
  },
  "dependencies": {
-  "@kms545487/contracts": "0.2.28",
+  "@kms545487/contracts": "0.2.29",
   "@neondatabase/serverless": "^1.1.0",
   "@nestjs/common": "^11.1.27",
   "@nestjs/core": "^11.1.27",

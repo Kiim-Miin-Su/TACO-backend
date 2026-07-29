@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -50,6 +50,15 @@ export class ProfileChangeRequestsController {
   @ApiOkResponse({ type: ProfileChangeRequestResponseDto })
   detail(@Param('id', PositiveIntPipe) id: number, @Req() req: AuthedRequest) {
     return this.requests.detail(id, this.actorOf(req), req.user?.roles);
+  }
+
+  @Delete(':id')
+  @Roles(...STAFF_ROLES)
+  @ApiParam({ name: 'id' })
+  @ApiOperation({ summary: '내 pending 프로필 변경 요청 철회(soft delete).' })
+  @ApiOkResponse({ description: '{ id, deleted: true }' })
+  withdraw(@Param('id', PositiveIntPipe) id: number, @Req() req: AuthedRequest) {
+    return this.requests.withdraw(id, this.actorOf(req));
   }
 
   @Post(':id/approve')

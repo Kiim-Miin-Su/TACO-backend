@@ -1013,6 +1013,26 @@ paths:
       summary: 프로필 변경 요청 상세. 요청자 본인 또는 관리자.
       tags:
         - profile-change-requests
+    delete:
+      operationId: ProfileChangeRequestsController_withdraw
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      responses:
+        '200':
+          description: '{ id, deleted: true }'
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 내 pending 프로필 변경 요청 철회(soft delete).
+      tags:
+        - profile-change-requests
   /api/profile-change-requests/{id}/approve:
     post:
       operationId: ProfileChangeRequestsController_approve
@@ -5553,11 +5573,11 @@ components:
           minLength: 5
           maxLength: 500
         status:
-          type: string
           enum:
             - pending
             - approved
             - rejected
+          type: string
         decidedBy:
           type: number
           nullable: true

@@ -44,6 +44,7 @@ describe('Profile change requests (e2e)', () => {
     await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'wrong' }).expect(401);
     await http.get('/api/users/me/profile').expect(401);
     await http.get('/api/profile-change-requests/mine').expect(401);
+    await http.delete('/api/profile-change-requests/1').expect(401);
     await http.get('/api/users').set(bearer(tokens.instructor)).expect(403);
     await http.get('/api/users').set(bearer(tokens.manager)).expect(200);
   });
@@ -101,6 +102,34 @@ describe('Profile change requests (e2e)', () => {
     const rejected = await http.post(`/api/profile-change-requests/${own.body.id}/reject`).set(bearer(tokens.admin))
       .send({ reason: '연락처 소유 확인 자료가 필요합니다.' }).expect(201);
     expect(rejected.body).toMatchObject({ status: 'rejected', decidedBy: 5, rejectionReason: '연락처 소유 확인 자료가 필요합니다.' });
+  });
+
+  it('allows only the requester to withdraw a pending request and persists delete audit', async () => {
+    const challengeId = await forgeVerifiedEmailChallenge(app, 4, 'manager@tnacademy.test');
+    const created = await http.post('/api/profile-change-requests').set(bearer(tokens.manager))
+      .send({
+        currentPassword: 'demo1234',
+        name: '이도현 철회 예정',
+        verificationChallengeId: challengeId,
+        reason: '잘못 입력한 이름 변경 요청을 철회하기 위한 검증입니다.',
+      }).expect(201);
+    await http.delete(`/api/profile-change-requests/${created.body.id}`)
+      .set(bearer(tokens.foreign)).expect(403);
+    expect((await http.delete(`/api/profile-change-requests/${created.body.id}`)
+      .set(bearer(tokens.manager)).expect(200)).body).toEqual({ id: created.body.id, deleted: true });
+    await http.get(`/api/profile-change-requests/${created.body.id}`)
+      .set(bearer(tokens.manager)).expect(404);
+    await http.post(`/api/profile-change-requests/${created.body.id}/approve`)
+      .set(bearer(tokens.admin)).expect(404);
+    const mine = (await http.get('/api/profile-change-requests/mine')
+      .set(bearer(tokens.manager)).expect(200)).body as RequestRow[];
+    expect(mine.some((row) => row.id === created.body.id)).toBe(false);
+    const audits = db.findAll<Record<string, unknown> & { id: number }>('audit_log')
+      .filter((row) => row.entity === 'profile_change_requests'
+        && row.entityId === created.body.id
+        && row.action === 'delete');
+    expect(audits).toHaveLength(1);
+    expect(audits[0].reason).toBe('신청자 본인 철회');
   });
 
   it('returns 409 for a stale base profile version', async () => {

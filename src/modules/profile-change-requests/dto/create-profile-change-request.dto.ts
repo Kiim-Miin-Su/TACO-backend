@@ -1,7 +1,8 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEmail, IsInt, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
+import type { CreateProfileChangeRequestInput } from '@kms545487/contracts';
 
-export class CreateProfileChangeRequestDto {
+export class CreateProfileChangeRequestDto implements CreateProfileChangeRequestInput {
   // [TBO-29B-4] 모든 마이 페이지 변경은 현재 비밀번호 재확인 필수(§2). 저장·로그 금지.
   @ApiProperty({ description: '현재 비밀번호(재확인)', maxLength: 72 })
   @IsString() @MinLength(1) @MaxLength(72)

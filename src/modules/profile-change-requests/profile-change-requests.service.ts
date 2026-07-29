@@ -187,6 +187,37 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     return this.maskRequest(row);
   }
 
+  async withdraw(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
+    const initial = await this.findAuthoritative(id);
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([
+        { kind: 'user', id: initial.requesterId },
+        { kind: 'profileRequest', id },
+      ]);
+      await this.refresh();
+      const request = this.db.findById<ProfileChangeRequest>(PROFILE_CHANGE_REQUESTS, id);
+      if (!request) throw new NotFoundException(`프로필 변경 요청 ${id} 없음`);
+      if (request.requesterId !== initial.requesterId) throw new ConflictException('요청자 정보가 변경되었습니다.');
+      if (request.requesterId !== actorId) throw new ForbiddenException('본인의 프로필 변경 요청만 철회할 수 있습니다.');
+      if (request.status !== 'pending') throw new ConflictException('처리 완료된 프로필 변경 요청은 철회할 수 없습니다.');
+
+      const deleted = await this.store.remove(PROFILE_CHANGE_REQUESTS_SPEC, id, actorId);
+      if (!deleted) throw new ConflictException('이미 철회되거나 처리된 프로필 변경 요청입니다.');
+      await this.audit.log({
+        entity: PROFILE_CHANGE_REQUESTS,
+        entityId: id,
+        action: 'delete',
+        actorId,
+        changes: {
+          status: { before: 'pending' },
+          requestedChanges: { before: this.maskChanges(request.requestedChanges) },
+        },
+        reason: '신청자 본인 철회',
+      });
+      return { id, deleted: true };
+    });
+  }
+
   approve(id: number, actorId: number): Promise<ProfileChangeRequest> {
     return this.decide(id, actorId, 'approved');
   }
