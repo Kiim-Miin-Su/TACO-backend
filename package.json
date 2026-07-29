@@ -80,7 +80,7 @@
   "db:migrate:auth-refresh-token-integrity": "ts-node scripts/migrate-auth-refresh-token-integrity.ts"
  },
  "dependencies": {
-  "@kms545487/contracts": "0.2.23",
+  "@kms545487/contracts": "^0.2.23",
   "@neondatabase/serverless": "^1.1.0",
   "@nestjs/common": "^11.1.27",
   "@nestjs/core": "^11.1.27",
