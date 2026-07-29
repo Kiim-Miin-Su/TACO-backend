@@ -3,8 +3,22 @@
 //  (집계 로직 사본 0). 입력은 읽기모델 스냅샷 — 원본 표 무변형(파생 전용), 신규 컬럼·사본 저장 0.
 //  상관관계의 "희망"은 student_interests(학생 aggregate 권위), "등록"은 enrollments가 소스 —
 //  counsel 폼에 희망 과목 사본 필드를 만들지 않는다(계약 0.2.17 studentId 필수 체계와 일관).
-import type { CounselResult, CounselStatus } from '@kms545487/contracts';
+import type {
+  CounselAnalyticsRange,
+  CounselCorrelation,
+  CounselCorrelationRow,
+  CounselFunnel,
+  CounselResult,
+  CounselStatus,
+} from '@kms545487/contracts';
 import { COUNSEL_RESULTS, COUNSEL_STATUSES } from './counsel.entity'; // [P2 M5]
+
+export type {
+  CounselAnalyticsRange,
+  CounselCorrelation,
+  CounselCorrelationRow,
+  CounselFunnel,
+} from '@kms545487/contracts';
 
 export type CounselAnalyticsSnapshot = {
   forms: Array<{ id: number; studentId: number; status: CounselStatus; createdAt: string }>;
@@ -13,25 +27,6 @@ export type CounselAnalyticsSnapshot = {
   enrollments: Array<{ studentId: number; courseId: number; status: string }>;
   courses: Array<{ id: number; subjectId: number }>;
   subjects: Array<{ id: number; name: string }>;
-};
-
-export type CounselAnalyticsRange = { from?: string | null; to?: string | null };
-
-export type CounselFunnel = {
-  range: { from: string | null; to: string | null };
-  total: number;
-  /** 상태별 카드 수 — 라벨·톤은 FE labels.ts(단일 진실원)가 입힌다. */
-  statusCounts: Record<CounselStatus, number>;
-  /** 도달 퍼널 — n회차 이상 진행된 카드 수(0=접수만). 단계 이탈 시각화 소스. */
-  roundReach: Array<{ minRounds: number; count: number }>;
-  /** 미등록(dropped) 카드가 몇 회차에서 멈췄는가 — "어느 회차에서 놓치는가". */
-  dropAfterRounds: Array<{ rounds: number; count: number }>;
-  /** 기간 내 카드들의 회차 result 분포(회차 단위). */
-  resultDistribution: Record<CounselResult, number>;
-  conversionRate: number; // registered / total (total 0이면 0)
-  dropRate: number;       // dropped / total
-  avgRoundsToConversion: number | null; // 전환 카드의 (전환 회차 roundNo+1) 평균
-  avgDaysToConversion: number | null;   // 접수일 → result='registered' 회차 완료일 평균(일)
 };
 
 import { dayOf as dateOnly } from '../../common/day-range'; // [TBO-34 C3] 날짜 파생 단일 진실원
@@ -109,22 +104,6 @@ export function computeCounselFunnel(snapshot: CounselAnalyticsSnapshot, range: 
 /** 희망 축의 특수 버킷 — 과목으로 정규화할 수 없는 관심(자유입력)·관심 미입력. */
 export const CORRELATION_CUSTOM_KEY = '기타(자유입력)';
 export const CORRELATION_NONE_KEY = '희망 미입력';
-
-export type CounselCorrelationRow = {
-  interestKey: string;      // 희망 과목명(subjects 조인) 또는 특수 버킷
-  counselCount: number;     // 이 희망을 가진 상담 카드 수
-  convertedCount: number;   // 그중 등록 전환(status='registered') 카드 수
-  conversionRate: number;   // convertedCount / counselCount
-  /** 전환 카드 학생들의 실제 등록 과목 분포(enrollments 조인, canceled 제외) — "SAT 문의 → TOEFL 등록" 가시화. */
-  enrolledBySubject: Array<{ subject: string; count: number }>;
-};
-
-export type CounselCorrelation = {
-  range: { from: string | null; to: string | null };
-  totalForms: number;
-  rows: CounselCorrelationRow[];       // counselCount desc 정렬
-  enrolledSubjects: string[];          // 열 구성용 — 등장한 등록 과목명(count 합 desc)
-};
 
 export function computeCounselCorrelation(
   snapshot: CounselAnalyticsSnapshot,

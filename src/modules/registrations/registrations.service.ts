@@ -6,9 +6,7 @@ import { StudentsService } from '../students/students.service';
 import { ParentsService } from '../parents/parents.service';
 import { EnrollmentsService } from '../enrollments/enrollments.service';
 import { AuditService } from '../audit/audit.service';
-import type { Student } from '../students/student.entity';
-import type { Parent, ParentStudent } from '../parents/parent.entity';
-import type { Enrollment } from '../enrollments/enrollment.entity';
+import type { RegistrationResult, StudentCounselIntakeResult } from '@kms545487/contracts';
 import { RegisterStudentDto } from './dto/register-student.dto';
 import { StudentInterestsService } from '../students/student-interests.service';
 import { UpdateStudentAggregateDto } from '../students/dto/update-student-aggregate.dto';
@@ -18,19 +16,6 @@ import { CounselService } from '../counsel/counsel.service';
 import { RegisterStudentWithCounselDto } from './dto/register-student-with-counsel.dto';
 import type { CounselForm } from '../counsel/counsel.entity';
 import { randomUUID } from 'node:crypto';
-
-export type RegistrationResult = {
-  student: Student;
-  guardian: { parent: Parent; relation: ParentStudent; linkedExisting: boolean } | null;
-  guardians: Array<{ parent: Parent; relation: ParentStudent; linkedExisting: boolean }>;
-  enrollment: Enrollment | null;
-};
-
-export type StudentCounselIntakeResult = {
-  registration: RegistrationResult;
-  counsel: CounselForm;
-  correlationId: string;
-};
 
 /**
  * [TBO-29D D2] 학생 aggregate 원자 등록 — student + optional guardian(parent upsert-or-link + relation)
