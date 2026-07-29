@@ -21,15 +21,35 @@ describe('[TBO-58] enrollments 홈 스위트 (e2e)', () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it('읽기 — 전 직원 200, 비로그인 401, studentId 필터 동작', async () => {
+  it('읽기 — 강사는 본인 세션 참여 수강만, 관리자는 전체와 studentId 필터', async () => {
     await http.get('/api/enrollments').expect(401);
-    const all = (await http.get('/api/enrollments').set(auth('park_inst')).expect(200)).body as Array<{ id: number; studentId: number }>;
-    expect(all.length).toBeGreaterThan(0);
+    const managerAll = (await http.get('/api/enrollments').set(auth('manager')).expect(200)).body as Array<{
+      id: number;
+      studentId: number;
+      courseId: number;
+    }>;
+    const ownSessions = (await http.get('/api/schedule').set(auth('park_inst')).expect(200)).body as Array<{
+      courseId: number;
+      studentIds?: number[];
+    }>;
+    const expected = managerAll.filter((row) => ownSessions.some((session) =>
+      session.courseId === row.courseId
+      && (!session.studentIds?.length || session.studentIds.includes(row.studentId))));
+    const instructorRows = (await http.get('/api/enrollments').set(auth('park_inst')).expect(200)).body as Array<{
+      id: number;
+      studentId: number;
+    }>;
+    expect(instructorRows.map((row) => row.id).sort((a, b) => a - b))
+      .toEqual(expected.map((row) => row.id).sort((a, b) => a - b));
     const filtered = (await http.get('/api/enrollments?studentId=1').set(auth('manager')).expect(200)).body as Array<{ studentId: number }>;
     expect(filtered.length).toBeGreaterThan(0);
     for (const row of filtered) expect(row.studentId).toBe(1);
-    // 단건 — 존재 200 / 부재 404
-    await http.get(`/api/enrollments/${all[0].id}`).set(auth('park_inst')).expect(200);
+    if (instructorRows[0]) {
+      await http.get(`/api/enrollments/${instructorRows[0].id}`).set(auth('park_inst')).expect(200);
+    }
+    const denied = managerAll.find((row) => !instructorRows.some((visible) => visible.id === row.id));
+    expect(denied).toBeDefined();
+    await http.get(`/api/enrollments/${denied!.id}`).set(auth('park_inst')).expect(403);
     await http.get('/api/enrollments/999999').set(auth('manager')).expect(404);
   });
 

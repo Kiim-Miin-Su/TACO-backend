@@ -1,4 +1,4 @@
-import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ClassSessionsStore } from '../schedule/class-sessions.store'; // [TBO-66 R3]
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -72,6 +72,32 @@ export class EnrollmentsService implements OnModuleInit {
     const [row] = await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, { where: { id } as Partial<Enrollment>, limit: 1 });
     if (!row) throw new NotFoundException(`Enrollment ${id} not found`);
     return this.withDerivedCompletedSessions([row])[0];
+  }
+
+  /**
+   * 강사 수평 권한: 본인 세션에서 실제 참여자로 계산되는 학생의 해당 코스 수강만 노출한다.
+   * 명시 studentIds가 있으면 그것을 우선하고, 빈 코호트만 코스 활성 수강으로 해석한다.
+   */
+  async listForInstructorDb(instructorId: number, studentId?: number): Promise<Enrollment[]> {
+    const [rows, sessions] = await Promise.all([
+      this.listDb(studentId),
+      this.sessionsStore.listDb({ instructorId }),
+    ]);
+    return rows.filter((row) => sessions.some((session) =>
+      Number(session.courseId) === Number(row.courseId)
+      && (
+        !session.studentIds?.length
+        || session.studentIds.map(Number).includes(Number(row.studentId))
+      )));
+  }
+
+  async getForInstructorDb(id: number, instructorId: number): Promise<Enrollment> {
+    const row = await this.getDb(id);
+    const visible = await this.listForInstructorDb(instructorId, row.studentId);
+    if (!visible.some((candidate) => candidate.id === row.id)) {
+      throw new ForbiddenException('본인 수업에 참여하는 학생의 수강 정보만 조회할 수 있습니다.');
+    }
+    return row;
   }
 
   // 결제 없이도 등록 가능 (status=active). actorId 없으면(시드·내부 경로) audit 생략.

@@ -1,4 +1,5 @@
 import type { ClassSession } from './schedule.entity';
+import { resolveSessionParticipantIds } from '@kms545487/contracts';
 
 export type ParticipantEnrollment = {
   studentId: number;
@@ -36,10 +37,10 @@ export function participantIdsForSession(
   session: Pick<ClassSession, 'courseId' | 'studentIds'>,
   cohortIndex: CohortIndex,
 ): number[] {
-  const ids = session.studentIds?.length
-    ? session.studentIds.map(Number)
-    : [...(cohortIndex.get(session.courseId) ?? [])];
-  return [...new Set(ids)].sort((a, b) => a - b);
+  return resolveSessionParticipantIds(
+    session.studentIds,
+    [...(cohortIndex.get(session.courseId) ?? [])],
+  );
 }
 
 /** studentBelongsToSession의 인덱스 판(동일 의미) — 명시 코호트 우선, 없으면 활성 수강 인덱스. */

@@ -38,7 +38,7 @@ export class ReportsController {
 
   @Post()
   @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '보고서 작성(세션 FK·중복·강사 일치·소유권 검증). 기본 submitted(승인요청).' })
+  @ApiOperation({ summary: '보고서 작성(강사 본인 또는 관리자 대리 작성, 세션 FK·중복·담당 강사·참여 학생 검증). 기본 submitted(승인요청).' })
   create(@Body() dto: CreateReportDto, @Req() req: Request & { user?: JwtClaims }) {
     // 소유권 검증(H2 IDOR): 비관리자는 본인 담당 세션만.
     return this.reports.create(dto, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
