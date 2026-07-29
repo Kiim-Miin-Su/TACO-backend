@@ -17,6 +17,8 @@ describe('role policy', () => {
   it('keeps finance CEO-only and opens the scoped signup-decision route to admin roles', () => {
     expect(rolesForCapability('finance.access')).toEqual(['super_admin']);
     expect(rolesForCapability('executive.manage')).toEqual(['super_admin']);
+    expect(roleHasCapability('super_admin', 'executive.manage')).toBe(true);
+    expect(roleHasCapability('admin', 'executive.manage')).toBe(false);
     expect(roleHasCapability('super_admin', 'finance.access')).toBe(true);
     expect(roleHasCapability('super_admin', 'signup.decide')).toBe(true);
     expect(roleHasCapability('admin', 'finance.access')).toBe(false);
