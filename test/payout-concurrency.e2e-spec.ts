@@ -3,7 +3,7 @@ import request from 'supertest';
 import { assertExpectedAfter } from '../src/common/expected-after.util';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { AUDIT_LOG } from '../src/modules/audit/audit.service';
-import { createTestApp, sudoAuthHeaders } from './setup-app';
+import { completeSessionByAttendance, createTestApp, sudoAuthHeaders } from './setup-app';
 
 describe('payout concurrent transition integrity (e2e)', () => {
   let app: INestApplication;
@@ -35,8 +35,7 @@ describe('payout concurrent transition integrity (e2e)', () => {
       topic,
       force: true,
     }).expect(201)).body.row;
-    await http.patch(`/api/schedule/${session.id}`).set(auth()).send({ status: 'held', force: true }).expect(200);
-    await http.put('/api/attendance').set(auth()).send({ sessionId: session.id, studentId: 1, status: 'present' }).expect(200);
+    await completeSessionByAttendance(http, auth(), session.id, [1]);
     const report = (await http.post('/api/reports').set(auth()).send({
       sessionId: session.id,
       studentId: 1,
@@ -86,7 +85,7 @@ describe('payout concurrent transition integrity (e2e)', () => {
   }
 
   it('동일 정산 동시 확정은 한 요청만 성공하고 승인 감사도 정확히 한 줄 생성한다', async () => {
-    const payout = await createPendingPayout('2099-12-19', '08:00', '동시 확정 무결성');
+    const payout = await createPendingPayout('2024-12-19', '08:00', '동시 확정 무결성');
 
     const responses = await Promise.all([
       http.post(`/api/payouts/${payout.id}/confirm`).set(auth()),
@@ -111,7 +110,7 @@ describe('payout concurrent transition integrity (e2e)', () => {
   });
 
   it('동시 adjust는 lock 후 fresh reread되어 감사 before/after가 끊김 없이 직렬화된다', async () => {
-    const payout = await createPendingPayout('2099-12-20', '08:00', '동시 금액 조정 무결성');
+    const payout = await createPendingPayout('2024-12-20', '08:00', '동시 금액 조정 무결성');
 
     const responses = await Promise.all([
       http.post(`/api/payouts/${payout.id}/adjust`).set(auth()).send({ amount: 41000, reason: '첫 번째 경쟁 조정' }),
@@ -140,7 +139,7 @@ describe('payout concurrent transition integrity (e2e)', () => {
   });
 
   it('adjust와 confirm 경쟁은 둘 다 반영되어 확정 금액이 stale snapshot으로 되돌아가지 않는다', async () => {
-    const payout = await createPendingPayout('2099-12-21', '08:00', '조정 확정 경쟁 무결성');
+    const payout = await createPendingPayout('2024-12-21', '08:00', '조정 확정 경쟁 무결성');
 
     const responses = await Promise.all([
       http.post(`/api/payouts/${payout.id}/adjust`).set(auth()).send({ amount: 43000, reason: '확정 직전 조정' }),
@@ -172,7 +171,7 @@ describe('payout concurrent transition integrity (e2e)', () => {
   });
 
   it('동일 정산 동시 지급은 한 요청만 성공하고 원장 출금도 정확히 한 줄 생성한다', async () => {
-    const payout = await createPendingPayout('2099-12-22', '08:00', '동시 지급 무결성');
+    const payout = await createPendingPayout('2024-12-22', '08:00', '동시 지급 무결성');
     await http.post(`/api/payouts/${payout.id}/confirm`).set(auth()).expect(201);
 
     const responses = await Promise.all([

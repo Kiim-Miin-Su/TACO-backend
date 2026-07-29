@@ -2,7 +2,7 @@ import type { Attendance } from '../attendance/attendance.entity';
 import type { ClassSession } from './schedule.entity';
 import type { CohortIndex } from './session-participant.policy';
 import { participantIdsForSession } from './session-participant.policy';
-import { sessionEndPassed, sessionStartPassed } from './session-time.policy';
+import { sessionEndPassed } from './session-time.policy';
 
 type TemporalFields = Pick<ClassSession, 'sessionDate' | 'startTime' | 'durationMinutes'>;
 type AttendanceSession = Pick<
@@ -57,7 +57,7 @@ export function attendanceCompletionHoldPatch(
   attendance: readonly Pick<Attendance, 'studentId'>[],
   nowMs: number,
 ): { status: 'held' } | null {
-  if (session.status !== 'scheduled' || !sessionStartPassed(session, nowMs)) return null;
+  if (session.status !== 'scheduled' || !sessionEndPassed(session, nowMs)) return null;
   if (session.instructorAttendance == null) return null;
   const participantIds = participantIdsForSession(session, cohortIndex);
   if (!participantIds.length) return null;
@@ -65,6 +65,15 @@ export function attendanceCompletionHoldPatch(
   return participantIds.every((studentId) => recordedStudentIds.has(studentId))
     ? { status: 'held' }
     : null;
+}
+
+/** held는 종료+출결 사실에서만 파생된다. 완료 전이와 완료→예정 역전이는 사실 변경 경로만 허용한다. */
+export function isManualCompletionStatusViolation(
+  current: ClassSession['status'] | undefined,
+  requested: ClassSession['status'] | undefined,
+): boolean {
+  return (requested === 'held' && current !== 'held')
+    || (current === 'held' && requested === 'scheduled');
 }
 
 export function isTemporalChangeBlockedStatus(status: ClassSession['status']): boolean {

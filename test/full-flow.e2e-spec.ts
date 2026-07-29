@@ -1,6 +1,12 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { createTestApp, mondayISO, addDaysISO , patchSessionAckingImpact } from "./setup-app";
+import {
+  addDaysISO,
+  completeSessionByAttendance,
+  createTestApp,
+  mondayISO,
+  patchSessionAckingImpact,
+} from "./setup-app";
 
 // 이 파일은 앞 단계가 만든 ID/상태를 다음 단계가 소비하는 하나의 상태ful 여정이다.
 // 개별 it retry는 첫 시도 잔여와 충돌해 원래 실패를 409로 덮으므로 이 spec에서는 금지한다.
@@ -12,7 +18,7 @@ jest.retryTimes(0);
 //   페이 계산 → 스케줄 삭제(독립·시리즈) → 페이 반영 검증.
 // + 추가: 미승인 보고서 제외 · 취소 세션 제외 · 이중계상 방지 · 권한 게이트.
 //
-// 시드(현재·과거 주)와 겹치지 않도록 미래 주(구간)에서 실행해 격리.
+// 시드 주간과 겹치지 않는 종료된 과거 주에서 실행해 자동 완료 전이까지 검증.
 // 코스10=SAT Reading(강사1, 시급 50,000/h), 수강생={학생1,4}. 90분 → 75,000.
 // ─────────────────────────────────────────────────────────────
 describe("Full Flow (e2e)", () => {
@@ -22,10 +28,10 @@ describe("Full Flow (e2e)", () => {
   const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
   const MON = mondayISO();
-  // 실제 PostgreSQL에서도 반복 실행 가능하도록 프로세스별 고유 미래 주간을 사용한다.
+  // 실제 PostgreSQL에서도 반복 실행 가능하도록 프로세스별 고유 과거 주간을 사용한다.
   // pid는 한 실행 안에서는 고정되어 단계 간 날짜 계약은 유지되고, 다음 실행은 이전 잔여와 분리된다.
   const RUN_WEEK_OFFSET = 60 + (process.pid % 600);
-  const W3MON = addDaysISO(MON, RUN_WEEK_OFFSET * 7);
+  const W3MON = addDaysISO(MON, -RUN_WEEK_OFFSET * 7);
   const W3TUE = addDaysISO(W3MON, 1);
   const W3SUN = addDaysISO(W3MON, 6);
 
@@ -121,13 +127,9 @@ describe("Full Flow (e2e)", () => {
       .expect(201);
   });
 
-  // 6) 진행(held)으로 상태 변경
-  it("6) S1 수업 진행(held)으로 상태 변경 → 200", async () => {
-    await http.patch(`/api/schedule/${S1}`).set(asAdmin()).send({ status: "held", force: true }).expect(200);
-    // [기간설정 ① 2026-07-24] 학생 출결 기록 — 미기록은 '이상'이라 자동 적격 제외(신정책)
-    for (const studentId of [1, 4]) {
-      await http.put("/api/attendance").set(asAdmin()).send({ sessionId: S1, studentId, status: "present" }).expect(200);
-    }
+  // 6) 학생·강사 출결 사실로 진행(held) 자동 전이
+  it("6) S1 출결 완료 → held 자동 전이", async () => {
+    await completeSessionByAttendance(http, asAdmin(), S1, [1, 4]);
   });
 
   // 7) 그룹 수업 대상 학생 전원의 리포트 작성 + 승인
@@ -205,7 +207,7 @@ describe("Full Flow (e2e)", () => {
 
   // ── 추가 흐름 ──
   it("13) 미승인 보고서는 시수 미측정(제출만 → preview 0)", async () => {
-    const w4mon = addDaysISO(MON, 28),
+    const w4mon = addDaysISO(W3MON, 28),
       w4tue = addDaysISO(w4mon, 1),
       w4sun = addDaysISO(w4mon, 6);
     const s = (
@@ -215,14 +217,14 @@ describe("Full Flow (e2e)", () => {
         .send({ courseId: 10, instructorId: 1, sessionDate: w4tue, startTime: "10:00", durationMinutes: 90 })
         .expect(201)
     ).body.row;
-    await http.patch(`/api/schedule/${s.id}`).set(asAdmin()).send({ status: "held", force: true }).expect(200);
+    await completeSessionByAttendance(http, asAdmin(), s.id, [1, 4]);
     await http.post("/api/reports").set(asAdmin()).send({ sessionId: s.id, studentId: 1, content: "미승인" }).expect(201); // submitted, 미승인
     const m = (await http.get(`/api/payouts/preview?instructorId=1&from=${w4mon}&to=${w4sun}`).set(asAdmin()).expect(200)).body;
     expect(m.sessionCount).toBe(0);
   });
 
   it("14) 취소(canceled) 세션은 시수 미측정(승인 보고서 있어도)", async () => {
-    const w5mon = addDaysISO(MON, 35),
+    const w5mon = addDaysISO(W3MON, 35),
       w5tue = addDaysISO(w5mon, 1),
       w5sun = addDaysISO(w5mon, 6);
     const s = (
@@ -232,7 +234,7 @@ describe("Full Flow (e2e)", () => {
         .send({ courseId: 10, instructorId: 1, sessionDate: w5tue, startTime: "10:00", durationMinutes: 90 })
         .expect(201)
     ).body.row;
-    await http.patch(`/api/schedule/${s.id}`).set(asAdmin()).send({ status: "held", force: true }).expect(200);
+    await completeSessionByAttendance(http, asAdmin(), s.id, [1, 4]);
     const r = (await http.post("/api/reports").set(asAdmin()).send({ sessionId: s.id, studentId: 1, content: "ok" }).expect(201)).body;
     await http.post(`/api/reports/${r.id}/approve`).set(asAdmin()).expect(201);
     // 진행 상태였다가 취소로 변경 → 시수 제외

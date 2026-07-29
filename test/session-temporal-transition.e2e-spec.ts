@@ -47,6 +47,61 @@ describe('[TBO-76 E] 시간 변경과 출결 자동 전이', () => {
     expect(isPayoutLocked({ status: 'held', durationMinutes: 60, isPaid: true })).toBe(true);
   });
 
+  it('순수 정책: 진행 중에는 출결이 완결돼도 held가 아니며 종료 뒤에만 전이한다', () => {
+    const session = {
+      id: 92,
+      courseId: 10,
+      studentIds: [1],
+      sessionDate: '2026-07-29',
+      startTime: '10:00',
+      durationMinutes: 60,
+      status: 'scheduled' as const,
+      instructorAttendance: 'present' as const,
+    };
+    const cohort = buildCohortIndex([]);
+    const during = Date.parse('2026-07-29T10:30:00+09:00');
+    expect(attendanceCompletionHoldPatch(session, cohort, [{ studentId: 1 }], during)).toBeNull();
+    expect(attendanceRequirementOf(session, cohort, [{ studentId: 1 }], during).attendanceRequired).toBe(false);
+    const ended = Date.parse('2026-07-29T11:00:00+09:00');
+    expect(attendanceCompletionHoldPatch(session, cohort, [{ studentId: 1 }], ended))
+      .toEqual({ status: 'held' });
+  });
+
+  it('API: held 직접 생성·전이는 사실 불일치로 차단하고 세션·감사를 바꾸지 않는다', async () => {
+    const audit = app.get(AuditService);
+    const before = await audit.list({ entity: 'class_sessions', limit: 500 });
+    const future = addDaysISO(mondayISO(), 35);
+    const deniedCreate = await http.post('/api/schedule').set(auth()).send({
+      courseId: 10,
+      instructorId: 1,
+      studentIds: [1],
+      sessionDate: future,
+      startTime: '10:00',
+      durationMinutes: 60,
+      status: 'held',
+      force: true,
+    }).expect(400);
+    expect(deniedCreate.body).toMatchObject({ code: 'SESSION_STATUS_FACT_MISMATCH' });
+    expect((await audit.list({ entity: 'class_sessions', limit: 500 })).length).toBe(before.length);
+
+    const created = (await http.post('/api/schedule').set(auth()).send({
+      courseId: 10,
+      instructorId: 1,
+      studentIds: [1],
+      sessionDate: future,
+      startTime: '12:00',
+      durationMinutes: 60,
+      force: true,
+    }).expect(201)).body.row as { id: number };
+    const afterCreateAudit = await audit.list({ entity: 'class_sessions', entityId: created.id, limit: 20 });
+    const deniedPatch = await http.patch(`/api/schedule/${created.id}`).set(auth())
+      .send({ status: 'held', force: true }).expect(400);
+    expect(deniedPatch.body).toMatchObject({ code: 'SESSION_STATUS_FACT_MISMATCH' });
+    expect((await http.get(`/api/schedule/${created.id}`).set(auth()).expect(200)).body.status).toBe('scheduled');
+    expect(await audit.list({ entity: 'class_sessions', entityId: created.id, limit: 20 }))
+      .toHaveLength(afterCreateAudit.length);
+  });
+
   it('완료 수업 시간 이동은 확인 후 출결을 비우고 보고서를 보존하며 재입력을 요구한다', async () => {
     const session = (await http.post('/api/schedule').set(auth()).send({
       courseId: 10,
@@ -66,6 +121,16 @@ describe('[TBO-76 E] 시간 변경과 출결 자동 전이', () => {
       .expect(201)).body as { id: number };
     await http.post(`/api/reports/${report.id}/submit`).set(auth()).expect(201);
     await http.post(`/api/reports/${report.id}/approve`).set(auth()).expect(201);
+
+    const beforeManualRollback = await http.get(`/api/schedule/${session.id}`).set(auth()).expect(200);
+    const deniedRollback = await http.patch(`/api/schedule/${session.id}`).set(auth())
+      .send({ status: 'scheduled', force: true }).expect(400);
+    expect(deniedRollback.body).toMatchObject({ code: 'SESSION_STATUS_FACT_MISMATCH' });
+    expect((await http.get(`/api/schedule/${session.id}`).set(auth()).expect(200)).body)
+      .toMatchObject({
+        status: beforeManualRollback.body.status,
+        instructorAttendance: beforeManualRollback.body.instructorAttendance,
+      });
 
     const proposed = {
       sessionDate: past,

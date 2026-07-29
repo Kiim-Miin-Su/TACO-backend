@@ -1,6 +1,6 @@
 // [TBO-62 2026-07-24] 긴급 수정 회귀 스위트 — 대표 운영 QA 6건 중 서버 검증 대상 3건.
 //  ④ 강사 본인 출결 체크(최초 1회) — 수정·타인 세션은 403, 매니저는 PATCH로 자유 변경.
-//  ⑤ 출결 기록 = 진행 사실의 단일 진실원 — 시작 지난 scheduled 세션 자동 held(시수·보강 오분류 해소),
+//  ⑤ 출결 기록 = 진행 사실의 단일 진실원 — 종료 지난 scheduled 세션 자동 held(시수·보강 오분류 해소),
 //     미래 세션·종결 상태(canceled)는 전이하지 않음.
 //  ⑥ 강사 payouts 표면 = 지급 완료(paid)만 — me 목록 필터·단건 403·preview/readiness 라우트 404.
 import { INestApplication } from '@nestjs/common';

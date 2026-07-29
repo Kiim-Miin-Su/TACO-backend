@@ -4,7 +4,7 @@ import { assertExpectedAfter } from '../src/common/expected-after.util';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { SESSIONS, type ClassSession } from '../src/modules/schedule/schedule.entity';
-import { createTestApp, patchSessionAckingImpact } from './setup-app';
+import { completeSessionByAttendance, createTestApp, patchSessionAckingImpact } from './setup-app';
 
 const FROM = '2026-06-01';
 const TO = '2026-06-30';
@@ -103,11 +103,9 @@ describe('session joined-table expected/after integrity (e2e)', () => {
       sessionDate: '2026-06-04',
       startTime: '06:00',
       durationMinutes: 60,
-      status: 'held',
       force: true,
     }).expect(201)).body.row as { id: number };
-    await http.put('/api/attendance').set(auth())
-      .send({ sessionId: session.id, studentId: 1, status: 'present' }).expect(200);
+    await completeSessionByAttendance(http, auth(), session.id, [1]);
     const report = (await http.post('/api/reports').set(auth())
       .send({ sessionId: session.id, studentId: 1, content: '삭제 원자성 검증 보고서' }).expect(201)).body as { id: number };
     await http.post(`/api/reports/${report.id}/approve`).set(auth()).expect(201);

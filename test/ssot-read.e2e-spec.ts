@@ -6,7 +6,7 @@ import { INestApplication } from '@nestjs/common';
 import { config } from 'dotenv';
 import * as bcrypt from 'bcryptjs';
 import request from 'supertest';
-import { createTestApp, sudoAuthHeaders } from './setup-app';
+import { completeSessionByAttendance, createTestApp, sudoAuthHeaders } from './setup-app';
 import { PostgresCollectionStore } from '../src/database/postgres-collection.store';
 import { USERS_SPEC } from '../src/database/calendar-asset-specs';
 import { AuthService } from '../src/modules/auth/auth.service';
@@ -146,28 +146,30 @@ describeDb('[TBO-54 C2] SSOT read-after-write — 2-instance PG (e2e)', () => {
     // A: 세션 2개 — ses1 held+보고서 승인(적격), ses2 held+보고서 없음(readiness 이슈)
     const makeSession = async (startTime: string, durationMinutes: number) =>
       Number((await httpA.post('/api/schedule').set(auth(admin)).send({
-        courseId, instructorId, studentIds: [studentId], sessionDate: '2099-03-03', startTime, durationMinutes, force: true,
+        courseId, instructorId, studentIds: [studentId], sessionDate: '2025-03-03', startTime, durationMinutes, force: true,
       }).expect(201)).body.row.id);
     const ses1 = await makeSession('10:00', 90);
     const ses2 = await makeSession('13:00', 60);
-    for (const id of [ses1, ses2]) await httpA.patch(`/api/schedule/${id}`).set(auth(admin)).send({ status: 'held', force: true }).expect(200);
+    for (const id of [ses1, ses2]) {
+      await completeSessionByAttendance(httpA, auth(admin), id, [studentId]);
+    }
     const reportId = Number((await httpA.post('/api/reports').set(auth(admin))
       .send({ sessionId: ses1, studentId, content: 'SSOT 정산 보고서' }).expect(201)).body.id);
     await httpA.post(`/api/reports/${reportId}/approve`).set(auth(admin)).expect(201);
     // B: preview — 입력 표 재수화 산정(measureFresh)이 A의 held+승인 세션만 계상
-    const previewB = (await httpB.get(`/api/payouts/preview?instructorId=${instructorId}&from=2099-03-01&to=2099-03-31`)
+    const previewB = (await httpB.get(`/api/payouts/preview?instructorId=${instructorId}&from=2025-03-01&to=2025-03-31`)
       .set(auth(adminB)).expect(200)).body;
     expect(previewB.sessionCount).toBe(1); // ses2는 보고서 미승인 — 제외
     expect(previewB.computedAmount).toBe(90000); // 90분 × 60,000원/h
     // B: readiness — A의 미비 세션(ses2 보고서 없음)이 즉시 이슈로, ses1은 적격으로
-    const readinessB = (await httpB.get(`/api/payouts/readiness?instructorId=${instructorId}&from=2099-03-01&to=2099-03-31`)
+    const readinessB = (await httpB.get(`/api/payouts/readiness?instructorId=${instructorId}&from=2025-03-01&to=2025-03-31`)
       .set(auth(adminB)).expect(200)).body;
     expect(readinessB.eligibleSessionIds).toContain(ses1);
     expect(readinessB.issues.some((issue: { sessionId: number; type: string }) =>
       issue.sessionId === ses2 && issue.type === 'report_missing')).toBe(true);
     // A: 정산서 생성 → B 목록·단건 즉시(DB 권위 READ)
     const payout = (await httpA.post('/api/payouts/generate').set(auth(admin))
-      .send({ instructorId, from: '2099-03-01', to: '2099-03-31' }).expect(201)).body;
+      .send({ instructorId, from: '2025-03-01', to: '2025-03-31' }).expect(201)).body;
     const listB = (await httpB.get('/api/payouts').set(auth(adminB)).expect(200)).body as Array<{ id: number }>;
     expect(listB.some((row) => row.id === payout.id)).toBe(true); // 종전: B 메모리에 없어 미노출
     const detailB = (await httpB.get(`/api/payouts/${payout.id}`).set(auth(adminB)).expect(200)).body;

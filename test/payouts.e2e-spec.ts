@@ -1,6 +1,13 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { createTestApp, mondayISO, addDaysISO, sudoAuthHeaders, patchSessionAckingImpact } from "./setup-app";
+import {
+  addDaysISO,
+  completeSessionByAttendance,
+  createTestApp,
+  mondayISO,
+  patchSessionAckingImpact,
+  sudoAuthHeaders,
+} from "./setup-app";
 
 // TBO-05 시수 측정·페이 정산 e2e.
 // 시나리오(요구 #5): 스케줄 생성 → 수업 진행(held)+report 승인 → 수업 취소 →
@@ -11,7 +18,7 @@ import { createTestApp, mondayISO, addDaysISO, sudoAuthHeaders, patchSessionAcki
 describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
-  const MON = mondayISO();
+  const MON = addDaysISO(mondayISO(), -7);
   const SUN = addDaysISO(MON, 6);
   const TUE = addDaysISO(MON, 1);
   const INSTRUCTOR = 1;
@@ -73,13 +80,9 @@ describe("Payouts — 시수 측정·페이 정산 (e2e)", () => {
   });
 
   it("2) 수업 진행(held) + 보고서 작성·승인", async () => {
-    // 진행 처리
-    for (const id of [S1, S2, S3, S4]) await setStatus(id, "held");
-    // [기간설정 ① 2026-07-24] 학생 출결 기록 — 미기록도 '이상'(attendance_missing → 직접 입력)이라
-    //  auto 적격이 되려면 출결까지 완결돼야 한다(실운영 흐름과 동일: 출결 → 리포트 → 승인).
-    for (const id of [S1, S2]) {
-      await http.put("/api/attendance").set(asAdmin())
-        .send({ sessionId: id, studentId: STUDENT, status: "present" }).expect(200);
+    // 학생·강사 출결이 모두 기록된 종료 회차만 서버가 held로 자동 전이한다.
+    for (const id of [S1, S2, S3, S4]) {
+      await completeSessionByAttendance(http, asAdmin(), id, [STUDENT]);
     }
     // S1·S2 보고서 작성 → 승인
     const r1 = await makeReport(S1);

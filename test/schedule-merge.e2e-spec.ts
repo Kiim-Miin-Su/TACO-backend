@@ -1,6 +1,6 @@
 import { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { createTestApp } from "./setup-app";
+import { addDaysISO, completeSessionByAttendance, createTestApp, mondayISO } from "./setup-app";
 
 // [B-1 R-3 2차 회귀 가드] schedule.service.mergeFields 병합·기본값 계약 잠금.
 //  SESSION_DEFAULTS 단일 상수화 리팩토링 전에 현재 동작을 고정한다(값 동일 유지 검증용):
@@ -75,8 +75,17 @@ describe("Schedule mergeFields 병합/기본값 (e2e) [B-1]", () => {
   });
 
   it("상태 변경(status): 나머지 필드 보존", async () => {
-    const row = await make({ courseId: 10, sessionDate: "2099-07-10", startTime: "10:00", durationMinutes: 60, mode: "online", kind: "level_test" });
-    const held = (await http.patch(`/api/schedule/${row.id}`).set(TH()).send({ status: "held", force: true }).expect(200)).body.row;
+    const row = await make({
+      courseId: 10,
+      studentIds: [1],
+      sessionDate: addDaysISO(mondayISO(), -7),
+      startTime: "10:00",
+      durationMinutes: 60,
+      mode: "online",
+      kind: "level_test",
+    });
+    await completeSessionByAttendance(http, TH(), row.id, [1]);
+    const held = (await http.get(`/api/schedule/${row.id}`).set(TH()).expect(200)).body;
     expect(held.status).toBe("held");
     expect(held.mode).toBe("online"); // 보존
     expect(held.kind).toBe("level_test"); // 보존

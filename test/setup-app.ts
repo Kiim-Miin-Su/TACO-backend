@@ -79,3 +79,34 @@ export async function patchSessionAckingImpact(
     expectedAccountingImpactHash: first.body.impactHash,
   });
 }
+
+/**
+ * 종료된 회차를 운영 흐름대로 완료한다.
+ * `held`는 명령 입력값이 아니라 학생 전원·강사 출결 사실에서 서버가 파생해야 한다.
+ */
+export async function completeSessionByAttendance(
+  http: ReturnType<typeof import('supertest')>,
+  headers: Record<string, string>,
+  sessionId: number,
+  studentIds: number[],
+): Promise<void> {
+  for (const studentId of studentIds) {
+    await http.put('/api/attendance').set(headers).send({
+      sessionId,
+      studentId,
+      status: 'present',
+    }).expect(200);
+  }
+  const response = await patchSessionAckingImpact(http, headers, sessionId, {
+    instructorAttendance: 'present',
+    force: true,
+  });
+  if (response.status !== 200) {
+    throw new Error(
+      `Session ${sessionId} attendance completion failed: ${response.status} ${JSON.stringify(response.body)}`,
+    );
+  }
+  if (response.body?.row?.status !== 'held') {
+    throw new Error(`Session ${sessionId} did not transition to held after complete attendance facts`);
+  }
+}

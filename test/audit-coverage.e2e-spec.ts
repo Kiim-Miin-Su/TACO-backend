@@ -5,7 +5,7 @@ import { createHash } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { studentAggregateBody } from './fixtures/student-profile';
-import { createTestApp, sudoAuthHeaders } from './setup-app';
+import { completeSessionByAttendance, createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { signupWithOtp } from './signup-helper';
@@ -159,8 +159,9 @@ describe('Audit coverage — 전 테이블 CRUD 이력 (e2e)', () => {
     // 과거 세션 생성(⑪ 허용) → 보고서 생성(제출) → 승인. course 10의 활성 수강생 student 1.
     const session = (await http.post('/api/schedule').set(auth()).send({
       courseId: 10, instructorId: 1, sessionDate: '2026-06-03', startTime: '06:00', durationMinutes: 60,
-      status: 'held', force: true,
+      studentIds: [1], force: true,
     }).expect(201)).body.row;
+    await completeSessionByAttendance(http, auth(), session.id, [1]);
     const report = (await http.post('/api/reports').set(auth())
       .send({ sessionId: session.id, studentId: 1, content: '감사 테스트 본문 원문' }).expect(201)).body;
     await http.post(`/api/reports/${report.id}/approve`).set(auth()).expect(201);

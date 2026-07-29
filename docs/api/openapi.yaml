@@ -2666,6 +2666,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       security:
         - bearer: []
         - access_token: []

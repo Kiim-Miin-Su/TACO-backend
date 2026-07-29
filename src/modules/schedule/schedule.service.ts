@@ -53,6 +53,7 @@ import { SessionAccountingContextService } from './session-accounting-context.se
 import {
   attendanceCompletionHoldPatch,
   hasSessionTemporalChange,
+  isManualCompletionStatusViolation,
   isTemporalChangeBlockedStatus,
   TEMPORAL_RESET_AUDIT_REASON,
 } from './session-temporal-transition.policy';
@@ -109,6 +110,17 @@ export class ScheduleService {
     private readonly read: ScheduleReadService, // [TBO-69 C1] 읽기 단방향 주입
     private readonly accountingContext: SessionAccountingContextService,
   ) {}
+
+  private assertCompletionStatusCommand(
+    current: ClassSession['status'] | undefined,
+    requested: ClassSession['status'] | undefined,
+  ): void {
+    if (!isManualCompletionStatusViolation(current, requested)) return;
+    throw new BadRequestException({
+      code: 'SESSION_STATUS_FACT_MISMATCH',
+      message: '진행 완료 상태는 수업 종료 후 강사·학생 출결이 모두 입력될 때 자동으로 전이됩니다.',
+    });
+  }
 
   // [TBO-28C] 캘린더 명령의 advisory lock 키 — 대상 강사·강의실·학생·세션. UoW.lockTargets가 정렬·중복 제거.
   private calendarLockKeys(t: {
@@ -228,6 +240,7 @@ export class ScheduleService {
     makeupForSessionId?: number; // [대표 지시 ⑭ 2026-07-16] 보강 세션 → 원본(결강) 세션 링크
   }, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[] }> {
     await this.read.ensureReady();
+    this.assertCompletionStatusCommand(undefined, dto.status);
     const instructorId = this.read.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
     const course = this.read.courseOf(dto.courseId)!;
     const studentIds = dto.studentIds !== undefined ? dto.studentIds : this.read.activeStudentIds(dto.courseId);
@@ -318,6 +331,7 @@ export class ScheduleService {
    *  **한 transaction**으로 저장한다. 중간 실패는 전부 롤백(series +0, sessions +0, audit +0). */
   async createSeries(dto: CreateScheduleSeriesDto, actorId?: number): Promise<CreateScheduleSeriesResult> {
     await this.read.ensureReady();
+    this.assertCompletionStatusCommand(undefined, dto.status);
     const instructorId = this.read.validateSessionInput(dto); // FK·코호트 공통 검증(단건 create와 같은 함수)
     const course = this.read.courseOf(dto.courseId)!;
     const studentIds = dto.studentIds !== undefined ? dto.studentIds : this.read.activeStudentIds(dto.courseId);
@@ -699,6 +713,7 @@ export class ScheduleService {
     await this.courses.refreshAccountingRatesFresh();
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
+    this.assertCompletionStatusCommand(cur.status, dto.status);
     await this.assertCeoOwnedSessionMutable(cur, actorId); // [TBO-59 C3-3]
     // 참조 무결성(FK) 검증
     if (dto.courseId != null && !this.read.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);

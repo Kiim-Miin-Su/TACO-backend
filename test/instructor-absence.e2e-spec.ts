@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp , patchSessionAckingImpact } from './setup-app';
+import { addDaysISO, completeSessionByAttendance, createTestApp, mondayISO, patchSessionAckingImpact } from './setup-app';
 
 // [TBO-19] 강사 결석(instructorAttendance='absent')은 **status와 독립** — status는 held 유지(가역).
 //  결석의 시수 처리 = payouts.measure가 absent 제외로 담당(status 미변경, payout-attendance.e2e 참조).
@@ -21,7 +21,15 @@ describe('강사 결석 ↔ status 독립 (e2e) [TBO-19]', () => {
 
   it('instructorAttendance=absent는 status를 바꾸지 않는다(held 유지·가역)', async () => {
     const row = (await http.post('/api/schedule').set(TH())
-      .send({ courseId: 10, sessionDate: '2099-08-01', startTime: '10:00', durationMinutes: 60, status: 'held', force: true }).expect(201)).body.row;
+      .send({
+        courseId: 10,
+        studentIds: [1],
+        sessionDate: addDaysISO(mondayISO(), -7),
+        startTime: '10:00',
+        durationMinutes: 60,
+        force: true,
+      }).expect(201)).body.row;
+    await completeSessionByAttendance(http, TH(), row.id, [1]);
     const absentRes = await patchSessionAckingImpact(http, TH(), row.id, { instructorAttendance: 'absent', force: true }); // [74D-0]
     expect(absentRes.status).toBe(200);
     const absent = absentRes.body.row;

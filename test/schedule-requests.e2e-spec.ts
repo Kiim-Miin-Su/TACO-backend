@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { completeSessionByAttendance, createTestApp } from './setup-app';
 import { AuditService } from '../src/modules/audit/audit.service';
 
 // TBO-16 #9 — 강사 수업 요청 → 매니저 승인/반려 + soft delete(v9) + audit_log(#7).
@@ -110,11 +110,9 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       sessionDate: '2026-06-05',
       startTime: '06:00',
       durationMinutes: 60,
-      status: 'held',
       force: true,
     }).expect(201)).body.row as { id: number };
-    await http.put('/api/attendance').set(asAdmin())
-      .send({ sessionId: session.id, studentId: 1, status: 'present' }).expect(200);
+    await completeSessionByAttendance(http, asAdmin(), session.id, [1]);
     const report = (await http.post('/api/reports').set(asInst())
       .send({ sessionId: session.id, studentId: 1, content: '삭제 승인 회계 영향 검증' }).expect(201)).body as { id: number };
     await http.post(`/api/reports/${report.id}/approve`).set(asAdmin()).expect(201);

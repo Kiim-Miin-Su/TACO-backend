@@ -3,7 +3,12 @@
 //  generate 정합(같은 분류 소비)·연결 후 가격 불변·권한.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp, sudoAuthHeaders , patchSessionAckingImpact } from './setup-app';
+import {
+  completeSessionByAttendance,
+  createTestApp,
+  patchSessionAckingImpact,
+  sudoAuthHeaders,
+} from './setup-app';
 
 describe('[TBO-64] 시수 워크시트 (e2e)', () => {
   let app: INestApplication;
@@ -11,9 +16,9 @@ describe('[TBO-64] 시수 워크시트 (e2e)', () => {
   const tokens: Record<string, string> = {};
   const auth = (who: string) => ({ Authorization: `Bearer ${tokens[who]}` });
   const sudo = (who: string) => sudoAuthHeaders(app, tokens[who]);
-  // 주간 픽스처와 격리된 미래 기간(2098년) — 다른 스위트 상태와 독립.
-  const FROM = '2098-03-02';
-  const TO = '2098-03-08';
+  // 자동 완료 전이를 검증할 수 있는 종료 기간이며 시드 주간과 격리한다.
+  const FROM = '2025-03-02';
+  const TO = '2025-03-08';
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -29,7 +34,7 @@ describe('[TBO-64] 시수 워크시트 (e2e)', () => {
       courseId: 10, instructorId: 1, studentIds: [1], sessionDate: FROM,
       startTime: '08:00', durationMinutes: 120, force: true, ...over,
     }).expect(201)).body.row;
-  const held = (id: number) => http.patch(`/api/schedule/${id}`).set(auth('admin')).send({ status: 'held', force: true }).expect(200);
+  const held = (id: number) => completeSessionByAttendance(http, auth('admin'), id, [1]);
   const approveReport = async (sessionId: number, studentId = 1) => {
     const r = (await http.post('/api/reports').set(auth('admin'))
       .send({ sessionId, studentId, content: '워크시트 검증 본문' }).expect(201)).body;
@@ -51,7 +56,7 @@ describe('[TBO-64] 시수 워크시트 (e2e)', () => {
 
   it('회차 준비 — 분류 5종 시나리오 구성(출결 수정 API 재사용)', async () => {
     AUTO = (await makeSession({ startTime: '08:00' })).id;
-    LATE = (await makeSession({ sessionDate: '2098-03-03', startTime: '10:30' })).id;
+    LATE = (await makeSession({ sessionDate: '2025-03-03', startTime: '10:30' })).id;
     NOREP = (await makeSession({ startTime: '13:00' })).id;
     ABSENT = (await makeSession({ startTime: '15:30' })).id;
     SCHED = (await makeSession({ startTime: '18:00' })).id;
