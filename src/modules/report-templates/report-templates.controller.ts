@@ -1,9 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ReportTemplatesService } from './report-templates.service';
 import { CreateReportTemplateDto } from './dto/create-report-template.dto';
+import { UpdateReportTemplateDto } from './dto/update-report-template.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
@@ -30,10 +31,21 @@ export class ReportTemplatesController {
     return this.templates.create(dto, req.user?.sub);
   }
 
+  @Patch(':id')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '수업 리포트 템플릿 수정 [작성자·매니저 이상]' })
+  update(
+    @Param('id', PositiveIntPipe) id: number,
+    @Body() dto: UpdateReportTemplateDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.templates.update(id, dto, req.user?.sub, req.user?.roles);
+  }
+
   @Delete(':id')
   @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '수업 리포트 템플릿 soft delete [전 직원]' })
+  @ApiOperation({ summary: '수업 리포트 템플릿 soft delete [작성자·매니저 이상]' })
   remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
-    return this.templates.remove(id, req.user?.sub);
+    return this.templates.remove(id, req.user?.sub, req.user?.roles);
   }
 }

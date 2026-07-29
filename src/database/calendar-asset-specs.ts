@@ -41,6 +41,7 @@ import { AUTH_REFRESH_TOKEN_INTEGRITY_SQL } from './migrations/auth-refresh-toke
 import { INSTRUCTOR_CONTRACT_INTEGRITY_SQL } from './migrations/instructor-contract-integrity.migration';
 import { INSTRUCTOR_CONTRACT_BOUNDS_SQL } from './migrations/instructor-contract-bounds.migration';
 import { TRANSACTION_SOURCE_INTEGRITY_SQL } from './migrations/transaction-source-integrity.migration';
+import { REPORT_TEMPLATE_OWNER_MIGRATION_SQL } from './migrations/report-template-owner.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -608,6 +609,7 @@ export const ROADMAP_COURSES_SPEC: PostgresCollectionSpec = {
 export const REPORT_TEMPLATES_SPEC: PostgresCollectionSpec = {
   table: 'report_templates',
   createSql: REPORT_TEMPLATES_TABLE_SQL,
+  migrations: [...REPORT_TEMPLATE_OWNER_MIGRATION_SQL],
   indexes: [
     `CREATE UNIQUE INDEX IF NOT EXISTS uq_report_templates_active_name
        ON report_templates (name) WHERE deleted_at IS NULL`,

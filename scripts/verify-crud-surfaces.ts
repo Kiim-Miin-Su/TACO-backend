@@ -81,7 +81,14 @@ const S: Record<string, Surface> = {
     note: 'draft owner/admin soft-delete plus submission/decision lifecycle and audit',
   },
   calendar_view_presets: { lifecycle: 'direct', contract: ['CalendarViewPreset'], api: ['POST /view-presets', 'PATCH /view-presets/{id}', 'DELETE /view-presets/{id}'], frontend: ['api.viewPresets'], verdict: 'complete', note: 'owner-scoped persisted CRUD' },
-  report_templates: { lifecycle: 'direct', contract: ['ReportTemplate'], api: ['POST /report-templates', 'DELETE /report-templates/{id}'], frontend: ['api.reportTemplates'], verdict: 'gap', note: 'create/read/delete exists; update missing' },
+  report_templates: {
+    lifecycle: 'direct',
+    contract: ['ReportTemplate', 'CreateReportTemplateInput', 'UpdateReportTemplateInput'],
+    api: ['POST /report-templates', 'PATCH /report-templates/{id}', 'DELETE /report-templates/{id}'],
+    frontend: ['api.reportTemplates', 'useUpdateReportTemplate'],
+    verdict: 'complete',
+    note: 'shared read/apply; creator or admin update/delete with persisted owner',
+  },
 };
 
 const root = resolve(__dirname, '..');

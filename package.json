@@ -80,10 +80,11 @@
   "db:inventory:auth-refresh-tokens": "ts-node scripts/db-inventory-auth-refresh-tokens.ts",
   "db:migrate:auth-refresh-token-integrity": "ts-node scripts/migrate-auth-refresh-token-integrity.ts",
   "db:migrate:instructor-contract-integrity": "ts-node scripts/migrate-instructor-contract-integrity.ts",
-  "db:migrate:transaction-source-integrity": "ts-node scripts/migrate-transaction-source-integrity.ts"
+  "db:migrate:transaction-source-integrity": "ts-node scripts/migrate-transaction-source-integrity.ts",
+  "db:migrate:report-template-owner": "ts-node scripts/migrate-report-template-owner.ts"
  },
  "dependencies": {
-  "@kms545487/contracts": "0.2.29",
+  "@kms545487/contracts": "0.2.30",
   "@neondatabase/serverless": "^1.1.0",
   "@nestjs/common": "^11.1.27",
   "@nestjs/core": "^11.1.27",

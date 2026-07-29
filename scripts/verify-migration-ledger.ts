@@ -39,6 +39,7 @@ import { AUTH_REFRESH_TOKEN_INTEGRITY_MIGRATION_ID } from '../src/database/migra
 import { INSTRUCTOR_CONTRACT_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/instructor-contract-integrity.migration';
 import { INSTRUCTOR_CONTRACT_BOUNDS_MIGRATION_ID } from '../src/database/migrations/instructor-contract-bounds.migration';
 import { TRANSACTION_SOURCE_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/transaction-source-integrity.migration';
+import { REPORT_TEMPLATE_OWNER_MIGRATION_ID } from '../src/database/migrations/report-template-owner.migration';
 
 loadLocalEnv();
 
@@ -79,6 +80,7 @@ export const EXPECTED_MIGRATION_IDS = [
   INSTRUCTOR_CONTRACT_INTEGRITY_MIGRATION_ID, // [77C] contract FK/value/active-period exclusion
   INSTRUCTOR_CONTRACT_BOUNDS_MIGRATION_ID, // [77C] DTO max bounds mirrored in DB CHECK
   TRANSACTION_SOURCE_INTEGRITY_MIGRATION_ID, // [77E] ledger source exactly-one + FK
+  REPORT_TEMPLATE_OWNER_MIGRATION_ID, // [77D-5] report template creator FK + owner policy
 ] as const;
 
 const url = directDatabaseUrl();

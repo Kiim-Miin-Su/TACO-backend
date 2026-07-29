@@ -32,6 +32,7 @@ export const REPORT_TEMPLATES_TABLE_SQL = `
     name varchar(40) NOT NULL,
     content text NOT NULL,
     homework text,
+    created_by integer REFERENCES users(id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,

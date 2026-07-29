@@ -7297,6 +7297,56 @@
       }
     },
     "/api/report-templates/{id}": {
+      "patch": {
+        "operationId": "ReportTemplatesController_update",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateReportTemplateDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "수업 리포트 템플릿 수정 [작성자·매니저 이상]",
+        "tags": [
+          "report-templates"
+        ],
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ]
+      },
       "delete": {
         "operationId": "ReportTemplatesController_remove",
         "parameters": [
@@ -7324,7 +7374,7 @@
             }
           }
         },
-        "summary": "수업 리포트 템플릿 soft delete [전 직원]",
+        "summary": "수업 리포트 템플릿 soft delete [작성자·매니저 이상]",
         "tags": [
           "report-templates"
         ],
@@ -11581,6 +11631,27 @@
         ]
       },
       "CreateReportTemplateDto": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 40
+          },
+          "content": {
+            "type": "string",
+            "maxLength": 2000
+          },
+          "homework": {
+            "type": "string",
+            "maxLength": 1000
+          }
+        },
+        "required": [
+          "name",
+          "content"
+        ]
+      },
+      "UpdateReportTemplateDto": {
         "type": "object",
         "properties": {
           "name": {

@@ -32,6 +32,7 @@ export const LOCK_KIND = {
   report: 18, // [TBO-53 C1] 보고서 제출·승인·반려·수정 전이 직렬화 — approval_status CAS의 choke point
   signupPhoneChallenge: 19, // [TBO-57] 가입 전 휴대전화 OTP 확인/소비 직렬화(공개 흐름 — 이중 소비 차단)
   enrollment: 20, // [TBO-77] 수강 상태/기간 수정 직렬화
+  reportTemplate: 21, // [TBO-77D-5] 공용 템플릿 수정/삭제 소유권 fresh-read 직렬화
   // ⚠ 관찰(기존): payout·course가 13을 공유 — 과직렬화(payout N ↔ course N 상호 대기 가능).
   //  분리는 TBO-50 §6 P2 방침대로 롤링 배포 상호배제 공백 없는 **단계적 전환**(C7)으로 수행한다.
 } as const;

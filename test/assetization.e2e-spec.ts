@@ -15,12 +15,17 @@ describe('Assetization sweep 2 (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let ADMIN = '';
+  let PARK = '';
+  let JUNG = '';
   const asAdmin = () => sudoAuthHeaders(app, ADMIN);
+  const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
     ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
+    PARK = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
+    JUNG = (await http.post('/api/auth/login').send({ webId: 'jung_inst', password: 'demo1234' }).expect(201)).body.accessToken;
   });
   afterAll(async () => { await app.close(); });
 
@@ -44,15 +49,29 @@ describe('Assetization sweep 2 (e2e)', () => {
       .some((p: { id: number }) => p.id === created.id)).toBe(false);
   });
 
-  it('report-templates: 시드 2건(zustand 기본값 이관) + 생성·중복 400·삭제', async () => {
+  it('report-templates: 공용 시드 + 작성자/관리자 C/R/U/D와 타 강사 IDOR 차단', async () => {
     const seeded = (await http.get('/api/report-templates').set(asAdmin()).expect(200)).body;
     expect(seeded.length).toBeGreaterThanOrEqual(2);
     expect(seeded.some((t: { name: string }) => t.name === '정규 수업(기본)')).toBe(true);
-    const created = (await http.post('/api/report-templates').set(asAdmin())
+    const defaultTemplate = seeded.find((t: { name: string }) => t.name === '정규 수업(기본)');
+    await http.patch(`/api/report-templates/${defaultTemplate.id}`).set(bearer(PARK))
+      .send({ name: defaultTemplate.name, content: defaultTemplate.content }).expect(403);
+    const created = (await http.post('/api/report-templates').set(bearer(PARK))
       .send({ name: '레벨테스트', content: '레벨: \n권장 코스: ' }).expect(201)).body;
+    expect(created.createdBy).toBe(1);
+    await http.patch(`/api/report-templates/${created.id}`).set(bearer(JUNG))
+      .send({ name: '타인 수정', content: 'x' }).expect(403);
+    await http.delete(`/api/report-templates/${created.id}`).set(bearer(JUNG)).expect(403);
+    const updated = (await http.patch(`/api/report-templates/${created.id}`).set(bearer(PARK))
+      .send({ name: '레벨테스트 수정', content: '수정된 템플릿', homework: '복습' }).expect(200)).body;
+    expect(updated).toMatchObject({
+      id: created.id, name: '레벨테스트 수정', content: '수정된 템플릿', homework: '복습', createdBy: 1,
+    });
     await http.post('/api/report-templates').set(asAdmin())
-      .send({ name: '레벨테스트', content: 'x' }).expect(400);
-    await http.delete(`/api/report-templates/${created.id}`).set(asAdmin()).expect(200);
+      .send({ name: '레벨테스트 수정', content: 'x' }).expect(400);
+    await http.delete(`/api/report-templates/${created.id}`).set(bearer(PARK)).expect(200);
+    await http.patch(`/api/report-templates/${created.id}`).set(asAdmin())
+      .send({ name: '삭제 후 수정', content: 'x' }).expect(404);
   });
 
   it('students PATCH: 국가·거주·상태 부분 수정(출국/입국·그만둠 대응) + 형식 가드 400', async () => {
