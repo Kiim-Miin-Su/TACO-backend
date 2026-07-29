@@ -74,7 +74,7 @@
   "db:migrate:counsel-next-contact-datetime": "ts-node scripts/migrate-counsel-next-contact-datetime.ts"
  },
  "dependencies": {
-  "@kms545487/contracts": "^0.2.18",
+  "@kms545487/contracts": "^0.2.19",
   "@neondatabase/serverless": "^1.1.0",
   "@nestjs/common": "^11.1.27",
   "@nestjs/core": "^11.1.27",
