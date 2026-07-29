@@ -4433,7 +4433,15 @@ paths:
   /api/instructor-contracts:
     get:
       operationId: InstructorContractsController_findAll
-      parameters: []
+      parameters:
+        - name: instructorId
+          required: false
+          in: query
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
       responses:
         '200':
           description: InstructorContract[] — instructorId·monthlyHours·hourlyRate·periodStart·active
@@ -4441,6 +4449,83 @@ paths:
         - bearer: []
         - access_token: []
       summary: 강사 계약 목록(InstructorContract[]) — 계약 시수·시급·기간 [대표]
+      tags:
+        - instructor-contracts
+    post:
+      operationId: InstructorContractsController_create
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInstructorContractDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 강사 기간 계약 생성, 재인증 필수 [대표]
+      tags:
+        - instructor-contracts
+  /api/instructor-contracts/{id}:
+    get:
+      operationId: InstructorContractsController_findOne
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 강사 계약 단건 [대표]
+      tags:
+        - instructor-contracts
+    patch:
+      operationId: InstructorContractsController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateInstructorContractDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 강사 기간 계약 수정·종료, 재인증·사유 필수 [대표]
       tags:
         - instructor-contracts
   /api/parents:
@@ -7431,6 +7516,61 @@ components:
         memo:
           type: string
           maxLength: 500
+    CreateInstructorContractDto:
+      type: object
+      properties:
+        instructorId:
+          type: number
+        monthlyHours:
+          type: number
+          minimum: 0
+          maximum: 1000
+        hourlyRate:
+          type: number
+          minimum: 0
+          maximum: 100000000
+        periodStart:
+          type: string
+        periodEnd:
+          type: string
+          nullable: true
+        memo:
+          type: string
+          nullable: true
+          maxLength: 500
+      required:
+        - instructorId
+        - monthlyHours
+        - hourlyRate
+        - periodStart
+    UpdateInstructorContractDto:
+      type: object
+      properties:
+        monthlyHours:
+          type: number
+          minimum: 0
+          maximum: 1000
+        hourlyRate:
+          type: number
+          minimum: 0
+          maximum: 100000000
+        periodStart:
+          type: string
+        periodEnd:
+          type: string
+          nullable: true
+        active:
+          type: boolean
+        memo:
+          type: string
+          nullable: true
+          maxLength: 500
+        reason:
+          type: string
+          minLength: 2
+          maxLength: 500
+      required:
+        - reason
     CreateParentDto:
       type: object
       properties:

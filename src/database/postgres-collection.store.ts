@@ -287,7 +287,7 @@ export class PostgresCollectionStore {
   async updateIf<T extends BaseRow>(
     spec: PostgresCollectionSpec,
     id: number,
-    expected: Partial<Omit<T, keyof BaseRow>>,
+    expected: Partial<T>,
     patch: Partial<Omit<T, keyof BaseRow>>,
   ): Promise<T | undefined> {
     if (!(await this.ensureReady(spec))) {

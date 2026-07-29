@@ -36,6 +36,8 @@ import { ATTENDANCE_REPORTS_CONSTRAINTS_MIGRATION_ID } from '../src/database/mig
 import { COUNSEL_NEXT_CONTACT_DATETIME_MIGRATION_ID } from '../src/database/migrations/counsel-next-contact-datetime.migration';
 import { SESSION_REPORT_PROGRESS_PAGE_MIGRATION_ID } from '../src/database/migrations/session-report-progress-page.migration';
 import { AUTH_REFRESH_TOKEN_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/auth-refresh-token-integrity.migration';
+import { INSTRUCTOR_CONTRACT_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/instructor-contract-integrity.migration';
+import { INSTRUCTOR_CONTRACT_BOUNDS_MIGRATION_ID } from '../src/database/migrations/instructor-contract-bounds.migration';
 
 loadLocalEnv();
 
@@ -73,6 +75,8 @@ export const EXPECTED_MIGRATION_IDS = [
   COUNSEL_NEXT_CONTACT_DATETIME_MIGRATION_ID, // [76A-1] counsel next_contact_at date→timestamptz
   SESSION_REPORT_PROGRESS_PAGE_MIGRATION_ID, // [76D] session report authored progress page
   AUTH_REFRESH_TOKEN_INTEGRITY_MIGRATION_ID, // [76H] refresh token user/replacement FK + self/expiry CHECK
+  INSTRUCTOR_CONTRACT_INTEGRITY_MIGRATION_ID, // [77C] contract FK/value/active-period exclusion
+  INSTRUCTOR_CONTRACT_BOUNDS_MIGRATION_ID, // [77C] DTO max bounds mirrored in DB CHECK
 ] as const;
 
 const url = directDatabaseUrl();

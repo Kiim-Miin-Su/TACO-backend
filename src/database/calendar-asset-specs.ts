@@ -38,6 +38,8 @@ import {
 } from './migrations/counsel-family-academic-expand.migration';
 import { PAYMENTS_MONEY_CONSTRAINTS_MIGRATION_SQL, TRANSACTIONS_PAYMENT_FK_SQL } from './migrations/payments-money-constraints.migration';
 import { AUTH_REFRESH_TOKEN_INTEGRITY_SQL } from './migrations/auth-refresh-token-integrity.migration';
+import { INSTRUCTOR_CONTRACT_INTEGRITY_SQL } from './migrations/instructor-contract-integrity.migration';
+import { INSTRUCTOR_CONTRACT_BOUNDS_SQL } from './migrations/instructor-contract-bounds.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -879,6 +881,7 @@ export const INSTRUCTOR_CONTRACTS_SPEC: PostgresCollectionSpec = {
     )
   `,
   dateFields: ['periodStart', 'periodEnd'],
+  migrations: [...INSTRUCTOR_CONTRACT_INTEGRITY_SQL, ...INSTRUCTOR_CONTRACT_BOUNDS_SQL],
   indexes: [
     activeIndex('instructor_contracts', 'idx_instructor_contracts_instructor_active', 'instructor_id, active'),
     activeIndex('instructor_contracts', 'idx_instructor_contracts_period', 'period_start, period_end'),

@@ -78,10 +78,11 @@
   "db:migrate:counsel-next-contact-datetime": "ts-node scripts/migrate-counsel-next-contact-datetime.ts",
   "db:migrate:session-report-progress-page": "ts-node scripts/migrate-session-report-progress-page.ts",
   "db:inventory:auth-refresh-tokens": "ts-node scripts/db-inventory-auth-refresh-tokens.ts",
-  "db:migrate:auth-refresh-token-integrity": "ts-node scripts/migrate-auth-refresh-token-integrity.ts"
+  "db:migrate:auth-refresh-token-integrity": "ts-node scripts/migrate-auth-refresh-token-integrity.ts",
+  "db:migrate:instructor-contract-integrity": "ts-node scripts/migrate-instructor-contract-integrity.ts"
  },
  "dependencies": {
-  "@kms545487/contracts": "0.2.25",
+  "@kms545487/contracts": "0.2.26",
   "@neondatabase/serverless": "^1.1.0",
   "@nestjs/common": "^11.1.27",
   "@nestjs/core": "^11.1.27",
