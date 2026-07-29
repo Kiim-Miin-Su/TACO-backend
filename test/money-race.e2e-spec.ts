@@ -97,7 +97,7 @@ describeDb('[TBO-53 C1] Money race — 2-instance PG (e2e)', () => {
     cleanupIds.push({ table: 'courses', id: courseId });
     const studentRes = await httpA.post('/api/students').set(auth(admin))
       .send(studentAggregateBody(`RACE학생${String(Date.now()).slice(-7)}`, {
-        interests: [{ customLabel: 'RACE 희망 수업 A', priority: 1 }, { customLabel: 'RACE 희망 수업 B', priority: 2 }], // 픽스처 courseId 기본값 회피(fixture-less PG) — DTO 최소 2건
+        interests: [{ customLabel: 'RACE 희망 수업 A', priority: 1 }, { customLabel: 'RACE 희망 수업 B', priority: 2 }], // 픽스처 courseId 기본값 회피(fixture-less PG)
       }));
     if (studentRes.status !== 201) throw new Error(`student create ${studentRes.status}: ${JSON.stringify(studentRes.body).slice(0, 400)}`);
     studentId = Number(studentRes.body.student.id);

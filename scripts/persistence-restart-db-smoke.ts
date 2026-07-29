@@ -77,7 +77,7 @@ async function main(): Promise<void> {
       interests: [
         { customLabel: '재기동 검증 희망 수업 1', priority: 1 },
         { customLabel: '재기동 검증 희망 수업 2', priority: 2 },
-      ], // DTO ArrayMinSize(2) — 코스 없이 customLabel 2건
+      ], // 코스 없이 customLabel 2건을 저장하는 persistence readback 표본
     });
     if (studentRes.status !== 201) throw new Error('student create ' + studentRes.status + ': ' + JSON.stringify(studentRes.body?.message ?? studentRes.body));
     const student = studentRes.body.student;

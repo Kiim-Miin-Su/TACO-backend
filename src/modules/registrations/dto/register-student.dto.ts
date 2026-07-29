@@ -1,5 +1,5 @@
 import { Type } from 'class-transformer';
-import { ArrayMaxSize, ArrayMinSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from 'class-validator';
+import { ArrayMaxSize, IsArray, IsBoolean, IsInt, IsOptional, IsString, Matches, MaxLength, Min, ValidateNested } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { CreateStudentAggregateInput } from '@kms545487/contracts';
 import { CreateStudentDto } from '../../students/dto/create-student.dto';
@@ -43,13 +43,13 @@ export class RegisterStudentDto implements CreateStudentAggregateInput {
   @Type(() => CreateStudentDto)
   student!: CreateStudentDto;
 
-  @ApiProperty({ type: [StudentInterestDto], minItems: 2, maxItems: 20, description: '희망 수업 2개 이상' })
+  @ApiPropertyOptional({ type: [StudentInterestDto], minItems: 0, maxItems: 20, description: '관심 희망 수업(선택, 0~20개)' })
+  @IsOptional()
   @IsArray()
-  @ArrayMinSize(2)
   @ArrayMaxSize(20)
   @ValidateNested({ each: true })
   @Type(() => StudentInterestDto)
-  interests!: StudentInterestDto[];
+  interests?: StudentInterestDto[];
 
   @ApiPropertyOptional({ type: [RegistrationGuardianDto], maxItems: 10, description: '보호자 0~10명' })
   @IsOptional()

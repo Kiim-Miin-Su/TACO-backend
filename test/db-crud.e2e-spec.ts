@@ -60,6 +60,8 @@ let qaInstructorId = 0;
 let qaStudentId = 0;
 let qaRelatedStudentId = 0;
 let qaCounselId = 0;
+let qaIntakeStudentId = 0;
+let qaIntakeCounselId = 0;
 let qaSubjectId = 0;
 let qaRoomId = 0;
 let qaCourseId = 0;
@@ -160,6 +162,7 @@ async function cleanupFixtures(): Promise<void> {
     cleanupApp = booted.app;
     const { http, manager, operator } = booted;
     if (qaCounselId) await http.delete(`/api/counsel/${qaCounselId}`).set(auth(operator));
+    if (qaIntakeCounselId) await http.delete(`/api/counsel/${qaIntakeCounselId}`).set(auth(operator));
     for (const id of qaSessionIds) await http.delete(`/api/schedule/${id}`).set(auth(manager));
     for (const id of qaAvailabilityIds) await http.delete(`/api/availability/${id}`).set(auth(manager));
     for (const id of qaPresetIds) await http.delete(`/api/view-presets/${id}`).set(auth(manager));
@@ -170,6 +173,7 @@ async function cleanupFixtures(): Promise<void> {
     //  API 경로가 조용히 실패하고 fallbackSoftDelete가 가려준다. 정규 경로를 살린다.
     if (qaStudentId) await http.delete(`/api/students/${qaStudentId}`).set(sudoAuthHeaders(cleanupApp, manager));
     if (qaRelatedStudentId) await http.delete(`/api/students/${qaRelatedStudentId}`).set(sudoAuthHeaders(cleanupApp, manager));
+    if (qaIntakeStudentId) await http.delete(`/api/students/${qaIntakeStudentId}`).set(sudoAuthHeaders(cleanupApp, manager));
 
     // API 도중 실패/프로세스 재시도에도 테스트 자산을 active 상태로 남기지 않는다.
     // 물리 DELETE는 금지하고, fallback도 audit_log를 남기는 soft-delete만 수행한다.
@@ -177,6 +181,9 @@ async function cleanupFixtures(): Promise<void> {
     if (qaCounselId) {
       await fallbackSoftDelete(pg, 'counsel_rounds', 'counsel_form_id=$2', [qaCounselId], operationActorId);
       await fallbackSoftDelete(pg, 'counsel_forms', 'id=$2', [qaCounselId], operationActorId);
+    }
+    if (qaIntakeCounselId) {
+      await fallbackSoftDelete(pg, 'counsel_forms', 'id=$2', [qaIntakeCounselId], operationActorId);
     }
     if (qaCourseId) {
       await fallbackSoftDelete(pg, 'class_sessions', 'course_id=$2', [qaCourseId], operationActorId);
@@ -195,6 +202,10 @@ async function cleanupFixtures(): Promise<void> {
       await fallbackSoftDelete(pg, 'student_academic_histories', 'student_id=$2', [qaRelatedStudentId], operationActorId);
       await fallbackSoftDelete(pg, 'student_interests', 'student_id=$2', [qaRelatedStudentId], operationActorId);
       await fallbackSoftDelete(pg, 'students', 'id=$2', [qaRelatedStudentId], operationActorId);
+    }
+    if (qaIntakeStudentId) {
+      await fallbackSoftDelete(pg, 'student_interests', 'student_id=$2', [qaIntakeStudentId], operationActorId);
+      await fallbackSoftDelete(pg, 'students', 'id=$2', [qaIntakeStudentId], operationActorId);
     }
     if (qaRoomId) await fallbackSoftDelete(pg, 'rooms', 'id=$2', [qaRoomId], operationActorId);
     if (qaSubjectId) await fallbackSoftDelete(pg, 'subjects', 'id=$2', [qaSubjectId], operationActorId);
@@ -358,6 +369,54 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
         .set(auth(manager))
         .expect(200)).body as AuditRow[];
       expect(auditAfterDelete.some((row) => row.action === 'delete' && row.changes?.__row)).toBe(true);
+      await closeApp(app);
+    }
+  });
+
+  it('atomically persists a zero-interest student and counsel intake across app restarts', async () => {
+    const marker = `DBCRUD 상담 원자 ${Date.now()}`;
+    {
+      const { app, http, operator } = await boot();
+      const registration = studentAggregateBody(`DBCRUD상담${String(Date.now()).slice(-8)}`, { interests: [] });
+      const result = (await http.post('/api/students/registrations/with-counsel')
+        .set(auth(operator))
+        .send({
+          registration,
+          counsel: { referenceNotes: marker, nextContactAt: '2099-02-03T04:30:00.000Z' },
+        })
+        .expect(201)).body;
+      qaIntakeStudentId = Number(result.registration.student.id);
+      qaIntakeCounselId = Number(result.counsel.id);
+      expect(result.correlationId).toMatch(/^[0-9a-f-]{36}$/);
+      await closeApp(app);
+    }
+
+    {
+      const { app, http, operator } = await boot();
+      const student = (await http.get(`/api/students/${qaIntakeStudentId}/aggregate`)
+        .set(auth(operator)).expect(200)).body;
+      const counsel = (await http.get(`/api/counsel/${qaIntakeCounselId}/aggregate`)
+        .set(auth(operator)).expect(200)).body;
+      expect(student.interests).toEqual([]);
+      expect(counsel.form).toMatchObject({
+        id: qaIntakeCounselId,
+        studentId: qaIntakeStudentId,
+        referenceNotes: marker,
+        nextContactAt: '2099-02-03T04:30:00.000Z',
+      });
+      expect(counsel.student.student.id).toBe(qaIntakeStudentId);
+      const auditRows = (await http.get(`/api/audit?entity=student_counsel_intakes&entityId=${qaIntakeCounselId}`)
+        .set(auth(operator)).expect(200)).body as AuditRow[];
+      expect(auditRows).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          action: 'create',
+          actorId: operationActorId,
+          changes: expect.objectContaining({
+            studentId: { after: qaIntakeStudentId },
+            counselFormId: { after: qaIntakeCounselId },
+          }),
+        }),
+      ]));
       await closeApp(app);
     }
   });

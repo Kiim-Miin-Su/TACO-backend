@@ -44,15 +44,36 @@ describe('[TBO-35 35C] student aggregate CRUD/RBAC/audit', () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it('필수 profile·해외 Kakao·관심 2개·주보호자 불변을 저장 전 차단한다', async () => {
+  it('필수 profile·해외 Kakao·관심 최대 20개·주보호자 불변을 저장 전 차단한다', async () => {
     await http.post('/api/students/registrations').set(owner()).send({ student: { name: '누락' }, interests }).expect(400);
     await http.post('/api/students/registrations').set(owner())
       .send({ student: { ...profile('해외누락', 'US'), kakaoId: undefined }, interests }).expect(400);
-    await http.post('/api/students/registrations').set(owner()).send({ student: profile('관심누락'), interests: [interests[0]] }).expect(400);
+    await http.post('/api/students/registrations').set(owner()).send({
+      student: profile('관심초과'),
+      interests: Array.from({ length: 21 }, (_, index) => ({ customLabel: `희망 ${index + 1}`, priority: index + 1 })),
+    }).expect(400);
     await http.post('/api/students/registrations').set(owner()).send({
       student: profile('대표중복'), interests,
       guardians: [{ name: '보호자1', isPrimary: true }, { name: '보호자2', isPrimary: true }],
     }).expect(409);
+  });
+
+  it('관심 수업 생략·빈 배열·1개 등록과 빈 배열 전체 교체를 허용한다', async () => {
+    const omitted = (await http.post('/api/students/registrations').set(owner())
+      .send({ student: profile('희망미정') }).expect(201)).body;
+    expect((await http.get(`/api/students/${omitted.student.id}/aggregate`).set(owner()).expect(200)).body.interests).toEqual([]);
+
+    const single = (await http.post('/api/students/registrations').set(owner()).send({
+      student: profile('희망한개'),
+      interests: [{ customLabel: 'Writing', priority: 1 }],
+    }).expect(201)).body;
+    expect((await http.get(`/api/students/${single.student.id}/aggregate`).set(owner()).expect(200)).body.interests).toHaveLength(1);
+    const cleared = (await http.patch(`/api/students/${single.student.id}/aggregate`).set(owner())
+      .send({ interests: [] }).expect(200)).body;
+    expect(cleared.interests).toEqual([]);
+
+    await http.delete(`/api/students/${omitted.student.id}`).set(owner()).expect(200);
+    await http.delete(`/api/students/${single.student.id}`).set(owner()).expect(200);
   });
 
   it('대표가 aggregate 생성·상세·수정·관심 CRUD·보호자 CRUD·soft delete를 수행하고 전 행 이력을 남긴다', async () => {
@@ -108,7 +129,11 @@ describe('[TBO-35 35C] student aggregate CRUD/RBAC/audit', () => {
     const remaining = (await http.get(`/api/students/${studentId}/interests`).set(owner()).expect(200)).body;
     expect(remaining).toHaveLength(2);
     expect(remaining.map((row: { priority: number }) => row.priority)).toEqual([1, 2]);
-    await http.delete(`/api/students/${studentId}/interests/${remaining[0].id}`).set(owner()).expect(409);
+    await http.delete(`/api/students/${studentId}/interests/${remaining[0].id}`).set(owner()).expect(200);
+    const last = (await http.get(`/api/students/${studentId}/interests`).set(owner()).expect(200)).body;
+    expect(last).toHaveLength(1);
+    await http.delete(`/api/students/${studentId}/interests/${last[0].id}`).set(owner()).expect(200);
+    expect((await http.get(`/api/students/${studentId}/interests`).set(owner()).expect(200)).body).toEqual([]);
 
     expect((await http.get(`/api/parents/${parentId}`).set(owner()).expect(200)).body.name).toBe('35C 보호자');
     await http.patch(`/api/parents/${parentId}`).set(owner()).send({ name: '35C 보호자 수정', phone: '010-8999-0000' }).expect(200);

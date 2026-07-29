@@ -6,10 +6,11 @@ import { EnrollmentsModule } from '../enrollments/enrollments.module';
 import { AuditModule } from '../audit/audit.module';
 import { RegistrationsService } from './registrations.service';
 import { RegistrationsController } from './registrations.controller';
+import { CounselModule } from '../counsel/counsel.module';
 
 // [TBO-29D D2] 학생 aggregate 등록 — Students↔Parents 순환 의존을 피하려고 상위 조합 모듈로 분리.
 @Module({
-  imports: [AuthModule, StudentsModule, ParentsModule, EnrollmentsModule, AuditModule],
+  imports: [AuthModule, StudentsModule, ParentsModule, EnrollmentsModule, AuditModule, CounselModule],
   controllers: [RegistrationsController],
   providers: [RegistrationsService],
 })

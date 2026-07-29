@@ -14,12 +14,22 @@ import { StudentInterestsService } from '../students/student-interests.service';
 import { UpdateStudentAggregateDto } from '../students/dto/update-student-aggregate.dto';
 import { studentGradeBirthDateError } from '../students/student-grade.policy';
 import type { InstructorStudentAggregate } from '../students/students.service';
+import { CounselService } from '../counsel/counsel.service';
+import { RegisterStudentWithCounselDto } from './dto/register-student-with-counsel.dto';
+import type { CounselForm } from '../counsel/counsel.entity';
+import { randomUUID } from 'node:crypto';
 
 export type RegistrationResult = {
   student: Student;
   guardian: { parent: Parent; relation: ParentStudent; linkedExisting: boolean } | null;
   guardians: Array<{ parent: Parent; relation: ParentStudent; linkedExisting: boolean }>;
   enrollment: Enrollment | null;
+};
+
+export type StudentCounselIntakeResult = {
+  registration: RegistrationResult;
+  counsel: CounselForm;
+  correlationId: string;
 };
 
 /**
@@ -39,6 +49,7 @@ export class RegistrationsService {
     private readonly interests: StudentInterestsService,
     private readonly enrollments: EnrollmentsService,
     private readonly audit: AuditService,
+    private readonly counsel: CounselService,
   ) {}
 
   async register(dto: RegisterStudentDto, actorId: number): Promise<RegistrationResult> {
@@ -48,7 +59,8 @@ export class RegistrationsService {
       const studentInput = this.normalizeCompleteProfile(dto.student);
       // 학생 생성 전에 관심 target/FK/순서를 검증해 실패 요청이 id조차 발급하지 않도록 한다.
       await this.interests.reloadCommandState();
-      this.interests.validate(dto.interests);
+      const interestInputs = dto.interests ?? [];
+      this.interests.validate(interestInputs);
       const locks = guardians
         .map((guardian) => onlyDigits(guardian.phone ?? '')) // [P2 4-A]
         .filter(Boolean)
@@ -56,7 +68,7 @@ export class RegistrationsService {
       await this.uow.lockTargets(locks);
 
       const student = await this.students.create(studentInput, actorId);
-      await this.interests.replaceInTx(student.id, dto.interests, actorId);
+      await this.interests.replaceInTx(student.id, interestInputs, actorId);
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — actorId 스레딩:
       //  attachGuardianInTx가 같은 tx 안에서 parents create + parent_student_relations create audit을 남긴다.
       const savedGuardians = [] as RegistrationResult['guardians'];
@@ -78,7 +90,7 @@ export class RegistrationsService {
             after: {
               guardianRelationIds: savedGuardians.map((entry) => entry.relation.id),
               linkedExistingCount: savedGuardians.filter((entry) => entry.linkedExisting).length,
-              interestCount: dto.interests.length,
+              interestCount: interestInputs.length,
               enrollmentId: enrollment?.id ?? null,
               courseId: dto.courseId ?? null,
             },
@@ -86,6 +98,32 @@ export class RegistrationsService {
         }),
       });
       return { student, guardian: savedGuardians[0] ?? null, guardians: savedGuardians, enrollment };
+    });
+  }
+
+  async registerWithCounsel(
+    dto: RegisterStudentWithCounselDto,
+    actorId: number,
+  ): Promise<StudentCounselIntakeResult> {
+    return this.uow.run(async () => {
+      const correlationId = randomUUID();
+      const registration = await this.register(dto.registration, actorId);
+      const counsel = await this.counsel.createForm({
+        studentId: registration.student.id,
+        ...dto.counsel,
+      }, actorId);
+      await this.audit.log({
+        entity: 'student_counsel_intakes',
+        entityId: counsel.id,
+        action: 'create',
+        actorId,
+        changes: {
+          studentId: { after: registration.student.id },
+          counselFormId: { after: counsel.id },
+        },
+        reason: `correlation:${correlationId}`,
+      });
+      return { registration, counsel, correlationId };
     });
   }
 

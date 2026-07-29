@@ -24,7 +24,7 @@ export class StudentInterestsService implements OnModuleInit {
     await this.store.hydrate<StudentInterest>(STUDENT_INTERESTS_SPEC);
   }
 
-  /** 관심 수업 command의 FK·중복·최소 개수 판단 전 Postgres source를 readback한다. */
+  /** 관심 수업 command의 FK·중복·개수 판단 전 Postgres source를 readback한다. */
   async reloadCommandState(studentId?: number): Promise<void> {
     await this.store.hydrate<Course>(COURSES_SPEC);
     await this.store.hydrate<StudentInterest>(STUDENT_INTERESTS_SPEC);
@@ -51,7 +51,6 @@ export class StudentInterestsService implements OnModuleInit {
   }
 
   validate(inputs: readonly StudentInterestInput[]): NormalizedInterest[] {
-    if (inputs.length < 2) throw new BadRequestException('희망 수업은 최소 2개여야 합니다.');
     if (inputs.length > 20) throw new BadRequestException('희망 수업은 최대 20개까지 등록할 수 있습니다.');
     const normalized: NormalizedInterest[] = inputs.map((input): NormalizedInterest => {
       const customLabel = input.customLabel?.trim() || undefined;
@@ -131,7 +130,6 @@ export class StudentInterestsService implements OnModuleInit {
       const current = this.db.findByField<StudentInterest>(STUDENT_INTERESTS, 'studentId', studentId);
       const target = current.find((row) => row.id === interestId);
       if (!target) throw new NotFoundException(`희망 수업 ${interestId} 없음`);
-      if (current.length <= 2) throw new ConflictException('희망 수업은 최소 2개를 유지해야 합니다.');
       await this.store.remove(STUDENT_INTERESTS_SPEC, interestId, actorId);
       await this.audit.log({
         entity: STUDENT_INTERESTS, entityId: interestId, action: 'delete', actorId,

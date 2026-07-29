@@ -146,9 +146,8 @@ async function main() {
       push(issues, 'EMAIL_VERIFIED_INVARIANT', 'users', account.id, `email_verified=${String(account.emailVerified)} (status=${account.status ?? '?'}) — 계정 레코드는 항상 true`);
   }
 
-  // ⑩ [TBO-35 35C] 학생 희망 수업 aggregate 불변. 신규/수정 command는 항상 2개 이상을 강제하지만
-  //  35B expand 이전 legacy 학생은 reset/constrain 전까지 0개일 수 있어 warning으로 계측한다.
-  //  35F cleanup 후 warning 0을 확인하고 hard issue로 승격한다.
+  // ⑩ [TBO-35 35C → TBO-76 76C] 학생 희망 수업 aggregate 불변. aggregate 전체는 0..20개이며
+  //  행이 존재할 때만 target XOR·양수/연속 priority·중복 금지를 검증한다.
   {
     const interests = rows<BaseRow & { studentId: number; courseId?: number | null; customLabel?: string | null; priority: number }>('student_interests');
     const byStudent = new Map<number, typeof interests>();
@@ -173,7 +172,7 @@ async function main() {
     for (const student of rows('students')) {
       const owned = byStudent.get(student.id) ?? [];
       const count = owned.length;
-      if (count < 2) push(warnings, 'STUDENT_INTEREST_MINIMUM_LEGACY', 'students', student.id, `활성 관심 수업 ${count}개 — 35F cleanup 대상`);
+      if (count > 20) push(issues, 'STUDENT_INTEREST_MAXIMUM', 'students', student.id, `활성 관심 수업 ${count}개 — 최대 20개`);
       const priorities = owned.map((row) => row.priority).sort((a, b) => a - b);
       if (priorities.some((priority, index) => priority !== index + 1))
         push(issues, 'STUDENT_INTEREST_PRIORITY_GAP', 'students', student.id, `priority=${priorities.join(',')}`);

@@ -7689,6 +7689,39 @@
         ]
       }
     },
+    "/api/students/registrations/with-counsel": {
+      "post": {
+        "operationId": "RegistrationsController_registerWithCounsel",
+        "parameters": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RegisterStudentWithCounselDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ registration, counsel, correlationId }"
+          }
+        },
+        "summary": "신규 학생 원부+첫 상담 원자 등록 — 학생/관심/보호자/수강/상담/audit 단일 tx",
+        "tags": [
+          "students"
+        ],
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ]
+      }
+    },
     "/api/students/{id}/aggregate": {
       "get": {
         "operationId": "RegistrationsController_getAggregate",
@@ -11479,9 +11512,9 @@
             ]
           },
           "interests": {
-            "minItems": 2,
             "maxItems": 20,
-            "description": "희망 수업 2개 이상",
+            "minItems": 0,
+            "description": "관심 희망 수업(선택, 0~20개)",
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/StudentInterestDto"
@@ -11512,8 +11545,40 @@
           }
         },
         "required": [
-          "student",
-          "interests"
+          "student"
+        ]
+      },
+      "NewStudentCounselDto": {
+        "type": "object",
+        "properties": {
+          "referenceNotes": {
+            "type": "string",
+            "maxLength": 2000,
+            "description": "상담 내용"
+          },
+          "nextContactAt": {
+            "type": "string",
+            "format": "date-time",
+            "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}(?::\\d{2}(?:\\.\\d{1,6})?)?(?:Z|[+-]\\d{2}:\\d{2})$",
+            "example": "2026-07-28T09:30:00+09:00",
+            "nullable": false,
+            "description": "다음 상담 예정 instant. 생략하면 일정 미정"
+          }
+        }
+      },
+      "RegisterStudentWithCounselDto": {
+        "type": "object",
+        "properties": {
+          "registration": {
+            "$ref": "#/components/schemas/RegisterStudentDto"
+          },
+          "counsel": {
+            "$ref": "#/components/schemas/NewStudentCounselDto"
+          }
+        },
+        "required": [
+          "registration",
+          "counsel"
         ]
       },
       "UpdateStudentDto": {
@@ -11602,8 +11667,8 @@
             "$ref": "#/components/schemas/UpdateStudentDto"
           },
           "interests": {
-            "minItems": 2,
             "maxItems": 20,
+            "minItems": 0,
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/StudentInterestDto"
