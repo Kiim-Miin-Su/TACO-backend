@@ -88,6 +88,59 @@ async function main(): Promise<void> {
       WHERE successor.user_id <> t.user_id
       ORDER BY t.id LIMIT ${CAP}`,
   );
+  const authVersionMismatch = await finding(
+    `SELECT COUNT(*)::int AS n
+       FROM auth_refresh_tokens t
+       JOIN auth_refresh_tokens successor ON successor.id=t.replaced_by_id
+      WHERE successor.auth_version <> t.auth_version`,
+    `SELECT t.id
+       FROM auth_refresh_tokens t
+       JOIN auth_refresh_tokens successor ON successor.id=t.replaced_by_id
+      WHERE successor.auth_version <> t.auth_version
+      ORDER BY t.id LIMIT ${CAP}`,
+  );
+  const linkedButActive = await finding(
+    `SELECT COUNT(*)::int AS n
+       FROM auth_refresh_tokens
+      WHERE replaced_by_id IS NOT NULL AND revoked_at IS NULL`,
+    `SELECT id
+       FROM auth_refresh_tokens
+      WHERE replaced_by_id IS NOT NULL AND revoked_at IS NULL
+      ORDER BY id LIMIT ${CAP}`,
+  );
+  const invalidRevocationTime = await finding(
+    `SELECT COUNT(*)::int AS n
+       FROM auth_refresh_tokens
+      WHERE revoked_at IS NOT NULL AND revoked_at < created_at`,
+    `SELECT id
+       FROM auth_refresh_tokens
+      WHERE revoked_at IS NOT NULL AND revoked_at < created_at
+      ORDER BY id LIMIT ${CAP}`,
+  );
+  const nonForwardReplacement = await finding(
+    `SELECT COUNT(*)::int AS n
+       FROM auth_refresh_tokens t
+       JOIN auth_refresh_tokens successor ON successor.id=t.replaced_by_id
+      WHERE successor.created_at < t.created_at`,
+    `SELECT t.id
+       FROM auth_refresh_tokens t
+       JOIN auth_refresh_tokens successor ON successor.id=t.replaced_by_id
+      WHERE successor.created_at < t.created_at
+      ORDER BY t.id LIMIT ${CAP}`,
+  );
+  const invalidAuthVersion = await finding(
+    `SELECT COUNT(*)::int AS n FROM auth_refresh_tokens WHERE auth_version <= 0`,
+    `SELECT id FROM auth_refresh_tokens WHERE auth_version <= 0 ORDER BY id LIMIT ${CAP}`,
+  );
+  const invalidTokenHash = await finding(
+    `SELECT COUNT(*)::int AS n
+       FROM auth_refresh_tokens
+      WHERE token_hash !~ '^[0-9a-f]{64}$'`,
+    `SELECT id
+       FROM auth_refresh_tokens
+      WHERE token_hash !~ '^[0-9a-f]{64}$'
+      ORDER BY id LIMIT ${CAP}`,
+  );
   const cycleRoots = await finding(
     `WITH RECURSIVE chain AS (
        SELECT id AS root_id, id, replaced_by_id, ARRAY[id] AS path, false AS cycle
@@ -120,6 +173,12 @@ async function main(): Promise<void> {
     cycleRoots,
     invalidExpiry,
     crossUserLinks,
+    authVersionMismatch,
+    linkedButActive,
+    invalidRevocationTime,
+    nonForwardReplacement,
+    invalidAuthVersion,
+    invalidTokenHash,
   };
   const blockers = Object.values(findings).reduce((sum, item) => sum + item.count, 0);
   console.log(
@@ -130,7 +189,7 @@ async function main(): Promise<void> {
         findings,
         verdict:
           blockers === 0
-            ? '적용 가능 — orphan/self-link/cycle/invalid-expiry/cross-user-link 0'
+            ? '적용 가능 — 12개 refresh-chain 무결성 finding 모두 0'
             : `적용 금지 — 차단 행/루트 합계 ${blockers}`,
       },
       null,
@@ -148,4 +207,3 @@ main()
   .finally(async () => {
     if (dataSource.isInitialized) await dataSource.destroy();
   });
-

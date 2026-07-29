@@ -27,6 +27,6 @@ describe('TBO-76H auth refresh token integrity migration contract', () => {
     expect(sql).toContain('NOT VALID');
     expect(sql).toContain('VALIDATE CONSTRAINT');
     expect(sql).toContain('idx_auth_refresh_tokens_replaced_by');
+    expect(sql).toContain("conrelid='public.auth_refresh_tokens'::regclass");
   });
 });
-

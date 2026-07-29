@@ -91,15 +91,18 @@ async function main(): Promise<void> {
     ? (await dataSource.query('SELECT id, applied_at FROM schema_migrations ORDER BY id ASC')) as Array<{ id: string; applied_at: Date }>
     : [];
   const appliedIds = new Set(applied.map((row) => row.id));
+  const expectedIds = new Set<string>(EXPECTED_MIGRATION_IDS);
   const missing = EXPECTED_MIGRATION_IDS.filter((id) => !appliedIds.has(id));
+  const unexpected = applied.map((row) => row.id).filter((id) => !expectedIds.has(id));
   console.log(JSON.stringify({
-    ok: missing.length === 0,
+    ok: missing.length === 0 && unexpected.length === 0,
     expectedCount: EXPECTED_MIGRATION_IDS.length,
     appliedExpectedCount: EXPECTED_MIGRATION_IDS.length - missing.length,
     missing,
+    unexpected,
     applied,
   }, null, 2));
-  if (missing.length) process.exitCode = 1;
+  if (missing.length || unexpected.length) process.exitCode = 1;
 }
 
 main().catch((error) => {

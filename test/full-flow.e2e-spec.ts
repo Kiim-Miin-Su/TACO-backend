@@ -2,6 +2,10 @@ import { INestApplication } from "@nestjs/common";
 import request from "supertest";
 import { createTestApp, mondayISO, addDaysISO , patchSessionAckingImpact } from "./setup-app";
 
+// 이 파일은 앞 단계가 만든 ID/상태를 다음 단계가 소비하는 하나의 상태ful 여정이다.
+// 개별 it retry는 첫 시도 잔여와 충돌해 원래 실패를 409로 덮으므로 이 spec에서는 금지한다.
+jest.retryTimes(0);
+
 // ─────────────────────────────────────────────────────────────
 // 전체 플로우 통합 e2e — 관리자 로그인 → 스케줄 생성(독립·커스텀 반복) →
 //   가용/불가 설정 → 충돌 있는/없는 생성 → 진행(held) → 리포트 작성·승인 →
@@ -18,7 +22,10 @@ describe("Full Flow (e2e)", () => {
   const asAdmin = () => ({ Authorization: `Bearer ${ADMIN}` });
 
   const MON = mondayISO();
-  const W3MON = addDaysISO(MON, 21); // 메인 플로우 주(3주 뒤)
+  // 실제 PostgreSQL에서도 반복 실행 가능하도록 프로세스별 고유 미래 주간을 사용한다.
+  // pid는 한 실행 안에서는 고정되어 단계 간 날짜 계약은 유지되고, 다음 실행은 이전 잔여와 분리된다.
+  const RUN_WEEK_OFFSET = 60 + (process.pid % 600);
+  const W3MON = addDaysISO(MON, RUN_WEEK_OFFSET * 7);
   const W3TUE = addDaysISO(W3MON, 1);
   const W3SUN = addDaysISO(W3MON, 6);
 

@@ -77,22 +77,38 @@ export const AUTH_REFRESH_TOKEN_INTEGRITY_SQL: readonly string[] = [
    END $$`,
   `DO $$
    BEGIN
-     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_auth_refresh_user') THEN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+        WHERE conname='fk_auth_refresh_user'
+          AND conrelid='public.auth_refresh_tokens'::regclass
+     ) THEN
        ALTER TABLE auth_refresh_tokens
          ADD CONSTRAINT fk_auth_refresh_user
          FOREIGN KEY (user_id) REFERENCES users(id) NOT VALID;
      END IF;
-     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='fk_auth_refresh_replaced_by') THEN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+        WHERE conname='fk_auth_refresh_replaced_by'
+          AND conrelid='public.auth_refresh_tokens'::regclass
+     ) THEN
        ALTER TABLE auth_refresh_tokens
          ADD CONSTRAINT fk_auth_refresh_replaced_by
          FOREIGN KEY (replaced_by_id) REFERENCES auth_refresh_tokens(id) NOT VALID;
      END IF;
-     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='c_auth_refresh_not_self_replaced') THEN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+        WHERE conname='c_auth_refresh_not_self_replaced'
+          AND conrelid='public.auth_refresh_tokens'::regclass
+     ) THEN
        ALTER TABLE auth_refresh_tokens
          ADD CONSTRAINT c_auth_refresh_not_self_replaced
          CHECK (replaced_by_id IS NULL OR replaced_by_id <> id) NOT VALID;
      END IF;
-     IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname='c_auth_refresh_expiry_after_create') THEN
+     IF NOT EXISTS (
+       SELECT 1 FROM pg_constraint
+        WHERE conname='c_auth_refresh_expiry_after_create'
+          AND conrelid='public.auth_refresh_tokens'::regclass
+     ) THEN
        ALTER TABLE auth_refresh_tokens
          ADD CONSTRAINT c_auth_refresh_expiry_after_create
          CHECK (expires_at > created_at) NOT VALID;
@@ -104,7 +120,8 @@ export const AUTH_REFRESH_TOKEN_INTEGRITY_SQL: readonly string[] = [
      FOR constraint_row IN
        SELECT conname, conrelid::regclass::text AS table_name
          FROM pg_constraint
-        WHERE conname IN (
+        WHERE conrelid='public.auth_refresh_tokens'::regclass
+          AND conname IN (
           'fk_auth_refresh_user',
           'fk_auth_refresh_replaced_by',
           'c_auth_refresh_not_self_replaced',
@@ -123,4 +140,3 @@ export const AUTH_REFRESH_TOKEN_INTEGRITY_SQL: readonly string[] = [
      ON auth_refresh_tokens (replaced_by_id)
      WHERE replaced_by_id IS NOT NULL`,
 ];
-

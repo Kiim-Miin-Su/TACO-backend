@@ -139,8 +139,11 @@ describe('Profile contact verification (e2e, TBO-29B-4)', () => {
       .send({ code: fake.lastCode() }).expect(400);
 
     // 잠금: 새 challenge에서 5회 오입력
+    const lockedTarget = `manager.lock.${Date.now()}@tnacademy.test`;
     const locked = (await http.post('/api/profile-verifications').set(bearer(tokens.manager))
-      .send({ currentPassword: 'demo1234', channel: 'email', target: 'manager.new@tnacademy.test' }).expect(201)).body;
+      .send({ currentPassword: 'demo1234', channel: 'email', target: lockedTarget }).expect(201)).body;
+    expect(locked.id).toEqual(expect.any(Number));
+    expect(locked.id).toBeGreaterThan(0);
     for (let i = 0; i < 5; i += 1) {
       await http.post(`/api/profile-verifications/${locked.id}/confirm`).set(bearer(tokens.manager))
         .send({ code: '999999' }).expect(400);

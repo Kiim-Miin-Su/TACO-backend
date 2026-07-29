@@ -31,9 +31,10 @@ const dataSource = new DataSource({
 
 async function state(): Promise<Record<string, unknown>> {
   const constraints = await dataSource.query(
-    `SELECT conname, contype, convalidated
+    `SELECT conname, contype, convalidated, pg_get_constraintdef(oid, true) AS definition
        FROM pg_constraint
-      WHERE conname = ANY($1)
+      WHERE conrelid='public.auth_refresh_tokens'::regclass
+        AND conname = ANY($1)
       ORDER BY conname`,
     [[...AUTH_REFRESH_TOKEN_CONSTRAINTS]],
   );
@@ -79,30 +80,114 @@ async function main(): Promise<void> {
     return;
   }
 
-  await dataSource.transaction(async (manager) => {
-    await manager.query('SELECT pg_advisory_xact_lock($1, $2)', [76, 8]);
-    await manager.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
-      id varchar(100) PRIMARY KEY,
-      applied_at timestamptz NOT NULL DEFAULT now()
-    )`);
-    const applied = await manager.query('SELECT id FROM schema_migrations WHERE id=$1', [
-      AUTH_REFRESH_TOKEN_INTEGRITY_MIGRATION_ID,
-    ]);
-    if (applied.length) return;
-    for (const sql of AUTH_REFRESH_TOKEN_INTEGRITY_SQL) await manager.query(sql);
-    await manager.query('INSERT INTO schema_migrations (id) VALUES ($1)', [
-      AUTH_REFRESH_TOKEN_INTEGRITY_MIGRATION_ID,
-    ]);
-  });
+  const runner = dataSource.createQueryRunner();
+  await runner.connect();
+  let alreadyApplied = false;
+  try {
+    // ADD NOT VALID와 VALIDATE 사이에도 다른 migration runner가 끼어들지 않도록
+    // 같은 물리 connection의 session advisory lock을 유지한다.
+    await runner.query('SELECT pg_advisory_lock($1, $2)', [76, 8]);
+    await runner.startTransaction();
+    try {
+      await runner.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
+        id varchar(100) PRIMARY KEY,
+        applied_at timestamptz NOT NULL DEFAULT now()
+      )`);
+      const applied = await runner.query('SELECT id FROM schema_migrations WHERE id=$1', [
+        AUTH_REFRESH_TOKEN_INTEGRITY_MIGRATION_ID,
+      ]);
+      alreadyApplied = applied.length > 0;
+      if (!alreadyApplied) {
+        // Gate + ADD NOT VALID + replacement index. VALIDATE 전 commit하여 ADD가 취득한
+        // 강한 lock을 먼저 해제한다.
+        await runner.query(AUTH_REFRESH_TOKEN_INTEGRITY_SQL[0]);
+        await runner.query(AUTH_REFRESH_TOKEN_INTEGRITY_SQL[1]);
+        await runner.query(AUTH_REFRESH_TOKEN_INTEGRITY_SQL[3]);
+      }
+      await runner.commitTransaction();
+    } catch (error) {
+      await runner.rollbackTransaction();
+      throw error;
+    }
+
+    if (!alreadyApplied) {
+      await runner.startTransaction();
+      try {
+        await runner.query(AUTH_REFRESH_TOKEN_INTEGRITY_SQL[2]);
+        await runner.commitTransaction();
+      } catch (error) {
+        await runner.rollbackTransaction();
+        throw error;
+      }
+
+      const beforeLedger = await state();
+      const validated = beforeLedger.constraints as Array<{ convalidated: boolean }>;
+      if (
+        validated.length !== AUTH_REFRESH_TOKEN_CONSTRAINTS.length ||
+        !validated.every((constraint) => constraint.convalidated === true) ||
+        beforeLedger.replacementIndexPresent !== true
+      ) {
+        throw new Error('auth refresh token constraints validation readback failed');
+      }
+
+      await runner.startTransaction();
+      try {
+        await runner.query('INSERT INTO schema_migrations (id) VALUES ($1)', [
+          AUTH_REFRESH_TOKEN_INTEGRITY_MIGRATION_ID,
+        ]);
+        await runner.commitTransaction();
+      } catch (error) {
+        await runner.rollbackTransaction();
+        throw error;
+      }
+    }
+  } finally {
+    if (runner.isTransactionActive) await runner.rollbackTransaction();
+    try {
+      await runner.query('SELECT pg_advisory_unlock($1, $2)', [76, 8]);
+    } finally {
+      await runner.release();
+    }
+  }
 
   const after = await state();
   const constraints = after.constraints as Array<{
     conname: string;
+    contype: string;
     convalidated: boolean;
+    definition: string;
   }>;
+  const expectedDefinitions: Record<string, { contype: string; includes: string[] }> = {
+    fk_auth_refresh_user: {
+      contype: 'f',
+      includes: ['FOREIGN KEY (user_id)', 'REFERENCES users(id)'],
+    },
+    fk_auth_refresh_replaced_by: {
+      contype: 'f',
+      includes: [
+        'FOREIGN KEY (replaced_by_id)',
+        'REFERENCES auth_refresh_tokens(id)',
+      ],
+    },
+    c_auth_refresh_not_self_replaced: {
+      contype: 'c',
+      includes: ['replaced_by_id IS NULL', 'replaced_by_id <> id'],
+    },
+    c_auth_refresh_expiry_after_create: {
+      contype: 'c',
+      includes: ['expires_at > created_at'],
+    },
+  };
   const allConstraintsValid =
     constraints.length === AUTH_REFRESH_TOKEN_CONSTRAINTS.length &&
-    constraints.every((constraint) => constraint.convalidated === true);
+    constraints.every((constraint) => {
+      const expected = expectedDefinitions[constraint.conname];
+      return (
+        constraint.convalidated === true &&
+        expected?.contype === constraint.contype &&
+        expected.includes.every((part) => constraint.definition.includes(part))
+      );
+    });
   if (
     !allConstraintsValid ||
     after.replacementIndexPresent !== true ||
@@ -131,4 +216,3 @@ main()
   .finally(async () => {
     if (dataSource.isInitialized) await dataSource.destroy();
   });
-
