@@ -205,12 +205,17 @@ export class SignupApprovalService {
   async deletePendingAccount(id: number, actorId: number, reason: string): Promise<{ ok: true }> {
     await this.users.refreshFromDb();
     return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'user', id }, { kind: 'user', id: actorId }]);
+      await this.users.refreshFromDb();
       const before = this.users.findById(id);
       if (!before) throw new NotFoundException(`계정 ${id} 없음`);
       if (before.status !== 'pending' && before.status !== 'rejected')
         throw new BadRequestException('가입 대기(pending)·반려(rejected) 계정만 삭제할 수 있습니다.');
       const tombstone = `del_${id}_${Date.now().toString(36)}`.slice(0, 50); // UNIQUE 해제(50자 상한)
-      await this.store.update<StaffAccount>(USERS_SPEC, id, {
+      const tombstoned = await this.store.updateIf<StaffAccount>(USERS_SPEC, id, {
+        status: before.status,
+        webId: before.webId,
+      }, {
         webId: tombstone,
         email: null, // email UNIQUE는 NULL 다중 허용 — 원 이메일 즉시 재가입 가능
         rrnEncrypted: null, // 개인정보 파기(마스킹 포함 일절 잔존 금지)
@@ -220,6 +225,9 @@ export class SignupApprovalService {
         passwordResetExpiresAt: null,
         authVersion: authVersionOf(before) + 1,
       } as Partial<StaffAccount> as never);
+      if (!tombstoned) {
+        throw new ConflictException('가입 신청 상태가 변경되었습니다. 목록을 새로고침해 주세요.');
+      }
       await this.store.remove(USERS_SPEC, id, actorId);
       // audit — 원 식별자는 사유 추적을 위해 webId만 기록(email·RRN은 기록하지 않는다).
       await this.audit.log({

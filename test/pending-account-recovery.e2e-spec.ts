@@ -18,6 +18,8 @@ type UserRow = {
   rrnEncrypted?: string | null; deletedAt?: string | null;
 };
 
+jest.retryTimes(0);
+
 describe('Legacy pending account recovery + delete (e2e, hotfix 2026-07-20)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
@@ -94,5 +96,40 @@ describe('Legacy pending account recovery + delete (e2e, hotfix 2026-07-20)', ()
     const acc = await insertLegacyPending('legacy_guard', 'guard@legacy.test');
     await http.post(`/api/auth/pending/${acc.id}/resend-verification`).set(auth(inst)).send({}).expect(403);
     await http.delete(`/api/auth/pending/${acc.id}`).set(auth(inst)).send({ reason: '강사 시도' }).expect(403);
+  });
+
+  it('⑤ 승인과 삭제 경합은 정확히 하나만 commit하고 부분 tombstone을 남기지 않는다', async () => {
+    const challengeId = await verifiedSignupChallenge(http, 'delete-race@legacy.test');
+    const acc = (await http.post('/api/auth/signup').send({
+      webId: 'legacy_delete_race',
+      name: '삭제승인경합',
+      email: 'delete-race@legacy.test',
+      password: 'password123',
+      rrn: '950101-1234567',
+      emailChallengeId: challengeId,
+      role: 'instructor',
+    }).expect(201)).body.account as UserRow;
+
+    const [approved, deleted] = await Promise.all([
+      http.post(`/api/auth/approve/${acc.id}`).set(auth(admin)).send({ reason: '경합 승인' }),
+      http.delete(`/api/auth/pending/${acc.id}`).set(auth(admin)).send({ reason: '경합 삭제' }),
+    ]);
+    expect([approved.status, deleted.status].filter((status) => status === 200 || status === 201)).toHaveLength(1);
+
+    const row = db.findAll<UserRow>('users', { withDeleted: true } as never)
+      .find((candidate) => candidate.id === acc.id);
+    expect(row).toBeDefined();
+    if (row!.deletedAt) {
+      expect(row).toMatchObject({ email: null, rrnEncrypted: null });
+      expect(row!.webId).toMatch(/^del_/);
+      expect(deleted.status).toBe(200);
+    } else {
+      expect(row).toMatchObject({
+        webId: 'legacy_delete_race',
+        email: 'delete-race@legacy.test',
+        status: 'active',
+      });
+      expect(approved.status).toBe(201);
+    }
   });
 });

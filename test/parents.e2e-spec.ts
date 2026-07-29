@@ -3,6 +3,8 @@ import request from 'supertest';
 import { createTestApp } from './setup-app';
 import { studentAggregateBody } from './fixtures/student-profile';
 
+jest.retryTimes(0);
+
 // ─────────────────────────────────────────────────────────────
 // 보호자(parents) — 실제 접수 담당자 흐름 통합 e2e.
 //  학생 인테이크(부모 없는 학생3) → 모 등록(대표+납부) → 부 등록(납부) →

@@ -3,10 +3,14 @@ import { onlyDigits } from '../../common/digits.util'; // [P2 4-A]
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
-import { PARENTS_SPEC, PARENT_STUDENT_RELATIONS_SPEC } from '../../database/calendar-asset-specs';
+import {
+  PARENTS_SPEC,
+  PARENT_STUDENT_RELATIONS_SPEC,
+  STUDENTS_SPEC,
+} from '../../database/calendar-asset-specs';
 import { StudentsService } from '../students/students.service';
 import { AuditService } from '../audit/audit.service';
-import { Student, STUDENTS } from '../students/student.entity';
+import { Student } from '../students/student.entity';
 import { Parent, ParentStudent, PARENTS, PARENT_STUDENTS } from './parent.entity';
 import { CreateParentDto } from './dto/create-parent.dto';
 import { LinkParentDto, UpdateRelationDto } from './dto/link-parent.dto';
@@ -68,6 +72,35 @@ export class ParentsService implements OnModuleInit {
     return row;
   }
 
+  private async relationDb(id: number): Promise<ParentStudent> {
+    const [row] = await this.store.findActive<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC, {
+      where: { id } as Partial<ParentStudent>,
+      limit: 1,
+    });
+    if (!row) throw new NotFoundException(`관계 ${id} 없음`);
+    return row;
+  }
+
+  private async studentExistsDb(id: number): Promise<boolean> {
+    const [row] = await this.store.findActive<Student>(STUDENTS_SPEC, {
+      where: { id } as Partial<Student>,
+      limit: 1,
+    });
+    return row != null;
+  }
+
+  private relationsForStudentDb(studentId: number): Promise<ParentStudent[]> {
+    return this.store.findActive<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC, {
+      where: { studentId } as Partial<ParentStudent>,
+    });
+  }
+
+  private relationsForParentDb(parentId: number): Promise<ParentStudent[]> {
+    return this.store.findActive<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC, {
+      where: { parentId } as Partial<ParentStudent>,
+    });
+  }
+
   guardiansForStudent(studentId: number): Array<{ parent: Parent; relation: ParentStudent }> {
     return this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'studentId', studentId)
       .map((relation) => ({ parent: this.db.findById<Parent>(PARENTS, relation.parentId), relation }))
@@ -80,7 +113,7 @@ export class ParentsService implements OnModuleInit {
   async create(dto: CreateParentDto, actorId?: number): Promise<{ parent: Parent; relation: ParentStudent }> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: dto.studentId }]);
-      if (!this.db.findById<Student>(STUDENTS, dto.studentId))
+      if (!(await this.studentExistsDb(dto.studentId)))
         throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
       const parent = await this.store.insert<Parent>(PARENTS_SPEC, {
         name: dto.name,
@@ -125,8 +158,8 @@ export class ParentsService implements OnModuleInit {
     const normalized = digits(guardian.phone);
     const normalizedName = guardian.name.trim().toLowerCase();
     const existing = normalized
-      ? this.db.findBy<Parent>(PARENTS, (parent) =>
-        digits(parent.phone) === normalized && parent.name.trim().toLowerCase() === normalizedName)[0]
+      ? (await this.store.findActive<Parent>(PARENTS_SPEC)).find((parent) =>
+        digits(parent.phone) === normalized && parent.name.trim().toLowerCase() === normalizedName)
       : undefined;
     const parent = existing
       ?? (await this.store.insert<Parent>(PARENTS_SPEC, {
@@ -152,15 +185,19 @@ export class ParentsService implements OnModuleInit {
 
   // tx 내부 전용 — create()/link()/attachGuardianInTx가 같은 uow tx에서 호출(중첩 uow.run 금지).
   private async linkInTx(dto: LinkParentDto, actorId?: number): Promise<ParentStudent> {
-    if (!this.db.findById<Parent>(PARENTS, dto.parentId))
+    const [parent] = await this.store.findActive<Parent>(PARENTS_SPEC, {
+      where: { id: dto.parentId } as Partial<Parent>,
+      limit: 1,
+    });
+    if (!parent)
       throw new BadRequestException(`parentId ${dto.parentId} 없음(존재하지 않는 보호자)`);
-    if (!this.db.findById<Student>(STUDENTS, dto.studentId))
+    if (!(await this.studentExistsDb(dto.studentId)))
       throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
 
-    const dup = this.db.findBy<ParentStudent>(
-      PARENT_STUDENTS,
-      (r) => r.parentId === dto.parentId && r.studentId === dto.studentId,
-    );
+    const dup = await this.store.findActive<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC, {
+      where: { parentId: dto.parentId, studentId: dto.studentId } as Partial<ParentStudent>,
+      limit: 1,
+    });
     if (dup.length) throw new ConflictException(`보호자 ${dto.parentId}·학생 ${dto.studentId} 연결이 이미 존재`);
 
     if (dto.isPrimary) await this.demotePrimary(dto.studentId, undefined, actorId);
@@ -182,11 +219,10 @@ export class ParentsService implements OnModuleInit {
   // 관계 수정(대표 이전·납부자). 대표 지정 시 기존 대표 강등 → 학생당 대표 ≤1 유지(한 tx).
   async updateRelation(id: number, dto: UpdateRelationDto, actorId?: number): Promise<ParentStudent> {
     return this.uow.run(async () => {
-      const rel = this.db.findById<ParentStudent>(PARENT_STUDENTS, id);
-      if (!rel) throw new NotFoundException(`관계 ${id} 없음`);
-      await this.uow.lockTargets([{ kind: 'student', id: rel.studentId }]);
-      const before = { ...rel };
-      if (dto.isPrimary === true) await this.demotePrimary(rel.studentId, id, actorId);
+      const initial = await this.relationDb(id);
+      await this.uow.lockTargets([{ kind: 'student', id: initial.studentId }]);
+      const before = { ...(await this.relationDb(id)) };
+      if (dto.isPrimary === true) await this.demotePrimary(before.studentId, id, actorId);
       const after = (await this.store.update<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC, id, {
         ...(dto.relation !== undefined ? { relation: dto.relation } : {}),
         ...(dto.isPayer !== undefined ? { isPayer: dto.isPayer } : {}),
@@ -205,9 +241,9 @@ export class ParentsService implements OnModuleInit {
 
   async removeRelation(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
     return this.uow.run(async () => {
-      const relation = this.db.findById<ParentStudent>(PARENT_STUDENTS, id);
-      if (!relation) throw new NotFoundException(`관계 ${id} 없음`);
-      await this.uow.lockTargets([{ kind: 'student', id: relation.studentId }]);
+      const initial = await this.relationDb(id);
+      await this.uow.lockTargets([{ kind: 'student', id: initial.studentId }]);
+      const relation = await this.relationDb(id);
       await this.store.remove(PARENT_STUDENT_RELATIONS_SPEC, id, actorId);
       await this.audit.log({
         entity: 'parent_student_relations', entityId: id, action: 'delete', actorId,
@@ -220,16 +256,19 @@ export class ParentsService implements OnModuleInit {
   /** 학생 상세의 보호자 삭제 command. 관계와, 다른 학생 관계가 없는 보호자 원부를 한 UoW에서 정리한다. */
   async removeGuardian(id: number, actorId: number): Promise<{ relationId: number; parentId: number; parentDeleted: boolean }> {
     return this.uow.run(async () => {
-      const relation = this.db.findById<ParentStudent>(PARENT_STUDENTS, id);
-      if (!relation) throw new NotFoundException(`관계 ${id} 없음`);
-      await this.uow.lockTargets([{ kind: 'student', id: relation.studentId }, { kind: 'parent', id: relation.parentId }]);
-      const parent = { ...this.findOne(relation.parentId) };
+      const initial = await this.relationDb(id);
+      await this.uow.lockTargets([
+        { kind: 'student', id: initial.studentId },
+        { kind: 'parent', id: initial.parentId },
+      ]);
+      const relation = await this.relationDb(id);
+      const parent = { ...(await this.getDb(relation.parentId)) };
       await this.store.remove(PARENT_STUDENT_RELATIONS_SPEC, id, actorId);
       await this.audit.log({
         entity: 'parent_student_relations', entityId: id, action: 'delete', actorId,
         changes: this.audit.snapshotOf(relation),
       });
-      const remaining = this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'parentId', relation.parentId);
+      const remaining = await this.relationsForParentDb(relation.parentId);
       if (remaining.length) return { relationId: id, parentId: relation.parentId, parentDeleted: false };
       await this.store.remove(PARENTS_SPEC, relation.parentId, actorId);
       await this.audit.log({
@@ -243,7 +282,7 @@ export class ParentsService implements OnModuleInit {
   async update(id: number, dto: UpdateParentDto, actorId: number): Promise<Parent> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'parent', id }]);
-      const before = { ...this.findOne(id) };
+      const before = { ...(await this.getDb(id)) };
       const after = await this.store.update<Parent>(PARENTS_SPEC, id, dto);
       if (!after) throw new NotFoundException(`보호자 ${id} 없음`);
       await this.audit.log({
@@ -257,8 +296,8 @@ export class ParentsService implements OnModuleInit {
   async remove(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'parent', id }]);
-      const parent = { ...this.findOne(id) };
-      const relations = this.db.findByField<ParentStudent>(PARENT_STUDENTS, 'parentId', id);
+      const parent = { ...(await this.getDb(id)) };
+      const relations = await this.relationsForParentDb(id);
       if (relations.length) throw new ConflictException('활성 학생 관계가 있는 보호자는 삭제할 수 없습니다. 관계를 먼저 삭제하세요.');
       await this.store.remove(PARENTS_SPEC, id, actorId);
       await this.audit.log({
@@ -272,10 +311,8 @@ export class ParentsService implements OnModuleInit {
   // 학생의 기존 대표(primary)를 모두 강등(exceptId는 유지). 같은 tx에서 선행 실행 —
   // partial unique(uq_parent_student_primary)가 non-deferred여도 위반 없이 통과한다.
   private async demotePrimary(studentId: number, exceptId?: number, actorId?: number): Promise<void> {
-    const rows = this.db.findBy<ParentStudent>(
-      PARENT_STUDENTS,
-      (r) => r.studentId === studentId && r.isPrimary && r.id !== exceptId,
-    );
+    const rows = (await this.relationsForStudentDb(studentId))
+      .filter((row) => row.isPrimary && row.id !== exceptId);
     for (const r of rows) {
       const before = { ...r };
       const after = (await this.store.update<ParentStudent>(PARENT_STUDENT_RELATIONS_SPEC, r.id, { isPrimary: false })) as ParentStudent;
