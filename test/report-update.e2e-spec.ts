@@ -10,6 +10,7 @@ describe('Report content update (e2e, E0.6 H1)', () => {
   let http: ReturnType<typeof request>;
   let db: InMemoryDatabase;
   const tokens: Record<string, string> = {};
+  let draftId = 0;
 
   const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
   const login = async (webId: string) =>
@@ -62,6 +63,7 @@ describe('Report content update (e2e, E0.6 H1)', () => {
       homework: 'Vocab #6 문장 완성과 단어 암기',
       status: 'draft',
     }).expect(201)).body;
+    draftId = created.id;
     expect(created.progressPage).toBe('Vocab #6 PDF 문장 만들기');
 
     const detail = (await http.get(`/api/reports/${created.id}`).set(bearer(tokens.park)).expect(200)).body;
@@ -74,6 +76,18 @@ describe('Report content update (e2e, E0.6 H1)', () => {
         instructor: { id: session.instructorId, name: expect.any(String) },
       },
     });
+  });
+
+  it('soft-deletes only an owner/admin draft and writes metadata-only audit', async () => {
+    await http.delete(`/api/reports/${draftId}`).set(bearer(tokens.jung)).expect(403);
+    await http.delete('/api/reports/1').set(bearer(tokens.park)).expect(400);
+    expect((await http.delete(`/api/reports/${draftId}`)
+      .set(bearer(tokens.park)).expect(200)).body).toEqual({ id: draftId, deleted: true });
+    await http.get(`/api/reports/${draftId}`).set(bearer(tokens.park)).expect(404);
+    const audits = db.findAll<Record<string, unknown> & { id: number }>('audit_log')
+      .filter((row) => row.entity === 'session_reports' && row.entityId === draftId && row.action === 'delete');
+    expect(audits).toHaveLength(1);
+    expect(JSON.stringify(audits[0])).not.toContain('Vocab #6 문장 만들기와 전치사 교정');
   });
 
   it('rejects non-owner (403), empty patch (400), and edits after approval (400)', async () => {

@@ -72,7 +72,14 @@ const S: Record<string, Surface> = {
   expenses: { lifecycle: 'direct', contract: ['Expense'], api: ['POST /expenses', 'PATCH /expenses/{id}', 'DELETE /expenses/{id}'], frontend: ['api.expenses'], verdict: 'complete', note: 'request/decision lifecycle' },
   transactions: { lifecycle: 'derived', contract: ['Transaction'], api: ['GET /transactions'], frontend: ['api.transactions'], verdict: 'by-design', note: 'payment/expense/payout transition-owned ledger; direct CUD forbidden' },
   academy_events: { lifecycle: 'direct', contract: ['AcademyEvent'], api: ['POST /events', 'PATCH /events/{id}', 'DELETE /events/{id}'], frontend: ['api.events'], verdict: 'complete', note: 'calendar event CRUD' },
-  session_reports: { lifecycle: 'direct', contract: ['SessionReport'], api: ['POST /reports', 'PATCH /reports/{id}', 'POST /reports/{id}/approve'], frontend: ['api.reports'], verdict: 'gap', note: 'draft correction exists; mistaken draft withdraw/delete command missing' },
+  session_reports: {
+    lifecycle: 'direct',
+    contract: ['SessionReport'],
+    api: ['POST /reports', 'PATCH /reports/{id}', 'DELETE /reports/{id}', 'POST /reports/{id}/approve'],
+    frontend: ['api.reports', 'useRemoveReport'],
+    verdict: 'complete',
+    note: 'draft owner/admin soft-delete plus submission/decision lifecycle and audit',
+  },
   calendar_view_presets: { lifecycle: 'direct', contract: ['CalendarViewPreset'], api: ['POST /view-presets', 'PATCH /view-presets/{id}', 'DELETE /view-presets/{id}'], frontend: ['api.viewPresets'], verdict: 'complete', note: 'owner-scoped persisted CRUD' },
   report_templates: { lifecycle: 'direct', contract: ['ReportTemplate'], api: ['POST /report-templates', 'DELETE /report-templates/{id}'], frontend: ['api.reportTemplates'], verdict: 'gap', note: 'create/read/delete exists; update missing' },
 };

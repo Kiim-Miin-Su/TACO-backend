@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
 import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
@@ -50,6 +50,13 @@ export class ReportsController {
   @ApiOperation({ summary: '보고서 수업내용/진도페이지/숙제 수정(승인 전) — 본인 보고서만.' })
   update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateReportDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.reports.updateContent(id, dto, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
+  }
+
+  @Delete(':id')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '잘못 만든 draft 보고서 철회(soft delete) — 작성자 본인 또는 관리자.' })
+  remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.reports.removeDraft(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }
 
   @Post(':id/submit')

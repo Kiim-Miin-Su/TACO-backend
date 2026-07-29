@@ -5039,6 +5039,39 @@
         "tags": [
           "reports"
         ]
+      },
+      "delete": {
+        "operationId": "ReportsController_remove",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": ""
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "잘못 만든 draft 보고서 철회(soft delete) — 작성자 본인 또는 관리자.",
+        "tags": [
+          "reports"
+        ]
       }
     },
     "/api/reports/{id}/submit": {

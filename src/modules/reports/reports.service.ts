@@ -32,6 +32,7 @@ import { Subject } from '../subjects/subject.entity';
 import { StaffAccount } from '../users/user.entity';
 import type { Attendance } from '../attendance/attendance.entity';
 import { attendanceCompletionHoldPatch } from '../schedule/session-temporal-transition.policy';
+import { isPayoutLocked } from '../schedule/session-accounting.policy';
 
 // [보안 2026-07-07 H2] 액터 컨텍스트 — 비관리자(강사)는 본인 세션·본인 보고서만 쓰기 가능(IDOR 차단).
 export type ReportActor = { id: number; roles: string[] };
@@ -328,6 +329,45 @@ export class ReportsService implements OnModuleInit {
         });
       }
       return after;
+    });
+  }
+
+  async removeDraft(id: number, actor?: ReportActor): Promise<{ id: number; deleted: true }> {
+    const scoped = await this.reportFromDb(id);
+    return this.uow.run(async () => {
+      await this.uow.lockTargets(sessionAccountingLockKeys({
+        sessionIds: [scoped.sessionId],
+        reportIds: [id],
+      }));
+      const report = await this.reportFromDb(id);
+      if (actor && !actorIsAdmin(actor) && report.instructorId !== actor.id) {
+        throw new ForbiddenException('작성 강사 또는 관리자만 이 draft 보고서를 철회할 수 있습니다.');
+      }
+      if (report.approvalStatus !== 'draft' || report.status !== 'draft') {
+        throw new BadRequestException('draft 상태의 보고서만 철회할 수 있습니다.');
+      }
+      const session = await this.sessionsStore.findByIdDb(report.sessionId);
+      if (!session) throw new ConflictException('연결된 수업을 찾을 수 없어 보고서를 철회할 수 없습니다.');
+      if (isPayoutLocked(session)) {
+        throw new BadRequestException('정산에 연결되거나 지급 완료된 수업의 보고서는 정산 회수 후 철회할 수 있습니다.');
+      }
+      const deleted = await this.store.remove(SESSION_REPORTS_SPEC, id, actor?.id);
+      if (!deleted) throw new ConflictException('이미 철회되거나 상태가 변경된 보고서입니다.');
+      if (actor?.id != null && actor.id > 0) {
+        await this.audit.log({
+          entity: SESSION_REPORTS,
+          entityId: id,
+          action: 'delete',
+          actorId: actor.id,
+          changes: {
+            sessionId: { before: report.sessionId },
+            studentId: { before: report.studentId },
+            approvalStatus: { before: 'draft' },
+          },
+          reason: 'draft 보고서 작성 철회',
+        });
+      }
+      return { id, deleted: true };
     });
   }
 
