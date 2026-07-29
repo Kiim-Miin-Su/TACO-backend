@@ -38,6 +38,7 @@ import { SESSION_REPORT_PROGRESS_PAGE_MIGRATION_ID } from '../src/database/migra
 import { AUTH_REFRESH_TOKEN_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/auth-refresh-token-integrity.migration';
 import { INSTRUCTOR_CONTRACT_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/instructor-contract-integrity.migration';
 import { INSTRUCTOR_CONTRACT_BOUNDS_MIGRATION_ID } from '../src/database/migrations/instructor-contract-bounds.migration';
+import { TRANSACTION_SOURCE_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/transaction-source-integrity.migration';
 
 loadLocalEnv();
 
@@ -77,6 +78,7 @@ export const EXPECTED_MIGRATION_IDS = [
   AUTH_REFRESH_TOKEN_INTEGRITY_MIGRATION_ID, // [76H] refresh token user/replacement FK + self/expiry CHECK
   INSTRUCTOR_CONTRACT_INTEGRITY_MIGRATION_ID, // [77C] contract FK/value/active-period exclusion
   INSTRUCTOR_CONTRACT_BOUNDS_MIGRATION_ID, // [77C] DTO max bounds mirrored in DB CHECK
+  TRANSACTION_SOURCE_INTEGRITY_MIGRATION_ID, // [77E] ledger source exactly-one + FK
 ] as const;
 
 const url = directDatabaseUrl();

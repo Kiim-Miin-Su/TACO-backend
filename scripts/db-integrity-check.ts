@@ -133,7 +133,7 @@ async function main() {
   //    정산 계열 category는 payoutId 필수.
   for (const tx of rows<BaseRow & { paymentId?: number | null; payoutId?: number | null; expenseId?: number | null; category?: string }>('transactions')) {
     const refs = [tx.paymentId, tx.payoutId, tx.expenseId].filter((v) => v != null).length;
-    if (refs > 1) push(issues, 'TX_BACKREF_NOT_EXCLUSIVE', 'transactions', tx.id, `역참조 ${refs}개(정확히 하나 규약)`);
+    if (refs !== 1) push(issues, 'TX_BACKREF_NOT_EXCLUSIVE', 'transactions', tx.id, `역참조 ${refs}개(정확히 하나 규약)`);
     if ((tx.category === 'instructor_payout' || tx.category === 'payout_reversal') && tx.payoutId == null)
       push(issues, 'TX_PAYOUT_REF_MISSING', 'transactions', tx.id, `category=${tx.category}인데 payoutId 없음`);
   }

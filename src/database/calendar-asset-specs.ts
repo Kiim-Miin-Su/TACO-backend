@@ -40,6 +40,7 @@ import { PAYMENTS_MONEY_CONSTRAINTS_MIGRATION_SQL, TRANSACTIONS_PAYMENT_FK_SQL }
 import { AUTH_REFRESH_TOKEN_INTEGRITY_SQL } from './migrations/auth-refresh-token-integrity.migration';
 import { INSTRUCTOR_CONTRACT_INTEGRITY_SQL } from './migrations/instructor-contract-integrity.migration';
 import { INSTRUCTOR_CONTRACT_BOUNDS_SQL } from './migrations/instructor-contract-bounds.migration';
+import { TRANSACTION_SOURCE_INTEGRITY_SQL } from './migrations/transaction-source-integrity.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -972,7 +973,7 @@ export const TRANSACTIONS_SPEC: PostgresCollectionSpec = {
     )
   `,
   timestampFields: ['occurredAt'],
-  migrations: [TRANSACTIONS_PAYMENT_FK_SQL], // [TBO-53 C1] 원장 역참조 FK(payments 존재 시 적용 — 멱등)
+  migrations: [TRANSACTIONS_PAYMENT_FK_SQL, ...TRANSACTION_SOURCE_INTEGRITY_SQL],
   indexes: [
     activeIndex('transactions', 'idx_tx_dir_occurred', 'direction, occurred_at'),
     activeIndex('transactions', 'idx_tx_category', 'category'),
