@@ -5,7 +5,12 @@
 //  - 반려: 사유 **필수**(Q2). 승인/반려 모두 audit_log 기록(approve/reject).
 //  - 배지: pending 건수는 프론트 lib/tasks.ts 단일 소스에 편입(R1 — 별도 카운트 금지).
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import type { AvailabilityKind, AvailabilityOwner, RecurrenceScope, ScheduleRequest, SessionMode, Conflict } from '@kms545487/contracts';
+import type {
+  Conflict,
+  ScheduleRequest,
+  ScheduleRequestApprovalOptions,
+  ScheduleRequestKind,
+} from '@kms545487/contracts';
 import type { BaseRow } from '../../database/in-memory.database';
 import { ScheduleReadService } from '../schedule/schedule-read.service'; // [TBO-69 C1] 검증·충돌·목록
 import { ScheduleService } from '../schedule/schedule.service'; // 승인 시 세션 생성·수정·삭제(명령)
@@ -21,33 +26,8 @@ import { selectSeriesScope } from '../schedule/series-scope.policy';
 
 export const SCHEDULE_REQUESTS = 'schedule_requests';
 
-type ScheduleRequestKindEx = 'session_create' | 'session_update' | 'session_delete' | 'availability_upsert' | 'availability_delete';
-type AvailabilityKindEx = AvailabilityKind | 'online_only';
-type RequestRow = ScheduleRequest & BaseRow & {
-  requestKind?: ScheduleRequestKindEx;
-  mode?: SessionMode; // [C2D] 수업방식 보존(contracts 게시 전 로컬 표기 — src에는 반영됨)
-  targetSessionId?: number;
-  targetAvailabilityId?: number;
-  availabilityOwnerType?: AvailabilityOwner;
-  availabilityOwnerId?: number;
-  availabilityKind?: AvailabilityKindEx;
-  availabilityWeekday?: number;
-  availabilityStartTime?: string;
-  availabilityEndTime?: string;
-  availabilityEffectiveFrom?: string;
-  availabilityEffectiveTo?: string;
-  impactSessionIds?: number[];
-  changeSummary?: string;
-  requestReason?: string;
-  memo?: string;
-  scope?: RecurrenceScope;
-};
-
-type ApprovalOptions = {
-  forceConflicts?: boolean;
-  acknowledgeAccountingImpact?: boolean;
-  expectedAccountingImpactHash?: string;
-};
+type RequestRow = ScheduleRequest & BaseRow;
+type ApprovalOptions = ScheduleRequestApprovalOptions;
 
 @Injectable()
 export class ScheduleRequestsService {
@@ -275,7 +255,7 @@ export class ScheduleRequestsService {
     return row;
   }
 
-  private availabilitySummary(kind: ScheduleRequestKindEx, dto: UpsertAvailabilityDto | null, count: number): string {
+  private availabilitySummary(kind: ScheduleRequestKind, dto: UpsertAvailabilityDto | null, count: number): string {
     if (kind === 'availability_delete') return `가용/불가 블록 삭제 요청 · 영향 수업 ${count}건`;
     return `${dto?.ownerType ?? 'unknown'}#${dto?.ownerId ?? '-'} ${dto?.kind ?? 'available'} ${dto?.weekday ?? '-'} ${dto?.startTime ?? '-'}–${dto?.endTime ?? '-'} · 영향 수업 ${count}건`;
   }
@@ -400,7 +380,7 @@ export class ScheduleRequestsService {
           id: req.targetAvailabilityId,
           ownerType: req.availabilityOwnerType!,
           ownerId: req.availabilityOwnerId!,
-          kind: (req.availabilityKind ?? 'available') as AvailabilityKindEx,
+          kind: req.availabilityKind ?? 'available',
           weekday: req.availabilityWeekday!,
           startTime: req.availabilityStartTime!,
           endTime: req.availabilityEndTime!,

@@ -1,14 +1,20 @@
 import { IsDefined, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, MinLength, Max, IsArray, ArrayMaxSize, ValidateIf } from 'class-validator';
 import { SESSION_MAX_MIN, SESSION_MIN_MIN } from '../../schedule/session-time.policy'; // [P2 M7] 분 상한 단일 진실원
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import type { AvailabilityKind, AvailabilityOwner, RecurrenceScope, SessionKind, SessionMode, CreateScheduleRequestInput } from '@kms545487/contracts';
+import type {
+  AvailabilityKind,
+  AvailabilityOwner,
+  CreateScheduleRequestInput,
+  RecurrenceScope,
+  ScheduleRequestKind,
+  SessionKind,
+  SessionMode,
+} from '@kms545487/contracts';
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-type RequestKind = 'session_create' | 'session_update' | 'session_delete' | 'availability_upsert' | 'availability_delete';
-type AvailabilityKindEx = AvailabilityKind | 'online_only';
-const REQUEST_KINDS: RequestKind[] = ['session_create', 'session_update', 'session_delete', 'availability_upsert', 'availability_delete'];
-const AVAILABILITY_KINDS: AvailabilityKindEx[] = ['available', 'unavailable', 'online_only'];
+const REQUEST_KINDS: ScheduleRequestKind[] = ['session_create', 'session_update', 'session_delete', 'availability_upsert', 'availability_delete'];
+const AVAILABILITY_KINDS: AvailabilityKind[] = ['available', 'unavailable', 'online_only'];
 const SESSION_MODES: SessionMode[] = ['in_person', 'online'];
 const OWNER_TYPES: AvailabilityOwner[] = ['student', 'instructor', 'room'];
 const RECURRENCE_SCOPES: RecurrenceScope[] = ['this', 'this_and_following', 'all'];
@@ -25,7 +31,7 @@ const isAvailabilityRequest = (o: CreateScheduleRequestDto): boolean => isAvaila
 export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @ApiPropertyOptional({ enum: REQUEST_KINDS, example: 'session_create', description: '요청 종류(기본 session_create)' })
   @IsOptional() @IsIn(REQUEST_KINDS)
-  requestKind?: RequestKind;
+  requestKind?: ScheduleRequestKind;
 
   @ApiPropertyOptional({ example: 20, description: 'session_update/session_delete 대상 세션 id' })
   @ValidateIf(isSessionTargetRequest)
@@ -112,7 +118,7 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @ApiPropertyOptional({ enum: AVAILABILITY_KINDS, example: 'unavailable', description: 'availability_upsert 필수' })
   @ValidateIf(isAvailabilityUpsert)
   @IsIn(AVAILABILITY_KINDS)
-  availabilityKind?: AvailabilityKindEx;
+  availabilityKind?: AvailabilityKind;
 
   @ApiPropertyOptional({ example: 1, minimum: 0, maximum: 6, description: 'availability_upsert 필수(0=일)' })
   @ValidateIf(isAvailabilityUpsert)

@@ -84,7 +84,7 @@
   "db:migrate:report-template-owner": "ts-node scripts/migrate-report-template-owner.ts"
  },
  "dependencies": {
-  "@kms545487/contracts": "0.2.31",
+  "@kms545487/contracts": "0.2.34",
   "@neondatabase/serverless": "^1.1.0",
   "@nestjs/common": "^11.1.27",
   "@nestjs/core": "^11.1.27",

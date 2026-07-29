@@ -9,7 +9,6 @@ import type { ClassSession } from './schedule.entity';
 import type { AvailabilityBlock } from '../availability/availability.entity';
 // [R-3 함수 통일] 시간·날짜 primitive는 common/time.util 단일 소스(중복 제거).
 import { hhmmToMin as toMin, weekdayOf, addDaysISO, dayDiff as dayDiffDays } from '../../common/time.util';
-type AvailabilityKindEx = AvailabilityBlock['kind'] | 'online_only';
 
 /** [R-9] 종료 분(시작일 00:00 기준, 자정 크로스=1440 초과).
  *  endTime 없음 → start+duration 파생. endTime<startTime → 익일 종료(+1440)로 해석. */
@@ -81,7 +80,7 @@ export function detectConflicts(
   for (const seg of segs) {
     const wd = weekdayOf(seg.date);
     for (const b of blocks) {
-      const kind = b.kind as AvailabilityKindEx;
+      const kind = b.kind;
       if ((kind !== 'unavailable' && kind !== 'online_only') || b.weekday !== wd) continue;
       if (kind === 'online_only' && (cand.mode ?? 'in_person') === 'online') continue;
       // 기간(effectiveFrom/effectiveTo) 밖의 주에는 적용 안 함 — "이번만/앞으로/기간" 반복 규칙 반영.

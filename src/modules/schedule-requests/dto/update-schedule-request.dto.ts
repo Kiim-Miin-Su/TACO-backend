@@ -1,19 +1,24 @@
 import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, Max, IsArray, ArrayMaxSize } from 'class-validator';
 import { SESSION_MAX_MIN, SESSION_MIN_MIN } from '../../schedule/session-time.policy'; // [P2 M7] 분 상한 단일 진실원
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import type { AvailabilityKind, RecurrenceScope, SessionKind, SessionMode } from '@kms545487/contracts';
+import type {
+  AvailabilityKind,
+  RecurrenceScope,
+  SessionKind,
+  SessionMode,
+  UpdateScheduleRequestInput,
+} from '@kms545487/contracts';
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-type AvailabilityKindEx = AvailabilityKind | 'online_only';
-const AVAILABILITY_KINDS: AvailabilityKindEx[] = ['available', 'unavailable', 'online_only'];
+const AVAILABILITY_KINDS: AvailabilityKind[] = ['available', 'unavailable', 'online_only'];
 const SESSION_MODES: SessionMode[] = ['in_person', 'online'];
 const RECURRENCE_SCOPES: RecurrenceScope[] = ['this', 'this_and_following', 'all'];
 
 // [C2C-b 청크2] pending 요청 수정(관리자 전용) — 전 필드 optional.
 //  불변 필드(요청 종류·대상 블록·availability owner)는 DTO에 없음 → 전역 forbidNonWhitelisted가 400으로 차단.
 //  검증은 서비스에서 생성 경로와 동일 함수 재사용(validateSessionInput / validateRequestableUpsert).
-export class UpdateScheduleRequestDto {
+export class UpdateScheduleRequestDto implements UpdateScheduleRequestInput {
   @ApiPropertyOptional({ example: 10, description: '코스 FK — 변경 시 기본 강사 재해석(생성과 동일)' })
   @IsOptional() @IsInt()
   courseId?: number;
@@ -72,7 +77,7 @@ export class UpdateScheduleRequestDto {
 
   @ApiPropertyOptional({ enum: AVAILABILITY_KINDS, description: 'availability_upsert 전용' })
   @IsOptional() @IsIn(AVAILABILITY_KINDS)
-  availabilityKind?: AvailabilityKindEx;
+  availabilityKind?: AvailabilityKind;
 
   @ApiPropertyOptional({ example: 1, minimum: 0, maximum: 6 })
   @IsOptional() @IsInt() @Min(0) @Max(6)

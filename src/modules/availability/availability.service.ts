@@ -8,7 +8,7 @@ import { hasAdminRole } from '../auth/roles.decorator';
 import { Student, STUDENTS } from '../students/student.entity';
 import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
 import { StaffAccount, USERS, isActiveScheduleOwner } from '../users/user.entity';
-import { AvailabilityBlock, AVAILABILITY, AvailabilityKind, AvailabilityOwner } from './availability.entity';
+import { AvailabilityBlock, AVAILABILITY, AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
 import { RoomsService } from '../rooms/rooms.service';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
@@ -18,8 +18,6 @@ import { sessionEndMin } from '../schedule/conflict.util';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { ENROLLMENTS_SPEC, ROOMS_SPEC, STUDENTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 
-type AvailabilityKindEx = AvailabilityKind | 'online_only';
-type AvailabilityBlockEx = Omit<AvailabilityBlock, 'kind'> & { kind: AvailabilityKindEx };
 export type AvailabilityImpact = {
   sessionId: number;
   sessionDate: string;
@@ -79,7 +77,7 @@ export class AvailabilityService implements OnModuleInit {
       rangesOverlap(dto.effectiveFrom, dto.effectiveTo, b.effectiveFrom, b.effectiveTo),
     )[0];
     if (clash) {
-      const clashKind = clash.kind as AvailabilityKindEx;
+      const clashKind = clash.kind;
       const kindLabel = clashKind === 'unavailable' ? '불가시간' : clashKind === 'online_only' ? '온라인만 가능' : '가용시간';
       throw new ConflictException(`이미 지정된 ${kindLabel}(${clash.startTime}–${clash.endTime})과 겹칩니다.`);
     }
@@ -129,11 +127,11 @@ export class AvailabilityService implements OnModuleInit {
 
   previewUpsertImpact(dto: UpsertAvailabilityDto): AvailabilityImpact[] {
     const existing = dto.id ? this.db.findById<AvailabilityBlock>(AVAILABILITY, dto.id) : undefined;
-    const next: AvailabilityBlockEx = {
+    const next: AvailabilityBlock = {
       id: dto.id ?? -1,
       ownerType: dto.ownerType,
       ownerId: dto.ownerId,
-      kind: (dto.kind ?? 'available') as AvailabilityKindEx,
+      kind: dto.kind ?? 'available',
       weekday: dto.weekday,
       startTime: dto.startTime,
       endTime: dto.endTime,
@@ -194,7 +192,7 @@ export class AvailabilityService implements OnModuleInit {
     );
   }
 
-  private impactOfRestrictiveBlock(b: AvailabilityBlockEx): AvailabilityImpact[] {
+  private impactOfRestrictiveBlock(b: AvailabilityBlock): AvailabilityImpact[] {
     if (b.kind === 'available') return [];
     return this.ownerSessions(b.ownerType, Number(b.ownerId))
       .filter((s) => this.segmentsHitBlock(s, b))
@@ -205,7 +203,7 @@ export class AvailabilityService implements OnModuleInit {
       ));
   }
 
-  private impactOfAvailableRemoval(before: AvailabilityBlock, after: AvailabilityBlockEx | null): AvailabilityImpact[] {
+  private impactOfAvailableRemoval(before: AvailabilityBlock, after: AvailabilityBlock | null): AvailabilityImpact[] {
     return this.ownerSessions(before.ownerType, Number(before.ownerId))
       .filter((s) => this.segmentsHitBlock(s, before))
       .filter((s) =>
@@ -316,7 +314,7 @@ export class AvailabilityService implements OnModuleInit {
       if (dto.id && existing) {
         const beforeSnap = { ...existing }; // [C1] before 스냅샷도 잠금 후 재조회 — stale audit 차단
         const updated = await this.store.update<AvailabilityBlock>(AVAILABILITY_SPEC, dto.id, {
-          kind: (dto.kind ?? 'available') as AvailabilityKind,
+          kind: dto.kind ?? 'available',
           weekday: dto.weekday,
           startTime: dto.startTime,
           endTime: dto.endTime,
@@ -335,7 +333,7 @@ export class AvailabilityService implements OnModuleInit {
       const created = await this.store.insert<AvailabilityBlock>(AVAILABILITY_SPEC, {
         ownerType: dto.ownerType,
         ownerId: dto.ownerId,
-        kind: (dto.kind ?? 'available') as AvailabilityKind,
+        kind: dto.kind ?? 'available',
         weekday: dto.weekday,
         startTime: dto.startTime,
         endTime: dto.endTime,

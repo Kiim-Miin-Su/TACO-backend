@@ -239,15 +239,9 @@ export class ScheduleReadService implements OnModuleInit {
   //  · 인정 시수는 **시수 정책**(status='held' && 결석 아님 — 보강 제외, payouts와 동일 규칙).
   //  ⚠ DB 이관(TBO-08): 지금은 in-memory 전 세션 스캔+집계 → Postgres에선 **class_sessions GROUP BY instructor_id**
   //    (WHERE date BETWEEN·status IN, deleted_at IS NULL)로 승격. 규칙(카운트 모집단·시수)은 그대로 유지.
-  instructorAttendanceSummary(opts: { from?: string; to?: string; instructorId?: number }): {
-    from?: string; to?: string;
-    rows: Array<{
-      instructorId: number; instructorName: string;
-      held: number; present: number; late: number; absent: number; makeup: number; unmarked: number;
-      attendanceRate: number | null; teachingMinutes: number; teachingHours: number;
-    }>;
-    totals: { instructors: number; held: number; present: number; late: number; absent: number; makeup: number; unmarked: number; teachingHours: number };
-  } {
+  instructorAttendanceSummary(
+    opts: { from?: string; to?: string; instructorId?: number },
+  ): import('@kms545487/contracts').InstructorAttendanceSummary {
     const sessions = this.list(opts).filter((r) =>
       (r.status === 'held' || r.status === 'makeup')
       && isActiveInstructor(this.db.findById<StaffAccount>(USERS, Number(r.instructorId))));
