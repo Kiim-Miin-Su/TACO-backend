@@ -1,5 +1,4 @@
 import { BadRequestException, ForbiddenException, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { AUTO_HOLD_AUDIT_REASON, autoHoldPatch } from '../schedule/session-time.policy'; // [TBO-65 M1→66 C1]
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { ATTENDANCE_SPEC } from '../../database/calendar-asset-specs';
@@ -17,7 +16,12 @@ import {
 } from '../../database/calendar-unit-of-work.service';
 import { Enrollment } from '../enrollments/enrollment.entity';
 import { studentBelongsToSession } from '../schedule/session-participant.policy';
+import { buildCohortIndex } from '../schedule/session-participant.policy';
 import { isSessionVisibleToInstructor } from '../schedule/schedule-visibility.policy';
+import {
+  attendanceCompletionHoldPatch,
+  TEMPORAL_RESET_AUDIT_REASON,
+} from '../schedule/session-temporal-transition.policy';
 
 /**
  * [참조/처리] 출결. 프론트 목데이터 이관 + 참조 무결성 게이트.
@@ -94,51 +98,58 @@ export class AttendanceService implements OnModuleInit {
       if (actorId != null && !isAdmin && !isSessionVisibleToInstructor(session, actorId))
         throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 기록할 수 있습니다.');
 
-      // [TBO-62 ⑤ 2026-07-24] 출결 기록 = "수업이 진행됐다"는 사실의 단일 진실원 — 시작 시각이 지난
-      //  scheduled 세션은 held로 자동 전이한다(운영 실측: 출석·리포트를 기록해도 status가 scheduled로
-      //  남아 시수·완료가 안 잡히고, 종료 경과 scheduled는 FE가 '미진행(펑크)→보강 필요'로 오분류).
-      //  경계: canceled/no_show/makeup/held는 절대 덮지 않고, 미래 세션(시작 전)은 전이하지 않는다.
-      // [TBO-66 C1] 전이 판정 = autoHoldPatch 단일 진실원(강사 출결·리포트 승인 경로와 동일 규칙)
-      const holdPatch = autoHoldPatch(session, Date.now());
+      // (세션, 학생) 유니크 — DB 기준 판별: 있으면 갱신, 없으면 삽입(lock이 교차 인스턴스 경쟁 직렬화).
+      const [existing] = await this.store.findActive<Attendance>(ATTENDANCE_SPEC, {
+        where: { sessionId: dto.sessionId, studentId: dto.studentId } as Partial<Attendance>, limit: 1,
+      });
+      let saved: Attendance;
+      let result: 'created' | 'updated';
+      if (existing) {
+        const before = { ...existing };
+        saved = await this.store.update<Attendance>(ATTENDANCE_SPEC, existing.id, { status: dto.status }) as Attendance;
+        result = 'updated';
+        if (actorId != null) {
+          const diff = this.audit.diffOf(before, saved);
+          if (Object.keys(diff).length)
+            await this.audit.log({ entity: ATTENDANCE, entityId: saved.id, action: 'update', actorId, changes: diff });
+        }
+      } else {
+        saved = await this.store.insert<Attendance>(ATTENDANCE_SPEC, {
+          sessionId: dto.sessionId,
+          studentId: dto.studentId,
+          status: dto.status,
+        });
+        result = 'created';
+        if (actorId != null)
+          await this.audit.log({ entity: ATTENDANCE, entityId: saved.id, action: 'create', actorId, changes: this.audit.snapshotOf(saved) as never });
+      }
+
+      const activeAttendance = await this.store.findActive<Attendance>(ATTENDANCE_SPEC, {
+        where: { sessionId: dto.sessionId } as Partial<Attendance>,
+      });
+      const holdPatch = attendanceCompletionHoldPatch(
+        session,
+        buildCohortIndex(enrollments),
+        activeAttendance,
+        Date.now(),
+      );
       const autoHeld = holdPatch != null;
       if (holdPatch) {
         await this.sessionsStore.update(session.id, holdPatch as never);
         if (actorId != null) {
           await this.audit.log({
             entity: 'class_sessions', entityId: session.id, action: 'update', actorId,
-            changes: { status: { before: 'scheduled', after: 'held' } }, reason: AUTO_HOLD_AUDIT_REASON,
+            changes: { status: { before: 'scheduled', after: 'held' } },
+            reason: '강사와 수강생 출결 완결 자동 진행 처리',
           });
         }
       }
-
-      // (세션, 학생) 유니크 — DB 기준 판별: 있으면 갱신, 없으면 삽입(lock이 교차 인스턴스 경쟁 직렬화).
-      const [existing] = await this.store.findActive<Attendance>(ATTENDANCE_SPEC, {
-        where: { sessionId: dto.sessionId, studentId: dto.studentId } as Partial<Attendance>, limit: 1,
-      });
-      if (existing) {
-        const before = { ...existing };
-        const updated = await this.store.update<Attendance>(ATTENDANCE_SPEC, existing.id, { status: dto.status }) as Attendance;
-        if (actorId != null) {
-          const diff = this.audit.diffOf(before, updated);
-          if (Object.keys(diff).length)
-            await this.audit.log({ entity: ATTENDANCE, entityId: updated.id, action: 'update', actorId, changes: diff });
-        }
-        this.domainLog.log(`action=upsert session=${dto.sessionId} student=${dto.studentId} status=${dto.status} actor=${actorId ?? 0} autoHeld=${autoHeld ? 1 : 0} result=updated`); // [TBO-58 P2]
-        return updated;
-      }
-      const created = await this.store.insert<Attendance>(ATTENDANCE_SPEC, {
-        sessionId: dto.sessionId,
-        studentId: dto.studentId,
-        status: dto.status,
-      });
-      if (actorId != null)
-        await this.audit.log({ entity: ATTENDANCE, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
-      this.domainLog.log(`action=upsert session=${dto.sessionId} student=${dto.studentId} status=${dto.status} actor=${actorId ?? 0} autoHeld=${autoHeld ? 1 : 0} result=created`); // [TBO-58 P2]
-      return created;
+      this.domainLog.log(`action=upsert session=${dto.sessionId} student=${dto.studentId} status=${dto.status} actor=${actorId ?? 0} autoHeld=${autoHeld ? 1 : 0} result=${result}`);
+      return saved;
     });
   }
 
-  async removeBySession(sessionId: number, deletedBy?: number): Promise<number> {
+  async removeBySession(sessionId: number, deletedBy?: number, reason?: string): Promise<number> {
     // [감사 전수 2026-07-16] cascade 삭제도 행별 delete 이력(⚠ 누락 경로였음 — 호출부 tx 안).
     const rows = await this.store.findActive<Attendance>(ATTENDANCE_SPEC, {
       where: { sessionId } as Partial<Attendance>,
@@ -147,7 +158,13 @@ export class AttendanceService implements OnModuleInit {
     const count = await this.store.removeByField(ATTENDANCE_SPEC, 'sessionId', sessionId, deletedBy);
     if (deletedBy != null && deletedBy > 0) {
       for (const r of rows) {
-        await this.audit.log({ entity: ATTENDANCE, entityId: r.id, action: 'delete', actorId: deletedBy });
+        await this.audit.log({
+          entity: ATTENDANCE,
+          entityId: r.id,
+          action: 'delete',
+          actorId: deletedBy,
+          reason: reason ?? TEMPORAL_RESET_AUDIT_REASON,
+        });
       }
     }
     return count;

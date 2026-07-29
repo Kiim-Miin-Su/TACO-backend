@@ -96,7 +96,7 @@ describe('report approve vs session terminal transition (e2e)', () => {
     },
   );
 
-  it('정상 approve는 같은 transaction에서 submitted→approved, scheduled→held, 시수 60분, audit를 확정한다', async () => {
+  it('정상 approve는 보고서만 승인하고 출결 미완결 scheduled·시수 0을 보존한다', async () => {
     const { sessionId, reportId } = await createSubmittedReport('07:30');
     const before = await readback(sessionId, reportId);
     expect(before.session?.status).toBe('scheduled');
@@ -106,11 +106,11 @@ describe('report approve vs session terminal transition (e2e)', () => {
     await http.post(`/api/reports/${reportId}/approve`).set(auth()).expect(201);
 
     const after = await readback(sessionId, reportId);
-    expect(after.session?.status).toBe('held');
+    expect(after.session?.status).toBe('scheduled');
     expect(after.report?.approvalStatus).toBe('approved');
-    expect(after.session && teachingMinutesOf(after.session)).toBe(60);
+    expect(after.session && teachingMinutesOf(after.session)).toBe(0);
     expect(after.reportApproveAudits).toHaveLength(1);
-    expect(after.sessionStatusAudits).toHaveLength(1);
+    expect(after.sessionStatusAudits).toHaveLength(0);
   });
 
   it.each([

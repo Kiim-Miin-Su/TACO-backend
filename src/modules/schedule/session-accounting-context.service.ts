@@ -73,6 +73,17 @@ export class SessionAccountingContextService {
     return participantIds.every((studentId) => approved.has(studentId));
   }
 
+  participantIds(
+    context: SessionAccountingContext,
+    session: Pick<ClassSession, 'courseId' | 'studentIds'>,
+  ): number[] {
+    return participantIdsForSession(session, context.cohortIndex);
+  }
+
+  attendanceFor(context: SessionAccountingContext, sessionId: number): Attendance[] {
+    return context.bySessionId.get(sessionId)?.attendance ?? [];
+  }
+
   assertDependentsCompatible(
     context: SessionAccountingContext,
     before: ClassSession,

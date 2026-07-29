@@ -4,6 +4,7 @@ import type { ClassSession } from './schedule.entity';
 export type AccountingSession = Pick<ClassSession, 'status' | 'durationMinutes'> & {
   instructorAttendance?: ClassSession['instructorAttendance'] | null;
   payoutId?: number | null;
+  isPaid?: boolean;
 };
 
 export type SessionAccountingProjection = {
@@ -31,7 +32,7 @@ export function teachingMinutesOf(session: AccountingSession): number {
 
 /** 이미 정산 스냅샷에 연결된 세션은 정산 회수 전까지 회계 필드를 바꿀 수 없다. */
 export function isPayoutLocked(session: AccountingSession): boolean {
-  return session.payoutId != null;
+  return session.payoutId != null || session.isPaid === true;
 }
 
 export function payoutIdOf(session: AccountingSession): number | null | undefined {

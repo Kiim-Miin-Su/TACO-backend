@@ -29,7 +29,7 @@ import { ClassSessionsStore } from './class-sessions.store';
 import { ScheduleReadService, SESSION_DEFAULTS } from './schedule-read.service'; // [TBO-69 C1]
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
 import { selectSeriesScope, type SeriesScope } from './series-scope.policy';
-import { addMinutesGuarded, normalizeSessionTime, storedEndTimeOf, autoHoldPatch } from './session-time.policy';
+import { addMinutesGuarded, normalizeSessionTime, storedEndTimeOf } from './session-time.policy';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import {
   CalendarUnitOfWork,
@@ -50,6 +50,12 @@ import {
 import { EnrollmentsService } from '../enrollments/enrollments.service';
 import { isProduction } from '../../common/env';
 import { SessionAccountingContextService } from './session-accounting-context.service';
+import {
+  attendanceCompletionHoldPatch,
+  hasSessionTemporalChange,
+  isTemporalChangeBlockedStatus,
+  TEMPORAL_RESET_AUDIT_REASON,
+} from './session-temporal-transition.policy';
 
 export const canForceScheduleConflicts = (requested?: boolean): boolean =>
   requested === true && !isProduction();
@@ -761,6 +767,37 @@ export class ScheduleService {
       cur.id,
       ...seriesPatches.map((patch) => patch.id),
     ]);
+    const temporalChangedIds: number[] = [];
+    const applyTemporalPolicy = (before: ClassSession, fields: MergedFields): void => {
+      if (!hasSessionTemporalChange(before, fields)) return;
+      if (isTemporalChangeBlockedStatus(before.status)) {
+        throw new ConflictException({
+          code: 'TERMINAL_SESSION_TIME_CHANGE',
+          message: `종결 상태(${before.status}) 수업의 시간은 변경할 수 없습니다.`,
+          sessionId: before.id,
+        });
+      }
+      if (dto.status != null || dto.instructorAttendance != null || dto.clearInstructorAttendance) {
+        throw new BadRequestException('시간 변경과 상태/강사 출결 변경은 한 요청에 함께 보낼 수 없습니다.');
+      }
+      fields.status = 'scheduled';
+      fields.instructorAttendance = null;
+      temporalChangedIds.push(before.id);
+    };
+    applyTemporalPolicy(cur, primary);
+    for (const patch of seriesPatches) applyTemporalPolicy(patch.before, patch.fields);
+
+    // 강사 출결만 기록하는 명령은 학생 전원의 출결까지 채워졌을 때만 held로 전이한다.
+    // 학생 출결 명령은 AttendanceService가 같은 정책을 사용한다.
+    if (!temporalChangedIds.length && dto.status == null && dto.instructorAttendance != null) {
+      const holdPatch = attendanceCompletionHoldPatch(
+        { ...cur, ...primary, id: cur.id },
+        accountingContext.cohortIndex,
+        this.accountingContext.attendanceFor(accountingContext, cur.id),
+        Date.now(),
+      );
+      if (holdPatch) primary.status = holdPatch.status;
+    }
     this.accountingContext.assertDependentsCompatible(accountingContext, cur, primary);
     const beforeApproved = this.accountingContext.isReportComplete(accountingContext, cur);
     const afterApproved = this.accountingContext.isReportComplete(accountingContext, {
@@ -843,13 +880,21 @@ export class ScheduleService {
     // 4) 일괄 적용(대상 먼저, 그 뒤 시리즈)
     // [TBO-29C C3] 구 구현은 대표 세션 1건만 audit — 이제 바뀐 **모든 회차**가 개별 before/after를 남기고
     //  공통 correlation(reason: series=<id> scope=<scope> corr=<uuid>)으로 한 명령임을 추적한다.
-    const correlation = cur.seriesId != null ? `series=${cur.seriesId} scope=${scope} corr=${randomUUID()}` : undefined;
+    const commandCorrelation = randomUUID();
+    const correlation = cur.seriesId != null
+      ? `series=${cur.seriesId} scope=${scope} corr=${commandCorrelation}`
+      : temporalChangedIds.length
+        ? `${TEMPORAL_RESET_AUDIT_REASON} corr=${commandCorrelation}`
+        : undefined;
     const beforeSnap = { ...cur }; // audit diff용(적용 전 상태 — cur는 라이브 행이라 사본 필수)
     const updated = (await this.sessions.update(id, primary as never))!;
     const memberAfters: Array<{ before: ClassSession; after: ClassSession | undefined }> = [];
     for (const p of seriesPatches) {
       const after = await this.sessions.update(p.id, p.fields as never);
       memberAfters.push({ before: p.before, after });
+    }
+    for (const sessionId of temporalChangedIds) {
+      await this.attendance.removeBySession(sessionId, actorId, correlation);
     }
     if (actorId != null) {
       const diff = this.audit.diffOf(beforeSnap, updated) as Record<string, { before?: unknown; after?: unknown }>;
@@ -909,15 +954,9 @@ export class ScheduleService {
     const course = this.read.courseOf(courseId);
     const instructorId = dto.instructorId ?? (dto.courseId != null && course ? course.instructorId : cur.instructorId);
     const roomId = dto.roomId ?? cur.roomId;
-    // [TBO-66 C1 2026-07-25] 강사 출결 기록도 "진행됐다"는 사실 기록 — 시작 경과 scheduled 세션이면
-    //  held 자동 전이(autoHoldPatch 단일 진실원 — 학생 출결·리포트 승인 경로와 동일 규칙).
-    //  dto.status 명시가 항상 우선(수동 지정 존중). 전이는 update의 audit diff에 status 변경으로 남는다.
-    const autoHeld = dto.status == null && !dto.clearInstructorAttendance && dto.instructorAttendance != null
-      ? autoHoldPatch({ ...cur, sessionDate, startTime, durationMinutes }, Date.now())
-      : null;
     return {
       sessionDate, startTime, endTime, durationMinutes, courseId, instructorId, roomId,
-      status: dto.status ?? autoHeld?.status ?? cur.status,
+      status: dto.status ?? cur.status,
       topic: dto.topic ?? (dto.courseId != null && course ? course.name : cur.topic),
       memo: dto.memo ?? cur.memo,
       color: dto.color ?? cur.color,

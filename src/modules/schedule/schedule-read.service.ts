@@ -22,11 +22,14 @@ import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.
 import { storedEndTimeOf, SESSION_TIME_DEFAULTS } from './session-time.policy';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { CLASS_SESSION_SERIES_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC, SUBJECTS_SPEC, USERS_SPEC, ROOMS_SPEC } from '../../database/calendar-asset-specs';
+import { ATTENDANCE_SPEC, CLASS_SESSION_SERIES_SPEC, COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC, SUBJECTS_SPEC, USERS_SPEC, ROOMS_SPEC } from '../../database/calendar-asset-specs';
 import { countsForTeachingHours, teachingMinutesOf } from './session-accounting.policy';
 import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
 import { weekdayOf } from '../../common/time.util';
 import type { Room } from '../rooms/room.entity';
+import { Attendance, ATTENDANCE } from '../attendance/attendance.entity';
+import { attendanceRequirementOf } from './session-temporal-transition.policy';
+import { buildCohortIndex } from './session-participant.policy';
 
 // 과목 색 폴백(표시용) — Subject 계약에 color가 없어 세션→코스 색이 모두 없을 때만 사용.
 const SUBJECT_FALLBACK_COLOR: Record<number, string> = { 1: '#0969da', 2: '#1a7f37' };
@@ -92,6 +95,7 @@ export class ScheduleReadService implements OnModuleInit {
       () => this.collections.hydrate<Enrollment>(ENROLLMENTS_SPEC),
       () => this.collections.hydrate<Student>(STUDENTS_SPEC),
       () => this.collections.hydrate<Room>(ROOMS_SPEC), // [TBO-66 R2] roomId 검증·정원 충돌·이름 표기가 메모리 미러 소비 — 교차 인스턴스 신선화
+      () => this.collections.hydrate<Attendance>(ATTENDANCE_SPEC),
     ];
     if (this.unitOfWork.inPgTransaction) {
       for (const task of tasks) await task();
@@ -367,6 +371,12 @@ export class ScheduleReadService implements OnModuleInit {
     const c = this.courseOf(s.courseId);
     // 명시 코호트(v0.1.13) 우선 — 미지정 시 기존대로 코스 활성 수강생 파생(하위 호환)
     const studentIds = s.studentIds?.length ? s.studentIds.map(Number) : this.activeStudentIds(s.courseId);
+    const attendanceRequirement = attendanceRequirementOf(
+      s,
+      buildCohortIndex(this.db.findAll<Enrollment>(ENROLLMENTS_COL)),
+      this.db.findByField<Attendance>(ATTENDANCE, 'sessionId', s.id),
+      Date.now(),
+    );
     return {
       ...s,
       kind: s.kind ?? SESSION_DEFAULTS.kind, // [v0.1.14] 시드·구데이터 하위호환(미지정=class)
@@ -381,6 +391,7 @@ export class ScheduleReadService implements OnModuleInit {
       color: s.color ?? c?.color ?? (c ? SUBJECT_FALLBACK_COLOR[c.subjectId] : undefined), // 세션 → 코스 → 과목 폴백
       studentIds,
       studentNames: studentIds.map((sid) => this.studentOf(sid)?.name ?? `학생 ${sid}`),
+      ...attendanceRequirement,
       // [TBO-29C C3] series edit CAS — 클라이언트가 scope 편집/삭제 시 expectedSeriesVersion으로 회신
       seriesVersion: s.seriesId != null ? this.db.findById<ScheduleSeriesRow>(CLASS_SESSION_SERIES, s.seriesId)?.version : undefined,
     };

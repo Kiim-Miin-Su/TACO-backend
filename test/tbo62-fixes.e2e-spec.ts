@@ -52,15 +52,18 @@ describe('[TBO-62] 긴급 수정 (e2e)', () => {
       .set(auth('park_inst')).send({ status: 'present' }).expect(201);
   });
 
-  it('⑤ 출결 기록 시 시작 지난 scheduled → held 자동 전이(시수·보강 오분류 해소)', async () => {
+  it('⑤ 강사+대상 학생 전원 출결 완결 시 scheduled → held 자동 전이', async () => {
     // 과거(어제) 세션 — 관리자가 만들고 status는 scheduled 그대로인 운영 실측 시나리오 재현
     const past = await makeSession({ sessionDate: addDaysISO(MON, -7), startTime: '07:00' });
     expect(past.status).toBe('scheduled');
     await http.put('/api/attendance').set(auth('admin'))
       .send({ sessionId: past.id, studentId: 1, status: 'present' }).expect(200);
+    expect((await http.get(`/api/schedule/${past.id}`).set(auth('admin')).expect(200)).body.status).toBe('scheduled');
+    await http.patch(`/api/schedule/${past.id}`).set(auth('manager'))
+      .send({ instructorAttendance: 'present', force: true }).expect(200);
     const after = (await http.get(`/api/schedule?from=${addDaysISO(MON, -7)}&to=${addDaysISO(MON, -7)}`)
       .set(auth('admin')).expect(200)).body.find((r: { id: number }) => r.id === past.id);
-    expect(after.status).toBe('held'); // 출결 기록 = 진행 사실 — 시수 인정·보강 오분류 해소의 단일 진실원
+    expect(after.status).toBe('held');
   });
 
   it('⑤-경계 미래 세션·종결 상태는 전이하지 않는다', async () => {

@@ -28,19 +28,20 @@ describe('[74D-0] session_update 영향 hash·stale 방어 (e2e)', () => {
     const created = (await http.post('/api/schedule').set(as('manager'))
       .send({ courseId: 10, instructorId: 1, studentIds: [1], sessionDate: addDaysISO(PAST, dayOffset), startTime, durationMinutes, force: true })
       .expect(201)).body.row;
-    // 학생 출결 기록 → 자동 held(사실 기록 전이 — TBO-66 C1)
+    // 강사+학생 출결 완결 → held
     await http.put('/api/attendance').set(as('manager')).send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
+    await http.patch(`/api/schedule/${created.id}`).set(as('manager')).send({ instructorAttendance: 'present', force: true }).expect(200);
     expect((await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body.status).toBe('held');
     return created.id as number;
   };
 
   it('① held 시수 변경: 첫 409=impact+impactHash → ack만(무hash) 409 → hash 결속 재요청 200 + 감사 지문', async () => {
     const id = await makeHeldSession('08:00', 0);
-    // 60→90분: held 세션 시수 변경 = 회계 영향
+    // 60→90분: 실제 시간 변경은 출결을 초기화하므로 held→scheduled, 시수 60→0
     const first = await http.patch(`/api/schedule/${id}`).set(as('manager')).send({ durationMinutes: 90 }).expect(409);
     expect(first.body.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
     expect(first.body.impactHash).toMatch(/^[a-f0-9]{64}$/);
-    expect(first.body.impact.delta.teachingMinutes).toBe(30);
+    expect(first.body.impact.delta.teachingMinutes).toBe(-60);
     // [74D-0] ack만으로는 불가(맹목 확인 차단) — hash 미회신 = 409, mutation 0
     await http.patch(`/api/schedule/${id}`).set(as('manager'))
       .send({ durationMinutes: 90, acknowledgeAccountingImpact: true }).expect(409);
@@ -51,6 +52,7 @@ describe('[74D-0] session_update 영향 hash·stale 방어 (e2e)', () => {
       .expect(200);
     expect(ok.body.accountingImpactHash).toBe(first.body.impactHash);
     expect(ok.body.row.durationMinutes).toBe(90);
+    expect(ok.body.row).toMatchObject({ status: 'scheduled', instructorAttendance: null, attendanceRequired: true });
     // 감사에 확인 지문 영속 — "무엇을 보고 승인했는가"
     const audit = (await http.get(`/api/audit?entity=class_sessions&entityId=${id}`).set(as('admin')).expect(200)).body as Array<{
       action: string; changes?: Record<string, { after?: { hash?: string } }>;
@@ -58,19 +60,14 @@ describe('[74D-0] session_update 영향 hash·stale 방어 (e2e)', () => {
     expect(audit.some((row) => row.action === 'update' && row.changes?.accountingImpactAcknowledgement?.after?.hash === first.body.impactHash)).toBe(true);
   });
 
-  it('② stale 확인 차단: 확인 후 영향이 달라지면(대상 변형) 옛 hash 409 + 최신 impact/hash → 새 hash로만 200', async () => {
+  it('② 영향 hash 불일치 차단: 임의 hash 409 + 현재 hash 재발급 → 현재 hash로만 200', async () => {
     const id = await makeHeldSession('09:00', 1); // 다른 날 — ①의 연장 회차와 충돌 배제
     const first = await http.patch(`/api/schedule/${id}`).set(as('manager')).send({ durationMinutes: 90 }).expect(409);
-    // 사용자가 미리보기를 보는 사이 다른 관리자가 시수를 변경(영향 기준이 달라짐)
-    const drift = await http.patch(`/api/schedule/${id}`).set(as('manager')).send({ durationMinutes: 120 }).expect(409);
-    await http.patch(`/api/schedule/${id}`).set(as('manager'))
-      .send({ durationMinutes: 120, acknowledgeAccountingImpact: true, expectedAccountingImpactHash: drift.body.impactHash }).expect(200);
-    // 옛 hash로 ack — 409 + 최신 hash 재발급(60→90이 아니라 120→90 기준)
     const staleRetry = await http.patch(`/api/schedule/${id}`).set(as('manager'))
-      .send({ durationMinutes: 90, acknowledgeAccountingImpact: true, expectedAccountingImpactHash: first.body.impactHash }).expect(409);
+      .send({ durationMinutes: 90, acknowledgeAccountingImpact: true, expectedAccountingImpactHash: '0'.repeat(64) }).expect(409);
     expect(staleRetry.body.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
-    expect(staleRetry.body.impactHash).not.toBe(first.body.impactHash);
-    expect(staleRetry.body.impact.delta.teachingMinutes).toBe(-30); // 120→90 기준으로 재계산됨
+    expect(staleRetry.body.impactHash).toBe(first.body.impactHash);
+    expect(staleRetry.body.impact.delta.teachingMinutes).toBe(-60);
     await http.patch(`/api/schedule/${id}`).set(as('manager'))
       .send({ durationMinutes: 90, acknowledgeAccountingImpact: true, expectedAccountingImpactHash: staleRetry.body.impactHash }).expect(200);
   });

@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
-import { AUTO_HOLD_AUDIT_REASON, autoHoldPatch } from '../schedule/session-time.policy'; // [TBO-66 C1]
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
+  ATTENDANCE_SPEC,
   COURSES_SPEC,
   ENROLLMENTS_SPEC,
   SESSION_REPORTS_SPEC,
@@ -30,6 +30,8 @@ import { buildCohortIndex, participantIdsForSession, studentBelongsToSession } f
 import { isSessionVisibleToInstructor } from '../schedule/schedule-visibility.policy';
 import { Subject } from '../subjects/subject.entity';
 import { StaffAccount } from '../users/user.entity';
+import type { Attendance } from '../attendance/attendance.entity';
+import { attendanceCompletionHoldPatch } from '../schedule/session-temporal-transition.policy';
 
 // [보안 2026-07-07 H2] 액터 컨텍스트 — 비관리자(강사)는 본인 세션·본인 보고서만 쓰기 가능(IDOR 차단).
 export type ReportActor = { id: number; roles: string[] };
@@ -403,10 +405,20 @@ export class ReportsService implements OnModuleInit {
         throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
       }
       this.transitionLog.log(`action=approve report=${id} actor=${approvedBy ?? 0} transition=submitted->approved`);
-      // [TBO-66 C1 2026-07-25] 리포트 승인 = "수업이 진행됐다"는 사실 기록 — 시작 경과 scheduled
-      //  세션이면 held 자동 전이(autoHoldPatch 단일 진실원). 종전엔 학생 출결 경로만 전이해
-      //  리포트만 승인된 세션이 워크시트 제외·uncovered 미감지로 잔류했다.
-      const holdPatch = autoHoldPatch(session, Date.now());
+      // 보고서 승인은 출결 사실을 대체하지 않는다. 다만 이미 강사·수강생 출결이 모두 완결된
+      // scheduled 세션이면 같은 완결 정책으로 held 전이를 마무리한다.
+      const [attendance, enrollments] = await Promise.all([
+        this.store.findActive<Attendance>(ATTENDANCE_SPEC, {
+          where: { sessionId: session.id } as Partial<Attendance>,
+        }),
+        this.store.findActive<Enrollment>(ENROLLMENTS_SPEC),
+      ]);
+      const holdPatch = attendanceCompletionHoldPatch(
+        session,
+        buildCohortIndex(enrollments),
+        attendance,
+        Date.now(),
+      );
       if (holdPatch) {
         const held = await this.sessionsStore.update(after.sessionId, holdPatch as never);
         if (!held)
@@ -415,7 +427,8 @@ export class ReportsService implements OnModuleInit {
         if (approvedBy != null && approvedBy > 0) {
           await this.audit.log({
             entity: 'class_sessions', entityId: after.sessionId, action: 'update', actorId: approvedBy,
-            changes: { status: { before: 'scheduled', after: 'held' } }, reason: AUTO_HOLD_AUDIT_REASON,
+            changes: { status: { before: 'scheduled', after: 'held' } },
+            reason: '강사와 수강생 출결 완결 자동 진행 처리',
           });
         }
       }

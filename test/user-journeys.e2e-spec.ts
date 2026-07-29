@@ -107,15 +107,16 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
       }
     });
 
-    it('② (강사) 본인 출결 셀프 체크 → 자동 held · 타인 세션은 403 · 재체크 403', async () => {
+    it('② (강사) 본인 출결 셀프 체크 → 학생 출결 전 scheduled · 타인/재체크 403', async () => {
       await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('jung_inst')).send({ status: 'present' }).expect(403); // 타인 세션
       await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('park_inst')).send({ status: 'present' }).expect(201);
-      expect((await http.get(`/api/schedule/${S1}`).set(as('manager')).expect(200)).body.status).toBe('held'); // 자동 전이
+      expect((await http.get(`/api/schedule/${S1}`).set(as('manager')).expect(200)).body.status).toBe('scheduled');
       await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('park_inst')).send({ status: 'late' }).expect(403); // 수정은 매니저만
     });
 
     it('③ (강사) 학생 출결 + 리포트 제출 → (매니저) 미승인 동안 워크시트는 빈칸(직접 입력 대상)', async () => {
       await http.put('/api/attendance').set(as('park_inst')).send({ sessionId: S1, studentId: 1, status: 'present' }).expect(200);
+      expect((await http.get(`/api/schedule/${S1}`).set(as('manager')).expect(200)).body.status).toBe('held');
       const report = (await http.post('/api/reports').set(as('park_inst'))
         .send({ sessionId: S1, studentId: 1, content: 'J2 수업 요약', status: 'submitted' }).expect(201)).body;
       await http.post(`/api/reports/${report.id}/approve`).set(as('park_inst')).expect(403); // 승인은 매니저 이상

@@ -14,6 +14,7 @@
   "db:smoke:audit-log": "ts-node scripts/audit-log-db-smoke.ts",
   "db:smoke:attendance-reports": "ts-node scripts/attendance-reports-db-smoke.ts",
   "db:smoke:report-view": "ts-node scripts/report-view-db-smoke.ts",
+  "db:smoke:temporal-transition": "ts-node scripts/temporal-transition-db-smoke.ts",
   "db:smoke:schedule-approval": "ts-node scripts/schedule-approval-db-smoke.ts",
   "db:smoke:finance": "ts-node scripts/finance-db-smoke.ts",
   "db:cleanup:qa": "ts-node scripts/cleanup-qa-data.ts",
@@ -76,7 +77,7 @@
   "db:migrate:session-report-progress-page": "ts-node scripts/migrate-session-report-progress-page.ts"
  },
  "dependencies": {
-  "@kms545487/contracts": "0.2.22",
+  "@kms545487/contracts": "0.2.23",
   "@neondatabase/serverless": "^1.1.0",
   "@nestjs/common": "^11.1.27",
   "@nestjs/core": "^11.1.27",

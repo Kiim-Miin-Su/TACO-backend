@@ -144,11 +144,14 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
       }
       return originalLog(entry);
     });
-    await http.post(`/api/schedule-requests/${pending.id}/approve`).set(asAdmin()).query({
-      acknowledgeAccountingImpact: 'true',
-      expectedAccountingImpactHash: blocked.body.impactHash,
-    }).expect(500);
-    auditSpy.mockRestore();
+    try {
+      await http.post(`/api/schedule-requests/${pending.id}/approve`).set(asAdmin()).query({
+        acknowledgeAccountingImpact: 'true',
+        expectedAccountingImpactHash: blocked.body.impactHash,
+      }).expect(500);
+    } finally {
+      auditSpy.mockRestore();
+    }
     expect((await http.get('/api/schedule-requests?status=pending').set(asAdmin()).expect(200)).body)
       .toEqual(expect.arrayContaining([expect.objectContaining({ id: pending.id, status: 'pending' })]));
     await http.get(`/api/schedule/${session.id}`).set(asAdmin()).expect(200);

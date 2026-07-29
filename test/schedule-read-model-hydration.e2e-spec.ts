@@ -36,6 +36,7 @@ describe('ScheduleReadService DB read-model hydration', () => {
       'enrollments',
       'students',
       'rooms', // [TBO-66 R2] 강의실 미러도 조회 전 재수화(정원·검증·표기)
+      'attendance', // [TBO-76 E] attendanceRequired 파생도 교차 인스턴스 DB 권위
     ]));
   });
 });

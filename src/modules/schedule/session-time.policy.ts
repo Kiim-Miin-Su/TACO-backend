@@ -80,21 +80,3 @@ export function sessionEndPassed(session: SessionMoment, nowMs: number): boolean
   const end = sessionEndMs(session);
   return Number.isFinite(end) && end <= nowMs;
 }
-
-// ── [TBO-66 C1 2026-07-25] 자동 held 전이의 단일 진실원 ──
-//  "사실 기록"(학생 출결·강사 출결·리포트 승인)이 발생한 **시작 경과 scheduled** 세션은 진행(held)으로
-//  전이한다 — TBO-62 ⑤의 원 취지 완결(종전엔 학생 출결 경로만 전이해 강사 출결·리포트만 기록된
-//  세션이 scheduled로 잔류 → 워크시트 제외·completedSessions 미집계·uncovered 미감지).
-//  경계(불변): canceled/no_show/makeup/held는 절대 덮지 않고, 미래(시작 전) 세션은 전이하지 않는다.
-//  no_show 지정·수강 완료 같은 "해석적 상태"는 자동화하지 않는다(수동 유지 — TBO-66 T3 결정).
-export const AUTO_HOLD_AUDIT_REASON = '출결·리포트 기록 자동 진행 처리(TBO-62/66)';
-
-/** 전이 필요 시 patch를, 아니면 null을 반환 — 호출부는 lock 안 권위 재조회 행으로 판정할 것. */
-export function autoHoldPatch(
-  session: SessionMoment & { status: string },
-  nowMs: number,
-): { status: 'held' } | null {
-  if (session.status !== 'scheduled') return null;
-  if (!sessionStartPassed(session, nowMs)) return null;
-  return { status: 'held' };
-}
