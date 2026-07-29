@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -12,6 +13,7 @@ import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-
 import type { Request } from 'express';
 import { EnrollmentsService } from './enrollments.service';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
+import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
@@ -45,5 +47,16 @@ export class EnrollmentsController {
   @ApiOperation({ summary: '학생과 수업을 연결하는 수강 등록 생성 [매니저 이상]' })
   create(@Body() dto: CreateEnrollmentDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.enrollments.create(dto, req.user?.sub);
+  }
+
+  @Patch(':id')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '수강 상태·기간·회차·메모 변경 및 감사 이력 기록 [매니저 이상]' })
+  update(
+    @Param('id', PositiveIntPipe) id: number,
+    @Body() dto: UpdateEnrollmentDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.enrollments.update(id, dto, req.user!.sub);
   }
 }

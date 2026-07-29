@@ -1784,6 +1784,36 @@ paths:
       security:
         - bearer: []
         - access_token: []
+    patch:
+      operationId: EnrollmentsController_update
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateEnrollmentDto'
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      summary: 수강 상태·기간·회차·메모 변경 및 감사 이력 기록 [매니저 이상]
+      tags:
+        - enrollments
+      security:
+        - bearer: []
+        - access_token: []
   /api/payments:
     get:
       operationId: PaymentsController_findAll
@@ -5649,8 +5679,14 @@ components:
           type: number
         courseId:
           type: number
+        counselCardId:
+          type: number
         roadmapId:
           type: number
+        startDate:
+          type: string
+        endDate:
+          type: string
         totalSessions:
           type: number
           minimum: 0
@@ -5661,6 +5697,36 @@ components:
       required:
         - studentId
         - courseId
+    UpdateEnrollmentDto:
+      type: object
+      properties:
+        status:
+          type: string
+          enum:
+            - active
+            - paused
+            - completed
+            - canceled
+        startDate:
+          type: string
+          nullable: true
+        endDate:
+          type: string
+          nullable: true
+        totalSessions:
+          type: number
+          nullable: true
+          minimum: 0
+          maximum: 1000
+        memo:
+          type: string
+          nullable: true
+          maxLength: 500
+        reason:
+          type: string
+          maxLength: 500
+      required:
+        - reason
     CreatePaymentDto:
       type: object
       properties:

@@ -4,6 +4,7 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { createTestApp } from './setup-app';
+import { InMemoryDatabase } from '../src/database/in-memory.database';
 
 describe('[TBO-58] enrollments 홈 스위트 (e2e)', () => {
   let app: INestApplication;
@@ -34,6 +35,7 @@ describe('[TBO-58] enrollments 홈 스위트 (e2e)', () => {
 
   it('생성 권한 — 매니저 이상만(강사 403)', async () => {
     await http.post('/api/enrollments').set(auth('park_inst')).send({ studentId: 3, courseId: 12 }).expect(403);
+    await http.patch('/api/enrollments/1').set(auth('park_inst')).send({ status: 'paused', reason: '강사 임의 변경' }).expect(403);
   });
 
   it('중복 등록 방지 — 같은 (학생, 코스) 재등록 409', async () => {
@@ -58,5 +60,37 @@ describe('[TBO-58] enrollments 홈 스위트 (e2e)', () => {
     await http.post('/api/enrollments').set(auth('manager')).send({ studentId: 3, courseId: 12 }).expect(409); // 방금 만든 조합 재등록 차단
     const listed = (await http.get('/api/enrollments?studentId=3').set(auth('manager')).expect(200)).body as Array<{ id: number }>;
     expect(listed.some((e) => e.id === row.id)).toBe(true);
+
+    const paused = (await http.patch(`/api/enrollments/${row.id}`).set(auth('manager'))
+      .send({ status: 'paused', startDate: '2026-07-29', endDate: '2026-08-29', memo: '여름 방학', reason: '보호자 휴강 요청' })
+      .expect(200)).body;
+    expect(paused).toMatchObject({
+      id: row.id,
+      status: 'paused',
+      startDate: '2026-07-29',
+      endDate: '2026-08-29',
+      memo: '여름 방학',
+    });
+    const readback = (await http.get(`/api/enrollments/${row.id}`).set(auth('manager')).expect(200)).body;
+    expect(readback).toMatchObject({ status: 'paused', startDate: '2026-07-29', endDate: '2026-08-29' });
+
+    const audits = app.get(InMemoryDatabase)
+      .findAll<{ entity: string; entityId: number; action: string; reason?: string }>('audit_log')
+      .filter((audit) => audit.entity === 'enrollments' && audit.entityId === row.id);
+    expect(audits.map((audit) => audit.action)).toEqual(['create', 'update']);
+    expect(audits.at(-1)?.reason).toBe('보호자 휴강 요청');
+  });
+
+  it('수정 입력·전이 무결성 — 이유/날짜/완료회차/없는 행을 fail-closed', async () => {
+    await http.patch('/api/enrollments/1').set(auth('manager'))
+      .send({ status: 'paused', reason: '' }).expect(400);
+    await http.patch('/api/enrollments/1').set(auth('manager'))
+      .send({ startDate: '2026-08-02', endDate: '2026-08-01', reason: '기간 교정' }).expect(400);
+    await http.patch('/api/enrollments/1').set(auth('manager'))
+      .send({ totalSessions: 0, reason: '회차 교정' }).expect(400);
+    await http.patch('/api/enrollments/999999').set(auth('manager'))
+      .send({ status: 'paused', reason: '부재 확인' }).expect(404);
+    await http.patch('/api/enrollments/1').set(auth('manager'))
+      .send({ status: 'invalid', reason: '상태 검증' }).expect(400);
   });
 });

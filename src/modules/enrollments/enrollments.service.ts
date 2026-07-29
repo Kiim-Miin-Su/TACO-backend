@@ -3,17 +3,21 @@ import { ClassSessionsStore } from '../schedule/class-sessions.store'; // [TBO-6
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
+import { COUNSEL_FORMS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
 import { Enrollment, ENROLLMENTS } from './enrollment.entity';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
+import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
 import { STUDENTS } from '../students/student.entity';
 import { Student } from '../students/student.entity';
 import { COURSES, StoredCourse } from '../courses/course.entity';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { buildCohortIndex, studentBelongsToSessionIndexed } from '../schedule/session-participant.policy';
 import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
+import { CounselForm } from '../counsel/counsel.entity';
+import { enrollmentLifecyclePatch } from './enrollment-lifecycle.policy';
 
 @Injectable()
 export class EnrollmentsService implements OnModuleInit {
@@ -67,10 +71,15 @@ export class EnrollmentsService implements OnModuleInit {
   // 결제 없이도 등록 가능 (status=active). actorId 없으면(시드·내부 경로) audit 생략.
   async create(dto: CreateEnrollmentDto, actorId?: number): Promise<Enrollment> {
     return this.uow.run(async () => {
-      await this.uow.lockTargets([{ kind: 'student', id: dto.studentId }, { kind: 'course', id: dto.courseId }]);
+      await this.uow.lockTargets([
+        { kind: 'student', id: dto.studentId },
+        { kind: 'course', id: dto.courseId },
+        ...(dto.counselCardId == null ? [] : [{ kind: 'counselForm' as const, id: dto.counselCardId }]),
+      ]);
       await this.store.hydrate<Student>(STUDENTS_SPEC);
       await this.store.hydrate<StoredCourse>(COURSES_SPEC);
       await this.store.hydrate<Enrollment>(ENROLLMENTS_SPEC);
+      if (dto.counselCardId != null) await this.store.hydrate<CounselForm>(COUNSEL_FORMS_SPEC);
       // FK·중복 판정은 lock 뒤 실제 DB readback이 권위다.
       const student = this.db.findById<Student>(STUDENTS, dto.studentId);
       if (!student)
@@ -79,6 +88,16 @@ export class EnrollmentsService implements OnModuleInit {
         throw new BadRequestException(`수업에 연결할 수 없는 학생입니다 (studentId=${dto.studentId})`);
       if (!this.db.findById(COURSES, dto.courseId))
         throw new BadRequestException(`존재하지 않는 코스입니다 (courseId=${dto.courseId})`);
+      if (dto.startDate && dto.endDate && dto.endDate < dto.startDate)
+        throw new BadRequestException('수강 종료일은 시작일보다 빠를 수 없습니다.');
+      if (dto.counselCardId != null) {
+        const [counsel] = await this.store.findActive<CounselForm>(COUNSEL_FORMS_SPEC, {
+          where: { id: dto.counselCardId },
+          limit: 1,
+        });
+        if (!counsel || Number(counsel.studentId) !== Number(dto.studentId))
+          throw new BadRequestException('상담카드가 없거나 대상 학생과 일치하지 않습니다.');
+      }
       const duplicate = this.db.findBy<Enrollment>(ENROLLMENTS, (row) =>
         Number(row.studentId) === Number(dto.studentId) && Number(row.courseId) === Number(dto.courseId),
       )[0];
@@ -86,8 +105,11 @@ export class EnrollmentsService implements OnModuleInit {
       const row = await this.store.insert<Enrollment>(ENROLLMENTS_SPEC, {
         studentId: dto.studentId,
         courseId: dto.courseId,
+        counselCardId: dto.counselCardId,
         roadmapId: dto.roadmapId,
         status: 'active',
+        startDate: dto.startDate,
+        endDate: dto.endDate,
         totalSessions: dto.totalSessions,
         completedSessions: 0,
         memo: dto.memo,
@@ -96,6 +118,37 @@ export class EnrollmentsService implements OnModuleInit {
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시)
       if (actorId != null) await this.audit.log({ entity: 'enrollments', entityId: row.id, action: 'create', actorId, changes: this.audit.snapshotOf(row) });
       return row;
+    });
+  }
+
+  async update(id: number, dto: UpdateEnrollmentDto, actorId: number): Promise<Enrollment> {
+    await this.sessionsStore.ensureReady();
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'enrollment', id }]);
+      const [current] = await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, {
+        where: { id },
+        limit: 1,
+      });
+      if (!current) throw new NotFoundException(`Enrollment ${id} not found`);
+
+      const hydrated = this.withDerivedCompletedSessions([current])[0];
+      const patch = enrollmentLifecyclePatch(hydrated, dto, hydrated.completedSessions ?? 0);
+      const updated = await this.store.updateIf<Enrollment>(
+        ENROLLMENTS_SPEC,
+        id,
+        { status: current.status },
+        patch,
+      );
+      if (!updated) throw new ConflictException('다른 사용자가 수강 정보를 먼저 변경했습니다. 새로고침 후 다시 시도해 주세요.');
+      await this.audit.log({
+        entity: 'enrollments',
+        entityId: id,
+        action: 'update',
+        actorId,
+        changes: this.audit.diffOf(current, updated),
+        reason: dto.reason.trim(),
+      });
+      return this.withDerivedCompletedSessions([updated])[0];
     });
   }
 
