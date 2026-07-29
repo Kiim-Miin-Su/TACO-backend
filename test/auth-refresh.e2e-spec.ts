@@ -6,6 +6,7 @@ import request from 'supertest';
 import { createTestApp } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
+import { createHash } from 'crypto';
 
 const cookieOf = (res: { headers: Record<string, unknown> }): string => {
   const setCookie = ([] as string[]).concat((res.headers['set-cookie'] as string[]) ?? []);
@@ -44,6 +45,28 @@ describe('Refresh token rotation (e2e, 대표 지시 ④)', () => {
     expect(rows.some((r) => r.tokenHash === raw)).toBe(false);
   });
 
+  it('같은 브라우저의 재로그인은 이전 refresh를 폐기하고 새 계정 token pair만 교체 발급한다', async () => {
+    const first = await login('manager', 'demo1234');
+    const oldCookie = cookieOf(first);
+    const oldRaw = oldCookie.split('=')[1];
+    const second = await http.post('/api/auth/login')
+      .set('Cookie', oldCookie)
+      .send({ webId: 'park_inst', password: 'demo1234' })
+      .expect(201);
+    const nextCookie = cookieOf(second);
+    expect(nextCookie).not.toBe(oldCookie);
+    expect(second.body.account).toMatchObject({ role: 'instructor' });
+
+    const hash = (raw: string) => createHash('sha256').update(raw).digest('hex');
+    const rows = db.findAll<{ tokenHash: string; userId: number; revokedAt?: string | null }>('auth_refresh_tokens');
+    expect(rows.find((row) => row.tokenHash === hash(oldRaw))?.revokedAt).toBeTruthy();
+    expect(rows.find((row) => row.tokenHash === hash(nextCookie.split('=')[1]))).toMatchObject({
+      userId: second.body.account.id,
+      revokedAt: null,
+    });
+    await http.post('/api/auth/refresh').set('Cookie', nextCookie).expect(201);
+  });
+
   it('refresh 회전: 새 access·새 쿠키 발급, 구 토큰 재사용은 401 + 가족 전체 무효 + 보안 이벤트', async () => {
     const first = await login();
     const cookie1 = cookieOf(first);
@@ -62,6 +85,26 @@ describe('Refresh token rotation (e2e, 대표 지시 ④)', () => {
     const events = db.findAll<{ eventType: string; failureCode?: string }>('auth_events')
       .filter((e) => e.eventType === 'refresh_reuse_blocked');
     expect(events.length).toBeGreaterThan(0);
+  });
+
+  it('같은 refresh 동시 회전은 successor 하나만 만들고 재사용 감지로 family를 폐기한다', async () => {
+    const first = await login('manager', 'demo1234');
+    const cookie = cookieOf(first);
+    const hash = createHash('sha256').update(cookie.split('=')[1]).digest('hex');
+    const predecessor = db.findAll<{ id: number; tokenHash: string }>('auth_refresh_tokens')
+      .find((row) => row.tokenHash === hash)!;
+
+    const [a, b] = await Promise.all([
+      http.post('/api/auth/refresh').set('Cookie', cookie),
+      http.post('/api/auth/refresh').set('Cookie', cookie),
+    ]);
+
+    expect([a.status, b.status].sort()).toEqual([201, 401]);
+    const rows = db.findAll<{ id: number; replacedById?: number | null; revokedAt?: string | null }>('auth_refresh_tokens');
+    const linked = rows.filter((row) => row.id === predecessor.id && row.replacedById != null);
+    expect(linked).toHaveLength(1);
+    const successor = rows.find((row) => row.id === linked[0].replacedById);
+    expect(successor?.revokedAt).toBeTruthy();
   });
 
   it('auth_version 변경(비밀번호 변경 계열) 후의 refresh는 401 — 발급 시점 버전 동결 대조', async () => {

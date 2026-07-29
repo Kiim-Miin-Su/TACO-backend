@@ -169,6 +169,35 @@ export class ClassSessionsStore implements OnModuleInit {
     return rows.map((row) => this.fromDbRow(row));
   }
 
+  /**
+   * 목록 Query의 세션 권위 READ. 카탈로그 hydrate TTL과 분리해 다른 인스턴스가 방금 만든
+   * 회차도 첫 GET에서 PostgreSQL로 확인한다. in-memory 테스트 모드는 같은 필터 의미를 유지한다.
+   */
+  async listDb(opts: { from?: string; to?: string; instructorId?: number; roomId?: number }): Promise<ClassSession[]> {
+    if (!this.durable) {
+      return this.memory.findAll<ClassSession>(TABLE).filter((row) =>
+        (opts.from ? row.sessionDate >= opts.from : true)
+        && (opts.to ? row.sessionDate <= opts.to : true)
+        && (opts.instructorId != null ? row.instructorId === opts.instructorId : true)
+        && (opts.roomId != null ? row.roomId === opts.roomId : true));
+    }
+    const where = ['deleted_at IS NULL'];
+    const values: unknown[] = [];
+    const add = (sql: string, value: unknown) => {
+      values.push(value);
+      where.push(sql.replace('?', `$${values.length}`));
+    };
+    if (opts.from) add('session_date >= ?', opts.from);
+    if (opts.to) add('session_date <= ?', opts.to);
+    if (opts.instructorId != null) add('instructor_id = ?', opts.instructorId);
+    if (opts.roomId != null) add('room_id = ?', opts.roomId);
+    const rows = await this.query(
+      `SELECT * FROM ${TABLE} WHERE ${where.join(' AND ')} ORDER BY session_date ASC, start_time ASC, id ASC`,
+      values,
+    );
+    return rows.map((row) => this.fromDbRow(row));
+  }
+
   /** 카탈로그 삭제 무결성용 — 다른 인스턴스가 만든 활성 세션도 PostgreSQL에서 직접 확인한다. */
   async existsForCourse(courseId: number): Promise<boolean> {
     await this.ensureReady();

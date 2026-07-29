@@ -39,4 +39,30 @@ describe('ScheduleReadService DB read-model hydration', () => {
       'attendance', // [TBO-76 E] attendanceRequired 파생도 교차 인스턴스 DB 권위
     ]));
   });
+
+  it('HTTP 목록은 hydrate 미러 대신 세션 DB 권위 listDb를 매번 호출한다', async () => {
+    const sessions = {
+      ensureReady: jest.fn(async () => undefined),
+      listDb: jest.fn(async () => []),
+    };
+    const service = new ScheduleReadService(
+      new InMemoryDatabase(),
+      sessions as never,
+      { inPgTransaction: false } as never,
+      { findAll: jest.fn(() => []) } as never,
+      { refresh: jest.fn(async () => undefined) } as never,
+      { hydrate: jest.fn(async () => []) } as never,
+      {} as never,
+    );
+
+    await service.listFresh({ from: '2026-07-01', to: '2026-07-31', instructorId: 22 });
+    await service.listFresh({ from: '2026-07-01', to: '2026-07-31', instructorId: 22 });
+
+    expect(sessions.listDb).toHaveBeenCalledTimes(2);
+    expect(sessions.listDb).toHaveBeenNthCalledWith(1, {
+      from: '2026-07-01',
+      to: '2026-07-31',
+      instructorId: 22,
+    });
+  });
 });

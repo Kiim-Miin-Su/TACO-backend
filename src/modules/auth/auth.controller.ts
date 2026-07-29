@@ -208,7 +208,12 @@ export class AuthController {
     await this.users.recordLoginSuccess(account.id);
     await this.events.record({ type: 'login_success', userId: account.id, req });
     // [대표 지시 ④] refresh token 발급(httpOnly 쿠키) — access token 만료 후 무중단 갱신 기반.
-    const issued = await this.refreshTokens.issue(account.id, authVersionOf(account), String(req.headers['user-agent'] ?? '') || null);
+    const issued = await this.refreshTokens.replaceBrowserSession(
+      readCookie(req, REFRESH_COOKIE),
+      account.id,
+      authVersionOf(account),
+      String(req.headers['user-agent'] ?? '') || null,
+    );
     setRefreshCookie(res, issued.raw, issued.row.expiresAt);
     const accessToken = this.auth.sign(claims);
     const accessClaims = this.auth.verify(accessToken);
@@ -240,17 +245,10 @@ export class AuthController {
       clearBrowserSession(res);
       throw new UnauthorizedException('세션 갱신 정보가 없습니다. 다시 로그인해 주세요.');
     }
-    let row;
-    try {
-      row = await this.refreshTokens.assertRotatable(raw);
-    } catch (err) {
-      // 재사용 감지 계열은 보안 이벤트로 남긴다(원문 토큰은 기록하지 않음 — hash도 남기지 않음).
-      const rowForEvent = await this.refreshTokens.findByRaw(raw);
-      if (rowForEvent?.revokedAt != null) {
-        await this.events.record({ type: 'refresh_reuse_blocked', userId: rowForEvent.userId, failureCode: 'revoked_reuse', req });
-      }
+    const row = await this.refreshTokens.findByRaw(raw);
+    if (!row) {
       clearBrowserSession(res);
-      throw err;
+      throw new UnauthorizedException('세션이 더 이상 유효하지 않습니다. 다시 로그인해 주세요.');
     }
     await this.users.refreshFromDb();
     const account = this.users.findById(row.userId);
@@ -261,8 +259,24 @@ export class AuthController {
     };
     if (!account || account.deletedAt != null || account.status !== 'active' || !isStaffRole(account.role)) return invalidate();
     if (authVersionOf(account) !== row.authVersion) return invalidate(); // 자격증명/역할 변경 후의 구 refresh
-    const next = await this.refreshTokens.issue(account.id, authVersionOf(account), String(req.headers['user-agent'] ?? '') || null);
-    await this.refreshTokens.markRotated(row.id, next.row.id);
+    const rotated = await this.refreshTokens.rotate(raw, String(req.headers['user-agent'] ?? '') || null);
+    if (!rotated.ok) {
+      if (rotated.reason === 'reuse') {
+        await this.events.record({
+          type: 'refresh_reuse_blocked',
+          userId: rotated.userId,
+          failureCode: 'revoked_reuse',
+          req,
+        });
+      }
+      clearBrowserSession(res);
+      throw new UnauthorizedException(
+        rotated.reason === 'reuse'
+          ? '세션 갱신이 차단되었습니다. 다시 로그인해 주세요.'
+          : '세션이 더 이상 유효하지 않습니다. 다시 로그인해 주세요.',
+      );
+    }
+    const next = rotated.next;
     setRefreshCookie(res, next.raw, next.row.expiresAt);
     const claims: JwtClaims = {
       sub: account.id,

@@ -197,6 +197,43 @@ export class ScheduleReadService implements OnModuleInit {
     return this.list(opts).filter((row) => isSessionVisibleToInstructor(row, viewerInstructorId));
   }
 
+  /**
+   * HTTP 목록용 DB 권위 Query. 세션 행은 매 요청 PostgreSQL에서 읽고, 사용자·코스·학생·강의실
+   * 카탈로그만 ensureReady의 bounded TTL 미러를 사용한다.
+   */
+  async listFresh(
+    opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number },
+  ): Promise<ScheduleRow[]> {
+    await this.ensureReady();
+    const rooms = new Map(this.rooms.findAll().map((room) => [room.id, room]));
+    const coursesOfStudent = opts.studentId != null
+      ? new Set(
+          this.db.findByField<Enrollment>(ENROLLMENTS_COL, 'studentId', opts.studentId)
+            .filter((enrollment) => enrollment.status === 'active')
+            .map((enrollment) => enrollment.courseId),
+        )
+      : null;
+    const rows = await this.sessions.listDb(opts);
+    return rows
+      .filter((row) => coursesOfStudent ? coursesOfStudent.has(row.courseId) : true)
+      .map((row) => this.enrich(row, rooms));
+  }
+
+  async listVisibleFresh(
+    opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number },
+    viewerInstructorId: number,
+  ): Promise<ScheduleRow[]> {
+    const rows = await this.listFresh({ ...opts, instructorId: undefined });
+    return rows.filter((row) => isSessionVisibleToInstructor(row, viewerInstructorId));
+  }
+
+  listReadMetadata(): { source: 'postgres' | 'in-memory'; catalogHydrateAgeMs: number } {
+    return {
+      source: this.sessions.durable ? 'postgres' : 'in-memory',
+      catalogHydrateAgeMs: this.hydratedAt > 0 ? Math.max(0, Date.now() - this.hydratedAt) : -1,
+    };
+  }
+
   // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터.
   //  · 카운트(출/지/결/보강/미표시)는 **진행 회차(held·makeup)** 기준(마킹 대상).
   //  · 인정 시수는 **시수 정책**(status='held' && 결석 아님 — 보강 제외, payouts와 동일 규칙).

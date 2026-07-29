@@ -1,7 +1,7 @@
 import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch,
-  Put, Post, Query, Req, UseGuards } from '@nestjs/common';
+  Put, Post, Query, Req, Res, UseGuards } from '@nestjs/common';
 import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiOkResponse, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { ScheduleService } from './schedule.service';
@@ -40,13 +40,13 @@ export class ScheduleController {
   @ApiQuery({ name: 'studentId', required: false, description: '학생 코호트(enrollment status≠drop) 역추적' })
   async list(
     @Req() req: Request & { user?: JwtClaims },
+    @Res({ passthrough: true }) res: Response,
     @Query('from') from?: string,
     @Query('to') to?: string,
     @Query('instructorId', OptionalPositiveIntPipe) instructorId?: number,
     @Query('roomId', OptionalPositiveIntPipe) roomId?: number,
     @Query('studentId', OptionalPositiveIntPipe) studentId?: number,
   ) {
-    await this.scheduleRead.ensureReady();
     const filters = {
       from,
       to,
@@ -54,9 +54,13 @@ export class ScheduleController {
       roomId,
       studentId,
     };
-    return isInstructorOnly(req.user?.roles)
-      ? this.scheduleRead.listVisible({ ...filters, instructorId: undefined }, req.user!.sub)
-      : this.scheduleRead.list(filters);
+    const rows = await (isInstructorOnly(req.user?.roles)
+      ? this.scheduleRead.listVisibleFresh(filters, req.user!.sub)
+      : this.scheduleRead.listFresh(filters));
+    const read = this.scheduleRead.listReadMetadata();
+    res.setHeader('X-Schedule-Read-Source', read.source);
+    res.setHeader('X-Schedule-Catalog-Hydrate-Age-Ms', String(read.catalogHydrateAgeMs));
+    return rows;
   }
 
   // GET /api/schedule/resources — 자원 피커(강사·강의실·학생·코스)
