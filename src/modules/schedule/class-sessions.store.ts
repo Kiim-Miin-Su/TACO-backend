@@ -153,6 +153,22 @@ export class ClassSessionsStore implements OnModuleInit {
     return row ? this.fromDbRow(row) : undefined;
   }
 
+  /** 보고서/정산 읽기 모델용 세션 배치 조회. 활성 ID 집합을 한 왕복으로 읽어 N+1을 막는다. */
+  async findByIdsDb(requestedIds: readonly number[]): Promise<ClassSession[]> {
+    const ids = [...new Set(requestedIds.filter((id) => Number.isSafeInteger(id) && id > 0))];
+    if (!ids.length) return [];
+    if (!this.durable) {
+      const allowed = new Set(ids);
+      return this.memory.findAll<ClassSession>(TABLE).filter((row) => allowed.has(row.id));
+    }
+    const placeholders = ids.map((_, index) => `$${index + 1}`).join(', ');
+    const rows = await this.query(
+      `SELECT * FROM ${TABLE} WHERE id IN (${placeholders}) AND deleted_at IS NULL ORDER BY id ASC`,
+      ids,
+    );
+    return rows.map((row) => this.fromDbRow(row));
+  }
+
   /** 카탈로그 삭제 무결성용 — 다른 인스턴스가 만든 활성 세션도 PostgreSQL에서 직접 확인한다. */
   async existsForCourse(courseId: number): Promise<boolean> {
     await this.ensureReady();

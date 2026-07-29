@@ -1,5 +1,5 @@
-// [E0.6 H1] PATCH /reports/:id — 기존 보고서 본문/숙제 수정(임시 저장 경로 신설) e2e.
-//  규칙: 본인(또는 관리자)만 · 승인(approved) 후 불변 · 빈 homework는 명시 null(비움).
+// [TBO-76 76D] PATCH /reports/:id — 작성값(content/progressPage/homework) 수정.
+//  규칙: 조인 헤더와 분리 · 본인(또는 관리자)만 · 승인 후 불변 · 빈 선택값은 명시 null.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
@@ -25,14 +25,55 @@ describe('Report content update (e2e, E0.6 H1)', () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it('owner updates content/homework; empty homework clears to null', async () => {
+  it('owner updates authored fields; empty progress/homework clears to null', async () => {
     const updated = await http.patch('/api/reports/1').set(bearer(tokens.park))
-      .send({ content: '수정된 진도 — 요지 파악 정답률 90%.', homework: '워크북 20p' }).expect(200);
-    expect(updated.body).toMatchObject({ id: 1, content: '수정된 진도 — 요지 파악 정답률 90%.', homework: '워크북 20p' });
+      .send({
+        content: '수정된 수업 내용 — 요지 파악 정답률 90%.',
+        progressPage: 'Vocab #6 PDF 12-15p',
+        homework: '워크북 20p',
+      }).expect(200);
+    expect(updated.body).toMatchObject({
+      id: 1,
+      content: '수정된 수업 내용 — 요지 파악 정답률 90%.',
+      progressPage: 'Vocab #6 PDF 12-15p',
+      homework: '워크북 20p',
+    });
     const cleared = await http.patch('/api/reports/1').set(bearer(tokens.park))
-      .send({ homework: '' }).expect(200);
+      .send({ progressPage: '', homework: '' }).expect(200);
+    expect(cleared.body.progressPage ?? null).toBeNull();
     expect(cleared.body.homework ?? null).toBeNull(); // 빈 문자열 = 명시 null(비움)
-    expect(cleared.body.content).toBe('수정된 진도 — 요지 파악 정답률 90%.'); // 부분 수정 — content 유지
+    expect(cleared.body.content).toBe('수정된 수업 내용 — 요지 파악 정답률 90%.'); // 부분 수정 — content 유지
+  });
+
+  it('create persists progressPage and joined detail reads the same session/student/course authority', async () => {
+    const session = (await http.post('/api/schedule').set(bearer(tokens.admin)).send({
+      courseId: 10,
+      sessionDate: '2097-07-29',
+      startTime: '03:00',
+      durationMinutes: 60,
+      studentIds: [1],
+      force: true,
+    }).expect(201)).body.row;
+    const created = (await http.post('/api/reports').set(bearer(tokens.park)).send({
+      sessionId: session.id,
+      studentId: 1,
+      content: 'Vocab #6 문장 만들기와 전치사 교정',
+      progressPage: 'Vocab #6 PDF 문장 만들기',
+      homework: 'Vocab #6 문장 완성과 단어 암기',
+      status: 'draft',
+    }).expect(201)).body;
+    expect(created.progressPage).toBe('Vocab #6 PDF 문장 만들기');
+
+    const detail = (await http.get(`/api/reports/${created.id}`).set(bearer(tokens.park)).expect(200)).body;
+    expect(detail).toMatchObject({
+      progressPage: 'Vocab #6 PDF 문장 만들기',
+      context: {
+        student: { id: 1, name: expect.any(String) },
+        session: { id: session.id, sessionDate: '2097-07-29' },
+        course: { id: 10, name: expect.any(String) },
+        instructor: { id: session.instructorId, name: expect.any(String) },
+      },
+    });
   });
 
   it('rejects non-owner (403), empty patch (400), and edits after approval (400)', async () => {
@@ -44,6 +85,6 @@ describe('Report content update (e2e, E0.6 H1)', () => {
     await http.post('/api/reports/1/approve').set(bearer(tokens.admin)).expect(201);
     await http.patch('/api/reports/1').set(bearer(tokens.park))
       .send({ content: '승인 후 수정 시도' }).expect(400);
-    expect(db.findById<{ content: string }>('session_reports', 1)?.content).toBe('수정된 진도 — 요지 파악 정답률 90%.');
+    expect(db.findById<{ content: string }>('session_reports', 1)?.content).toBe('수정된 수업 내용 — 요지 파악 정답률 90%.');
   });
 });

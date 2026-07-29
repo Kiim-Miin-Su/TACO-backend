@@ -2875,7 +2875,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 보고서 목록(sessionId 필터). 강사는 본인 일반 일정 보고서만.
+      summary: 보고서 목록(sessionId 필터). 학생/학년/수업/과목/시간 조인 context 포함. 강사는 본인 일반 일정만.
       tags:
         - reports
     post:
@@ -2922,7 +2922,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 보고서 단건 — 강사는 본인 보고서만(404→403 표준). [B7 E3 스코프 갭 수정]
+      summary: 보고서 단건 + 서버 조인 context — 강사는 본인 보고서만(404→403 표준).
       tags:
         - reports
     patch:
@@ -2952,7 +2952,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 보고서 본문/숙제 수정(승인 전) — 본인 보고서만. 기존 보고서 임시 저장 경로.
+      summary: 보고서 수업내용/진도페이지/숙제 수정(승인 전) — 본인 보고서만.
       tags:
         - reports
   /api/reports/{id}/submit:
@@ -6581,8 +6581,13 @@ components:
         content:
           type: string
           maxLength: 4000
-          example: '오늘 진도: 추론 문제 3세트. 정답률 향상.'
-          description: 보고서 본문(진도·피드백)
+          example: '오늘 수업은 Vocab #6 문장 만들기와 전치사 교정을 진행했습니다.'
+          description: 수업 내용·피드백
+        progressPage:
+          type: string
+          maxLength: 2000
+          example: 'Vocab #6 PDF 단어 문장 만들기'
+          description: 진도 페이지(선택)
         homework:
           type: string
           maxLength: 2000
@@ -6607,6 +6612,11 @@ components:
           maxLength: 4000
           example: '오늘 진도: 추론 문제 3세트. 정답률 향상.'
           description: 보고서 본문(진도·피드백)
+        progressPage:
+          type: string
+          maxLength: 2000
+          example: 'Vocab #6 PDF 단어 문장 만들기'
+          description: 진도 페이지(선택 — 빈 문자열로 비움)
         homework:
           type: string
           maxLength: 2000

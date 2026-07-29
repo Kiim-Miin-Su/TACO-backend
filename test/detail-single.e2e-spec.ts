@@ -70,9 +70,21 @@ describe('Detail single-fetch endpoints (e2e, B7 E3)', () => {
     const foreign = reports.find((r) => r.instructorId !== instId);
     expect(own).toBeTruthy();
     expect(foreign).toBeTruthy();
-    expect((await http.get(`/api/reports/${own!.id}`).set(auth(inst)).expect(200)).body.instructorId).toBe(instId);
+    const ownDetail = (await http.get(`/api/reports/${own!.id}`).set(auth(inst)).expect(200)).body;
+    expect(ownDetail.instructorId).toBe(instId);
+    expect(ownDetail.context).toMatchObject({
+      student: { id: ownDetail.studentId },
+      session: { id: ownDetail.sessionId },
+      course: { id: expect.any(Number), name: expect.any(String) },
+      instructor: { id: instId, name: expect.any(String) },
+    });
+    expect(ownDetail.context.student.name).toEqual(expect.any(String));
+    expect(ownDetail.context.session.sessionDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect(ownDetail.context.subject?.name).toEqual(expect.any(String));
     await http.get(`/api/reports/${foreign!.id}`).set(auth(inst)).expect(403); // 종전엔 200(IDOR)
-    await http.get(`/api/reports/${foreign!.id}`).set(auth(admin)).expect(200); // 관리자는 전체
+    const adminDetail = (await http.get(`/api/reports/${foreign!.id}`).set(auth(admin)).expect(200)).body;
+    expect(adminDetail.context.student.id).toBe(adminDetail.studentId);
+    expect(adminDetail.context.session.id).toBe(adminDetail.sessionId);
   });
 
   it('강사 보고서·출결 조회도 본인 일반 일정 술어를 공유하고 상담 세션을 누출하지 않는다', async () => {

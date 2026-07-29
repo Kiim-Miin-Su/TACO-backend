@@ -19,7 +19,7 @@ export class ReportsController {
 
   @Get()
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '보고서 목록(sessionId 필터). 강사는 본인 일반 일정 보고서만.' })
+  @ApiOperation({ summary: '보고서 목록(sessionId 필터). 학생/학년/수업/과목/시간 조인 context 포함. 강사는 본인 일반 일정만.' })
   @ApiQuery({ name: 'sessionId', required: false })
   findAll(
     @Req() req: Request & { user?: JwtClaims },
@@ -31,7 +31,7 @@ export class ReportsController {
 
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '보고서 단건 — 강사는 본인 보고서만(404→403 표준). [B7 E3 스코프 갭 수정]' })
+  @ApiOperation({ summary: '보고서 단건 + 서버 조인 context — 강사는 본인 보고서만(404→403 표준).' })
   findOne(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.reports.getDbForActor(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined); // [TBO-54 C2]
   }
@@ -44,10 +44,10 @@ export class ReportsController {
     return this.reports.create(dto, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }
 
-  // [E0.6 H1] 본문/숙제 수정(임시 저장) — 승인 전까지, 본인 보고서만.
+  // [TBO-76 76D] 작성값 수정(임시 저장) — 승인 전까지, 본인 보고서만.
   @Patch(':id')
   @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '보고서 본문/숙제 수정(승인 전) — 본인 보고서만. 기존 보고서 임시 저장 경로.' })
+  @ApiOperation({ summary: '보고서 수업내용/진도페이지/숙제 수정(승인 전) — 본인 보고서만.' })
   update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateReportDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.reports.updateContent(id, dto, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }

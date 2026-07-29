@@ -21,6 +21,13 @@ type ReportRow = {
   status: string;
   approvalStatus?: string;
   approvedBy?: number;
+  progressPage?: string;
+  context?: {
+    student: { id: number; name: string };
+    session: { id: number; sessionDate: string };
+    course: { id: number; name: string };
+    instructor: { id: number; name: string };
+  };
 };
 
 type ContractRow = {
@@ -108,7 +115,13 @@ async function main(): Promise<void> {
 
     const report = await http.post('/api/reports')
       .set(auth(manager))
-      .send({ sessionId, studentId: 4, content: `DB smoke report ${stamp}`, homework: 'Read pages 1-3' })
+      .send({
+        sessionId,
+        studentId: 4,
+        content: `DB smoke report ${stamp}`,
+        progressPage: 'Vocab #6 PDF 1-3p',
+        homework: 'Read pages 1-3',
+      })
       .expect(201);
     reportId = report.body.id;
     if (report.body.status !== 'submitted' || report.body.approvalStatus !== 'submitted') {
@@ -175,7 +188,18 @@ async function main(): Promise<void> {
       .set(auth(manager))
       .expect(200)).body as ReportRow[];
     const persistedReport = reports.find((row) => row.id === reportId);
-    if (!persistedReport || persistedReport.status !== 'submitted' || persistedReport.approvalStatus !== 'approved' || persistedReport.approvedBy !== 4) {
+    if (
+      !persistedReport ||
+      persistedReport.status !== 'submitted' ||
+      persistedReport.approvalStatus !== 'approved' ||
+      persistedReport.approvedBy !== 4 ||
+      persistedReport.progressPage !== 'Vocab #6 PDF 1-3p' ||
+      persistedReport.context?.student.id !== 4 ||
+      persistedReport.context?.session.id !== sessionId ||
+      persistedReport.context?.session.sessionDate !== sessionDate ||
+      !persistedReport.context?.course.name ||
+      !persistedReport.context?.instructor.name
+    ) {
       throw new Error(`report ${reportId} did not survive restart: ${JSON.stringify(reports)}`);
     }
     const persistedSession = (await http.get(`/api/schedule?from=${sessionDate}&to=${sessionDate}`)

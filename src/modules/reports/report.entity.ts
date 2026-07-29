@@ -1,4 +1,9 @@
-import type { ReportApprovalStatus, ReportStatus, SessionReport as SessionReportContract } from '@kms545487/contracts';
+import type {
+  ReportApprovalStatus,
+  ReportStatus,
+  SessionReport as SessionReportContract,
+  SessionReportView,
+} from '@kms545487/contracts';
 import type { BaseRow } from '../../common/types/base';
 
 export const SESSION_REPORTS = 'session_reports';
@@ -11,3 +16,4 @@ export const SESSION_REPORTS = 'session_reports';
  */
 export type { ReportApprovalStatus, ReportStatus };
 export type SessionReportRow = SessionReportContract & BaseRow;
+export type SessionReportViewRow = SessionReportView & BaseRow;

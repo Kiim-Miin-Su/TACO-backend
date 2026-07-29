@@ -17,9 +17,13 @@ export class CreateReportDto implements UpsertSessionReportInput {
   @IsOptional() @IsInt()
   instructorId?: number;
 
-  @ApiProperty({ example: '오늘 진도: 추론 문제 3세트. 정답률 향상.', description: '보고서 본문(진도·피드백)' })
+  @ApiProperty({ example: '오늘 수업은 Vocab #6 문장 만들기와 전치사 교정을 진행했습니다.', description: '수업 내용·피드백' })
   @IsString() @MaxLength(4000)
   content!: string;
+
+  @ApiPropertyOptional({ example: 'Vocab #6 PDF 단어 문장 만들기', description: '진도 페이지(선택)' })
+  @IsOptional() @IsString() @MaxLength(2000)
+  progressPage?: string;
 
   @ApiPropertyOptional({ example: '워크북 12–15p', description: '숙제(선택)' })
   @IsOptional() @IsString() @MaxLength(2000)

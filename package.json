@@ -71,10 +71,11 @@
   "qa:server": "ts-node --transpile-only test/qa-fixture-server.ts",
   "db:inventory:attendance-reports": "ts-node scripts/db-inventory-attendance-reports.ts",
   "db:migrate:attendance-reports-constraints": "ts-node scripts/migrate-attendance-reports-constraints.ts",
-  "db:migrate:counsel-next-contact-datetime": "ts-node scripts/migrate-counsel-next-contact-datetime.ts"
+  "db:migrate:counsel-next-contact-datetime": "ts-node scripts/migrate-counsel-next-contact-datetime.ts",
+  "db:migrate:session-report-progress-page": "ts-node scripts/migrate-session-report-progress-page.ts"
  },
  "dependencies": {
-  "@kms545487/contracts": "^0.2.21",
+  "@kms545487/contracts": "0.2.22",
   "@neondatabase/serverless": "^1.1.0",
   "@nestjs/common": "^11.1.27",
   "@nestjs/core": "^11.1.27",

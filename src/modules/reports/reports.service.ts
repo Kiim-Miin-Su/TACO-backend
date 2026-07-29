@@ -1,8 +1,15 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { AUTO_HOLD_AUDIT_REASON, autoHoldPatch } from '../schedule/session-time.policy'; // [TBO-66 C1]
 import { InMemoryDatabase } from '../../database/in-memory.database';
-import { SESSION_REPORTS_SPEC } from '../../database/calendar-asset-specs';
-import { COURSES_SPEC, ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-specs';
+import {
+  COURSES_SPEC,
+  ENROLLMENTS_SPEC,
+  SESSION_REPORTS_SPEC,
+  STUDENTS_SPEC,
+  STUDENT_ACADEMIC_HISTORIES_SPEC,
+  SUBJECTS_SPEC,
+  USERS_SPEC,
+} from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import {
   CalendarUnitOfWork,
@@ -13,12 +20,16 @@ import { AuditService } from '../audit/audit.service';
 import { ADMIN_ROLES } from '../auth/roles.decorator';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Course } from '../courses/course.entity';
-import { SessionReportRow, SESSION_REPORTS } from './report.entity';
+import { SessionReportRow, SessionReportViewRow, SESSION_REPORTS } from './report.entity';
 import { CreateReportDto } from './dto/create-report.dto';
 import { Student } from '../students/student.entity';
+import { StudentAcademicHistory } from '../students/student-academic-history.entity';
+import { currentAcademicHistory } from '../students/student-academic-projection';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { buildCohortIndex, participantIdsForSession, studentBelongsToSession } from '../schedule/session-participant.policy';
 import { isSessionVisibleToInstructor } from '../schedule/schedule-visibility.policy';
+import { Subject } from '../subjects/subject.entity';
+import { StaffAccount } from '../users/user.entity';
 
 // [보안 2026-07-07 H2] 액터 컨텍스트 — 비관리자(강사)는 본인 세션·본인 보고서만 쓰기 가능(IDOR 차단).
 export type ReportActor = { id: number; roles: string[] };
@@ -56,6 +67,89 @@ export class ReportsService implements OnModuleInit {
     return row;
   }
 
+  /**
+   * 보고서 읽기 모델의 단일 조인 경계.
+   * 작성값(content/progressPage/homework)만 report 행이 소유하고, 화면 헤더는 현재 원부와
+   * 세션/코스/과목/강사를 배치 조회해 투영한다. 학년은 수업일 당시 유효한 학사 이력을 사용한다.
+   */
+  private async projectViews(
+    rows: readonly SessionReportRow[],
+    prefetchedSessions?: readonly ClassSession[],
+  ): Promise<SessionReportViewRow[]> {
+    if (!rows.length) return [];
+    const sessions = prefetchedSessions ?? await this.sessionsStore.findByIdsDb(rows.map((row) => row.sessionId));
+    const sessionById = new Map(sessions.map((row) => [row.id, row]));
+    const studentIds = rows.map((row) => row.studentId);
+    const courseIds = sessions.map((row) => row.courseId);
+    const instructorIds = rows.map((row) => row.instructorId);
+    const [students, histories, courses, instructors] = await Promise.all([
+      this.store.findActiveByFieldValues<Student>(STUDENTS_SPEC, 'id', studentIds),
+      this.store.findActiveByFieldValues<StudentAcademicHistory>(
+        STUDENT_ACADEMIC_HISTORIES_SPEC,
+        'studentId',
+        studentIds,
+      ),
+      this.store.findActiveByFieldValues<Course>(COURSES_SPEC, 'id', courseIds),
+      this.store.findActiveByFieldValues<StaffAccount>(USERS_SPEC, 'id', instructorIds),
+    ]);
+    const subjectIds = courses.map((row) => row.subjectId);
+    const subjects = await this.store.findActiveByFieldValues<Subject>(SUBJECTS_SPEC, 'id', subjectIds);
+    const studentById = new Map(students.map((row) => [row.id, row]));
+    const courseById = new Map(courses.map((row) => [row.id, row]));
+    const subjectById = new Map(subjects.map((row) => [row.id, row]));
+    const instructorById = new Map(instructors.map((row) => [row.id, row]));
+    const historiesByStudent = new Map<number, StudentAcademicHistory[]>();
+    for (const history of histories) {
+      const values = historiesByStudent.get(history.studentId) ?? [];
+      values.push(history);
+      historiesByStudent.set(history.studentId, values);
+    }
+
+    return rows.map((report) => {
+      const session = sessionById.get(report.sessionId);
+      const student = studentById.get(report.studentId);
+      const course = session ? courseById.get(session.courseId) : undefined;
+      const instructor = instructorById.get(report.instructorId);
+      if (!session || !student || !course || !instructor) {
+        throw new NotFoundException(
+          `Report ${report.id} context is incomplete (session/student/course/instructor)`,
+        );
+      }
+      const subject = subjectById.get(course.subjectId);
+      const academic = currentAcademicHistory(
+        historiesByStudent.get(student.id) ?? [],
+        session.sessionDate,
+      );
+      return {
+        ...report,
+        context: {
+          student: {
+            id: student.id,
+            name: student.name,
+            grade: academic?.grade,
+            schoolName: academic?.schoolName,
+          },
+          session: {
+            id: session.id,
+            sessionDate: session.sessionDate,
+            startTime: session.startTime,
+            endTime: session.endTime,
+            durationMinutes: session.durationMinutes,
+          },
+          course: {
+            id: course.id,
+            name: course.name,
+          },
+          subject: subject ? { id: subject.id, name: subject.name } : undefined,
+          instructor: {
+            id: instructor.id,
+            name: instructor.name,
+          },
+        },
+      };
+    });
+  }
+
   // 데모 보고서 시드 — 과거 held 세션(schedule 히스토리 20~28)의 일부만 제출(submitted).
   //  → 리포트 현황 대시보드에서 "작성/미작성"이 섞여 보임(전 슬롯 8개 중 3건 작성). 승인(approved) 아님 = 시수/정산 미반영(payouts 불변).
   //  고정 id로 멱등, payouts가 런타임 생성하는 승인 보고서(nextId)와 충돌 없음.
@@ -69,32 +163,35 @@ export class ReportsService implements OnModuleInit {
 
   /** [TBO-54 C2] 목록 READ = DB 권위(행 원부). 강사 가시성 필터는 세션 읽기모델
    *  (EP2 TTL hydrate — staleness 유계) 기반 — 세션 전환은 후속 청크. */
-  async listDbForActor(actor?: ReportActor, sessionId?: number): Promise<SessionReportRow[]> {
+  async listDbForActor(actor?: ReportActor, sessionId?: number): Promise<SessionReportViewRow[]> {
+    if (sessionId != null && actor && !actorIsAdmin(actor)) {
+      const target = await this.sessionsStore.findByIdDb(sessionId);
+      if (target && !isSessionVisibleToInstructor(target, actor.id))
+        throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
+    }
     const rows = await this.store.findActive<SessionReportRow>(SESSION_REPORTS_SPEC, {
       where: sessionId == null ? undefined : ({ sessionId } as Partial<SessionReportRow>),
       orderBy: { field: 'id' },
     });
-    if (sessionId != null && actor && !actorIsAdmin(actor)) {
-      const session = this.db.findById<ClassSession>(SESSIONS, sessionId);
-      if (session && !isSessionVisibleToInstructor(session, actor.id))
-        throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
-    }
-    if (!actor || actorIsAdmin(actor)) return rows;
-    return rows.filter((report) => {
-      const session = this.db.findById<ClassSession>(SESSIONS, report.sessionId);
+    const sessions = await this.sessionsStore.findByIdsDb(rows.map((row) => row.sessionId));
+    if (!actor || actorIsAdmin(actor)) return this.projectViews(rows, sessions);
+    const sessionById = new Map(sessions.map((row) => [row.id, row]));
+    const visible = rows.filter((report) => {
+      const session = sessionById.get(report.sessionId);
       return !!session && isSessionVisibleToInstructor(session, actor.id);
     });
+    return this.projectViews(visible, sessions);
   }
 
   /** [TBO-54 C2] 단건 READ = DB 권위 + 기존 스코프 규칙(404→403 표준) 유지. */
-  async getDbForActor(id: number, actor?: ReportActor): Promise<SessionReportRow> {
+  async getDbForActor(id: number, actor?: ReportActor): Promise<SessionReportViewRow> {
     const row = await this.reportFromDb(id);
+    const session = await this.sessionsStore.findByIdDb(row.sessionId);
     if (actor && !actorIsAdmin(actor)) {
-      const session = this.db.findById<ClassSession>(SESSIONS, row.sessionId);
       if (!session || !isSessionVisibleToInstructor(session, actor.id))
         throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
     }
-    return row;
+    return (await this.projectViews([row], session ? [session] : []))[0];
   }
 
   // [B7 E3 2026-07-16] 단건 GET 스코프 갭 수정 — 종전엔 오너 체크가 쓰기(create/update/submit)에만
@@ -169,6 +266,7 @@ export class ReportsService implements OnModuleInit {
         instructorId,
         subjectId: course?.subjectId,
         content: dto.content,
+        progressPage: dto.progressPage,
         homework: dto.homework,
         status,
         approvalStatus: status === 'submitted' ? 'submitted' : 'draft',
@@ -189,12 +287,12 @@ export class ReportsService implements OnModuleInit {
   //  종전엔 update 경로가 없어 기존 보고서 '임시 저장'이 조용히 유실됐다(UX 감사 H1).
   async updateContent(
     id: number,
-    dto: { content?: string; homework?: string },
+    dto: { content?: string; progressPage?: string; homework?: string },
     actor?: ReportActor,
   ): Promise<SessionReportRow> {
     this.findOne(id, actor); // 조회 스코프(IDOR 404/403) 선판정 — READ 전환은 C2
-    if (dto.content === undefined && dto.homework === undefined)
-      throw new BadRequestException('수정할 내용(content/homework)이 필요합니다.');
+    if (dto.content === undefined && dto.progressPage === undefined && dto.homework === undefined)
+      throw new BadRequestException('수정할 내용(content/progressPage/homework)이 필요합니다.');
     return this.uow.run(async () => {
       const scoped = await this.reportFromDb(id);
       await this.uow.lockTargets(sessionAccountingLockKeys({
@@ -209,6 +307,9 @@ export class ReportsService implements OnModuleInit {
       // [C1] approval_status CAS — 수정과 승인이 겹치면 한쪽만 성공(승인된 본문 무단 변경 차단).
       const after = await this.store.updateIf<SessionReportRow>(SESSION_REPORTS_SPEC, id, { approvalStatus: r.approvalStatus }, {
         ...(dto.content !== undefined ? { content: dto.content } : {}),
+        ...(dto.progressPage !== undefined
+          ? { progressPage: (dto.progressPage.trim() ? dto.progressPage : null) as unknown as string }
+          : {}),
         // 빈 문자열 = 숙제 비움(명시 null 저장 — undefined는 skip되는 UPDATE 함정 방지).
         //  contracts SessionReport.homework가 optional(string)뿐이라 null 캐스팅 — DB 컬럼은 nullable
         //  (contracts nullable 확장은 다음 계약 버전에서).

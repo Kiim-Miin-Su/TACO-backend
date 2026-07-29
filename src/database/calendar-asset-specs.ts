@@ -830,6 +830,7 @@ export const SESSION_REPORTS_SPEC: PostgresCollectionSpec = {
       subject_id integer,
       instructor_id integer NOT NULL,
       content text NOT NULL,
+      progress_page text,
       homework text,
       status varchar(32) NOT NULL DEFAULT 'draft',
       approval_status varchar(32) NOT NULL DEFAULT 'draft',
@@ -844,6 +845,9 @@ export const SESSION_REPORTS_SPEC: PostgresCollectionSpec = {
     )
   `,
   timestampFields: ['submittedAt', 'approvedAt'],
+  migrations: [
+    'ALTER TABLE session_reports ADD COLUMN IF NOT EXISTS progress_page text',
+  ],
   indexes: [
     "ALTER TABLE session_reports ADD COLUMN IF NOT EXISTS approval_status varchar(32) NOT NULL DEFAULT 'draft'",
     "UPDATE session_reports SET approval_status = CASE WHEN status IN ('approved', 'rejected') THEN status WHEN status = 'submitted' THEN 'submitted' ELSE approval_status END, status = CASE WHEN status = 'approved' THEN 'sent' WHEN status = 'rejected' THEN 'draft' ELSE status END WHERE status IN ('approved', 'rejected') OR (status = 'submitted' AND approval_status = 'draft')",
