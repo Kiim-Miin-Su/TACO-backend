@@ -84,7 +84,7 @@ async function main(): Promise<void> {
     studentId = student.id;
 
     const form = (await http.post('/api/counsel').set(auth(admin))
-      .send({ studentId, source: 'manual' }).expect(201)).body;
+      .send({ studentId }).expect(201)).body;
     formId = form.id;
     const round = (await http.post(`/api/counsel/${formId}/rounds`).set(auth(admin))
       .send({

@@ -116,36 +116,146 @@ describe('Counsel API (e2e)', () => {
     const form = (await http.post('/api/counsel').set(asAdmin())
       .send({ studentId: 1, referenceNotes: '상담 참고' }).expect(201)).body;
     const first = (await http.post(`/api/counsel/${form.id}/rounds`).set(asAdmin())
-      .send({ summary: '1차', nextContactAt: '2099-08-01T00:00:00.000Z' }).expect(201)).body;
+      .send({
+        summary: '1차',
+        formSnapshot: {
+          studentId: 1,
+          status: 'pending',
+          referenceNotes: '1차 현재값',
+          nextContactAt: '2099-08-01T00:00:00.000Z',
+        },
+      }).expect(201)).body;
     const second = (await http.post(`/api/counsel/${form.id}/rounds`).set(asAdmin())
-      .send({ summary: '2차', nextContactAt: '2099-08-02T00:00:00.000Z' }).expect(201)).body;
+      .send({
+        summary: '2차',
+        formSnapshot: {
+          studentId: 2,
+          status: 'registered',
+          referenceNotes: '2차 현재값',
+          nextContactAt: '2099-08-02T00:00:00.000Z',
+        },
+      }).expect(201)).body;
     const aggregate = (await http.get(`/api/counsel/${form.id}/aggregate`).set(asAdmin()).expect(200)).body;
     expect(aggregate.form).toMatchObject({
       id: form.id,
-      referenceNotes: '상담 참고',
+      studentId: 2,
+      status: 'registered',
+      referenceNotes: '2차 현재값',
       nextContactAt: '2099-08-02T00:00:00.000Z',
     });
     expect(aggregate.rounds.map((row: { id: number }) => row.id)).toEqual([first.id, second.id]);
 
     await http.patch(`/api/counsel/${form.id}/rounds/${first.id}`).set(asAdmin())
-      .send({ nextContactAt: '2099-09-01T00:00:00.000Z' }).expect(200);
-    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt)
-      .toBe('2099-08-02T00:00:00.000Z');
+      .send({
+        formSnapshot: {
+          studentId: 1,
+          status: 'pending',
+          referenceNotes: '1차 수정 현재값',
+          nextContactAt: '2099-09-01T00:00:00.000Z',
+        },
+      }).expect(200)
+      .expect(({ body }) => {
+        expect(body.nextContactAt).toBe('2099-09-01T00:00:00.000Z');
+        expect(body.formSnapshot.nextContactAt).toBe(body.nextContactAt);
+      });
+    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body)
+      .toMatchObject({ studentId: 2, referenceNotes: '2차 현재값', nextContactAt: '2099-08-02T00:00:00.000Z' });
 
     await http.patch(`/api/counsel/${form.id}/rounds/${second.id}`).set(asAdmin())
-      .send({ summary: '2차 수정', nextContactAt: '2099-08-03T00:00:00.000Z' }).expect(200)
+      .send({
+        summary: '2차 수정',
+        formSnapshot: {
+          studentId: 2,
+          status: 'pending',
+          referenceNotes: '2차 수정 현재값',
+          nextContactAt: '2099-08-03T00:00:00.000Z',
+        },
+      }).expect(200)
       .expect(({ body }) => expect(body).toMatchObject({
         summary: '2차 수정',
         nextContactAt: '2099-08-03T00:00:00.000Z',
+        formSnapshot: {
+          studentId: 2,
+          status: 'pending',
+          referenceNotes: '2차 수정 현재값',
+          nextContactAt: '2099-08-03T00:00:00.000Z',
+        },
       }));
-    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt)
-      .toBe('2099-08-03T00:00:00.000Z');
+    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body)
+      .toMatchObject({
+        studentId: 2,
+        status: 'pending',
+        referenceNotes: '2차 수정 현재값',
+        nextContactAt: '2099-08-03T00:00:00.000Z',
+      });
 
     await http.delete(`/api/counsel/${form.id}/rounds/${second.id}`).set(asAdmin()).expect(200);
-    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body.nextContactAt)
-      .toBe('2099-09-01T00:00:00.000Z');
+    expect((await http.get(`/api/counsel/${form.id}`).set(asAdmin()).expect(200)).body)
+      .toMatchObject({
+        studentId: 1,
+        status: 'pending',
+        referenceNotes: '1차 수정 현재값',
+        nextContactAt: '2099-09-01T00:00:00.000Z',
+      });
     const audit = (await http.get(`/api/audit?entity=counsel_rounds&entityId=${second.id}`).set(asAdmin()).expect(200)).body;
     expect(audit.map((row: { action: string }) => row.action).sort()).toEqual(['create', 'delete', 'update']);
+  });
+
+  it('최신 회차 update/delete의 form projection과 audit가 실패하면 aggregate 전체를 롤백한다', async () => {
+    const form = (await http.post('/api/counsel').set(asAdmin())
+      .send({ studentId: 1, referenceNotes: 'rollback base' }).expect(201)).body;
+    const first = (await http.post(`/api/counsel/${form.id}/rounds`).set(asAdmin())
+      .send({
+        summary: 'rollback 1',
+        formSnapshot: {
+          studentId: 1, status: 'pending', referenceNotes: 'rollback first',
+          nextContactAt: '2099-10-01T00:00:00.000Z',
+        },
+      }).expect(201)).body;
+    const second = (await http.post(`/api/counsel/${form.id}/rounds`).set(asAdmin())
+      .send({
+        summary: 'rollback 2',
+        formSnapshot: {
+          studentId: 2, status: 'registered', referenceNotes: 'rollback second',
+          nextContactAt: '2099-10-02T00:00:00.000Z',
+        },
+      }).expect(201)).body;
+    const audit = app.get(AuditService);
+
+    const updateFail = jest.spyOn(audit, 'log').mockRejectedValueOnce(new Error('injected round update projection audit failure'));
+    await http.patch(`/api/counsel/${form.id}/rounds/${second.id}`).set(asAdmin())
+      .send({
+        formSnapshot: {
+          studentId: 1, status: 'pending', referenceNotes: 'must rollback',
+          nextContactAt: '2099-10-03T00:00:00.000Z',
+        },
+      }).expect(500);
+    updateFail.mockRestore();
+    expect((await http.get(`/api/counsel/${form.id}/aggregate`).set(asAdmin()).expect(200)).body)
+      .toMatchObject({
+        form: {
+          studentId: 2, status: 'registered', referenceNotes: 'rollback second',
+          nextContactAt: '2099-10-02T00:00:00.000Z',
+        },
+        rounds: expect.arrayContaining([
+          expect.objectContaining({
+            id: second.id,
+            formSnapshot: expect.objectContaining({ referenceNotes: 'rollback second' }),
+          }),
+        ]),
+      });
+
+    const deleteFail = jest.spyOn(audit, 'log')
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(new Error('injected round delete projection audit failure'));
+    await http.delete(`/api/counsel/${form.id}/rounds/${second.id}`).set(asAdmin()).expect(500);
+    deleteFail.mockRestore();
+    const afterDeleteFailure = (await http.get(`/api/counsel/${form.id}/aggregate`).set(asAdmin()).expect(200)).body;
+    expect(afterDeleteFailure.form).toMatchObject({
+      studentId: 2, referenceNotes: 'rollback second', nextContactAt: '2099-10-02T00:00:00.000Z',
+    });
+    expect(afterDeleteFailure.rounds.map((row: { id: number }) => row.id))
+      .toEqual(expect.arrayContaining([first.id, second.id]));
   });
 
   it('POST /counsel — 제거된 legacy 관심 코스 필드는 whitelist에서 400', async () => {

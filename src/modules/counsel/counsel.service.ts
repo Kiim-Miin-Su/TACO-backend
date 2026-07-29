@@ -35,6 +35,15 @@ const snapshotOfForm = (form: CounselFormSnapshot): CounselFormSnapshot => ({
   nextContactAt: normalizeCounselInstant(form.nextContactAt) ?? null,
 });
 
+const currentFormPatchOf = (
+  snapshot: CounselFormSnapshot,
+): Pick<CounselForm, 'studentId' | 'status' | 'referenceNotes' | 'nextContactAt'> => ({
+  studentId: snapshot.studentId,
+  status: snapshot.status,
+  referenceNotes: snapshot.referenceNotes ?? null,
+  nextContactAt: normalizeCounselInstant(snapshot.nextContactAt) ?? null,
+});
+
 @Injectable()
 export class CounselService implements OnModuleInit {
   // [TBO-58 P2] 도메인 command 1줄 로그 — allowlist(id·상태·회차번호만, 상담 내용·이름 금지)
@@ -80,8 +89,31 @@ export class CounselService implements OnModuleInit {
     return {
       form,
       rounds: await this.findAllRounds(id),
-      student: this.students.findAggregate(form.studentId),
+      student: await this.students.findAggregateDb(form.studentId),
     };
+  }
+
+  private async projectSnapshotToCurrentForm(
+    formId: number,
+    beforeForm: CounselForm,
+    snapshot: CounselFormSnapshot,
+    actorId: number,
+    reason: string,
+  ): Promise<CounselForm> {
+    const afterForm = await this.store.update<CounselForm>(
+      COUNSEL_FORMS_SPEC,
+      formId,
+      currentFormPatchOf(snapshot),
+    ) as CounselForm;
+    await this.audit.log({
+      entity: COUNSEL_FORMS,
+      entityId: formId,
+      action: 'update',
+      actorId,
+      changes: this.audit.maskContactPii(this.audit.diffOf(beforeForm, afterForm)),
+      reason,
+    });
+    return afterForm;
   }
 
   // 내부 상담 접수 — 작성 메타데이터는 body가 아니라 검증된 JWT actor에서만 파생한다.
@@ -164,17 +196,15 @@ export class CounselService implements OnModuleInit {
         nextAction: dto.nextAction, nextContactAt: formSnapshot.nextContactAt ?? null,
         formSnapshot,
       } as Omit<CounselRound, 'id' | 'createdAt' | 'updatedAt'>);
-      // 폼의 다음 상담일을 최신 회차 기준으로 동기화(상담 배지 = nextContactAt 미정).
+      // 새 회차가 곧 최신 회차다. 편집 가능한 snapshot 전체를 현재 폼에 같은 transaction으로 투영한다.
       if (dto.nextContactAt !== undefined || dto.formSnapshot !== undefined) {
-        const afterForm = await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, formId, {
-          nextContactAt: formSnapshot.nextContactAt ?? null,
-        });
-        if (actorId != null) {
-          await this.audit.log({
-            entity: 'counsel_forms', entityId: formId, action: 'update', actorId,
-            changes: this.audit.diffOf(beforeForm, afterForm as CounselForm),
-          });
-        }
+        await this.projectSnapshotToCurrentForm(
+          formId,
+          beforeForm,
+          formSnapshot,
+          actorId,
+          `round-create:${round.id}`,
+        );
       }
       // [감사 전수 2026-07-16] 전 테이블 CRUD 이력(대표 지시) — 기존 db.transaction 안에 audit만 추가.
       if (actorId != null) {
@@ -212,7 +242,9 @@ export class CounselService implements OnModuleInit {
         ...(dto.detail !== undefined ? { detail: dto.detail } : {}),
         ...(dto.result !== undefined ? { result: dto.result } : {}),
         ...(dto.nextAction !== undefined ? { nextAction: dto.nextAction } : {}),
-        ...(dto.nextContactAt !== undefined ? { nextContactAt } : {}),
+        ...(dto.formSnapshot !== undefined || dto.nextContactAt !== undefined
+          ? { nextContactAt: formSnapshot.nextContactAt ?? null }
+          : {}),
         ...(dto.formSnapshot !== undefined || dto.nextContactAt !== undefined ? { formSnapshot } : {}),
       };
       const after = await this.store.update<CounselRound>(COUNSEL_ROUNDS_SPEC, roundId, patch);
@@ -220,12 +252,13 @@ export class CounselService implements OnModuleInit {
       const rounds = await this.findAllRounds(formId);
       const latestRoundId = rounds.sort((a, b) => b.roundNo - a.roundNo || b.id - a.id)[0]?.id;
       if ((dto.nextContactAt !== undefined || dto.formSnapshot !== undefined) && latestRoundId === roundId) {
-        const nextContactAt = formSnapshot.nextContactAt ?? null;
-        const afterForm = await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, formId, { nextContactAt });
-        await this.audit.log({
-          entity: COUNSEL_FORMS, entityId: formId, action: 'update', actorId,
-          changes: this.audit.diffOf(beforeForm, afterForm as CounselForm), reason: `round-update:${roundId}`,
-        });
+        await this.projectSnapshotToCurrentForm(
+          formId,
+          beforeForm,
+          formSnapshot,
+          actorId,
+          `round-update:${roundId}`,
+        );
       }
       await this.audit.log({
         entity: 'counsel_rounds', entityId: roundId, action: 'update', actorId,
@@ -241,6 +274,8 @@ export class CounselService implements OnModuleInit {
       await this.uow.lockTargets([{ kind: 'counselForm', id: formId }]);
       const beforeForm = { ...(await this.findForm(formId)) };
       const before = { ...(await this.roundForForm(formId, roundId)) };
+      const beforeRounds = await this.findAllRounds(formId);
+      const latestBefore = [...beforeRounds].sort((a, b) => b.roundNo - a.roundNo || b.id - a.id)[0];
       await this.store.remove(COUNSEL_ROUNDS_SPEC, roundId, actorId);
       await this.audit.log({
         entity: 'counsel_rounds', entityId: roundId, action: 'delete', actorId,
@@ -248,13 +283,30 @@ export class CounselService implements OnModuleInit {
       });
       const remaining = await this.findAllRounds(formId);
       const latest = remaining.sort((a, b) => b.roundNo - a.roundNo || b.id - a.id)[0];
-      const nextContactAt = latest?.nextContactAt ?? null;
-      if ((beforeForm.nextContactAt ?? null) !== nextContactAt) {
-        const afterForm = await this.store.update<CounselForm>(COUNSEL_FORMS_SPEC, formId, { nextContactAt });
-        await this.audit.log({
-          entity: COUNSEL_FORMS, entityId: formId, action: 'update', actorId,
-          changes: this.audit.diffOf(beforeForm, afterForm as CounselForm), reason: `round-delete:${roundId}`,
-        });
+      if (latestBefore?.id === roundId) {
+        if (latest) {
+          await this.projectSnapshotToCurrentForm(
+            formId,
+            beforeForm,
+            snapshotOfForm(latest.formSnapshot),
+            actorId,
+            `round-delete:${roundId}`,
+          );
+        } else if (beforeForm.nextContactAt != null) {
+          const afterForm = await this.store.update<CounselForm>(
+            COUNSEL_FORMS_SPEC,
+            formId,
+            { nextContactAt: null },
+          ) as CounselForm;
+          await this.audit.log({
+            entity: COUNSEL_FORMS,
+            entityId: formId,
+            action: 'update',
+            actorId,
+            changes: this.audit.maskContactPii(this.audit.diffOf(beforeForm, afterForm)),
+            reason: `round-delete:${roundId}`,
+          });
+        }
       }
       this.domainLog.log(`action=removeRound form=${formId} round=${roundId} actor=${actorId} result=deleted`); // [TBO-58 P2]
       return { id: roundId, deleted: true };

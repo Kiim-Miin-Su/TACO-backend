@@ -55,7 +55,7 @@ type ScheduleRow = {
 const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 
 let managerActorId = 0;
-let ceoActorId = 0;
+let operationActorId = 0;
 let qaInstructorId = 0;
 let qaStudentId = 0;
 let qaRelatedStudentId = 0;
@@ -82,7 +82,7 @@ function tokenFor(app: INestApplication, actorId: number): string {
   });
 }
 
-async function boot(): Promise<{ app: INestApplication; http: ReturnType<typeof request>; manager: string; ceo: string }> {
+async function boot(): Promise<{ app: INestApplication; http: ReturnType<typeof request>; manager: string; operator: string }> {
   const app = await createTestApp();
   openApps.add(app);
   const pg = app.get(PostgresConnectionService);
@@ -92,7 +92,7 @@ async function boot(): Promise<{ app: INestApplication; http: ReturnType<typeof 
     app,
     http,
     manager: tokenFor(app, managerActorId),
-    ceo: tokenFor(app, ceoActorId),
+    operator: tokenFor(app, operationActorId),
   };
 }
 
@@ -158,8 +158,8 @@ async function cleanupFixtures(): Promise<void> {
   try {
     const booted = await boot();
     cleanupApp = booted.app;
-    const { http, manager, ceo } = booted;
-    if (qaCounselId) await http.delete(`/api/counsel/${qaCounselId}`).set(auth(ceo));
+    const { http, manager, operator } = booted;
+    if (qaCounselId) await http.delete(`/api/counsel/${qaCounselId}`).set(auth(operator));
     for (const id of qaSessionIds) await http.delete(`/api/schedule/${id}`).set(auth(manager));
     for (const id of qaAvailabilityIds) await http.delete(`/api/availability/${id}`).set(auth(manager));
     for (const id of qaPresetIds) await http.delete(`/api/view-presets/${id}`).set(auth(manager));
@@ -170,39 +170,34 @@ async function cleanupFixtures(): Promise<void> {
     //  API 경로가 조용히 실패하고 fallbackSoftDelete가 가려준다. 정규 경로를 살린다.
     if (qaStudentId) await http.delete(`/api/students/${qaStudentId}`).set(sudoAuthHeaders(cleanupApp, manager));
     if (qaRelatedStudentId) await http.delete(`/api/students/${qaRelatedStudentId}`).set(sudoAuthHeaders(cleanupApp, manager));
-    if (qaInstructorId) await http.delete(`/api/instructors/${qaInstructorId}`).set(auth(ceo));
 
     // API 도중 실패/프로세스 재시도에도 테스트 자산을 active 상태로 남기지 않는다.
     // 물리 DELETE는 금지하고, fallback도 audit_log를 남기는 soft-delete만 수행한다.
     const pg = cleanupApp.get(PostgresConnectionService);
     if (qaCounselId) {
-      await fallbackSoftDelete(pg, 'counsel_rounds', 'counsel_form_id=$2', [qaCounselId], ceoActorId);
-      await fallbackSoftDelete(pg, 'counsel_forms', 'id=$2', [qaCounselId], ceoActorId);
+      await fallbackSoftDelete(pg, 'counsel_rounds', 'counsel_form_id=$2', [qaCounselId], operationActorId);
+      await fallbackSoftDelete(pg, 'counsel_forms', 'id=$2', [qaCounselId], operationActorId);
     }
     if (qaCourseId) {
-      await fallbackSoftDelete(pg, 'class_sessions', 'course_id=$2', [qaCourseId], ceoActorId);
-      await fallbackSoftDelete(pg, 'courses', 'id=$2', [qaCourseId], ceoActorId);
+      await fallbackSoftDelete(pg, 'class_sessions', 'course_id=$2', [qaCourseId], operationActorId);
+      await fallbackSoftDelete(pg, 'courses', 'id=$2', [qaCourseId], operationActorId);
     }
-    for (const id of qaAvailabilityIds) await fallbackSoftDelete(pg, 'availability_blocks', 'id=$2', [id], ceoActorId);
-    for (const id of qaPresetIds) await fallbackSoftDelete(pg, 'calendar_view_presets', 'id=$2', [id], ceoActorId);
+    for (const id of qaAvailabilityIds) await fallbackSoftDelete(pg, 'availability_blocks', 'id=$2', [id], operationActorId);
+    for (const id of qaPresetIds) await fallbackSoftDelete(pg, 'calendar_view_presets', 'id=$2', [id], operationActorId);
     if (qaStudentId) {
-      await fallbackSoftDelete(pg, 'student_family_relations', '(student_id_a=$2 OR student_id_b=$2)', [qaStudentId], ceoActorId);
-      await fallbackSoftDelete(pg, 'student_academic_histories', 'student_id=$2', [qaStudentId], ceoActorId);
-      await fallbackSoftDelete(pg, 'student_interests', 'student_id=$2', [qaStudentId], ceoActorId);
-      await fallbackSoftDelete(pg, 'students', 'id=$2', [qaStudentId], ceoActorId);
+      await fallbackSoftDelete(pg, 'student_family_relations', '(student_id_a=$2 OR student_id_b=$2)', [qaStudentId], operationActorId);
+      await fallbackSoftDelete(pg, 'student_academic_histories', 'student_id=$2', [qaStudentId], operationActorId);
+      await fallbackSoftDelete(pg, 'student_interests', 'student_id=$2', [qaStudentId], operationActorId);
+      await fallbackSoftDelete(pg, 'students', 'id=$2', [qaStudentId], operationActorId);
     }
     if (qaRelatedStudentId) {
-      await fallbackSoftDelete(pg, 'student_family_relations', '(student_id_a=$2 OR student_id_b=$2)', [qaRelatedStudentId], ceoActorId);
-      await fallbackSoftDelete(pg, 'student_academic_histories', 'student_id=$2', [qaRelatedStudentId], ceoActorId);
-      await fallbackSoftDelete(pg, 'student_interests', 'student_id=$2', [qaRelatedStudentId], ceoActorId);
-      await fallbackSoftDelete(pg, 'students', 'id=$2', [qaRelatedStudentId], ceoActorId);
+      await fallbackSoftDelete(pg, 'student_family_relations', '(student_id_a=$2 OR student_id_b=$2)', [qaRelatedStudentId], operationActorId);
+      await fallbackSoftDelete(pg, 'student_academic_histories', 'student_id=$2', [qaRelatedStudentId], operationActorId);
+      await fallbackSoftDelete(pg, 'student_interests', 'student_id=$2', [qaRelatedStudentId], operationActorId);
+      await fallbackSoftDelete(pg, 'students', 'id=$2', [qaRelatedStudentId], operationActorId);
     }
-    if (qaRoomId) await fallbackSoftDelete(pg, 'rooms', 'id=$2', [qaRoomId], ceoActorId);
-    if (qaSubjectId) await fallbackSoftDelete(pg, 'subjects', 'id=$2', [qaSubjectId], ceoActorId);
-    if (qaInstructorId) {
-      await fallbackSoftDelete(pg, 'instructor_profiles', 'user_id=$2', [qaInstructorId], ceoActorId, 'active=false', 'user_id');
-      await fallbackSoftDelete(pg, 'users', 'id=$2', [qaInstructorId], ceoActorId, "status='rejected'");
-    }
+    if (qaRoomId) await fallbackSoftDelete(pg, 'rooms', 'id=$2', [qaRoomId], operationActorId);
+    if (qaSubjectId) await fallbackSoftDelete(pg, 'subjects', 'id=$2', [qaSubjectId], operationActorId);
   } finally {
     if (cleanupApp) await closeApp(cleanupApp);
     for (const app of [...openApps]) await closeApp(app);
@@ -221,33 +216,26 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
     const initialApp = await createTestApp();
     openApps.add(initialApp);
     const users = initialApp.get(UsersService).findAll();
-    const manager = users.find((row) => row.role === 'manager' && row.status === 'active' && row.deletedAt == null);
-    const ceo = users.find((row) => row.role === 'super_admin' && row.status === 'active' && row.deletedAt == null);
-    if (!manager || !ceo) throw new Error('DB CRUD requires one active manager and one active super_admin; no credentials are read.');
+    const manager = users.find((row) => row.role === 'manager' && row.status === 'active'
+      && row.deletedAt == null && row.mustChangePassword !== true);
+    const instructor = users.find((row) => row.role === 'instructor' && row.status === 'active'
+      && row.deletedAt == null);
+    if (!manager || !instructor) {
+      throw new Error('DB CRUD requires one business-ready manager and one active instructor; no credentials are read.');
+    }
     managerActorId = manager.id;
-    ceoActorId = ceo.id;
-    await cleanupStaleFixtures(initialApp.get(PostgresConnectionService), ceoActorId);
+    operationActorId = manager.id;
+    qaInstructorId = instructor.id;
+    await cleanupStaleFixtures(initialApp.get(PostgresConnectionService), operationActorId);
     await closeApp(initialApp);
 
     const app = await createTestApp();
     openApps.add(app);
     const http = request(app.getHttpServer());
     const managerToken = tokenFor(app, managerActorId);
-    const ceoToken = tokenFor(app, ceoActorId);
     const stamp = `${Date.now()}_${process.pid}`;
-    // [74D-1] 강사 직접 등록은 SudoGuard(대표 전용·재인증 필수) — Bearer 단독은 403 SUDO_REQUIRED.
-    qaInstructorId = Number((await http.post('/api/users/instructors')
-      .set(sudoAuthHeaders(app, ceoToken))
-      .send({
-        webId: `dbcrud_inst_${stamp}`,
-        name: `DB CRUD 강사 ${stamp}`,
-        password: `DbCrud!${stamp}`,
-        defaultHourlyRate: 40_000,
-        canTeachKinder: false,
-        countryCode: 'KR',
-        timeZone: 'Asia/Seoul',
-      })
-      .expect(201)).body.id);
+    // 운영 대표 계정은 첫 로그인 자격증명 변경 게이트가 켜져 있을 수 있다. 이 데이터 CRUD
+    // 스위트는 계정 온보딩을 우회하지 않고 기존 활성 강사를 참조해 도메인 영속성만 검증한다.
     qaSubjectId = Number((await http.post('/api/subjects').set(auth(managerToken))
       .send({ code: `dbcrud_${stamp}`, name: `DB CRUD 과목 ${stamp}` }).expect(201)).body.id);
     qaRoomId = Number((await http.post('/api/rooms').set(auth(managerToken))
@@ -272,6 +260,7 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
         subjectId: qaSubjectId,
         instructorId: qaInstructorId,
         price: 100_000,
+        hourlyRateOverride: 40_000,
         isKinder: false,
       }).expect(201)).body.id);
     await closeApp(app);
@@ -478,51 +467,50 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
     }
   });
 
-  it('persists family, academic, counsel, and round CRUD with CEO audit across restarts', async () => {
+  it('persists family, academic, counsel, and round CRUD with operator audit across restarts', async () => {
     let familyRelationId = 0;
     let academicHistoryId = 0;
     let roundId = 0;
     const schoolName = `DB CRUD School ${Date.now()}`;
 
     {
-      const { app, http, ceo } = await boot();
+      const { app, http, operator } = await boot();
       familyRelationId = Number((await http.post(`/api/students/${qaStudentId}/family-relations`)
-        .set(auth(ceo))
+        .set(auth(operator))
         .send({ relatedStudentId: qaRelatedStudentId, relationType: 'sibling' })
         .expect(201)).body.id);
       academicHistoryId = Number((await http.post(`/api/students/${qaStudentId}/academic-histories`)
-        .set(auth(ceo))
+        .set(auth(operator))
         .send({ grade: 13, schoolName, startedOn: '2025-01-01', endedOn: '2025-12-31' })
         .expect(201)).body.id);
       qaCounselId = Number((await http.post('/api/counsel')
-        .set(auth(ceo))
+        .set(auth(operator))
         .send({
-          source: 'manual',
           studentId: qaStudentId,
           referenceNotes: `DBCRUD 상담 ${Date.now()} · 비공개 참고`,
           nextContactAt: '2099-01-10T00:00:00.000Z',
         })
         .expect(201)).body.id);
       roundId = Number((await http.post(`/api/counsel/${qaCounselId}/rounds`)
-        .set(auth(ceo))
+        .set(auth(operator))
         .send({ summary: 'DB CRUD 1차', nextContactAt: '2099-01-11T00:00:00.000Z' })
         .expect(201)).body.id);
       await closeApp(app);
     }
 
     {
-      const { app, http, ceo } = await boot();
-      const student = (await http.get(`/api/students/${qaStudentId}/aggregate`).set(auth(ceo)).expect(200)).body;
+      const { app, http, operator } = await boot();
+      const student = (await http.get(`/api/students/${qaStudentId}/aggregate`).set(auth(operator)).expect(200)).body;
       expect(student.familyRelations).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: familyRelationId, relationType: 'sibling' }),
       ]));
       expect(student.academicHistories).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: academicHistoryId, grade: 13, schoolName }),
       ]));
-      const related = (await http.get(`/api/students/${qaRelatedStudentId}/aggregate`).set(auth(ceo)).expect(200)).body;
+      const related = (await http.get(`/api/students/${qaRelatedStudentId}/aggregate`).set(auth(operator)).expect(200)).body;
       expect(related.familyRelations.some((row: { id: number }) => row.id === familyRelationId)).toBe(true);
 
-      const counsel = (await http.get(`/api/counsel/${qaCounselId}/aggregate`).set(auth(ceo)).expect(200)).body;
+      const counsel = (await http.get(`/api/counsel/${qaCounselId}/aggregate`).set(auth(operator)).expect(200)).body;
       expect(counsel.form).toMatchObject({
         id: qaCounselId,
         studentId: qaStudentId,
@@ -532,11 +520,11 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
       expect(counsel.rounds).toEqual(expect.arrayContaining([expect.objectContaining({ id: roundId })]));
 
       await http.patch(`/api/students/${qaStudentId}/family-relations/${familyRelationId}`)
-        .set(auth(ceo)).send({ relationType: 'other', relationLabel: '사촌' }).expect(200);
+        .set(auth(operator)).send({ relationType: 'other', relationLabel: '사촌' }).expect(200);
       await http.patch(`/api/students/${qaStudentId}/academic-histories/${academicHistoryId}`)
-        .set(auth(ceo)).send({ grade: 12, schoolName: `${schoolName} Updated` }).expect(200);
+        .set(auth(operator)).send({ grade: 12, schoolName: `${schoolName} Updated` }).expect(200);
       await http.patch(`/api/counsel/${qaCounselId}/rounds/${roundId}`)
-        .set(auth(ceo)).send({
+        .set(auth(operator)).send({
           summary: 'DB CRUD 1차 수정',
           nextContactAt: '2099-01-12T00:00:00.000Z',
         }).expect(200);
@@ -544,8 +532,8 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
     }
 
     {
-      const { app, http, ceo } = await boot();
-      const counsel = (await http.get(`/api/counsel/${qaCounselId}/aggregate`).set(auth(ceo)).expect(200)).body;
+      const { app, http, operator } = await boot();
+      const counsel = (await http.get(`/api/counsel/${qaCounselId}/aggregate`).set(auth(operator)).expect(200)).body;
       expect(counsel.form.nextContactAt).toBe('2099-01-12T00:00:00.000Z');
       expect(counsel.rounds.find((row: { id: number }) => row.id === roundId)?.summary).toBe('DB CRUD 1차 수정');
 
@@ -555,23 +543,23 @@ describeDb('Postgres-backed backend CRUD (e2e)', () => {
         ['counsel_rounds', roundId],
       ] as const) {
         const auditRows = (await http.get(`/api/audit?entity=${entity}&entityId=${entityId}`)
-          .set(auth(ceo)).expect(200)).body as AuditRow[];
-        expect(auditRows.some((row) => row.action === 'create' && row.actorId === ceoActorId)).toBe(true);
-        expect(auditRows.some((row) => row.action === 'update' && row.actorId === ceoActorId)).toBe(true);
+          .set(auth(operator)).expect(200)).body as AuditRow[];
+        expect(auditRows.some((row) => row.action === 'create' && row.actorId === operationActorId)).toBe(true);
+        expect(auditRows.some((row) => row.action === 'update' && row.actorId === operationActorId)).toBe(true);
       }
 
-      await http.delete(`/api/counsel/${qaCounselId}/rounds/${roundId}`).set(auth(ceo)).expect(200);
-      await http.delete(`/api/counsel/${qaCounselId}`).set(auth(ceo)).expect(200);
+      await http.delete(`/api/counsel/${qaCounselId}/rounds/${roundId}`).set(auth(operator)).expect(200);
+      await http.delete(`/api/counsel/${qaCounselId}`).set(auth(operator)).expect(200);
       qaCounselId = 0;
-      await http.delete(`/api/students/${qaStudentId}/academic-histories/${academicHistoryId}`).set(auth(ceo)).expect(200);
-      await http.delete(`/api/students/${qaStudentId}/family-relations/${familyRelationId}`).set(auth(ceo)).expect(200);
+      await http.delete(`/api/students/${qaStudentId}/academic-histories/${academicHistoryId}`).set(auth(operator)).expect(200);
+      await http.delete(`/api/students/${qaStudentId}/family-relations/${familyRelationId}`).set(auth(operator)).expect(200);
 
       const familyAudit = (await http.get(`/api/audit?entity=student_family_relations&entityId=${familyRelationId}`)
-        .set(auth(ceo)).expect(200)).body as AuditRow[];
+        .set(auth(operator)).expect(200)).body as AuditRow[];
       const academicAudit = (await http.get(`/api/audit?entity=student_academic_histories&entityId=${academicHistoryId}`)
-        .set(auth(ceo)).expect(200)).body as AuditRow[];
-      expect(familyAudit.some((row) => row.action === 'delete' && row.actorId === ceoActorId)).toBe(true);
-      expect(academicAudit.some((row) => row.action === 'delete' && row.actorId === ceoActorId)).toBe(true);
+        .set(auth(operator)).expect(200)).body as AuditRow[];
+      expect(familyAudit.some((row) => row.action === 'delete' && row.actorId === operationActorId)).toBe(true);
+      expect(academicAudit.some((row) => row.action === 'delete' && row.actorId === operationActorId)).toBe(true);
       await closeApp(app);
     }
   });
