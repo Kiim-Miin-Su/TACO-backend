@@ -134,4 +134,89 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
     await http.patch(`/api/users/${target.id}`).set(auth(manager)).send({ name: 'x' }).expect(403);
     await http.patch(`/api/users/${target.id}`).set(sudoAdmin()).send({ phone: '02-123' }).expect(400);
   });
+
+  it('⑧ 활성 직원 종료→목록 제외·세션 폐기→대표 이력 조회→복구가 원자 동작한다', async () => {
+    const target = db.findBy<{ id: number }>('users', (u) => (u as { webId?: string }).webId === 'crud_mgr')[0];
+    const activeToken = await login('crud_mgr', 'password123');
+
+    const terminated = (await http.delete(`/api/users/${target.id}`).set(sudoAdmin())
+      .send({ reason: 'QA 재직 종료 검증' }).expect(200)).body;
+    expect(terminated.deletedAt).toBeTruthy();
+    await http.get('/api/auth/me').set(auth(activeToken)).expect(401);
+    expect((await http.get('/api/users').set(auth(admin)).expect(200)).body)
+      .not.toEqual(expect.arrayContaining([expect.objectContaining({ id: target.id })]));
+    expect((await http.get('/api/users?includeTerminated=true').set(auth(admin)).expect(200)).body)
+      .toEqual(expect.arrayContaining([expect.objectContaining({ id: target.id, deletedAt: expect.any(String) })]));
+    await http.get('/api/users?includeTerminated=true').set(auth(manager)).expect(403);
+    await http.get(`/api/users/${target.id}`).set(auth(admin)).expect(200);
+    await http.post('/api/auth/login').send({ webId: 'crud_mgr', password: 'password123' }).expect(401);
+
+    const restored = (await http.post(`/api/users/${target.id}/restore`).set(sudoAdmin())
+      .send({ reason: 'QA 재직 복구 검증' }).expect(201)).body;
+    expect(restored.deletedAt).toBeNull();
+    await login('crud_mgr', 'password123');
+  });
+
+  it('⑨ 종료 audit 실패는 user와 강사 프로필을 함께 rollback하고 참조 강사는 종료를 차단한다', async () => {
+    const created = (await http.post('/api/users/instructors').set(sudoAdmin()).send({
+      webId: 'crud_terminate_rollback',
+      name: '종료롤백',
+      password: 'password123',
+      role: 'instructor',
+      email: 'crud-terminate-rollback@t32.test',
+    }).expect(201)).body;
+    const audit = app.get(AuditService);
+    const original = audit.log.bind(audit);
+    const spy = jest.spyOn(audit, 'log').mockImplementation(async (entry) => {
+      if (entry.entity === 'users' && entry.action === 'delete') throw new Error('injected user termination audit failure');
+      return original(entry);
+    });
+    await http.delete(`/api/users/${created.id}`).set(sudoAdmin())
+      .send({ reason: '실패 주입 종료 검증' }).expect(500);
+    spy.mockRestore();
+    expect(db.findById<{ deletedAt?: string }>('users', created.id)?.deletedAt).toBeUndefined();
+    expect(app.get(InstructorProfilesStore).findActive(created.id)).toBeTruthy();
+    await login('crud_terminate_rollback', 'password123');
+
+    const instructor = db.findBy<{ id: number }>('users', (row) =>
+      (row as { webId?: string }).webId === 'park_inst',
+    )[0];
+    await http.delete(`/api/users/${instructor.id}`).set(sudoAdmin())
+      .send({ reason: '담당 수업 잔존 종료 시도' }).expect(409);
+    expect(app.get(InstructorProfilesStore).findActive(instructor.id)).toBeTruthy();
+  });
+
+  it('⑩ 복구 audit 실패는 종료 계정과 비활성 강사 원부 상태를 함께 유지한다', async () => {
+    const created = (await http.post('/api/users/instructors').set(sudoAdmin()).send({
+      webId: 'crud_restore_rollback',
+      name: '복구롤백',
+      password: 'password123',
+      role: 'instructor',
+      email: 'crud-restore-rollback@t32.test',
+    }).expect(201)).body;
+    await http.delete(`/api/users/${created.id}`).set(sudoAdmin())
+      .send({ reason: '복구 실패 검증 준비' }).expect(200);
+
+    const audit = app.get(AuditService);
+    const original = audit.log.bind(audit);
+    const spy = jest.spyOn(audit, 'log').mockImplementation(async (entry) => {
+      if (entry.entity === 'users' && entry.action === 'status_change')
+        throw new Error('injected user restore audit failure');
+      return original(entry);
+    });
+    await http.post(`/api/users/${created.id}/restore`).set(sudoAdmin())
+      .send({ reason: '실패 주입 복구 검증' }).expect(500);
+    spy.mockRestore();
+
+    expect(db.findById<{ deletedAt?: string }>('users', created.id, { withDeleted: true })?.deletedAt)
+      .toBeTruthy();
+    expect(app.get(InstructorProfilesStore).findActive(created.id)).toBeUndefined();
+    await http.post('/api/auth/login')
+      .send({ webId: 'crud_restore_rollback', password: 'password123' }).expect(401);
+
+    await http.post(`/api/users/${created.id}/restore`).set(sudoAdmin())
+      .send({ reason: '복구 재시도 성공 검증' }).expect(201);
+    expect(app.get(InstructorProfilesStore).findActive(created.id)).toBeTruthy();
+    await login('crud_restore_rollback', 'password123');
+  });
 });

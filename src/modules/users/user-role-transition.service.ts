@@ -30,60 +30,89 @@ export class UserRoleTransitionService {
     if (account.role === nextRole || account.status !== 'active') return;
 
     if (account.role === 'instructor' && nextRole !== 'instructor') {
-      const [courses, contracts] = await Promise.all([
-        this.store.findActive<StoredCourse>(COURSES_SPEC, {
-          where: { instructorId: account.id },
-          limit: 1,
-        }),
-        this.store.findActive<InstructorContract>(INSTRUCTOR_CONTRACTS_SPEC, {
-          where: { instructorId: account.id, active: true },
-          limit: 1,
-        }),
-      ]);
-      const blockers = [
-        courses.length ? '담당 수업' : null,
-        contracts.length ? '활성 계약' : null,
-      ].filter((value): value is string => value != null);
-      if (blockers.length) {
-        throw new ConflictException(
-          `강사 역할을 변경하기 전에 ${blockers.join('·')}을 정리해 주세요.`,
-        );
-      }
-
-      const beforeProfile = this.profiles.findActive(account.id);
-      if (!beforeProfile) return;
-      await this.profiles.deactivate(account.id);
-      const afterProfile = this.profiles.find(account.id);
-      await this.auditProfileTransition(
-        account.id,
+      await this.deactivateInstructor(
+        account,
         actorId,
-        beforeProfile,
-        afterProfile,
         '강사 역할 해제에 따른 운영 프로필 비활성화',
       );
       return;
     }
 
     if (account.role !== 'instructor' && nextRole === 'instructor') {
-      const beforeProfile = this.profiles.find(account.id);
-      const approvedAt = new Date().toISOString();
-      const afterProfile = await this.profiles.upsertActive(account.id, actorId, approvedAt, {
-        university: beforeProfile?.university ?? account.university ?? null,
-        major: beforeProfile?.major ?? account.major ?? null,
-        birthYear: beforeProfile?.birthYear ?? account.birthYear ?? null,
-        defaultHourlyRate: beforeProfile?.defaultHourlyRate ?? 0,
-        canTeachKinder: beforeProfile?.canTeachKinder ?? false,
-      });
-      await this.auditProfileTransition(
-        account.id,
-        actorId,
-        beforeProfile,
-        afterProfile,
-        beforeProfile
-          ? '강사 역할 전환에 따른 운영 프로필 재활성화'
-          : '강사 역할 전환에 따른 운영 프로필 생성',
+      await this.activateInstructor(account, actorId, '강사 역할 전환');
+    }
+  }
+
+  async deactivateForTermination(account: StaffAccount, actorId: number): Promise<void> {
+    if (account.role !== 'instructor') return;
+    await this.deactivateInstructor(account, actorId, '강사 계정 종료에 따른 운영 프로필 비활성화');
+  }
+
+  async activateForRestore(account: StaffAccount, actorId: number): Promise<void> {
+    if (account.role !== 'instructor') return;
+    await this.activateInstructor(account, actorId, '강사 계정 복구');
+  }
+
+  private async deactivateInstructor(
+    account: StaffAccount,
+    actorId: number,
+    reason: string,
+  ): Promise<void> {
+    const [courses, contracts] = await Promise.all([
+      this.store.findActive<StoredCourse>(COURSES_SPEC, {
+        where: { instructorId: account.id },
+        limit: 1,
+      }),
+      this.store.findActive<InstructorContract>(INSTRUCTOR_CONTRACTS_SPEC, {
+        where: { instructorId: account.id, active: true },
+        limit: 1,
+      }),
+    ]);
+    const blockers = [
+      courses.length ? '담당 수업' : null,
+      contracts.length ? '활성 계약' : null,
+    ].filter((value): value is string => value != null);
+    if (blockers.length) {
+      throw new ConflictException(
+        `강사 계정을 변경하기 전에 ${blockers.join('·')}을 정리해 주세요.`,
       );
     }
+
+    const beforeProfile = this.profiles.findActive(account.id);
+    if (!beforeProfile) return;
+    await this.profiles.deactivate(account.id);
+    await this.auditProfileTransition(
+      account.id,
+      actorId,
+      beforeProfile,
+      this.profiles.find(account.id),
+      reason,
+    );
+  }
+
+  private async activateInstructor(
+    account: StaffAccount,
+    actorId: number,
+    reasonPrefix: string,
+  ): Promise<void> {
+    const beforeProfile = this.profiles.find(account.id);
+    const approvedAt = new Date().toISOString();
+    const afterProfile = await this.profiles.upsertActive(account.id, actorId, approvedAt, {
+      university: beforeProfile?.university ?? account.university ?? null,
+      major: beforeProfile?.major ?? account.major ?? null,
+      birthYear: beforeProfile?.birthYear ?? account.birthYear ?? null,
+      defaultHourlyRate: beforeProfile?.defaultHourlyRate ?? 0,
+      canTeachKinder: beforeProfile?.canTeachKinder ?? false,
+    });
+    await this.auditProfileTransition(
+      account.id,
+      actorId,
+      beforeProfile,
+      afterProfile,
+      beforeProfile
+        ? `${reasonPrefix}에 따른 운영 프로필 재활성화`
+        : `${reasonPrefix}에 따른 운영 프로필 생성`,
+    );
   }
 
   private async auditProfileTransition(

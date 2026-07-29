@@ -1,6 +1,6 @@
-import { BadRequestException, Body, Controller, Get, Param, Patch, Post, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { UsersService } from './users.service';
 import { SignupApprovalService } from './signup-approval.service'; // [TBO-68 C3] 직접 등록
@@ -19,6 +19,7 @@ import type { JwtClaims } from '../auth/auth.service';
 import { ProfileResponseDto } from './dto/profile-response.dto';
 import { smsChallengeAvailable } from '../profile-verifications/sms-availability';
 import { profileVersionOf } from './user.entity';
+import { UserLifecycleDto } from './dto/user-lifecycle.dto';
 
 @UseGuards(RolesGuard)
 @Controller('users')
@@ -85,9 +86,17 @@ export class UsersController {
   @Get()
   @Roles(...ADMIN_ROLES) // 직원 이메일·승인 metadata·마지막 로그인 포함 — 관리자만
   @ApiOperation({ summary: '직원 계정 목록과 승인 상태 조회 [매니저 이상]' })
-  async list() {
+  @ApiQuery({ name: 'includeTerminated', required: false, type: Boolean })
+  async list(
+    @Query('includeTerminated') includeTerminated: string | undefined,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
     await this.users.refreshFromDb(); // [28F]
-    return this.users.findAll();
+    const include = includeTerminated === 'true';
+    if (include && !claimsHaveCapability(req.user?.roles ?? [], 'executive.manage')) {
+      throw new ForbiddenException('종료 계정 조회는 대표 권한이 필요합니다.');
+    }
+    return this.users.findAll(include);
   }
 
   // ── [유저 관리 2026-07-20 대표 지시] 상세 단건 + 대표 직접 수정 ──
@@ -113,5 +122,35 @@ export class UsersController {
     const sub = req.user?.sub;
     if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
     return this.users.adminUpdateUser(id, sub, dto);
+  }
+
+  @Delete(':id')
+  @UseGuards(SudoGuard)
+  @RequireCapabilities('executive.manage')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '활성 직원 계정 종료(대표·재인증) — authVersion 증가, soft delete, 강사 프로필 전이, audit 원자 tx.' })
+  async terminate(
+    @Param('id', PositiveIntPipe) id: number,
+    @Body() dto: UserLifecycleDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    const sub = req.user?.sub;
+    if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
+    return this.users.terminateUser(id, sub, dto.reason);
+  }
+
+  @Post(':id/restore')
+  @UseGuards(SudoGuard)
+  @RequireCapabilities('executive.manage')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '종료된 직원 계정 복구(대표·재인증) — authVersion 증가, 강사 프로필 복구, audit 원자 tx.' })
+  async restore(
+    @Param('id', PositiveIntPipe) id: number,
+    @Body() dto: UserLifecycleDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    const sub = req.user?.sub;
+    if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
+    return this.users.restoreUser(id, sub, dto.reason);
   }
 }

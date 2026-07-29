@@ -96,8 +96,11 @@ export class UsersService implements OnModuleInit {
     await this.profiles.hydrate();
   }
 
-  findAll(): SafeAccount[] {
-    return this.db.findAll<StaffAccount>(USERS).map(toSafe);
+  findAll(includeTerminated = false): SafeAccount[] {
+    return this.db
+      .findAll<StaffAccount>(USERS, { withDeleted: includeTerminated })
+      .filter((account) => !account.deletedAt || (includeTerminated && account.status === 'active'))
+      .map(toSafe);
   }
 
   findByWebId(webId: string): StaffAccount | undefined {
@@ -510,7 +513,9 @@ export class UsersService implements OnModuleInit {
   /** 단건 상세 — super_admin에게만 rrnMasked 동봉(관리자는 기본 정보만). */
   async getUserDetail(id: number, requesterRole: string): Promise<SafeAccount & { rrnMasked?: string | null }> {
     await this.refreshFromDb();
-    const acc = this.findById(id);
+    const acc = requesterRole === 'super_admin'
+      ? this.db.findById<StaffAccount>(USERS, id, { withDeleted: true })
+      : this.findById(id);
     if (!acc) throw new NotFoundException(`계정 ${id} 없음`);
     const safe = toSafe(acc);
     return requesterRole === 'super_admin' ? { ...safe, rrnMasked: rrnMaskedOf(acc) } : safe; // [TBO-68 C3] 공유 함수(user.entity)
@@ -573,6 +578,76 @@ export class UsersService implements OnModuleInit {
         reason: '대표 직접 수정(유저 관리)',
       });
       return toSafe(updated);
+    });
+  }
+
+  async terminateUser(id: number, actorId: number, reason: string): Promise<SafeAccount> {
+    await this.refreshFromDb();
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'user', id }, { kind: 'user', id: actorId }]);
+      await this.refreshFromDb();
+      const before = this.db.findById<StaffAccount>(USERS, id, { withDeleted: true });
+      if (!before || before.deletedAt) throw new NotFoundException(`활성 계정 ${id} 없음`);
+      if (id === actorId) throw new BadRequestException('현재 로그인한 본인 계정은 종료할 수 없습니다.');
+      if (before.role === 'super_admin') throw new BadRequestException('대표 계정은 종료할 수 없습니다.');
+      if (before.status !== 'active') throw new BadRequestException('활성 계정만 종료할 수 있습니다.');
+
+      await this.roleTransitions.deactivateForTermination(before, actorId);
+      const versioned = await this.store.updateIf<StaffAccount>(
+        USERS_SPEC,
+        id,
+        { status: 'active', authVersion: authVersionOf(before) },
+        { authVersion: authVersionOf(before) + 1 },
+      );
+      if (!versioned) throw new ConflictException('계정 상태가 변경되었습니다. 다시 조회해 주세요.');
+      if (!(await this.store.remove(USERS_SPEC, id, actorId))) {
+        throw new ConflictException('계정 상태가 변경되었습니다. 다시 조회해 주세요.');
+      }
+      const after = this.db.findById<StaffAccount>(USERS, id, { withDeleted: true });
+      if (!after?.deletedAt) throw new Error(`user ${id} termination did not persist`);
+      await this.audit.log({
+        entity: 'users',
+        entityId: id,
+        action: 'delete',
+        actorId,
+        changes: {
+          authVersion: { before: authVersionOf(before), after: authVersionOf(before) + 1 },
+          deletedAt: { before: null, after: after.deletedAt },
+        },
+        reason: reason.trim(),
+      });
+      return toSafe(after);
+    });
+  }
+
+  async restoreUser(id: number, actorId: number, reason: string): Promise<SafeAccount> {
+    await this.refreshFromDb();
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'user', id }, { kind: 'user', id: actorId }]);
+      await this.refreshFromDb();
+      const before = this.db.findById<StaffAccount>(USERS, id, { withDeleted: true });
+      if (!before?.deletedAt) throw new NotFoundException(`종료된 계정 ${id} 없음`);
+      if (before.role === 'super_admin') throw new BadRequestException('대표 계정은 이 경로로 복구할 수 없습니다.');
+      if (before.status !== 'active') throw new BadRequestException('가입 대기·반려 계정은 복구할 수 없습니다.');
+
+      const nextVersion = authVersionOf(before) + 1;
+      const restored = await this.store.restore<StaffAccount>(USERS_SPEC, id, {
+        authVersion: nextVersion,
+      });
+      if (!restored) throw new ConflictException('계정 상태가 변경되었습니다. 다시 조회해 주세요.');
+      await this.roleTransitions.activateForRestore(restored, actorId);
+      await this.audit.log({
+        entity: 'users',
+        entityId: id,
+        action: 'status_change',
+        actorId,
+        changes: {
+          authVersion: { before: authVersionOf(before), after: nextVersion },
+          deletedAt: { before: before.deletedAt, after: null },
+        },
+        reason: reason.trim(),
+      });
+      return toSafe(restored);
     });
   }
 

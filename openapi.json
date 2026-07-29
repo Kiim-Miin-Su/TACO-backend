@@ -983,7 +983,16 @@
     "/api/users": {
       "get": {
         "operationId": "UsersController_list",
-        "parameters": [],
+        "parameters": [
+          {
+            "name": "includeTerminated",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "",
@@ -1100,6 +1109,108 @@
           }
         ],
         "summary": "대표 직접 수정(재인증 필수) — name/phone/email/role. role·email 변경 시 대상 세션 전부 무효. super_admin 대상 400. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).",
+        "tags": [
+          "Users"
+        ]
+      },
+      "delete": {
+        "operationId": "UsersController_terminate",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserLifecycleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "활성 직원 계정 종료(대표·재인증) — authVersion 증가, soft delete, 강사 프로필 전이, audit 원자 tx.",
+        "tags": [
+          "Users"
+        ]
+      }
+    },
+    "/api/users/{id}/restore": {
+      "post": {
+        "operationId": "UsersController_restore",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UserLifecycleDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "종료된 직원 계정 복구(대표·재인증) — authVersion 증가, 강사 프로필 복구, audit 원자 tx.",
         "tags": [
           "Users"
         ]
@@ -8933,6 +9044,19 @@
             "description": "역할 — 변경 시 기존 세션 전부 무효"
           }
         }
+      },
+      "UserLifecycleDto": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "minLength": 5,
+            "maxLength": 2000
+          }
+        },
+        "required": [
+          "reason"
+        ]
       },
       "UpdateInstructorDto": {
         "type": "object",

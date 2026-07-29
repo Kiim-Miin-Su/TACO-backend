@@ -269,6 +269,36 @@ export class PostgresCollectionStore {
     return this.memory.remove(spec.table, id, deletedBy);
   }
 
+  async restore<T extends BaseRow>(
+    spec: PostgresCollectionSpec,
+    id: number,
+    patch: Partial<Omit<T, keyof BaseRow>> = {},
+  ): Promise<T | undefined> {
+    if (!(await this.ensureReady(spec))) {
+      const existing = this.memory.findById<T>(spec.table, id, { withDeleted: true });
+      if (!existing?.deletedAt || !this.memory.restore(spec.table, id)) return undefined;
+      return this.memory.update<T>(spec.table, id, patch) ?? this.memory.findById<T>(spec.table, id);
+    }
+    const payload = this.toDbPayload(spec, patch as Record<string, unknown>);
+    const keys = Object.keys(payload);
+    const assignments = keys.map((key, index) => `${safeColumn(key)} = $${index + 1}`);
+    const values = keys.map((key) => payload[key]);
+    values.push(id);
+    const table = safeTable(spec.table);
+    const [row] = await this.query(
+      `UPDATE ${table}
+          SET deleted_at = NULL, deleted_by = NULL${assignments.length ? `, ${assignments.join(', ')}` : ''}, updated_at = now()
+        WHERE id = $${values.length} AND deleted_at IS NOT NULL
+        RETURNING *`,
+      values,
+    );
+    if (!row) return undefined;
+    const saved = this.fromDbRow<T>(spec, row);
+    this.memory.restore(spec.table, id);
+    this.memory.update<T>(spec.table, id, this.withoutBase(saved));
+    return this.memory.findById<T>(spec.table, id) ?? saved;
+  }
+
   async removeByField(spec: PostgresCollectionSpec, field: string, value: unknown, deletedBy?: number): Promise<number> {
     if (!(await this.ensureReady(spec))) {
       const rows = this.memory.findByField<BaseRow>(spec.table, field as keyof BaseRow & string, value);
