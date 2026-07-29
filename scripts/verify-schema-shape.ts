@@ -113,13 +113,20 @@ const extractBracketSettings = (line: string): string => {
 const parseDbml = (text: string): {
   columns: DbmlColumn[];
   relations: Relation[];
-  enums: Set<string>;
+  enums: Map<string, string[]>;
   unsupportedRefs: string[];
 } => {
   const columns: DbmlColumn[] = [];
   const relations: Relation[] = [];
   const unsupportedRefs: string[] = [];
-  const enums = new Set([...text.matchAll(/^Enum\s+([a-z][a-z0-9_]*)\s*\{/gm)].map((match) => match[1]));
+  const enums = new Map<string, string[]>();
+  for (const enumMatch of text.matchAll(/^Enum\s+([a-z][a-z0-9_]*)\s*\{([\s\S]*?)^\}/gm)) {
+    const values = enumMatch[2]
+      .split('\n')
+      .map((line) => line.match(/^\s{2}([a-z][a-z0-9_]*)/)?.[1])
+      .filter((value): value is string => value != null);
+    enums.set(enumMatch[1], values);
+  }
 
   for (const tableMatch of text.matchAll(/^Table\s+([a-z][a-z0-9_]*)\s*\{([\s\S]*?)^\}/gm)) {
     const table = tableMatch[1];
@@ -275,6 +282,7 @@ async function main(): Promise<void> {
     const liveColumns = new Map(columns.map((column) => [`${column.table_name}.${column.column_name}`, column]));
     const validatedChecks = constraintHealth.filter((row) => row.constraint_type === 'c' && row.convalidated);
     const enumStorageMappings: Array<{ table: string; column: string; enum: string; physicalType: string }> = [];
+    const enumDomainDrift: Array<{ table: string; column: string; enum: string; missingValues: string[] }> = [];
     const shapeDrift = parsed.columns.flatMap((column) => {
       const live = liveColumns.get(`${column.table}.${column.name}`);
       if (!live) return [];
@@ -282,12 +290,19 @@ async function main(): Promise<void> {
       const actualType = normalizeLiveType(live);
       const expectedDefault = normalizeDefault(column.defaultValue);
       const actualDefault = normalizeDefault(live.column_default);
-      const logicalEnumOnVarchar = parsed.enums.has(column.type)
+      const enumValues = parsed.enums.get(column.type) ?? [];
+      const matchingChecks = validatedChecks.filter((check) =>
+        check.table_name === column.table && new RegExp(`\\b${column.name}\\b`).test(check.definition));
+      const logicalEnumOnVarchar = enumValues.length > 0
         && actualType.startsWith('character varying(')
-        && validatedChecks.some((check) =>
-          check.table_name === column.table && new RegExp(`\\b${column.name}\\b`).test(check.definition));
+        && matchingChecks.length > 0;
       if (logicalEnumOnVarchar) {
         enumStorageMappings.push({ table: column.table, column: column.name, enum: column.type, physicalType: actualType });
+        const definitions = matchingChecks.map((check) => check.definition).join(' ');
+        const missingValues = enumValues.filter((value) => !definitions.includes(`'${value}'`));
+        if (missingValues.length > 0) {
+          enumDomainDrift.push({ table: column.table, column: column.name, enum: column.type, missingValues });
+        }
       }
       const typeMismatch = expectedType !== actualType && !logicalEnumOnVarchar;
       const nullMismatch = column.notNull !== (live.is_nullable === 'NO');
@@ -324,6 +339,7 @@ async function main(): Promise<void> {
 
     const report = {
       ok: shapeDrift.length === 0
+        && enumDomainDrift.length === 0
         && parsed.unsupportedRefs.length === 0
         && unclassifiedDbmlRelations.length === 0
         && stalePolicies.length === 0
@@ -341,6 +357,7 @@ async function main(): Promise<void> {
         logicalEnumsBackedByChecks: enumStorageMappings.length,
       },
       enumStorageMappings,
+      enumDomainDrift,
       shapeDrift,
       unsupportedRefs: parsed.unsupportedRefs,
       unclassifiedDbmlRelations,
@@ -358,6 +375,7 @@ async function main(): Promise<void> {
           expected: drift.expected,
           actual: drift.actual,
         })),
+        enumDomainDrift: report.enumDomainDrift,
         unsupportedRefs: report.unsupportedRefs,
         unclassifiedDbmlRelations: report.unclassifiedDbmlRelations,
         stalePolicies: report.stalePolicies,

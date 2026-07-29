@@ -17,7 +17,7 @@ type ForeignKeySpec = {
 };
 
 export const SCHEMA_SHAPE_CHECKS: readonly CheckSpec[] = [
-  { table: 'auth_events', name: 'c_auth_events_event_type_domain', column: 'event_type', expression: "event_type IN ('login_success','login_failure','logout','recover_id_requested','password_reset_requested','password_reset_completed','refresh_reuse_blocked','csrf_origin_blocked')" },
+  { table: 'auth_events', name: 'c_auth_events_event_type_domain', column: 'event_type', expression: "event_type IN ('login_success','login_failure','logout','recover_id_requested','recover_id_completed','password_reset_requested','password_reset_completed','refresh_reuse_blocked','csrf_origin_blocked')" },
   { table: 'students', name: 'c_students_school_type_domain', column: 'school_type', expression: "school_type IS NULL OR school_type IN ('international','foreign','homeschool','local','etc')" },
   { table: 'students', name: 'c_students_residence_type_domain', column: 'residence_type', expression: "residence_type IN ('domestic','overseas')" },
   { table: 'students', name: 'c_students_language_type_domain', column: 'language_type', expression: "language_type IN ('korean','english','bilingual','etc')" },

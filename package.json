@@ -67,6 +67,7 @@
   "db:verify-persistence-docs": "ts-node scripts/verify-persistence-docs.ts",
   "db:verify-schema-shape": "ts-node scripts/verify-schema-shape.ts",
   "db:migrate-schema-shape-integrity": "ts-node scripts/migrate-schema-shape-integrity.ts",
+  "db:migrate-auth-event-domain": "ts-node scripts/migrate-auth-event-domain.ts",
   "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts",
   "verify:runtime-data": "ts-node scripts/verify-runtime-data-boundary.ts",
   "verify:crud-surfaces": "ts-node scripts/verify-crud-surfaces.ts",
