@@ -82,7 +82,9 @@
   "db:migrate:instructor-contract-integrity": "ts-node scripts/migrate-instructor-contract-integrity.ts",
   "db:migrate:transaction-source-integrity": "ts-node scripts/migrate-transaction-source-integrity.ts",
   "db:migrate:report-template-owner": "ts-node scripts/migrate-report-template-owner.ts",
-  "db:migrate:enrollment-roadmap-integrity": "ts-node scripts/migrate-enrollment-roadmap-integrity.ts"
+  "db:migrate:enrollment-roadmap-integrity": "ts-node scripts/migrate-enrollment-roadmap-integrity.ts",
+  "db:migrate:schedule-request-integrity": "ts-node scripts/migrate-schedule-request-integrity.ts",
+  "db:verify:schedule-request-integrity": "ts-node scripts/verify-schedule-request-integrity.ts"
  },
  "dependencies": {
   "@kms545487/contracts": "0.2.36",
