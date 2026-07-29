@@ -6,6 +6,10 @@ import request from 'supertest';
 import { createTestApp, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { verifiedSignupChallenge } from './signup-helper';
+import { InstructorProfilesStore } from '../src/modules/users/instructor-profiles.store';
+import { AuditService } from '../src/modules/audit/audit.service';
+
+jest.retryTimes(0);
 
 describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
   let app: INestApplication;
@@ -65,7 +69,7 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
     }).expect(403); // 대표 전용
   });
 
-  it('④ 대표 직접 수정: name/phone 즉시 · role 변경=대상 구 토큰 401 · 이메일 중복 400', async () => {
+  it('④ 대표 직접 수정: name/phone 즉시 · role↔강사 원부 자동 전이 · 대상 구 토큰 401', async () => {
     const targetToken = await login('crud_mgr', 'password123');
     const target = db.findBy<{ id: number; webId: string }>('users', (u) => (u as { webId?: string }).webId === 'crud_mgr')[0];
 
@@ -78,15 +82,53 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
     await http.patch(`/api/users/${target.id}`).set(sudoAdmin())
       .send({ email: 'admin@tnacademy.test' }).expect(400);
 
-    // role 변경 → 대상 세션 전멸(auth_version+1)
+    // manager→instructor: 역할과 활성 강사 원부가 같은 command에서 생성된다.
     const promoted = (await http.patch(`/api/users/${target.id}`).set(sudoAdmin())
-      .send({ role: 'admin' }).expect(200)).body;
-    expect(promoted.role).toBe('admin');
+      .send({ role: 'instructor' }).expect(200)).body;
+    expect(promoted.role).toBe('instructor');
+    expect(app.get(InstructorProfilesStore).findActive(target.id)).toBeTruthy();
     await http.get('/api/auth/me').set(auth(targetToken)).expect(401);
-    await login('crud_mgr', 'password123'); // 재로그인은 정상
+
+    const instructorToken = await login('crud_mgr', 'password123');
+    // instructor→admin: 참조가 없는 강사의 원부는 비활성화되고 다시 세션이 폐기된다.
+    const demoted = (await http.patch(`/api/users/${target.id}`).set(sudoAdmin())
+      .send({ role: 'admin' }).expect(200)).body;
+    expect(demoted.role).toBe('admin');
+    expect(app.get(InstructorProfilesStore).findActive(target.id)).toBeUndefined();
+    await http.get('/api/auth/me').set(auth(instructorToken)).expect(401);
+    await login('crud_mgr', 'password123');
   });
 
-  it('⑤ 가드: super_admin 대상 수정 400 · 매니저 수정 403 · 전화 형식 400', async () => {
+  it('⑤ 역할 전이 audit 실패 시 users와 instructor_profiles가 모두 rollback된다', async () => {
+    const created = (await http.post('/api/users/instructors').set(sudoAdmin()).send({
+      webId: 'crud_role_rollback', name: '역할롤백', password: 'password123',
+      role: 'manager', email: 'crud-role-rollback@t32.test',
+    }).expect(201)).body;
+    const audit = app.get(AuditService);
+    const original = audit.log.bind(audit);
+    const spy = jest.spyOn(audit, 'log').mockImplementation(async (entry) => {
+      if (entry.entity === 'instructor_profiles') throw new Error('injected role profile audit failure');
+      return original(entry);
+    });
+    await http.patch(`/api/users/${created.id}`).set(sudoAdmin())
+      .send({ role: 'instructor' }).expect(500);
+    spy.mockRestore();
+
+    expect(db.findById<{ role: string }>('users', created.id)?.role).toBe('manager');
+    expect(app.get(InstructorProfilesStore).find(created.id)).toBeUndefined();
+  });
+
+  it('⑥ 담당 수업이 남은 강사는 역할 해제를 거부하고 원부를 유지한다', async () => {
+    const instructor = db.findBy<{ id: number }>('users', (row) =>
+      (row as { webId?: string }).webId === 'park_inst',
+    )[0];
+    await http.patch(`/api/users/${instructor.id}`).set(sudoAdmin())
+      .send({ role: 'manager' }).expect(409);
+    expect(db.findById<{ role: string }>('users', instructor.id)?.role).toBe('instructor');
+    expect(app.get(InstructorProfilesStore).findActive(instructor.id)).toBeTruthy();
+  });
+
+  it('⑦ 가드: super_admin 대상 수정 400 · 매니저 수정 403 · 전화 형식 400', async () => {
     await http.patch('/api/users/3').set(sudoAdmin()).send({ name: '대표 개명 시도' }).expect(400); // admin=super_admin id 3
     const target = db.findBy<{ id: number }>('users', (u) => (u as { webId?: string }).webId === 'crud_mgr')[0];
     await http.patch(`/api/users/${target.id}`).set(auth(manager)).send({ name: 'x' }).expect(403);

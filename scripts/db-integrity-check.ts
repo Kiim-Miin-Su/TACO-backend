@@ -144,6 +144,42 @@ async function main() {
     }
   }
 
+  // ②-2 [TBO-77 E-4a] 활성 instructor와 active instructor_profiles는 정확히 1:1이다.
+  // 역할 변경 command가 프로필 생성/재활성/비활성을 같은 transaction에서 수행하며,
+  // 이 센서는 우회 쓰기나 구버전 인스턴스가 만든 드리프트를 운영 readback에서 차단한다.
+  {
+    const activeInstructorIds = new Set(
+      rows<BaseRow & { role?: string; status?: string }>('users')
+        .filter((row) => row.role === 'instructor' && row.status === 'active')
+        .map((row) => row.id),
+    );
+    const activeProfiles = rows<BaseRow & { userId: number; active?: boolean }>('instructor_profiles')
+      .filter((row) => row.active === true);
+    const activeProfileUserIds = new Set(activeProfiles.map((row) => Number(row.userId)));
+    for (const instructorId of activeInstructorIds) {
+      if (!activeProfileUserIds.has(instructorId)) {
+        push(
+          issues,
+          'ACTIVE_INSTRUCTOR_PROFILE_MISSING',
+          'users',
+          instructorId,
+          'active instructor인데 active instructor_profiles 행 없음',
+        );
+      }
+    }
+    for (const profile of activeProfiles) {
+      if (!activeInstructorIds.has(Number(profile.userId))) {
+        push(
+          issues,
+          'ACTIVE_PROFILE_ROLE_MISMATCH',
+          'instructor_profiles',
+          profile.id,
+          `active profile userId=${profile.userId}가 active instructor 계정이 아님`,
+        );
+      }
+    }
+  }
+
   // ④ 활성 중복(partial unique 실측)
   for (const { table, keys, ci } of ACTIVE_UNIQUE) {
     const seen = new Map<string, number>();

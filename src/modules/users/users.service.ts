@@ -20,6 +20,7 @@ import {
 import { SignupEmailChallengesService } from '../auth/signup-email-challenges.service'; // [TBO-31 C1 D1]
 import { SignupPhoneChallengesService } from '../auth/signup-phone-challenges.service'; // [TBO-57]
 import { InstructorProfilesStore } from './instructor-profiles.store';
+import { UserRoleTransitionService } from './user-role-transition.service';
 import {
   USERS, authVersionOf, isStaffRole, rrnMaskedOf, toSafe,
   type SafeAccount, type StaffAccount, type StaffRole,
@@ -45,6 +46,7 @@ export class UsersService implements OnModuleInit {
     private readonly uow: CalendarUnitOfWork,
     private readonly audit: AuditService,
     private readonly profiles: InstructorProfilesStore,
+    private readonly roleTransitions: UserRoleTransitionService,
     // [TBO-31 C1 D1] 가입 tx에서 이메일 OTP challenge를 일회 소비 — Users↔Auth 기존 forwardRef 순환 위.
     @Inject(forwardRef(() => SignupEmailChallengesService))
     private readonly signupChallenges: SignupEmailChallengesService,
@@ -560,6 +562,9 @@ export class UsersService implements OnModuleInit {
       }
       if (!Object.keys(next).length) return toSafe(before);
       if (bumpAuth) next.authVersion = authVersionOf(before) + 1;
+      if (next.role) {
+        await this.roleTransitions.apply(before, next.role, actorId);
+      }
       const updated = await this.store.update<StaffAccount>(USERS_SPEC, id, next as never);
       if (!updated) throw new NotFoundException(`계정 ${id} 없음`);
       await this.audit.log({

@@ -21,6 +21,7 @@ export type QaPendingPayoutFixture = {
 };
 
 type QaAuditRow = AuditLog & BaseRow;
+type QaPayoutSession = ClassSession & { payoutId?: number | null };
 
 /**
  * Browser QA needs one editable pending payout. Build it through production command services so
@@ -51,7 +52,7 @@ export async function seedQaPendingPayoutFixture(app: INestApplication): Promise
   }
 
   const sessions = sessionIds.map((id) => {
-    const session = db.findById<ClassSession>(SESSIONS, id);
+    const session = db.findById<QaPayoutSession>(SESSIONS, id);
     if (!session) throw new Error(`[qa] payout fixture session ${id} is missing`);
     if (session.payoutId != null) throw new Error(`[qa] payout fixture session ${id} is already linked`);
     return session;
