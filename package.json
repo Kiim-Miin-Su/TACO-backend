@@ -84,6 +84,7 @@
   "db:migrate:report-template-owner": "ts-node scripts/migrate-report-template-owner.ts",
   "db:migrate:enrollment-roadmap-integrity": "ts-node scripts/migrate-enrollment-roadmap-integrity.ts",
   "db:migrate:schedule-request-integrity": "ts-node scripts/migrate-schedule-request-integrity.ts",
+  "db:migrate:schedule-request-integrity-v2": "ts-node scripts/migrate-schedule-request-integrity-v2.ts",
   "db:verify:schedule-request-integrity": "ts-node scripts/verify-schedule-request-integrity.ts",
   "db:migrate:enrollment-payout-integrity": "ts-node scripts/migrate-enrollment-payout-integrity.ts",
   "db:verify:enrollment-payout-integrity": "ts-node scripts/verify-enrollment-payout-integrity.ts"

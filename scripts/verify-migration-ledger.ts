@@ -42,6 +42,7 @@ import { TRANSACTION_SOURCE_INTEGRITY_MIGRATION_ID } from '../src/database/migra
 import { REPORT_TEMPLATE_OWNER_MIGRATION_ID } from '../src/database/migrations/report-template-owner.migration';
 import { ENROLLMENT_ROADMAP_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/enrollment-roadmap-integrity.migration';
 import { SCHEDULE_REQUEST_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/schedule-request-integrity.migration';
+import { SCHEDULE_REQUEST_INTEGRITY_V2_MIGRATION_ID } from '../src/database/migrations/schedule-request-integrity-v2.migration';
 import { ENROLLMENT_PAYOUT_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/enrollment-payout-integrity.migration';
 
 loadLocalEnv();
@@ -87,6 +88,7 @@ export const EXPECTED_MIGRATION_IDS = [
   ENROLLMENT_ROADMAP_INTEGRITY_MIGRATION_ID, // [77E-2] enrollment optional roadmap FK + semantic command guard
   SCHEDULE_REQUEST_INTEGRITY_MIGRATION_ID, // [77E-3a] schedule request FK + kind/decision/time invariants
   ENROLLMENT_PAYOUT_INTEGRITY_MIGRATION_ID, // [77E-3b] enrollment/payout/session refs + lifecycle/money invariants
+  SCHEDULE_REQUEST_INTEGRITY_V2_MIGRATION_ID, // [77E-3a audit] delete snapshots + strict decision/domain/time invariants
 ] as const;
 
 const url = directDatabaseUrl();
