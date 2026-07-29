@@ -614,7 +614,7 @@ export class ScheduleService {
       throw new BadRequestException('금액은 0 이상의 정수여야 합니다.');
     return this.unitOfWork.run(async () => {
       await this.unitOfWork.lockTargets([{ kind: 'session', id }]);
-      const cur = (await this.sessions.findByIdDb(id)) as (ClassSession & { payoutId?: number | null; instructorPayAmount?: number | null }) | undefined;
+      const cur = await this.sessions.findByIdDb(id);
       if (!cur) throw new NotFoundException(`Session ${id} not found`);
       if (cur.payoutId != null)
         throw new ConflictException('이미 정산서에 연결된 회차는 금액을 바꿀 수 없습니다(정산 반려/회수 후 재산정).');

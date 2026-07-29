@@ -83,9 +83,9 @@ export class ClassSessionsStore implements OnModuleInit {
    *  instructor_pay_amount는 사용자 override 전용이라 여기서 덮어쓰지 않는다. */
   async claimPayout(id: number, payoutId: number): Promise<ClassSession | undefined> {
     if (!this.durable) {
-      const current = this.memory.findById<ClassSession>(TABLE, id) as (ClassSession & { payoutId?: number | null; isPaid?: boolean }) | undefined;
+      const current = this.memory.findById<ClassSession>(TABLE, id);
       if (!current || current.payoutId != null || current.isPaid === true) return undefined; // [리뷰 P1-1] 지급 완료 세션 재선점 차단(fail-safe)
-      return this.memory.update<ClassSession>(TABLE, id, { payoutId } as never);
+      return this.memory.update<ClassSession>(TABLE, id, { payoutId });
     }
     const [row] = await this.query(
       `UPDATE ${TABLE}
@@ -104,9 +104,9 @@ export class ClassSessionsStore implements OnModuleInit {
    *  연결 경쟁과 직렬화(연결된 회차는 확정 스냅샷이라 불변). null = 책정 해제. */
   async setPayAmount(id: number, amount: number | null): Promise<ClassSession | undefined> {
     if (!this.durable) {
-      const cur = this.memory.findById<ClassSession>(TABLE, id) as (ClassSession & { payoutId?: number | null }) | undefined;
+      const cur = this.memory.findById<ClassSession>(TABLE, id);
       if (!cur || cur.payoutId != null) return undefined;
-      return this.memory.update<ClassSession>(TABLE, id, { instructorPayAmount: amount } as never);
+      return this.memory.update<ClassSession>(TABLE, id, { instructorPayAmount: amount });
     }
     const [row] = await this.query(
       `UPDATE ${TABLE} SET instructor_pay_amount = $1, updated_at = now()

@@ -279,7 +279,7 @@ export class PayoutsService {
         if (s && s.payoutId === id) {
           await this.sessionsStore.update(l.sessionId, {
             payoutId: null,
-          } as never);
+          });
         }
       }
       // [감사 전수 2026-07-16] 반려 + 세션 회수(payout 해제)까지 한 이력으로.
@@ -334,7 +334,7 @@ export class PayoutsService {
           await this.sessionsStore.update(l.sessionId, {
             payoutId: null,
             isPaid: false,
-          } as never);
+          });
         }
       }
       if (actorId != null) {
@@ -387,7 +387,7 @@ export class PayoutsService {
       for (const l of p.lines) {
         const sessionRow = this.db.findById<SessionWithPayout>(SESSIONS, l.sessionId);
         if (sessionRow && sessionRow.payoutId === id) {
-          await this.sessionsStore.update(l.sessionId, { isPaid: true, paidPayoutId: id } as never);
+          await this.sessionsStore.update(l.sessionId, { isPaid: true, paidPayoutId: id });
         }
       }
       // [감사 전수 2026-07-16] 지급 전환 + 원장 출금 각 1건 — 대표 결정: 원장도 감사 대상.
