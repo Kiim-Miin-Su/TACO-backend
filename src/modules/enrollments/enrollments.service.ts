@@ -183,9 +183,12 @@ export class EnrollmentsService implements OnModuleInit {
   }
 
   async update(id: number, dto: UpdateEnrollmentDto, actorId: number): Promise<Enrollment> {
-    await this.sessionsStore.ensureReady();
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'enrollment', id }]);
+      // [TBO-79 D2] 세션 미러 재수화를 tx **안**으로 옮겼다. 종전엔 잠금 전에 hydrate해서
+      //  그 스냅샷으로 파생한 completedSessions가 `totalSessions >= completedSessions`
+      //  불변식을 게이트했다 — 잠금 전 값으로 잠금 후 판정을 내리던 자리다.
+      await this.sessionsStore.ensureReady();
       const [current] = await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, {
         where: { id },
         limit: 1,

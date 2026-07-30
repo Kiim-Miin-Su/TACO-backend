@@ -65,7 +65,11 @@ export class AttendanceService implements OnModuleInit {
       where: sessionId == null ? undefined : ({ sessionId } as Partial<Attendance>),
       orderBy: { field: 'id' },
     });
-    if (actorId == null || hasAdminRole(actorRoles)) return rows;
+    // [TBO-79 D5] fail-closed. 종전엔 `actorId == null`이면 **전 출결 행**을 그대로 반환했다.
+    //  현재 가드가 req.user를 보장해 도달 불가하지만, 권한 코드에 fail-open 기본값을 두면
+    //  @Public 라우트 하나·내부 호출 하나가 곧바로 전수 유출이 된다.
+    if (actorId == null) throw new ForbiddenException('출결 조회에는 로그인 사용자 정보가 필요합니다.');
+    if (hasAdminRole(actorRoles)) return rows;
     await this.sessionsStore.ensureReady(); // 세션 가시성 판정도 DB 기준
     if (sessionId != null) {
       const session = this.db.findById<ClassSession>(SESSIONS, sessionId);
@@ -138,7 +142,11 @@ export class AttendanceService implements OnModuleInit {
         if (actorId != null) {
           await this.audit.log({
             entity: 'class_sessions', entityId: session.id, action: 'update', actorId,
-            changes: { status: { before: 'scheduled', after: 'held' } },
+            changes: {
+              status: { before: 'scheduled', after: 'held' },
+              // [TBO-79 D1] 참가자 확정도 감사 대상 — 과거 회차의 코호트가 언제 굳었는지 추적된다.
+              ...(holdPatch.studentIds ? { studentIds: { before: session.studentIds ?? [], after: holdPatch.studentIds } } : {}),
+            },
             reason: '강사와 수강생 출결 완결 자동 진행 처리',
           });
         }
@@ -247,7 +255,10 @@ export class AttendanceService implements OnModuleInit {
     if (!studentBelongsToSession(session, studentId, enrollments)) {
       throw new BadRequestException(`studentId ${studentId}는 세션 ${sessionId}의 수강생이 아닙니다`);
     }
-    if (actorId != null && !hasAdminRole(actorRoles) && !isSessionVisibleToInstructor(session, actorId)) {
+    // [TBO-79 D5] fail-closed — 종전 `actorId != null &&`는 actor 미상 호출이 소유권 검사를 통째로
+    //  건너뛰게 했다. 관리자 판정은 그대로 통과 경로다.
+    if (actorId == null) throw new ForbiddenException('출결 기록에는 로그인 사용자 정보가 필요합니다.');
+    if (!hasAdminRole(actorRoles) && !isSessionVisibleToInstructor(session, actorId)) {
       throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 기록할 수 있습니다.');
     }
     return { session, enrollments };

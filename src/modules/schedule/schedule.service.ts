@@ -256,7 +256,10 @@ export class ScheduleService {
         instructorIds: [instructorId], roomIds: [dto.roomId], studentIds,
       }));
       await this.refreshAfterLock();
-      // [TBO-29C C2] seriesId는 서버 발급 자산만 허용 — 유령 시리즈 참조 차단(PG FK와 동일 규칙을 메모리에도).
+      // [TBO-79 D3] 잠금 후 FK·코호트 재검증 — 종전엔 create만 잠금 **전** 1회 검증이었다.
+      //  같은 파일의 update는 잠금 후 재검증하는데 create는 아니어서, 동시에 코스 삭제·강사
+      //  비활성화·수강 취소가 커밋되면 stale FK 위에 세션이 삽입될 수 있었다(비대칭).
+      this.read.validateSessionInput({ ...dto, studentIds });
       if (dto.seriesId != null && !this.db.findById<ScheduleSeriesRow>(CLASS_SESSION_SERIES, dto.seriesId))
         throw new BadRequestException(`seriesId ${dto.seriesId} 없음 — 반복 생성은 POST /schedule/series를 사용하세요`);
       // [대표 지시 ⑭] 보강 링크 참조 무결성 — 원본 세션이 실존(미삭제)해야 하고, 보강 세션을 다시
@@ -659,7 +662,11 @@ export class ScheduleService {
       if (cur.instructorId !== actorId) throw new ForbiddenException('본인 담당 수업만 출결을 체크할 수 있습니다.');
       if (cur.instructorAttendance != null) throw new ForbiddenException('이미 체크된 출결의 수정은 매니저 이상만 가능합니다.');
     }
-    return this.update(id, { instructorAttendance: status } as UpdateScheduleDto, actorId);
+    // [TBO-79 D4] 위 가드는 tx **밖** 판정이라 동시 요청 2건이 모두 null을 보고 통과할 수 있었다
+    //  ("수정은 매니저 이상" 규칙의 경쟁 우회). 잠금 후 같은 조건을 다시 확인하도록 넘긴다.
+    return this.update(id, { instructorAttendance: status } as UpdateScheduleDto, actorId, {
+      requireUncheckedInstructorAttendance: !isAdmin,
+    });
   }
 
   async update(
@@ -667,7 +674,11 @@ export class ScheduleService {
     dto: UpdateScheduleDto,
     actorId?: number,
     // [74D-0] 승인 경로 전용 — 요청 생성 시 snapshot한 대상 집합과 잠금 후 실제 대상을 결속(drift=전체 rollback).
-    internalOpts?: { expectedTargetIds?: readonly number[] },
+    internalOpts?: {
+      expectedTargetIds?: readonly number[];
+      /** [TBO-79 D4] 강사 최초 1회 기록 경로 — 잠금 후에도 미표시여야 한다. */
+      requireUncheckedInstructorAttendance?: boolean;
+    },
   ): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number; accountingImpact?: SessionAccountingImpact; accountingImpactHash?: string }> {
     await this.read.ensureReady();
     // [명시 코호트 v0.1.13] 부분집합 검증 — create와 동일 규칙(함수 통일: activeStudentIds 단일 소스)
@@ -720,6 +731,10 @@ export class ScheduleService {
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
     this.assertCompletionStatusCommand(cur.status, dto.status);
+    // [TBO-79 D4] 잠금 후 재확인 — 두 요청이 tx 밖에서 모두 null을 본 경우 여기서 패자가 걸린다.
+    if (internalOpts?.requireUncheckedInstructorAttendance && cur.instructorAttendance != null) {
+      throw new ForbiddenException('이미 체크된 출결의 수정은 매니저 이상만 가능합니다.');
+    }
     await this.assertCeoOwnedSessionMutable(cur, actorId); // [TBO-59 C3-3]
     // 참조 무결성(FK) 검증
     if (dto.courseId != null && !this.read.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
@@ -817,7 +832,12 @@ export class ScheduleService {
         this.accountingContext.attendanceFor(accountingContext, cur.id),
         Date.now(),
       );
-      if (holdPatch) primary.status = holdPatch.status;
+      if (holdPatch) {
+        primary.status = holdPatch.status;
+        // [TBO-79 D1] held 전이 = 참가자 확정 시점. status만 받으면 명시 코호트가 비어 있는
+        //  세션이 이후에도 살아있는 활성 수강으로 재해석돼 과거가 소급 변경된다.
+        if (holdPatch.studentIds) primary.studentIds = holdPatch.studentIds;
+      }
     }
     this.accountingContext.assertDependentsCompatible(accountingContext, cur, primary);
     // [TBO-79 B1] before/after 모두 정산서 라인 산정과 같은 분류 입력으로 투영한다.

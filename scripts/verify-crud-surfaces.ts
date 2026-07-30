@@ -116,11 +116,34 @@ function filesUnder(path: string): string[] {
   });
 }
 
-function sourceUnder(path: string): string {
-  return filesUnder(path)
-    .filter((file) => /\.(ts|tsx)$/.test(file))
-    .map((file) => readFileSync(file, 'utf8'))
-    .join('\n');
+// [TBO-79 F1] 종전엔 소스 전체를 이어붙인 문자열에 대한 substring 포함 검사였다. 그래서
+//  ① 부분 문자열 충돌이 통과하고(`Country`가 `paneCountryInstructor`에 걸림 — 공유 Country
+//     타입은 존재하지도 않는데 게이트는 초록이었다)
+//  ② 테스트 파일에만 등장하는 심볼도 통과했다(sourceUnder가 .test.ts를 포함).
+//  게이트가 결손을 볼 수 없으면 게이트 통과는 증거가 아니다. 아래 두 헬퍼로 교체한다.
+function sourceFilesUnder(path: string, opts: { includeTests: boolean }): string[] {
+  return filesUnder(path).filter((file) => {
+    if (!/\.(ts|tsx)$/.test(file)) return false;
+    if (opts.includeTests) return true;
+    return !/\.(test|spec)\.tsx?$/.test(file) && !/\/__tests__\//.test(file);
+  });
+}
+
+function sourceUnder(path: string, opts: { includeTests: boolean } = { includeTests: false }): string {
+  return sourceFilesUnder(path, opts).map((file) => readFileSync(file, 'utf8')).join('\n');
+}
+
+/** 계약 marker = 실제 `export type|interface|const|enum <marker>` 선언이 있어야 한다. */
+function declaresExport(source: string, marker: string): boolean {
+  const name = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`export\\s+(?:declare\\s+)?(?:type|interface|const|enum|class|function)\\s+${name}\\b`).test(source);
+}
+
+/** 프론트 marker = 단어 경계로 실제 참조돼야 한다(부분 문자열 충돌 차단). */
+function referencesSymbol(source: string, marker: string): boolean {
+  // `api.students` 같은 점 표기는 그대로, 식별자는 단어 경계로 묶는다.
+  const escaped = marker.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`(?<![\\w$])${escaped}(?![\\w$])`).test(source);
 }
 
 function dbmlTables(source: string): string[] {
@@ -133,6 +156,8 @@ function main(): void {
   const missing = dbml.filter((table) => !S[table]);
   const extra = manifest.filter((table) => !dbml.includes(table));
   const contracts = sourceUnder(resolve(workspace, 'contracts/src'));
+  // [TBO-79 F1] 프론트 marker는 **제품 코드**에서만 찾는다 — 테스트에만 남은 사문 심볼이
+  //  표면 존재의 증거가 되면 안 된다.
   const frontend = sourceUnder(resolve(workspace, 'frontend'));
   const openapi = JSON.parse(readFileSync(resolve(root, 'openapi.json'), 'utf8')) as {
     paths: Record<string, Record<string, unknown>>;
@@ -143,7 +168,9 @@ function main(): void {
 
   for (const [table, surface] of Object.entries(S)) {
     for (const marker of surface.contract ?? []) {
-      if (!contracts.includes(marker)) errors.push(`${table}: missing contract marker ${marker}`);
+      if (!declaresExport(contracts, marker)) {
+        errors.push(`${table}: contract marker ${marker} has no exported declaration in contracts/src`);
+      }
     }
     for (const operation of surface.api ?? []) {
       const [method, path] = operation.split(' ');
@@ -151,7 +178,9 @@ function main(): void {
       if (!openapi.paths[apiPath]?.[method.toLowerCase()]) errors.push(`${table}: missing OpenAPI ${operation}`);
     }
     for (const marker of surface.frontend ?? []) {
-      if (!frontend.includes(marker)) errors.push(`${table}: missing frontend marker ${marker}`);
+      if (!referencesSymbol(frontend, marker)) {
+        errors.push(`${table}: frontend marker ${marker} is not referenced in product code`);
+      }
     }
   }
 

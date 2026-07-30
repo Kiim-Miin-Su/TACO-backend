@@ -11,11 +11,11 @@ export class TransactionsService implements OnModuleInit {
     private readonly store: PostgresCollectionStore,
   ) {}
 
-  // 데모 입·출금 원장 시드 — 프론트 목데이터 이관(대시보드 매출/지출).
-  // 무결성: 강사 페이(instructor_payout) out은 payouts.pay가 실제로 기록하므로 여기서 시드하지 않는다
-  //   (이중 계상 방지). 여기선 결제 입금·지출만 시드. 금액은 다른 시드와 정합:
-  //   enrollment 480,000(코스10 정가/결제), re_enrollment 520,000(코스11), expense 86,000(지출#1).
-  // 고정 id 101~103 — 런타임 pay가 nextId(1..)로 넣는 원장과 절대 충돌하지 않게. db.seed가 id별 멱등.
+  // [TBO-79 G3] 이 메서드는 hydrate만 한다. 종전 주석은 고정 id 101~103 데모 원장 시드를
+  //  설명했는데 그 시드는 이미 제거됐다(mock 시드 production 차단). 남아 있으면 감사자가
+  //  존재하지 않는 데모 행을 찾게 된다.
+  // 무결성 규약은 유효: 강사 페이(instructor_payout) out은 payouts.pay가 기록하므로 이 모듈이
+  //  따로 넣지 않는다(이중 계상 방지).
   async onModuleInit(): Promise<void> {
     await this.store.hydrate<Transaction>(TRANSACTIONS_SPEC);
   }

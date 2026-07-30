@@ -171,7 +171,9 @@ export class ReportsService implements OnModuleInit {
   /** [TBO-54 C2] 목록 READ = DB 권위(행 원부). 강사 가시성 필터는 세션 읽기모델
    *  (EP2 TTL hydrate — staleness 유계) 기반 — 세션 전환은 후속 청크. */
   async listDbForActor(actor?: ReportActor, sessionId?: number): Promise<SessionReportViewRow[]> {
-    if (sessionId != null && actor && !actorIsAdmin(actor)) {
+    // [TBO-79 D5] fail-closed — 종전 `actor &&`는 actor 미상 호출이 세션 가시성 검사를 건너뛰게 했다.
+    if (!actor) throw new ForbiddenException('보고서 조회에는 로그인 사용자 정보가 필요합니다.');
+    if (sessionId != null && !actorIsAdmin(actor)) {
       const target = await this.sessionsStore.findByIdDb(sessionId);
       if (target && !isSessionVisibleToInstructor(target, actor.id))
         throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
@@ -471,7 +473,11 @@ export class ReportsService implements OnModuleInit {
         if (approvedBy != null && approvedBy > 0) {
           await this.audit.log({
             entity: 'class_sessions', entityId: after.sessionId, action: 'update', actorId: approvedBy,
-            changes: { status: { before: 'scheduled', after: 'held' } },
+            changes: {
+              status: { before: 'scheduled', after: 'held' },
+              // [TBO-79 D1] 참가자 확정도 감사 대상.
+              ...(holdPatch.studentIds ? { studentIds: { before: [], after: holdPatch.studentIds } } : {}),
+            },
             reason: '강사와 수강생 출결 완결 자동 진행 처리',
           });
         }

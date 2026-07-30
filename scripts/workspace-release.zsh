@@ -253,6 +253,10 @@ run_schema_gates() {
 
   run_in backend npm run openapi
   run_in backend npm run verify:doc-links
+  # [TBO-79 F1·F2] 표면·도메인 게이트를 릴리스 경로에 편입한다. 종전엔 둘 다 수동 실행이었고,
+  #  crud-surfaces는 substring 매칭이라 통과가 증거가 되지 못했다(거짓 완료 FC-4·FC-5).
+  run_in backend npm run verify:crud-surfaces
+  run_in backend npm run db:verify-contract-domains
   log "docs: generate PostgreSQL SQL from erd.dbml"
   npx -y -p @dbml/cli dbml2sql "$ROOT/docs/erd.dbml" --postgres -o "$tmp/erd.sql"
   [[ -s "$tmp/erd.sql" ]] || die "DBML generated an empty PostgreSQL file"
