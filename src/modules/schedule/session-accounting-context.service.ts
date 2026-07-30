@@ -15,6 +15,7 @@ import {
   studentBelongsToSessionIndexed,
   type CohortIndex,
 } from './session-participant.policy';
+import type { SessionPricingInput } from './session-accounting.policy'; // [TBO-79 B1]
 
 type SessionDependents = {
   attendance: Attendance[];
@@ -78,6 +79,30 @@ export class SessionAccountingContextService {
     session: Pick<ClassSession, 'courseId' | 'studentIds'>,
   ): number[] {
     return participantIdsForSession(session, context.cohortIndex);
+  }
+
+  /**
+   * [TBO-79 B1] 회계 영향 미리보기가 정산서 라인 산정과 **같은 입력**으로 분류하게 만든다.
+   *  참가자는 대상 shape(변경 후 courseId/studentIds)로 판정하고, 출결·리포트는 세션 id 기준이라
+   *  변경 전후가 같은 잠금 스냅샷을 공유한다.
+   */
+  pricingInputFor(
+    context: SessionAccountingContext,
+    sessionId: number,
+    shape: Pick<ClassSession, 'courseId' | 'studentIds'>,
+    hourlyRate: number | undefined,
+  ): SessionPricingInput {
+    const dependents = context.bySessionId.get(Number(sessionId)) ?? { attendance: [], reports: [] };
+    const reportByStudent = new Map<number, SessionReportRow>();
+    for (const row of dependents.reports) reportByStudent.set(Number(row.studentId), row);
+    const attendanceByStudent = new Map<number, string>();
+    for (const row of dependents.attendance) attendanceByStudent.set(Number(row.studentId), String(row.status));
+    return {
+      participantIds: participantIdsForSession(shape, context.cohortIndex),
+      reportOf: (studentId) => reportByStudent.get(Number(studentId)),
+      attendanceOf: (studentId) => attendanceByStudent.get(Number(studentId)),
+      hourlyRate,
+    };
   }
 
   attendanceFor(context: SessionAccountingContext, sessionId: number): Attendance[] {

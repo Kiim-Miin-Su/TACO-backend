@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 
 describe('Subject-first class opening aggregate (e2e)', () => {
   let app: INestApplication;
@@ -8,13 +8,15 @@ describe('Subject-first class opening aggregate (e2e)', () => {
   let admin = '';
   let instructor = '';
   const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+  // [TBO-79 C1] /instructors 변경 명령은 sudo(재인증) 쿠키를 요구한다.
+  const sudoAuth = (token: string) => sudoAuthHeaders(app, token);
 
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
     admin = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     instructor = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
-    await http.patch('/api/instructors/1').set(auth(admin))
+    await http.patch('/api/instructors/1').set(sudoAuth(admin))
       .send({ defaultHourlyRate: 50000, canTeachKinder: true }).expect(200);
   });
 

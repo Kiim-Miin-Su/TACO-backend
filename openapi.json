@@ -11349,13 +11349,7 @@
       },
       "ApproveReportDto": {
         "type": "object",
-        "properties": {
-          "approvedBy": {
-            "type": "number",
-            "example": 7,
-            "description": "승인 처리자(users.id). 미지정 시 서버가 채움"
-          }
-        }
+        "properties": {}
       },
       "RejectReportDto": {
         "type": "object",

@@ -73,8 +73,12 @@ export class ReportsController {
   @ApiOperation({ summary: '관리자 승인(submitted → approved) — 시수 적격 편입 [관리자]' })
   @ApiCreatedResponse({ description: 'SessionReport(approvalStatus=approved, approvedAt·approvedBy)' })
   @ApiForbiddenResponse({ description: '권한 없음(관리자 전용)' })
-  approve(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }, @Body() body?: ApproveReportDto) {
-    return this.reports.approve(id, req.user?.sub ?? body?.approvedBy); // [감사 전수] actor는 토큰 권위
+  approve(
+    @Param('id', PositiveIntPipe) id: number,
+    @Req() req: Request & { user?: JwtClaims },
+    @Body() _body: ApproveReportDto, // [TBO-79 C2] 빈 DTO 바인딩 유지 = actor 필드 재유입을 400으로 차단
+  ) {
+    return this.reports.approve(id, req.user?.sub); // actor는 토큰만 권위 — body fallback 제거
   }
 
   @Post(':id/reject')

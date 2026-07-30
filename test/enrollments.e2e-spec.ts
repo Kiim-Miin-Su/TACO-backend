@@ -21,36 +21,65 @@ describe('[TBO-58] enrollments 홈 스위트 (e2e)', () => {
   });
   afterAll(async () => { await app.close(); });
 
-  it('읽기 — 강사는 본인 세션 참여 수강만, 관리자는 전체와 studentId 필터', async () => {
+  // [TBO-79 A2] 종전 이 테스트는 기대값을 구현과 같은 식으로 테스트 안에서 재계산했다(동어반복).
+  //  그래서 활성 필터 누락(FC-1)을 포함해 어떤 구현이든 통과했다. 픽스처 고정 id로 못박는다.
+  //  픽스처: enrollment 1(학생1×코스10) 2(학생2×코스11) 3(학생4×코스10) 4(학생1×코스12), 전부 active.
+  //  park_inst=강사1은 코스 10·12 세션만 가지며 전 세션이 명시 코호트 없음 → 활성 수강으로 확장.
+  it('읽기 — 강사는 본인 세션 참여 수강만(고정 기대값), 관리자는 전체와 studentId 필터', async () => {
     await http.get('/api/enrollments').expect(401);
     const managerAll = (await http.get('/api/enrollments').set(auth('manager')).expect(200)).body as Array<{
       id: number;
       studentId: number;
       courseId: number;
     }>;
-    const ownSessions = (await http.get('/api/schedule').set(auth('park_inst')).expect(200)).body as Array<{
-      courseId: number;
-      studentIds?: number[];
-    }>;
-    const expected = managerAll.filter((row) => ownSessions.some((session) =>
-      session.courseId === row.courseId
-      && (!session.studentIds?.length || session.studentIds.includes(row.studentId))));
+    expect(managerAll.map((row) => row.id).sort((a, b) => a - b)).toEqual([1, 2, 3, 4]);
+
     const instructorRows = (await http.get('/api/enrollments').set(auth('park_inst')).expect(200)).body as Array<{
       id: number;
       studentId: number;
     }>;
-    expect(instructorRows.map((row) => row.id).sort((a, b) => a - b))
-      .toEqual(expected.map((row) => row.id).sort((a, b) => a - b));
+    // 코스 10(1·3) + 코스 12(4). 코스 11(2)은 강사2 담당이라 제외.
+    expect(instructorRows.map((row) => row.id).sort((a, b) => a - b)).toEqual([1, 3, 4]);
+
     const filtered = (await http.get('/api/enrollments?studentId=1').set(auth('manager')).expect(200)).body as Array<{ studentId: number }>;
     expect(filtered.length).toBeGreaterThan(0);
     for (const row of filtered) expect(row.studentId).toBe(1);
-    if (instructorRows[0]) {
-      await http.get(`/api/enrollments/${instructorRows[0].id}`).set(auth('park_inst')).expect(200);
-    }
-    const denied = managerAll.find((row) => !instructorRows.some((visible) => visible.id === row.id));
-    expect(denied).toBeDefined();
-    await http.get(`/api/enrollments/${denied!.id}`).set(auth('park_inst')).expect(403);
+
+    await http.get('/api/enrollments/1').set(auth('park_inst')).expect(200);
+    // 담당 밖(코스 11) = 403, 존재하지 않는 행 = 404 — 두 경로를 구분해서 못박는다.
+    await http.get('/api/enrollments/2').set(auth('park_inst')).expect(403);
+    await http.get('/api/enrollments/999999').set(auth('park_inst')).expect(404);
     await http.get('/api/enrollments/999999').set(auth('manager')).expect(404);
+  });
+
+  // [TBO-79 A1/FC-1] 비활성 수강이 강사에게 노출되던 결함의 회귀.
+  //  공유 SSOT(session-participant.policy buildCohortIndex)는 status==='active'만 코호트로 본다.
+  it('강사 가시성 — 명시 코호트 없는 세션은 활성 수강만(paused/canceled 즉시 제외)', async () => {
+    // 픽스처에 없는 조합: 학생 2 × 코스 10. 강사1의 코스10 세션은 전부 명시 코호트 없음.
+    const created = (await http.post('/api/enrollments').set(auth('manager'))
+      .send({ studentId: 2, courseId: 10, totalSessions: 4 }).expect(201)).body as { id: number; status: string };
+    expect(created.status).toBe('active');
+
+    const beforeIds = ((await http.get('/api/enrollments').set(auth('park_inst')).expect(200)).body as Array<{ id: number }>)
+      .map((row) => row.id).sort((a, b) => a - b);
+    expect(beforeIds).toEqual([1, 3, 4, created.id].sort((a, b) => a - b));
+    await http.get(`/api/enrollments/${created.id}`).set(auth('park_inst')).expect(200);
+
+    await http.patch(`/api/enrollments/${created.id}`).set(auth('manager'))
+      .send({ status: 'paused', reason: 'TBO-79 활성 필터 회귀' }).expect(200);
+
+    const afterIds = ((await http.get('/api/enrollments').set(auth('park_inst')).expect(200)).body as Array<{ id: number }>)
+      .map((row) => row.id).sort((a, b) => a - b);
+    expect(afterIds).toEqual([1, 3, 4]);
+    await http.get(`/api/enrollments/${created.id}`).set(auth('park_inst')).expect(403);
+    // 관리자 권위 읽기는 그대로 — 증거 보존(비가시화는 강사 범위 한정).
+    await http.get(`/api/enrollments/${created.id}`).set(auth('manager')).expect(200);
+
+    await http.patch(`/api/enrollments/${created.id}`).set(auth('manager'))
+      .send({ status: 'canceled', reason: 'TBO-79 정리' }).expect(200);
+    const canceledIds = ((await http.get('/api/enrollments').set(auth('park_inst')).expect(200)).body as Array<{ id: number }>)
+      .map((row) => row.id).sort((a, b) => a - b);
+    expect(canceledIds).toEqual([1, 3, 4]);
   });
 
   it('생성 권한 — 매니저 이상만(강사 403)', async () => {

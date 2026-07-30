@@ -505,10 +505,16 @@ export class ScheduleService {
         }
       }
       const accountingContext = await this.accountingContext.loadFresh(targets.map((target) => target.id));
-      const accountingImpact = combineAccountingImpacts(targets.map((target) => accountingImpactOfRemoval(target, {
-        approvedReport: this.accountingContext.isReportComplete(accountingContext, target),
-        hourlyRate: this.read.courseOf(target.courseId)?.hourlyRate ?? 0,
-      })));
+      const accountingImpact = combineAccountingImpacts(targets.map((target) => accountingImpactOfRemoval(
+        target,
+        // [TBO-79 B1] 정산서 라인 산정과 같은 분류 입력 — 지각·학생 출결 미기록·책정가 반영.
+        this.accountingContext.pricingInputFor(
+          accountingContext,
+          target.id,
+          target,
+          this.read.courseOf(target.courseId)?.hourlyRate,
+        ),
+      )));
       const impactHash = accountingImpactHash(targets.map((target) => target.id), accountingImpact);
       // [C3] 전 회차 사전 검증 — 정산 연결이 하나라도 있으면 전체 불변(부분 삭제 금지).
       const locked = targets.filter((t) => isPayoutLocked(t));
@@ -814,16 +820,20 @@ export class ScheduleService {
       if (holdPatch) primary.status = holdPatch.status;
     }
     this.accountingContext.assertDependentsCompatible(accountingContext, cur, primary);
-    const beforeApproved = this.accountingContext.isReportComplete(accountingContext, cur);
-    const afterApproved = this.accountingContext.isReportComplete(accountingContext, {
-      ...primary,
-      id: cur.id,
-    });
+    // [TBO-79 B1] before/after 모두 정산서 라인 산정과 같은 분류 입력으로 투영한다.
+    //  종전엔 approvedReport 하나만 넘겨 지각·학생 출결 미기록·책정가가 미리보기에서 사라졌다.
+    const pricingInput = (
+      sessionId: number,
+      shape: Pick<ClassSession, 'courseId' | 'studentIds'>,
+    ) => this.accountingContext.pricingInputFor(
+      accountingContext,
+      sessionId,
+      shape,
+      this.read.courseOf(shape.courseId)?.hourlyRate,
+    );
     const primaryImpact = accountingImpactOf(cur, primary, {
-      beforeApprovedReport: beforeApproved,
-      afterApprovedReport: afterApproved,
-      beforeHourlyRate: this.read.courseOf(cur.courseId)?.hourlyRate ?? 0,
-      afterHourlyRate: this.read.courseOf(primary.courseId)?.hourlyRate ?? 0,
+      before: pricingInput(cur.id, cur),
+      after: pricingInput(cur.id, primary),
     });
     const accountingImpacts: SessionAccountingImpact[] = [primaryImpact];
     const accountingLocked: ClassSession[] = isPayoutLocked(cur) ? [cur] : [];
@@ -831,16 +841,9 @@ export class ScheduleService {
       const member = patch.before;
       if (isPayoutLocked(member)) accountingLocked.push(member);
       this.accountingContext.assertDependentsCompatible(accountingContext, member, patch.fields);
-      const memberApproved = this.accountingContext.isReportComplete(accountingContext, member);
-      const memberAfterApproved = this.accountingContext.isReportComplete(accountingContext, {
-        ...member,
-        ...patch.fields,
-      });
       accountingImpacts.push(accountingImpactOf(member, patch.fields, {
-        beforeApprovedReport: memberApproved,
-        afterApprovedReport: memberAfterApproved,
-        beforeHourlyRate: this.read.courseOf(member.courseId)?.hourlyRate ?? 0,
-        afterHourlyRate: this.read.courseOf(patch.fields.courseId)?.hourlyRate ?? 0,
+        before: pricingInput(member.id, member),
+        after: pricingInput(member.id, { ...member, ...patch.fields }),
       }));
     }
     const impact = combineAccountingImpacts(accountingImpacts);

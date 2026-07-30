@@ -20,6 +20,7 @@ import { STUDENTS } from '../students/student.entity';
 import { Student } from '../students/student.entity';
 import { COURSES, StoredCourse } from '../courses/course.entity';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
+import { buildCohortIndex, participantIdsForSession } from '../schedule/session-participant.policy'; // [TBO-79 A1]
 import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
 import { CounselForm } from '../counsel/counsel.entity';
 import { enrollmentIncludesSessionDate, enrollmentLifecyclePatch } from './enrollment-lifecycle.policy';
@@ -76,19 +77,32 @@ export class EnrollmentsService implements OnModuleInit {
 
   /**
    * 강사 수평 권한: 본인 세션에서 실제 참여자로 계산되는 학생의 해당 코스 수강만 노출한다.
-   * 명시 studentIds가 있으면 그것을 우선하고, 빈 코호트만 코스 활성 수강으로 해석한다.
+   * 명시 studentIds가 있으면 그것을 우선하고, 빈 코호트만 코스 **활성** 수강으로 해석한다.
+   *
+   * [TBO-79 A1] 판정은 session-participant.policy의 단일 소스만 소비한다.
+   *  종전 인라인 사본은 `status === 'active'` 필터가 빠져 paused/completed/canceled 수강까지
+   *  강사에게 노출했다(거짓 완료 FC-1). 사본 금지 규약은 session-participant.policy.ts 주석 참조.
    */
   async listForInstructorDb(instructorId: number, studentId?: number): Promise<Enrollment[]> {
-    const [rows, sessions] = await Promise.all([
+    const [rows, cohortRows, sessions] = await Promise.all([
       this.listDb(studentId),
+      // 코호트 인덱스는 studentId 필터와 무관하게 전체 수강으로 만든다 — 부분집합으로 만들면
+      // 빈 코호트 세션의 참가자 판정이 좁아져 본인 수업 학생을 놓친다.
+      this.store.findActive<Enrollment>(ENROLLMENTS_SPEC, { orderBy: { field: 'id' } }),
       this.sessionsStore.listDb({ instructorId }),
     ]);
-    return rows.filter((row) => sessions.some((session) =>
-      Number(session.courseId) === Number(row.courseId)
-      && (
-        !session.studentIds?.length
-        || session.studentIds.map(Number).includes(Number(row.studentId))
-      )));
+    const cohortIndex = buildCohortIndex(cohortRows);
+    const participantsByCourse = new Map<number, Set<number>>();
+    for (const session of sessions) {
+      const courseId = Number(session.courseId);
+      let bucket = participantsByCourse.get(courseId);
+      if (!bucket) {
+        bucket = new Set<number>();
+        participantsByCourse.set(courseId, bucket);
+      }
+      for (const participantId of participantIdsForSession(session, cohortIndex)) bucket.add(participantId);
+    }
+    return rows.filter((row) => participantsByCourse.get(Number(row.courseId))?.has(Number(row.studentId)) === true);
   }
 
   async getForInstructorDb(id: number, instructorId: number): Promise<Enrollment> {

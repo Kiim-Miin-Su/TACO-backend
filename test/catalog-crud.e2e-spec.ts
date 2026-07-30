@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 
 describe('Catalog CRUD and RBAC (e2e)', () => {
   let app: INestApplication;
@@ -8,6 +8,8 @@ describe('Catalog CRUD and RBAC (e2e)', () => {
   let admin = '';
   let instructor = '';
   const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
+  // [TBO-79 C1] /instructors 변경 명령은 sudo(재인증) 쿠키를 요구한다.
+  const sudoAuth = (token: string) => sudoAuthHeaders(app, token);
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -45,7 +47,7 @@ describe('Catalog CRUD and RBAC (e2e)', () => {
   });
 
   it('관리자는 과목·코스를 수정하고 미참조 자산을 soft delete할 수 있다', async () => {
-    await http.patch('/api/instructors/1').set(auth(admin))
+    await http.patch('/api/instructors/1').set(sudoAuth(admin))
       .send({ defaultHourlyRate: 50000, canTeachKinder: true }).expect(200);
     const suffix = String(Date.now());
     const subject = (await http.post('/api/subjects').set(auth(admin))
@@ -70,7 +72,7 @@ describe('Catalog CRUD and RBAC (e2e)', () => {
     const inherited = (await http.patch(`/api/courses/${course.id}`).set(auth(admin))
       .send({ hourlyRateOverride: null }).expect(200)).body;
     expect(inherited).toMatchObject({ hourlyRate: 50000, hourlyRateOverride: null });
-    await http.patch('/api/instructors/1').set(auth(admin)).send({ defaultHourlyRate: 55000 }).expect(200);
+    await http.patch('/api/instructors/1').set(sudoAuth(admin)).send({ defaultHourlyRate: 55000 }).expect(200);
     expect((await http.get(`/api/courses/${course.id}`).set(auth(admin)).expect(200)).body)
       .toMatchObject({ hourlyRate: 55000, hourlyRateOverride: null });
 

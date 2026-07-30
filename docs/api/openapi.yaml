@@ -7289,11 +7289,7 @@ components:
           description: 숙제(선택 — 빈 문자열로 비움)
     ApproveReportDto:
       type: object
-      properties:
-        approvedBy:
-          type: number
-          example: 7
-          description: 승인 처리자(users.id). 미지정 시 서버가 채움
+      properties: {}
     RejectReportDto:
       type: object
       properties:

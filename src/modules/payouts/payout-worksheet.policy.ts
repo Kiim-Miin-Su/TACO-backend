@@ -13,9 +13,8 @@
 //
 //  정책 변화 명시: 종전엔 지각도 자동 포함(countsForTeachingHours가 absent만 제외)·리포트
 //  미완은 적격 탈락이었다 → 이제 둘 다 "책정 필요(manual)"로 통일(TBO-64 §1).
-import type { SessionReportRow } from '../reports/report.entity';
 import type { ClassSession } from '../schedule/schedule.entity';
-import { payoutAmountOf } from '../schedule/session-accounting.policy';
+import type { SessionPricingInput } from '../schedule/session-accounting.policy';
 import type {
   PayoutWorksheet as SharedPayoutWorksheet,
   PayoutWorksheetExcludedReason,
@@ -37,53 +36,11 @@ export type WorksheetManualReason = PayoutWorksheetManualReason;
 export type WorksheetExcludedReason = PayoutWorksheetExcludedReason;
 export type WorksheetClassification = PayoutWorksheetPricing;
 
-export type ClassifyInput = {
-  /** 세션의 실제 참가자 id 목록(코호트 판정 결과). */
-  participantIds: readonly number[];
-  /** (session, student)별 리포트 — participantIds 순서 무관. */
-  reportOf: (studentId: number) => SessionReportRow | undefined;
-  /** (session, student)별 학생 출결 상태 — undefined = 미기록(기간설정 지시 ①). */
-  attendanceOf: (studentId: number) => string | undefined;
-  hourlyRate: number | undefined;
-};
-
-export function reportsComplete(participantIds: readonly number[], reportOf: ClassifyInput['reportOf']): boolean {
-  if (participantIds.length === 0) return false;
-  return participantIds.every((studentId) => reportOf(studentId)?.approvalStatus === 'approved');
-}
-
-/** 회차 하나의 가격 분류 — 워크시트·preview·generate 공용(단일 진실원). */
-export function classifySessionForPayout(session: WorksheetSession, input: ClassifyInput): WorksheetClassification {
-  const override = session.instructorPayAmount ?? null;
-  const base = { overrideAmount: override } as const;
-
-  if (session.payoutId != null || session.isPaid === true) {
-    return { kind: 'excluded', manualReasons: [], excludedReason: 'payout_linked', autoAmount: null, effectiveAmount: null, ...base };
-  }
-  if (session.status !== 'held') {
-    return { kind: 'excluded', manualReasons: [], excludedReason: 'not_held', autoAmount: null, effectiveAmount: null, ...base };
-  }
-  if (session.instructorAttendance === 'absent') {
-    return { kind: 'excluded', manualReasons: [], excludedReason: 'instructor_absent', autoAmount: null, effectiveAmount: null, ...base };
-  }
-
-  const manualReasons: WorksheetManualReason[] = [];
-  if (session.instructorAttendance === 'late') manualReasons.push('late');
-  if (input.participantIds.length === 0) manualReasons.push('roster_missing');
-  else {
-    // [기간설정 지시 ① 2026-07-24] 출결·리포트 "둘 중 하나라도 이상" = 자동 계산 금지 → 직접 입력.
-    //  학생 출결 미기록(출결 현황 미완성)도 이상으로 판정 — 종전엔 리포트만 봤다(정책 강화 명시).
-    if (input.participantIds.some((studentId) => input.attendanceOf(studentId) == null)) manualReasons.push('attendance_missing');
-    if (!reportsComplete(input.participantIds, input.reportOf)) manualReasons.push('report_incomplete');
-  }
-  if (input.hourlyRate == null || input.hourlyRate <= 0) manualReasons.push('rate_missing');
-
-  if (manualReasons.length > 0) {
-    return { kind: 'manual', manualReasons, autoAmount: null, effectiveAmount: override, ...base };
-  }
-  const autoAmount = payoutAmountOf(session.durationMinutes, input.hourlyRate!);
-  return { kind: 'auto', manualReasons: [], autoAmount, effectiveAmount: override ?? autoAmount, ...base };
-}
+// [TBO-79 B1] 분류 함수의 소유가 schedule/session-accounting.policy로 이동했다.
+//  이유: 회계 영향 미리보기(schedule)가 같은 분류를 소비해야 하는데, payouts가 이미 schedule을
+//  의존하므로 반대 방향 import는 순환이 된다. 여기서는 재export만 한다 — 사본을 만들지 말 것.
+export type ClassifyInput = SessionPricingInput;
+export { classifySessionForPayout, reportsComplete } from '../schedule/session-accounting.policy';
 
 export type PayoutWorksheetParticipant = SharedPayoutWorksheetParticipant;
 export type PayoutWorksheetRow = SharedPayoutWorksheetRow;

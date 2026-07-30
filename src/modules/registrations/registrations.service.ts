@@ -14,7 +14,6 @@ import { studentGradeBirthDateError } from '../students/student-grade.policy';
 import type { InstructorStudentAggregate } from '../students/students.service';
 import { CounselService } from '../counsel/counsel.service';
 import { RegisterStudentWithCounselDto } from './dto/register-student-with-counsel.dto';
-import type { CounselForm } from '../counsel/counsel.entity';
 import { randomUUID } from 'node:crypto';
 
 /**

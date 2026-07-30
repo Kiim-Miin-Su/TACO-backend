@@ -1,13 +1,15 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import { AuditService } from '../src/modules/audit/audit.service';
-import { createTestApp } from './setup-app';
+import { createTestApp, sudoAuthHeaders } from './setup-app';
 
 describe('Instructor aggregate CRUD (e2e)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   const tokens: Record<string, string> = {};
   const as = (role: string) => ({ Authorization: `Bearer ${tokens[role]}` });
+  // [TBO-79 C1] /instructors 변경 명령은 /users 쌍둥이와 같이 sudo(재인증) 쿠키를 요구한다.
+  const sudo = (role: string) => sudoAuthHeaders(app, tokens[role]);
 
   beforeAll(async () => {
     app = await createTestApp();
@@ -31,16 +33,16 @@ describe('Instructor aggregate CRUD (e2e)', () => {
 
   it('대표만 생성·수정·삭제하고 profile 변경·삭제 이력을 남긴다', async () => {
     const webId = `inst_${Date.now().toString(36)}`;
-    await http.post('/api/instructors').set(as('manager')).send({ webId, name: '차단', password: 'password123' }).expect(403);
-    const created = (await http.post('/api/instructors').set(as('super')).send({
+    await http.post('/api/instructors').set(sudo('manager')).send({ webId, name: '차단', password: 'password123' }).expect(403);
+    const created = (await http.post('/api/instructors').set(sudo('super')).send({
       webId, name: '신규 강사', password: 'password123', phone: '010-5555-0000',
       university: 'TACO University', major: 'Education', birthYear: 1992,
       defaultHourlyRate: 55000, canTeachKinder: true,
     }).expect(201)).body;
     expect(created).toMatchObject({ webId, name: '신규 강사', defaultHourlyRate: 55000, canTeachKinder: true });
 
-    await http.patch(`/api/instructors/${created.id}`).set(as('admin')).send({ defaultHourlyRate: 60000 }).expect(403);
-    const updated = (await http.patch(`/api/instructors/${created.id}`).set(as('super')).send({
+    await http.patch(`/api/instructors/${created.id}`).set(sudo('admin')).send({ defaultHourlyRate: 60000 }).expect(403);
+    const updated = (await http.patch(`/api/instructors/${created.id}`).set(sudo('super')).send({
       name: '수정 강사', defaultHourlyRate: 60000, canTeachKinder: false,
     }).expect(200)).body;
     expect(updated).toMatchObject({ name: '수정 강사', defaultHourlyRate: 60000, canTeachKinder: false });
@@ -51,14 +53,14 @@ describe('Instructor aggregate CRUD (e2e)', () => {
     expect(JSON.stringify(profileAudit)).not.toContain('1992');
     expect(JSON.stringify(profileAudit)).toContain('[masked]');
 
-    await http.delete(`/api/instructors/${created.id}`).set(as('manager')).expect(403);
-    await http.delete(`/api/instructors/${created.id}`).set(as('super')).expect(200);
+    await http.delete(`/api/instructors/${created.id}`).set(sudo('manager')).expect(403);
+    await http.delete(`/api/instructors/${created.id}`).set(sudo('super')).expect(200);
     await http.get(`/api/instructors/${created.id}`).set(as('super')).expect(404);
     expect((await audit.list({ entity: 'instructor_profiles', entityId: created.id }))
       .some((row) => row.action === 'delete')).toBe(true);
   });
 
   it('활성 수업·스케줄·계약이 있는 강사는 삭제 409로 보호한다', async () => {
-    await http.delete('/api/instructors/1').set(as('super')).expect(409);
+    await http.delete('/api/instructors/1').set(sudo('super')).expect(409);
   });
 });
