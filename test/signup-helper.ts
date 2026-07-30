@@ -15,7 +15,16 @@ export type SignupResult = {
   account: { id: number; webId: string; name: string; role: string; status: string };
 };
 
-/** challenge 생성 → devOtpCode로 confirm → verified challenge id 반환. */
+/**
+ * challenge 생성 → devOtpCode로 confirm → verified challenge id 반환.
+ *
+ * ⚠ [TBO-79 J2] email이 webId에서 결정론적으로 파생되므로, **jest 재시도는 이 경로를 복구하지
+ *  못한다** — 1차 시도가 만든 pending challenge가 60초 쿨다운을 걸어 2차 시도가 400으로
+ *  결정론적 실패한다(2026-07-30 release 실측: T5c 5초 초과 → 재시도 400).
+ *  그래서 스톨 자체를 막는 것이 유일한 방어다(testTimeout=20000). 재시도에 기대지 말 것.
+ *  쿨다운까지 복구하려면 시도별 nonce email이 필요한데, email 값을 단언하는 스위트가 있어
+ *  픽스처 계약을 깨므로 하지 않았다.
+ */
 export async function verifiedSignupChallenge(http: Http, email: string): Promise<number> {
   const created = (await http.post('/api/auth/signup-email-challenge').send({ email }).expect(201)).body;
   expect(String(created.devOtpCode)).toMatch(/^\d{6}$/); // SMTP 미설정 e2e — devOtpCode 필수 존재
