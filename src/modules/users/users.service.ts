@@ -7,7 +7,7 @@ import { BadRequestException, ConflictException, ForbiddenException, forwardRef,
 import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import * as bcrypt from 'bcryptjs';
 import { createHash, randomBytes } from 'crypto';
-import type { WebIdCheckResult } from '@kms545487/contracts';
+import type { WebIdCheckResult, StaffAccountDetail, StaffAccountSummary } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -511,7 +511,7 @@ export class UsersService implements OnModuleInit {
   // ── [유저 관리 2026-07-20 대표 지시] 상세 단건 + 대표 직접 수정 ────────────────
 
   /** 단건 상세 — super_admin에게만 rrnMasked 동봉(관리자는 기본 정보만). */
-  async getUserDetail(id: number, requesterRole: string): Promise<SafeAccount & { rrnMasked?: string | null }> {
+  async getUserDetail(id: number, requesterRole: string): Promise<StaffAccountSummary | StaffAccountDetail> {
     await this.refreshFromDb();
     const acc = requesterRole === 'super_admin'
       ? this.db.findById<StaffAccount>(USERS, id, { withDeleted: true })

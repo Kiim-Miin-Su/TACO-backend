@@ -5298,12 +5298,12 @@ components:
           type: string
           example: 김민수
         role:
-          type: string
           enum:
             - super_admin
             - admin
             - manager
             - instructor
+          type: string
         mustChangePassword:
           type: boolean
           description: true면 계정 보안 변경 외 업무 API가 차단된다.
@@ -5554,18 +5554,18 @@ components:
           nullable: true
           example: Asia/Seoul
         role:
-          type: string
           enum:
             - instructor
             - manager
             - admin
             - super_admin
-        status:
           type: string
+        status:
           enum:
             - pending
             - active
             - rejected
+          type: string
         emailVerified:
           type: boolean
           example: true

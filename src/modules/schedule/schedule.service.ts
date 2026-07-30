@@ -617,7 +617,7 @@ export class ScheduleService {
 
   /** [TBO-64 2026-07-24] 회차 가격 책정(시수 워크시트) — 매니저/대표 전용. lock → DB 재조회 →
    *  가드(held·결석 아님·정산 미연결) → 조건부 UPDATE + audit. null = 책정 해제(자동/빈칸 복귀). */
-  async setSessionPayAmount(id: number, amount: number | null, actorId?: number): Promise<{ row: ClassSession }> {
+  async setSessionPayAmount(id: number, amount: number | null, actorId?: number): Promise<{ row: ScheduleRow }> {
     await this.read.ensureReady();
     if (amount != null && (!Number.isInteger(amount) || amount < 0))
       throw new BadRequestException('금액은 0 이상의 정수여야 합니다.');
@@ -643,7 +643,11 @@ export class ScheduleService {
       this.logger.log(
         `action=set_session_pay_amount session=${id} actor=${actorId ?? 0} before=${cur.instructorPayAmount ?? 'null'} after=${amount ?? 'null'} result=success`,
       );
-      return { row: updated };
+      // [TBO-79 E5] 형제 라우트(update/create)와 같은 **enrich된 행**을 돌려준다. 종전엔 저장 행을
+      //  그대로 반환했는데 FE 타입은 조인 필드(courseName·instructorName·missingAttendance…)를
+      //  주장하고 있었다 — 드리프트가 반대 방향이었고, 그 필드를 읽는 순간 undefined가 된다.
+      const roomsMap = new Map(this.rooms.findAll().map((room) => [room.id, room]));
+      return { row: this.read.enrich(updated, roomsMap) };
     });
   }
 

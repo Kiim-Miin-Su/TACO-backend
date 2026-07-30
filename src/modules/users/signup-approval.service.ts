@@ -1,3 +1,4 @@
+import type { StaffAccountDetail } from '@kms545487/contracts';
 // [TBO-68 C3 2026-07-26] 가입 승인·직접 등록 서비스 — users.service에서 승인 컨텍스트 분리(P3 ①).
 //  표면: 승인센터 5라우트(auth.controller — listPending/approve/resend/reject/delete)와
 //  대표 직접 등록(users·instructors.controller). **public API·규약 무변**(본문 이동만):
@@ -32,7 +33,7 @@ export class SignupApprovalService {
     private readonly profiles: InstructorProfilesStore,
   ) {}
 
-  async listPending(actorId: number): Promise<Array<SafeAccount & { rrnMasked: string | null }>> {
+  async listPending(actorId: number): Promise<StaffAccountDetail[]> {
     await this.users.refreshFromDb(); // [28F] 다른 인스턴스의 신규 가입이 대표 대기목록에 즉시 반영
     const actor = this.signupDecisionActor(actorId);
     // [TBO-31 C1 D2] 승인 판단 근거로 rrnMasked('950101-1******')만 노출 — 평문·암호문은 응답에 없다.

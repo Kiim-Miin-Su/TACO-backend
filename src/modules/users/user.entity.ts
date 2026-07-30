@@ -61,11 +61,22 @@ export type StaffAccount = {
 
 // 외부 노출용(안전) 계정 뷰 — 해시·토큰(평문/해시/만료)·RRN 암호문 제외.
 export type SafeAccount = Omit<StaffAccount, 'passwordHash' | 'emailVerifyTokenHash' | 'emailVerifyExpiresAt' | 'passwordResetTokenHash' | 'passwordResetExpiresAt' | 'rrnEncrypted'>;
+/**
+ * [TBO-79 E5] SafeAccount ↔ StaffAccountSummary **양방향** 일치 강제.
+ *
+ * 종전에는 `const contract: StaffAccountSummary = safe;` 한 줄이었다. 이건 SafeAccount가
+ * 계약의 **초과집합**임만 증명한다 — 서버가 계약에 없는 필드를 실어 보내도 조용히 통과했고,
+ * 실제로 authVersion·mustChangePassword·approvedBy·approvedAt·lastLoginAt·university·major·
+ * birthYear 8개가 계약 밖으로 새고 있었다. 아래 단언은 초과와 누락을 **둘 다** 빌드 실패로
+ * 만든다. 필드를 늘릴 땐 contracts/src/account.ts를 함께 고쳐야 컴파일된다.
+ */
+type MutuallyAssignable<A, B> = [A] extends [B] ? ([B] extends [A] ? true : never) : never;
+const _safeAccountMatchesContract: MutuallyAssignable<Required<SafeAccount>, Required<StaffAccountSummary>> = true;
+void _safeAccountMatchesContract;
+
 export const toSafe = (a: StaffAccount): SafeAccount => {
   const { passwordHash: _ph, emailVerifyTokenHash: _th, emailVerifyExpiresAt: _te, passwordResetTokenHash: _rt, passwordResetExpiresAt: _re, rrnEncrypted: _rrn, ...safe } = a;
   void _ph; void _th; void _te;
-  const contract: StaffAccountSummary = safe;
-  void contract;
   return safe;
 };
 

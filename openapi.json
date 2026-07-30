@@ -8750,13 +8750,13 @@
             "example": "김민수"
           },
           "role": {
-            "type": "string",
             "enum": [
               "super_admin",
               "admin",
               "manager",
               "instructor"
-            ]
+            ],
+            "type": "string"
           },
           "mustChangePassword": {
             "type": "boolean",
@@ -9084,21 +9084,21 @@
             "example": "Asia/Seoul"
           },
           "role": {
-            "type": "string",
             "enum": [
               "instructor",
               "manager",
               "admin",
               "super_admin"
-            ]
+            ],
+            "type": "string"
           },
           "status": {
-            "type": "string",
             "enum": [
               "pending",
               "active",
               "rejected"
-            ]
+            ],
+            "type": "string"
           },
           "emailVerified": {
             "type": "boolean",
