@@ -76,7 +76,12 @@ export class AuthEventsService implements OnModuleInit {
         at: new Date().toISOString(),
       } as Omit<AuthEvent, keyof BaseRow>);
     } catch (err) {
-      this.logger.warn(`auth_event 기록 실패(${input.type}): ${err instanceof Error ? err.message : err}`);
+      // [TBO-79 F5] 기록 실패는 요청을 깨뜨리지 않는다 — DB 일시 장애가 로그인 자체를 막으면 안 된다.
+      //  다만 **보안 이벤트**(실패·차단)가 유실되는 건 단순 경고가 아니라 관측 대상이므로 error로
+      //  올린다. 성공 이벤트는 종전대로 warn. 알림 임계는 운영 대시보드 몫(owner).
+      const message = `auth_event 기록 실패(${input.type}): ${err instanceof Error ? err.message : err}`;
+      if (input.type === 'login_success' || input.type === 'logout') this.logger.warn(message);
+      else this.logger.error(message);
     }
   }
 
