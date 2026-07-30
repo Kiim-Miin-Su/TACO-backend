@@ -401,6 +401,85 @@ run_db_gates() {
   fi
 }
 
+# [TBO-79 K1·K2] 마이그레이션 원장 확인. 종전엔 release 경로에 이 확인이 **전혀 없었고**, 그래서
+#  "release 초록"이 "프로덕션 스키마가 코드와 맞다"를 전혀 보장하지 않았다.
+#
+#  판정을 3갈래로 나눈다 — 이게 핵심이다. `db:verify-migrations`는 **연결 실패와 원장 불일치를
+#  똑같이 exit 1로** 낸다. 그래서 종료코드만 보고 die하면 "Neon에 못 닿는 머신에서는 배포 불가"가
+#  된다(실측: 컨테이너는 Neon 네트워크가 막혀 connection timeout이 난다). 불일치는 증거지만
+#  연결 실패는 **증거가 아니라 정보 부재**다. 부재를 위반으로 취급하면 게이트가 반대 방향으로
+#  거짓말을 한다.
+#   ① 원장 일치        → 통과
+#   ② 원장 불일치      → die (ALLOW_UNAPPLIED_MIGRATIONS=1로만 우회)
+#   ③ 연결 실패        → warn (무엇을 검증하지 못했는지 명시하고 진행)
+#
+#  [K2] **preflight에서 돌린다.** push 직전에만 확인하면 게이트를 30분 넘게 돌린 뒤 마지막에
+#  막히고, 재실행에 또 30분이 든다 — 락 실패와 정확히 같은 낭비다. 막힐 거라면 20초 안에 막혀야
+#  한다. 결과는 MIGRATION_LEDGER_VERDICT에 남겨 push 시점에 한 줄로 요약한다.
+MIGRATION_LEDGER_VERDICT="unverified"
+
+classify_migration_ledger() {
+  node -e "
+    let s='';
+    process.stdin.on('data', (d) => { s += d; }).on('end', () => {
+      const at = s.indexOf('{');
+      if (at < 0) return console.log('unreachable\tJSON 출력 없음');
+      let j;
+      try { j = JSON.parse(s.slice(at)); } catch { return console.log('unreachable\tJSON 파싱 실패'); }
+      if (j.ok === true) return console.log('ok\t적용 ' + (j.expectedCount ?? '?') + '/' + (j.expectedCount ?? '?'));
+      if (j.error) return console.log('unreachable\t' + j.error);
+      const missing = (j.missing ?? []).length, unexpected = (j.unexpected ?? []).length;
+      if (missing || unexpected) {
+        return console.log('drift\tmissing ' + missing + '건' + (missing ? ' → ' + j.missing.join(', ') : '')
+          + (unexpected ? ' / unexpected ' + unexpected + '건 → ' + j.unexpected.join(', ') : ''));
+      }
+      console.log('unreachable\t판정 불가(ok=false 인데 missing·error 모두 비어 있음)');
+    });
+  "
+}
+
+verify_migration_ledger() {
+  local out verdict kind detail
+  log "backend: verify migration ledger (preflight — 막힐 거라면 게이트 전에 막힌다)"
+  out="$(cd "$ROOT/backend" && DOTENV_CONFIG_PATH="$DB_ENV_FILE" npm run --silent db:verify-migrations 2>&1 || true)"
+  verdict="$(printf '%s' "$out" | classify_migration_ledger)"
+  kind="${verdict%%$'\t'*}"
+  detail="${verdict#*$'\t'}"
+  case "$kind" in
+    ok)
+      MIGRATION_LEDGER_VERDICT="ok"
+      ok "migration 원장 일치($detail) — 배포 대상 코드와 프로덕션 스키마가 맞다" ;;
+    drift)
+      if is_true "${ALLOW_UNAPPLIED_MIGRATIONS:-0}"; then
+        MIGRATION_LEDGER_VERDICT="bypassed"
+        warn "⚠ 원장 불일치인데 ALLOW_UNAPPLIED_MIGRATIONS=1로 진행합니다: $detail"
+        warn "  배포 후 반드시 dry-run → APPLY → readback을 수행하세요(사전 Neon 스냅샷 필수)."
+      else
+        die "미적용 마이그레이션으로 중단합니다: $detail\n  적용하거나(권장), 코드-선 배포를 의도한다면 다음처럼 다시 실행하세요:\n    ALLOW_UNAPPLIED_MIGRATIONS=1 ./scripts/release.zsh"
+      fi ;;
+    *)
+      MIGRATION_LEDGER_VERDICT="unverified"
+      warn "migration 원장을 확인하지 못했습니다($detail) —"
+      warn "  이 실행의 초록은 **프로덕션 스키마 정합을 포함하지 않습니다**." ;;
+  esac
+}
+
+preflight_migration_ledger() {
+  is_true "$PUSH" || return 0
+  if is_true "$RUN_DB_VERIFY"; then
+    MIGRATION_LEDGER_VERDICT="gates"
+    log "migration 원장은 DB 게이트(RUN_DB_VERIFY=1)에서 확인한다"
+    return 0
+  fi
+  if [[ -n "${DATABASE_URL_UNPOOLED:-}" || -n "${DATABASE_URL:-}" || -n "${POSTGRES_URL_NON_POOLING:-}" || -n "${POSTGRES_URL:-}" ]] || db_env_file_exists; then
+    verify_migration_ledger
+  else
+    MIGRATION_LEDGER_VERDICT="unverified"
+    warn "DB URL·backend/$DB_ENV_FILE 이 없어 migration 원장을 확인하지 못했습니다 —"
+    warn "  이 실행의 초록은 **프로덕션 스키마 정합을 포함하지 않습니다**(RUN_DB_VERIFY=1로 확인)."
+  fi
+}
+
 run_gates() {
   if is_true "${SKIP_TESTS:-0}"; then
     warn "SKIP_TESTS=1 - all code/test/schema gates skipped"
@@ -762,6 +841,9 @@ if [[ "$cmp" == "0" && "$CT_NPM_VER" != "none" ]]; then
   fi
 fi
 
+# [TBO-79 K2] push 예정이면 원장을 **여기서** 본다 — 막힐 거라면 게이트 30분 전에 막혀야 한다.
+preflight_migration_ledger
+
 if is_true "${PREFLIGHT_ONLY:-0}"; then
   ok "preflight-only complete"
   exit 0
@@ -821,64 +903,14 @@ for repo in contracts docs; do
   assert_clean "$repo"
 done
 
-# [TBO-79 K1] 배포 전 마이그레이션 원장 확인. 종전엔 release 경로에 이 확인이 **전혀 없었고**,
-#  그래서 "release 초록"이 "프로덕션 스키마가 코드와 맞다"를 전혀 보장하지 않았다.
-#
-#  판정을 3갈래로 나눈다 — 이게 핵심이다. `db:verify-migrations`는 **연결 실패와 원장 불일치를
-#  똑같이 exit 1로** 낸다. 그래서 종료코드만 보고 die하면 "Neon에 못 닿는 머신에서는 배포 불가"가
-#  된다(실측: 이 컨테이너는 Neon 네트워크가 막혀 connection timeout이 난다). 불일치는 증거지만
-#  연결 실패는 **증거가 아니라 정보 부재**다. 부재를 위반으로 취급하면 게이트가 거짓말을 한다.
-#   ① 원장 일치        → 통과
-#   ② 원장 불일치(missing/unexpected) → die (ALLOW_UNAPPLIED_MIGRATIONS=1로만 우회)
-#   ③ 연결 실패        → warn (무엇을 검증하지 못했는지 명시하고 진행)
-verify_migration_ledger_before_push() {
-  local out verdict
-  log "backend: verify migration ledger before push"
-  out="$(cd "$ROOT/backend" && DOTENV_CONFIG_PATH="$DB_ENV_FILE" npm run --silent db:verify-migrations 2>&1 || true)"
-  verdict="$(printf '%s' "$out" | node -e "
-    let s='';
-    process.stdin.on('data', (d) => { s += d; }).on('end', () => {
-      const at = s.indexOf('{');
-      if (at < 0) return console.log('unreachable\tJSON 출력 없음');
-      let j;
-      try { j = JSON.parse(s.slice(at)); } catch { return console.log('unreachable\tJSON 파싱 실패'); }
-      if (j.ok === true) return console.log('ok\t' + (j.expectedCount ?? '?') + '/' + (j.expectedCount ?? '?'));
-      if (j.error) return console.log('unreachable\t' + j.error);
-      const missing = (j.missing ?? []).length, unexpected = (j.unexpected ?? []).length;
-      if (missing || unexpected) {
-        return console.log('drift\tmissing ' + missing + '건' + (missing ? ' → ' + j.missing.join(', ') : '')
-          + (unexpected ? ' / unexpected ' + unexpected + '건 → ' + j.unexpected.join(', ') : ''));
-      }
-      console.log('unreachable\t판정 불가(ok=false 인데 missing·error 모두 비어 있음)');
-    });
-  ")"
-  local kind="${verdict%%$'\t'*}"
-  local detail="${verdict#*$'\t'}"
-  case "$kind" in
-    ok)
-      ok "migration 원장 일치($detail) — 배포 대상 코드와 프로덕션 스키마가 맞다" ;;
-    drift)
-      if is_true "${ALLOW_UNAPPLIED_MIGRATIONS:-0}"; then
-        warn "⚠ 원장 불일치인데 ALLOW_UNAPPLIED_MIGRATIONS=1로 진행합니다: $detail"
-        warn "  배포 후 반드시 dry-run → APPLY → readback을 수행하세요(사전 Neon 스냅샷 필수)."
-      else
-        die "미적용 마이그레이션으로 push를 중단합니다: $detail\n  적용하거나(권장), 코드-선 배포를 의도한다면 ALLOW_UNAPPLIED_MIGRATIONS=1 을 붙여 다시 실행하세요."
-      fi ;;
-    *)
-      warn "migration 원장을 확인하지 못했습니다($detail) —"
-      warn "  이 실행의 초록은 **프로덕션 스키마 정합을 포함하지 않습니다**." ;;
-  esac
-}
-
+# push 시점 요약 — 실제 판정은 preflight에서 이미 끝났다(아래 §preflight 참조).
 if is_true "$PUSH"; then
-  if is_true "$RUN_DB_VERIFY"; then
-    ok "migration 원장은 DB 게이트에서 이미 확인했다"
-  elif [[ -n "${DATABASE_URL_UNPOOLED:-}" || -n "${DATABASE_URL:-}" || -n "${POSTGRES_URL_NON_POOLING:-}" || -n "${POSTGRES_URL:-}" ]] || db_env_file_exists; then
-    verify_migration_ledger_before_push
-  else
-    warn "DB URL·backend/$DB_ENV_FILE 이 없어 migration 원장을 확인하지 못했습니다 —"
-    warn "  이 실행의 초록은 **프로덕션 스키마 정합을 포함하지 않습니다**(RUN_DB_VERIFY=1로 확인)."
-  fi
+  case "$MIGRATION_LEDGER_VERDICT" in
+    ok)          ok "migration 원장 확인됨(preflight) — 배포 대상 코드와 프로덕션 스키마가 맞다" ;;
+    bypassed)    warn "⚠ 원장 불일치를 ALLOW_UNAPPLIED_MIGRATIONS=1로 우회한 채 push합니다" ;;
+    gates)       ok "migration 원장은 DB 게이트에서 확인했다" ;;
+    unverified)  warn "migration 원장 미확인 상태로 push합니다 — 이 초록은 프로덕션 스키마 정합을 포함하지 않습니다" ;;
+  esac
 fi
 
 if is_true "$PUSH"; then
