@@ -866,6 +866,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       security:
         - bearer: []
         - access_token: []
@@ -1410,6 +1414,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       summary: 학생 가족 관계 soft delete 및 이력 기록 [매니저 이상]
       tags:
         - students
@@ -1534,6 +1542,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       summary: 학생 학교·학년 이력 soft delete [매니저 이상]
       tags:
         - students
@@ -1733,6 +1745,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       summary: 학생 관심 희망 수업 삭제 [매니저 이상]
       tags:
         - student-interests
@@ -2339,6 +2355,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       security:
         - bearer: []
         - access_token: []
@@ -3213,6 +3233,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       security:
         - bearer: []
         - access_token: []
@@ -4219,6 +4243,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       security:
         - bearer: []
         - access_token: []
@@ -4335,6 +4363,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       security:
         - bearer: []
         - access_token: []
@@ -4930,6 +4962,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       summary: 참조 무결성 확인 후 보호자 soft delete [매니저 이상]
       tags:
         - parents
@@ -4996,6 +5032,10 @@ paths:
       responses:
         '200':
           description: ''
+          content:
+            application/json:
+              schema:
+                type: object
       summary: 학생과 보호자의 연결 관계 soft delete [매니저 이상]
       tags:
         - parents

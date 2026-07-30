@@ -12,7 +12,7 @@ import { Roadmap, RoadmapCourse, ROADMAPS, ROADMAP_COURSES } from './roadmap.ent
 import { Course } from '../courses/course.entity';
 import { CreateRoadmapDto, UpdateRoadmapDto } from './dto/roadmap.dto';
 import type { Enrollment } from '../enrollments/enrollment.entity';
-import type { RoadmapAggregate as SharedRoadmapAggregate } from '@kms545487/contracts'; // [TBO-79 E3]
+import type { RoadmapAggregate as SharedRoadmapAggregate, DeletedResult } from '@kms545487/contracts'; // [TBO-79 E3]
 
 // [TBO-79 E3] aggregate wire의 소유는 contracts — 여기와 frontend에 같은 리터럴이 두 벌 있었다.
 //  sortOrder 정렬된 연결 코스(조인 파생 — 코스 원부는 courses SSOT).
@@ -163,7 +163,7 @@ export class RoadmapsService implements OnModuleInit {
   }
 
   // soft delete — 연결 코스 링크도 같은 tx에서 캐스케이드(고아 링크·재노출 방지).
-  async remove(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
+  async remove(id: number, actorId: number): Promise<DeletedResult> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'roadmap', id }]);
       const before = await this.getDb(id); // [TBO-56 C2b] 스냅샷·캐스케이드 대상 = lock 후 DB 기준

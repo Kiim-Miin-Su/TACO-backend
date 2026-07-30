@@ -1,3 +1,4 @@
+import type { DeletedResult } from '@kms545487/contracts';
 import {
   BadRequestException,
   ConflictException,
@@ -187,7 +188,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     return this.maskRequest(row);
   }
 
-  async withdraw(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
+  async withdraw(id: number, actorId: number): Promise<DeletedResult> {
     const initial = await this.findAuthoritative(id);
     return this.uow.run(async () => {
       await this.uow.lockTargets([

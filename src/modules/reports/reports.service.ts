@@ -1,3 +1,4 @@
+import type { DeletedResult } from '@kms545487/contracts';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
@@ -338,7 +339,7 @@ export class ReportsService implements OnModuleInit {
     });
   }
 
-  async removeDraft(id: number, actor?: ReportActor): Promise<{ id: number; deleted: true }> {
+  async removeDraft(id: number, actor?: ReportActor): Promise<DeletedResult> {
     const scoped = await this.reportFromDb(id);
     return this.uow.run(async () => {
       await this.uow.lockTargets(sessionAccountingLockKeys({

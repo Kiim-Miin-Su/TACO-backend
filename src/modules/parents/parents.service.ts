@@ -1,3 +1,4 @@
+import type { DeletedResult } from '@kms545487/contracts';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { onlyDigits } from '../../common/digits.util'; // [P2 4-A]
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -239,7 +240,7 @@ export class ParentsService implements OnModuleInit {
     });
   }
 
-  async removeRelation(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
+  async removeRelation(id: number, actorId: number): Promise<DeletedResult> {
     return this.uow.run(async () => {
       const initial = await this.relationDb(id);
       await this.uow.lockTargets([{ kind: 'student', id: initial.studentId }]);
@@ -293,7 +294,7 @@ export class ParentsService implements OnModuleInit {
     });
   }
 
-  async remove(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
+  async remove(id: number, actorId: number): Promise<DeletedResult> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'parent', id }]);
       const parent = { ...(await this.getDb(id)) };

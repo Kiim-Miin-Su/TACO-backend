@@ -6,44 +6,26 @@
 //  · 키: env RRN_ENC_KEY(base64 32B). production 미설정은 production-guards가 **부팅 자체를 차단**
 //    하므로 여기서는 throw하지 않는다. 비production은 JWT dev 시크릿 sha256 파생 + 경고 1회.
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'crypto';
+import { isValidRrnFormat } from '@kms545487/contracts';
 
-/** 형식 정규식 — 앞 6자리(생년월일) + 성별자리 1~8(내국인 1-4·외국인 5-8) + 6자리. 하이픈 선택. */
-export const RRN_REGEX = /^\d{6}-?[1-8]\d{6}$/;
-export const RRN_FORMAT_MESSAGE = '주민등록번호 형식이 올바르지 않습니다(예: 950101-1234567).';
+// [TBO-79 I1] 형식·정규화·마스킹의 소유는 contracts/src/rrn.ts로 이관했다. 여기와 FE
+//  lib/validation.ts가 같은 규칙을 각자 구현하다 두 군데가 갈라져 있었다:
+//   ① 이 파일의 validateRrnFormat은 trim을 하지 않아 `'950101-1234567 '`을 거부하는데
+//      FE isValidRrn은 trim 후 검사해 통과시켰다 → 화면은 "올바름", 저장은 400.
+//   ② 이 파일의 digitsOf는 `replace('-', '')`로 **첫 하이픈만** 지웠고 FE는 전부 지웠다 →
+//      성별 자리(index 6)가 밀리면 birthYearFromRrn의 세기 판정이 뒤집힌다.
+//  이 모듈은 이제 **암호화만** 소유한다(서버 전용). 순수 함수는 재export만 한다 — 사본 금지.
+export {
+  RRN_REGEX,
+  RRN_FORMAT_MESSAGE,
+  rrnDigits,
+  normalizeRrn,
+  birthYearFromRrn,
+  maskRrn,
+} from '@kms545487/contracts';
 
-const digitsOf = (raw: string): string => raw.replace('-', '');
-
-/**
- * 형식 검증 — 정규식 + 앞 6자리의 MM(01-12)·DD(01-31) 타당성만 본다.
- * **체크섬 검증은 하지 않는다**: 2020-10 이후 발급분은 뒷자리가 임의번호라 검증식이 폐지됐다
- * (구 검증식을 적용하면 합법 신규 번호를 거부하는 오류가 된다).
- */
-export function validateRrnFormat(raw: string): boolean {
-  if (!RRN_REGEX.test(raw)) return false;
-  const digits = digitsOf(raw);
-  const mm = Number(digits.slice(2, 4));
-  const dd = Number(digits.slice(4, 6));
-  return mm >= 1 && mm <= 12 && dd >= 1 && dd <= 31;
-}
-
-/** canonical 저장 형태 — 하이픈 포함('950101-1234567')으로 통일. 형식 검증 후 호출 전제. */
-export function normalizeRrn(raw: string): string {
-  const digits = digitsOf(raw.trim());
-  return `${digits.slice(0, 6)}-${digits.slice(6)}`;
-}
-
-/** 성별 자리 1,2,5,6 → 19xx / 3,4,7,8 → 20xx (내국인·외국인 동일 세기 규칙). */
-export function birthYearFromRrn(raw: string): number {
-  const digits = digitsOf(raw.trim());
-  const century = ['1', '2', '5', '6'].includes(digits[6]) ? 1900 : 2000;
-  return century + Number(digits.slice(0, 2));
-}
-
-/** 노출용 마스킹 — 생년월일 6자리 + 성별 자리만 남긴다: '950101-1******'. */
-export function maskRrn(raw: string): string {
-  const digits = digitsOf(raw.trim());
-  return `${digits.slice(0, 6)}-${digits[6]}******`;
-}
+/** 기존 호출부 호환 별칭 — 구현은 contracts의 isValidRrnFormat 하나다. */
+export const validateRrnFormat = isValidRrnFormat;
 
 let warnedDevKey = false;
 

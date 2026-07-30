@@ -1,5 +1,5 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
-import type { StudentInterestInput } from '@kms545487/contracts';
+import type { StudentInterestInput, DeletedResult } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -123,7 +123,7 @@ export class StudentInterestsService implements OnModuleInit {
     });
   }
 
-  async remove(studentId: number, interestId: number, actorId: number): Promise<{ id: number; deleted: true }> {
+  async remove(studentId: number, interestId: number, actorId: number): Promise<DeletedResult> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
       await this.reloadCommandState(studentId);

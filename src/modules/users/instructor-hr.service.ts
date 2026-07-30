@@ -3,7 +3,7 @@
 //  메서드 본문은 이동만(잠금·audit·불변식 그대로), 계정 코어(미러 refresh·find)는 UsersService를
 //  단방향 주입해 경유한다(순환 없음 — UsersService는 이 서비스를 모른다).
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import type { InstructorAggregate, UpdateInstructorInput } from '@kms545487/contracts';
+import type { InstructorAggregate, UpdateInstructorInput, DeletedResult } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { COURSES_SPEC, INSTRUCTOR_CONTRACTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -125,7 +125,7 @@ export class InstructorHrService {
     });
   }
 
-  async removeInstructor(id: number, actorId: number): Promise<{ id: number; deleted: true }> {
+  async removeInstructor(id: number, actorId: number): Promise<DeletedResult> {
     await Promise.all([this.users.refreshFromDb(), this.profiles.hydrate()]);
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'user', id }]);

@@ -13,7 +13,7 @@ import { CounselForm, CounselRound, COUNSEL_FORMS } from './counsel.entity';
 import { CreateCounselDto } from './dto/create-counsel.dto';
 import { UpdateCounselDto } from './dto/update-counsel.dto';
 import { CreateCounselRoundDto } from './dto/create-round.dto';
-import type { CounselAggregate, CounselFormSnapshot } from '@kms545487/contracts';
+import type { CounselAggregate, CounselFormSnapshot, DeletedResult } from '@kms545487/contracts';
 import { UpdateCounselRoundDto } from './dto/update-round.dto';
 import { StudentsService } from '../students/students.service';
 import { Student } from '../students/student.entity';
@@ -269,7 +269,7 @@ export class CounselService implements OnModuleInit {
     });
   }
 
-  async removeRound(formId: number, roundId: number, actorId: number): Promise<{ id: number; deleted: true }> {
+  async removeRound(formId: number, roundId: number, actorId: number): Promise<DeletedResult> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'counselForm', id: formId }]);
       const beforeForm = { ...(await this.findForm(formId)) };

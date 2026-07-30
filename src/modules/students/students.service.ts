@@ -1,7 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { hasAdminRole } from '../auth/role-policy'; // [감사 M3]
-import type { StudentAggregate } from '@kms545487/contracts';
+import type { StudentAggregate, DeletedResult } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
   COUNSEL_FORMS_SPEC,
@@ -388,7 +388,7 @@ export class StudentsService implements OnModuleInit {
     });
   }
 
-  async removeFamilyRelation(studentId: number, relationId: number, actorId: number): Promise<{ id: number; deleted: true }> {
+  async removeFamilyRelation(studentId: number, relationId: number, actorId: number): Promise<DeletedResult> {
     return this.uow.run(async () => {
       const before = { ...this.familyRelationForStudent(studentId, relationId) };
       await this.uow.lockTargets([{ kind: 'student', id: before.studentIdA }, { kind: 'student', id: before.studentIdB }]);
@@ -453,7 +453,7 @@ export class StudentsService implements OnModuleInit {
     });
   }
 
-  async removeAcademicHistory(studentId: number, historyId: number, actorId: number): Promise<{ id: number; deleted: true }> {
+  async removeAcademicHistory(studentId: number, historyId: number, actorId: number): Promise<DeletedResult> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
       const before = { ...this.academicHistoryForStudent(studentId, historyId) };

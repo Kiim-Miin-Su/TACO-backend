@@ -1,3 +1,4 @@
+import type { DeletedResult } from '@kms545487/contracts';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { EXPENSES_SPEC, TRANSACTIONS_SPEC } from '../../database/calendar-asset-specs';
@@ -100,7 +101,7 @@ export class ExpensesService implements OnModuleInit {
 
   // [TBO-58 P2 2026-07-24] 철회 = soft delete — requested만(approved는 원장 기록 존재 → 불가,
   //  rejected는 반려 이력 보존). 목록/집계에서 사라지고 DB엔 deleted_at 이력이 남는다.
-  async withdraw(id: number, actorId?: number): Promise<{ id: number; deleted: true }> {
+  async withdraw(id: number, actorId?: number): Promise<DeletedResult> {
     return this.unitOfWork.run(async () => {
       const row = await this.getDb(id);
       if (row.status !== 'requested')
