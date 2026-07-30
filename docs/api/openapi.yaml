@@ -7222,6 +7222,13 @@ components:
     ClearAttendanceDto:
       type: object
       properties:
+        acknowledgeAccountingImpact:
+          type: boolean
+          description: 회계 영향 확인 여부(409 미리보기를 본 뒤 true)
+        expectedAccountingImpactHash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          description: 확인한 영향의 지문 — 서버 재계산 값과 다르면 새 409
         reason:
           type: string
           minLength: 2
@@ -7298,6 +7305,13 @@ components:
           maxLength: 1000
           example: 진도 내용 보완 필요
           description: 반려 사유(강사에게 표시)
+        acknowledgeAccountingImpact:
+          type: boolean
+          description: 회계 영향 확인 여부(409 미리보기를 본 뒤 true)
+        expectedAccountingImpactHash:
+          type: string
+          pattern: ^[a-f0-9]{64}$
+          description: 확인한 영향의 지문 — 서버 재계산 값과 다르면 새 409
     CreateScheduleRequestDto:
       type: object
       properties:
@@ -8090,13 +8104,16 @@ components:
           maxLength: 100
         description:
           type: string
+          nullable: true
           maxLength: 500
         targetGrade:
           type: number
+          nullable: true
           minimum: 0
           maximum: 13
         durationWeeks:
           type: number
+          nullable: true
           minimum: 1
           maximum: 104
         courseIds:
@@ -8114,13 +8131,16 @@ components:
           maxLength: 100
         description:
           type: string
+          nullable: true
           maxLength: 500
         targetGrade:
           type: number
+          nullable: true
           minimum: 0
           maximum: 13
         durationWeeks:
           type: number
+          nullable: true
           minimum: 1
           maximum: 104
         isActive:

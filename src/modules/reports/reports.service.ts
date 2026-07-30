@@ -32,7 +32,9 @@ import { Subject } from '../subjects/subject.entity';
 import { StaffAccount } from '../users/user.entity';
 import type { Attendance } from '../attendance/attendance.entity';
 import { attendanceCompletionHoldPatch } from '../schedule/session-temporal-transition.policy';
-import { isPayoutLocked } from '../schedule/session-accounting.policy';
+import { isPayoutLocked, type SessionAccountingImpact } from '../schedule/session-accounting.policy';
+import { SessionAccountingContextService } from '../schedule/session-accounting-context.service'; // [TBO-79 B5]
+import { SessionAccountingGuard, type AccountingAckInput } from '../schedule/session-accounting-guard.service'; // [TBO-79 B5]
 
 // [보안 2026-07-07 H2] 액터 컨텍스트 — 비관리자(강사)는 본인 세션·본인 보고서만 쓰기 가능(IDOR 차단).
 export type ReportActor = { id: number; roles: string[] };
@@ -59,6 +61,8 @@ export class ReportsService implements OnModuleInit {
     private readonly uow: CalendarUnitOfWork,
     private readonly sessionsStore: ClassSessionsStore, // [TBO-53 C1] reject의 payoutId DB 재조회
     private readonly audit: AuditService, // [감사 전수 2026-07-16] 정산 적격 근거(보고서 상태) 이력
+    private readonly accountingContext: SessionAccountingContextService, // [TBO-79 B5] 잠금 후 fresh 스냅샷
+    private readonly accountingGuard: SessionAccountingGuard, // [TBO-79 B5] 영향 미리보기 + ack 집행
   ) {}
 
   /** [TBO-53 C1] lock 뒤 판정용 DB 재조회 — PG 미가용(메모리 모드)일 땐 메모리 행이 그대로 권위. */
@@ -485,7 +489,7 @@ export class ReportsService implements OnModuleInit {
 
   // 관리자 반려(→ rejected, 사유 보존). 재제출 가능.
   //  [C1] 존재 판정도 DB — 다른 인스턴스가 만든 보고서도 즉시 반려 가능(메모리 404 제거).
-  async reject(id: number, reason?: string, actorId?: number): Promise<SessionReportRow> {
+  async reject(id: number, reason?: string, actorId?: number, ack?: AccountingAckInput): Promise<SessionReportRow> {
     return this.uow.run(async () => {
       const scoped = await this.reportFromDb(id); // sessionId(불변) 확보 — 404 판정 포함
       // [C1] report + session lock — 반려와 정산 생성(claimPayout)의 적격성 경쟁 보호.
@@ -498,10 +502,28 @@ export class ReportsService implements OnModuleInit {
       //  회수 자체가 미구현이라 사실상 영구 잠금이었다. 이제 payout reversal이 있으므로 게이트를
       //  실제 조건으로 정정: **세션이 정산에 연결돼 있을 때만** 차단(회수하면 연결이 풀려 반려 가능).
       //  [C1] 판정 소스 = 세션 DB 재조회(다른 인스턴스의 정산 연결도 즉시 반영 — 메모리 판정 금지).
+      let acknowledged = false;
+      let evaluated: { impact: SessionAccountingImpact; impactHash: string } | null = null;
       if (r.approvalStatus === 'approved') {
         const session = (await this.sessionsStore.findByIdDb(r.sessionId)) as (ClassSession & { payoutId?: number | null }) | undefined;
         if (session?.payoutId != null)
           throw new BadRequestException('이미 승인됨 + 정산 연결 — 반려하려면 지급 회수(reverse) 후 처리하세요');
+        // [TBO-79 B5] 승인 리포트 반려는 세션을 정산 적격에서 빼낸다 — PATCH /schedule과 같은 델타다.
+        //  종전엔 payoutId 검사만 있어 영향 미리보기·명시 확인 없이 정산 예상액이 줄었다.
+        if (session) {
+          const accountingContext = await this.accountingContext.loadFresh([r.sessionId]);
+          evaluated = await this.accountingGuard.evaluate({
+            context: accountingContext,
+            sessionId: r.sessionId,
+            before: session,
+            after: session,
+            removesApprovedReportForStudentIds: [Number(r.studentId)],
+          });
+          acknowledged = this.accountingGuard.assertAcknowledged(session, evaluated, ack, {
+            locked: '정산에 연결된 수업의 보고서는 지급 회수(reverse) 후 반려할 수 있습니다.',
+            ack: '승인 보고서 반려로 시수 또는 정산 예상액이 달라집니다. 변경 결과를 확인해 주세요.',
+          });
+        }
       }
       const beforeStatus = r.approvalStatus ?? r.status;
       // [C1] approval_status CAS — approve-vs-reject 경쟁 시 정확히 1승자(모순 audit 0).
@@ -518,7 +540,11 @@ export class ReportsService implements OnModuleInit {
       if (actorId != null && actorId > 0) {
         await this.audit.log({
           entity: 'session_reports', entityId: id, action: 'reject', actorId,
-          changes: { approvalStatus: { before: beforeStatus, after: 'rejected' } },
+          changes: {
+            approvalStatus: { before: beforeStatus, after: 'rejected' },
+            // [TBO-79 B6] 확인 지문 영속 — "무엇을 보고 반려했는가"가 재구성된다.
+            ...(acknowledged && evaluated ? this.accountingGuard.acknowledgementDiff(evaluated) : {}),
+          },
           reason: reason ?? '사유 미기재',
         });
       }

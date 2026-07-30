@@ -1,5 +1,5 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsOptional, IsString, Matches, MaxLength } from 'class-validator';
 
 // POST /reports/:id/approve — 관리자 승인.
 // [TBO-79 C2] `approvedBy`(클라이언트 지정 actor)를 제거했다. 선언돼 있는 한 whitelist를 통과하고
@@ -15,4 +15,16 @@ export class RejectReportDto {
   @IsString()
   @MaxLength(1000)
   reason?: string;
+
+  // [TBO-79 B5] 승인 리포트 반려는 정산 적격을 되돌린다 — schedule과 동일한 확인 규약.
+  @ApiPropertyOptional({ description: '회계 영향 확인 여부(409 미리보기를 본 뒤 true)' })
+  @IsOptional()
+  @IsBoolean()
+  acknowledgeAccountingImpact?: boolean;
+
+  @ApiPropertyOptional({ description: '확인한 영향의 지문 — 서버 재계산 값과 다르면 새 409' })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[a-f0-9]{64}$/)
+  expectedAccountingImpactHash?: string;
 }

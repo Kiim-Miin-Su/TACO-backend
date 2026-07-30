@@ -52,6 +52,6 @@ export class AttendanceController {
     @Body() dto: ClearAttendanceDto,
     @Req() req: Request & { user?: JwtClaims },
   ) {
-    return this.attendance.clear(sessionId, studentId, dto.reason, req.user?.sub, req.user?.roles);
+    return this.attendance.clear(sessionId, studentId, dto.reason, req.user?.sub, req.user?.roles, dto);
   }
 }

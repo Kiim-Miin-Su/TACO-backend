@@ -96,8 +96,21 @@ describe('Payout reversal (e2e, B9 E5)', () => {
     const approved = db.findAll<{ id: number; sessionId: number; approvalStatus: string }>('session_reports')
       .find((r) => lineSessionIds.includes(r.sessionId) && r.approvalStatus === 'approved');
     expect(approved).toBeTruthy();
+    // [TBO-79 B5] 회수로 정산 잠금은 풀렸지만, 승인 반려는 정산 적격을 되돌리므로 이제 회계
+    //  확인이 선행된다. 잠금 해제(PAYOUT_REVERSAL_REQUIRED)와 영향 확인(ACK)은 별개 게이트다.
+    const blocked = await http.post(`/api/reports/${approved!.id}/reject`).set(auth(admin))
+      .send({ reason: 'B9 회수 후 반려' }).expect(409);
+    expect(blocked.body.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
+    expect(
+      db.findAll<{ id: number; approvalStatus: string }>('session_reports')
+        .find((r) => r.id === approved!.id)?.approvalStatus,
+    ).toBe('approved'); // 거부된 요청은 아무것도 바꾸지 않는다
     const rejected = (await http.post(`/api/reports/${approved!.id}/reject`).set(auth(admin))
-      .send({ reason: 'B9 회수 후 반려' }).expect(201)).body;
+      .send({
+        reason: 'B9 회수 후 반려',
+        acknowledgeAccountingImpact: true,
+        expectedAccountingImpactHash: blocked.body.impactHash,
+      }).expect(201)).body;
     expect(rejected.approvalStatus).toBe('rejected');
     // ③ 세션이 미정산으로 복귀했으므로 같은 기간 재산정 가능(반려된 보고서 세션은 적격에서 빠짐 — 잔여로 생성)
     const regenerated = (await http.post('/api/payouts/generate').set(auth(admin))

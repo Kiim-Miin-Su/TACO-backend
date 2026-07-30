@@ -12,11 +12,11 @@ import { Roadmap, RoadmapCourse, ROADMAPS, ROADMAP_COURSES } from './roadmap.ent
 import { Course } from '../courses/course.entity';
 import { CreateRoadmapDto, UpdateRoadmapDto } from './dto/roadmap.dto';
 import type { Enrollment } from '../enrollments/enrollment.entity';
+import type { RoadmapAggregate as SharedRoadmapAggregate } from '@kms545487/contracts'; // [TBO-79 E3]
 
-export type RoadmapAggregate = Roadmap & {
-  /** sortOrder 정렬된 연결 코스(조인 파생 — 코스 원부는 courses SSOT). */
-  courses: Array<{ linkId: number; courseId: number; sortOrder: number; courseName: string; subjectId: number }>;
-};
+// [TBO-79 E3] aggregate wire의 소유는 contracts — 여기와 frontend에 같은 리터럴이 두 벌 있었다.
+//  sortOrder 정렬된 연결 코스(조인 파생 — 코스 원부는 courses SSOT).
+export type RoadmapAggregate = SharedRoadmapAggregate;
 
 /**
  * [TBO-47 2026-07-23 대표 지시 "서비스 실 구현"] 수강 로드맵 — 마지막 dormant 도메인 실구현.
@@ -115,7 +115,7 @@ export class RoadmapsService implements OnModuleInit {
         targetGrade: dto.targetGrade ?? null,
         durationWeeks: dto.durationWeeks ?? null,
         isActive: true,
-      } as unknown as Omit<Roadmap, 'id' | 'createdAt' | 'updatedAt'>);
+      } as Omit<Roadmap, 'id' | 'createdAt' | 'updatedAt'>);
       for (let index = 0; index < courseIds.length; index += 1) {
         await this.store.insert<RoadmapCourse>(ROADMAP_COURSES_SPEC, {
           roadmapId: roadmap.id, courseId: courseIds[index], sortOrder: index,

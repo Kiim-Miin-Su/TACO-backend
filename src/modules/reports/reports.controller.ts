@@ -87,6 +87,6 @@ export class ReportsController {
   @ApiOperation({ summary: '관리자 반려(→ rejected, 사유 보존) [관리자]' })
   @ApiCreatedResponse({ description: 'SessionReport(approvalStatus=rejected, rejectedReason)' })
   reject(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }, @Body() body?: RejectReportDto) {
-    return this.reports.reject(id, body?.reason, req.user?.sub); // [감사 전수 2026-07-16]
+    return this.reports.reject(id, body?.reason, req.user?.sub, body); // [TBO-79 B5] ack 전달 // [감사 전수 2026-07-16]
   }
 }

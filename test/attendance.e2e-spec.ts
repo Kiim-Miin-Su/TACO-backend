@@ -83,8 +83,26 @@ describe('Attendance API (e2e)', () => {
       .set({ Authorization: `Bearer ${FOREIGN_INSTRUCTOR}` })
       .send({ reason: '타 강사 출결 초기화 시도' }).expect(403);
 
+    // [TBO-79 B4] held → scheduled 역전이는 정산 예상액을 바꾸므로 회계 확인이 선행된다.
+    //  첫 요청은 영향 미리보기와 함께 409 — 이 시점에 아무것도 바뀌지 않아야 한다.
+    const blocked = await http.delete('/api/attendance/1/1').set(auth())
+      .send({ reason: '학생 출결 오입력 정정' }).expect(409);
+    expect(blocked.body.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
+    expect(blocked.body.impactHash).toMatch(/^[a-f0-9]{64}$/);
+    expect((await http.get('/api/schedule/1').set(auth()).expect(200)).body.status).toBe('held');
+    expect(((await http.get('/api/attendance?sessionId=1').set(auth()).expect(200)).body as Array<{ studentId: number }>)
+      .some((row) => row.studentId === 1)).toBe(true);
+
+    // 맹목 ack 금지 — hash 미회신은 다시 409(schedule과 동일 규약).
+    await http.delete('/api/attendance/1/1').set(auth())
+      .send({ reason: '학생 출결 오입력 정정', acknowledgeAccountingImpact: true }).expect(409);
+
     const cleared = (await http.delete('/api/attendance/1/1').set(auth())
-      .send({ reason: '학생 출결 오입력 정정' }).expect(200)).body;
+      .send({
+        reason: '학생 출결 오입력 정정',
+        acknowledgeAccountingImpact: true,
+        expectedAccountingImpactHash: blocked.body.impactHash,
+      }).expect(200)).body;
     expect(cleared).toMatchObject({ id: 1, sessionId: 1, studentId: 1, deleted: true });
     const after = (await http.get('/api/attendance?sessionId=1').set(auth()).expect(200)).body;
     expect(after.some((row: { studentId: number }) => row.studentId === 1)).toBe(false);
@@ -93,6 +111,12 @@ describe('Attendance API (e2e)', () => {
     const logs = (await http.get('/api/audit?entity=attendance').set(asAdmin()).expect(200)).body;
     expect(logs.some((row: { entityId: number; action: string; reason?: string }) =>
       row.entityId === 1 && row.action === 'delete' && row.reason === '학생 출결 오입력 정정')).toBe(true);
+    // [TBO-79 B6] 확인 지문이 세션 audit에 영속 — "무엇을 보고 초기화했는가"가 재구성된다.
+    const sessionLogs = (await http.get('/api/audit?entity=class_sessions&entityId=1').set(asAdmin()).expect(200))
+      .body as Array<{ action: string; changes?: Record<string, { after?: { hash?: string } }> }>;
+    expect(sessionLogs.some((row) => row.action === 'update'
+      && row.changes?.accountingImpactAcknowledgement?.after?.hash === blocked.body.impactHash)).toBe(true);
+
     await http.delete('/api/attendance/1/1').set(auth())
       .send({ reason: '이미 초기화된 출결 재시도' }).expect(404);
 

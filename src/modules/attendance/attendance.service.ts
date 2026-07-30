@@ -23,6 +23,8 @@ import {
   TEMPORAL_RESET_AUDIT_REASON,
 } from '../schedule/session-temporal-transition.policy';
 import { isPayoutLocked } from '../schedule/session-accounting.policy';
+import { SessionAccountingContextService } from '../schedule/session-accounting-context.service'; // [TBO-79 B4]
+import { SessionAccountingGuard, type AccountingAckInput } from '../schedule/session-accounting-guard.service'; // [TBO-79 B4]
 
 /**
  * [참조/처리] 출결. 프론트 목데이터 이관 + 참조 무결성 게이트.
@@ -41,6 +43,8 @@ export class AttendanceService implements OnModuleInit {
     private readonly audit: AuditService, // 출결 변경 이력(tx 동반)
     private readonly unitOfWork: CalendarUnitOfWork,
     private readonly sessionsStore: ClassSessionsStore, // [TBO-56 C2b] 세션 DB 재조회·스코프 판정
+    private readonly accountingContext: SessionAccountingContextService, // [TBO-79 B4] 잠금 후 fresh 스냅샷
+    private readonly accountingGuard: SessionAccountingGuard, // [TBO-79 B4] 영향 미리보기 + ack 집행
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -150,6 +154,7 @@ export class AttendanceService implements OnModuleInit {
     reason: string,
     actorId?: number,
     actorRoles?: string[],
+    ack?: AccountingAckInput,
   ): Promise<{ id: number; sessionId: number; studentId: number; deleted: true }> {
     return this.unitOfWork.run(async () => {
       await this.unitOfWork.lockTargets(sessionAccountingLockKeys({ sessionIds: [sessionId] }));
@@ -169,6 +174,23 @@ export class AttendanceService implements OnModuleInit {
       });
       if (!existing) throw new NotFoundException('초기화할 학생 출결 기록이 없습니다.');
 
+      // [TBO-79 B4] held → scheduled 역전이는 PATCH /schedule과 같은 정산 델타를 만든다.
+      //  종전엔 이 경로에만 게이트가 없어, 권한이 더 낮은 담당 강사가 확인 없이 정산 예상액을
+      //  바꿀 수 있었다. 잠금 스냅샷에서 계산해야 미리보기와 실제 적용 대상이 결속된다.
+      const resetsSession = session.status === 'held';
+      const accountingContext = await this.accountingContext.loadFresh([sessionId]);
+      const evaluated = await this.accountingGuard.evaluate({
+        context: accountingContext,
+        sessionId,
+        before: session,
+        after: resetsSession ? { ...session, status: 'scheduled' } : session,
+        removesAttendanceForStudentIds: [studentId],
+      });
+      const acknowledged = this.accountingGuard.assertAcknowledged(session, evaluated, ack, {
+        locked: '정산에 연결된 수업의 출결은 정산 회수 후 초기화할 수 있습니다.',
+        ack: '출결 초기화로 시수 또는 정산 예상액이 달라집니다. 변경 결과를 확인해 주세요.',
+      });
+
       const deleted = await this.store.remove(ATTENDANCE_SPEC, existing.id, actorId);
       if (!deleted) throw new NotFoundException('초기화할 학생 출결 기록이 없습니다.');
       if (actorId != null) {
@@ -180,7 +202,7 @@ export class AttendanceService implements OnModuleInit {
           reason,
         });
       }
-      if (session.status === 'held') {
+      if (resetsSession) {
         await this.sessionsStore.update(session.id, { status: 'scheduled' });
         if (actorId != null) {
           await this.audit.log({
@@ -188,7 +210,11 @@ export class AttendanceService implements OnModuleInit {
             entityId: session.id,
             action: 'update',
             actorId,
-            changes: { status: { before: 'held', after: 'scheduled' } },
+            changes: {
+              status: { before: 'held', after: 'scheduled' },
+              // [TBO-79 B6] "무엇을 보고 승인했는가"를 재구성 가능하게 — schedule과 동일 규약.
+              ...(acknowledged ? this.accountingGuard.acknowledgementDiff(evaluated) : {}),
+            },
             reason: '학생 출결 초기화에 따른 완료 상태 해제',
           });
         }
