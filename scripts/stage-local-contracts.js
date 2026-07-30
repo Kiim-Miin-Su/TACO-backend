@@ -25,6 +25,8 @@ const ROOT = path.resolve(__dirname, '..', '..');
 const PKG = '@kms545487/contracts';
 const CONSUMERS = ['backend', 'frontend'];
 const checkOnly = process.argv.includes('--check');
+/** [TBO-79 K1] 스테이징된 설치본 표식 — release.zsh refresh_contract_lock이 같은 이름을 읽는다. */
+const STAMP = '.taco-staged-from-local';
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -49,8 +51,12 @@ function main() {
     }
     const installedPkg = path.join(installed, 'package.json');
     const before = readJson(installedPkg).version;
+    const stamped = fs.existsSync(path.join(installed, STAMP));
     if (before === localVersion) {
-      report.push(`${consumer}: v${before} — 이미 최신`);
+      // 표식이 있으면 "최신"이 아니라 "로컬 사본"이다 — 이 구분을 잃으면 게이트가 자기 자신을 검사한다.
+      report.push(stamped
+        ? `${consumer}: v${before} — **로컬 빌드 사본**(npm 설치본 아님)`
+        : `${consumer}: v${before} — 이미 최신(npm 설치본)`);
       continue;
     }
     if (checkOnly) {
@@ -64,7 +70,17 @@ function main() {
     const pkg = readJson(installedPkg);
     pkg.version = localVersion;
     fs.writeFileSync(installedPkg, `${JSON.stringify(pkg, null, 2)}\n`);
-    report.push(`${consumer}: v${before} → v${localVersion} 스테이징 완료`);
+    // [TBO-79 K1] 표식을 남긴다. 버전 필드를 덮어쓰는 순간 이 설치본은 **npm에서 온 것과 구별
+    //  불가능**해지고, 두 가지가 조용히 망가진다.
+    //   ① `--check`가 "이미 최신"이라고 보고한다(사실은 로컬 사본이다).
+    //   ② `npm install <pkg>@<ver>`가 무동작이 된다(npm이 이미 그 버전이라고 판단) →
+    //      publish 뒤 검증이 **실제 배포 tarball로 돌지 않는다**. J1이 고치려던 문제가 뒷단에서 재현된다.
+    //  release.zsh의 refresh_contract_lock이 이 표식을 보고 디렉터리를 지운 뒤 재설치한다.
+    fs.writeFileSync(
+      path.join(installed, STAMP),
+      `${JSON.stringify({ stagedFrom: 'local-build', version: localVersion, replacedNpmVersion: before }, null, 2)}\n`,
+    );
+    report.push(`${consumer}: v${before} → v${localVersion} 스테이징 완료(표식 ${STAMP})`);
     staged += 1;
   }
 

@@ -5,11 +5,28 @@
 #
 # Default release:
 #   1. require clean main branches for contracts/backend/frontend/docs
+#      (docs is checked but never pushed — it has no remote by design)
 #   2. compare local contracts against the npm package
-#   3. run contracts, backend, schema, and frontend gates
+#   3. run gates: contracts build → **stage local contracts into consumers** → backend
+#      lint/typecheck/build/e2e(+route coverage) → schema/doc gates → frontend
+#      lint/typecheck/vitest/build → optional DB gates
 #   4. publish contracts only when its version is newer
-#   5. refresh and pathspec-commit backend/frontend contracts locks
-#   6. push contracts/backend/frontend main
+#   5. reinstall the **published** contracts tarball, re-typecheck, pathspec-commit the locks
+#   6. verify the migration ledger when a DB is reachable, then push contracts/backend/frontend
+#
+# [TBO-79 K1 2026-07-30] 이 스크립트가 HEAD의 게이트와 어긋나 있었다. 고친 것:
+#   · `npm run lint`(BE·FE)가 **없었다** — 실제로 HEAD에서 backend lint가 깨진 채 release가
+#     초록이었다(78C4-1 잔여 unused import). CODEX §6이 필수로 규정한 게이트다.
+#   · route coverage(`e2e-route-coverage`)가 **없었다** — 라우트를 추가하고 e2e를 안 써도 통과.
+#     이제 e2e에 `E2E_ROUTE_LOG`를 물려 실행하고 그 로그로 미커버 0을 판정한다.
+#   · DB 검증기(migration 원장·schema shape·integrity·persistence docs)가 release 경로에
+#     **전무했다** → O2 마이그레이션 미적용 상태로도 초록이 떴다. "release 초록 ≠ 프로덕션
+#     무결성"의 기계적 원인이었다. 이제 DB가 닿으면 push 전에 원장을 확인하고 fail-closed다.
+#   · `contracts:stage`가 node_modules의 버전을 덮어써서 이후 `npm install`이 무동작이 됐다
+#     → publish 뒤 검증이 **실제 배포 tarball로 돌지 않았다**. 이제 스테이징 표식을 남기고
+#     `refresh_contract_lock`이 그 디렉터리를 지운 뒤 재설치한다.
+#   · `delete_stale_locks`가 `-mmin +5`(나이)로 판정해 방금 생긴 고아 락을 남겼다 →
+#     preflight는 통과하고 commit에서 죽었다. 이제 **점유 프로세스**로 판정한다.
 #
 # Useful modes:
 #   PUSH=0 ./scripts/release.zsh
@@ -32,6 +49,16 @@
 #     Verify the current deployment without repository preflight, build, publish, or push.
 #   RELEASE_SELF_TEST=1 ./scripts/release.zsh
 #     Test pure release helpers without reading or mutating repositories.
+#   SKIP_LINT=1 ./scripts/release.zsh
+#     Skip backend/frontend lint (escape hatch only — lint is a required gate per CODEX §6).
+#   SKIP_ROUTE_COVERAGE=1 ./scripts/release.zsh
+#     Skip the uncovered-route gate (only meaningful together with SKIP_E2E=1).
+#   RUN_DB_VERIFY=1 ./scripts/release.zsh
+#     Run the read-only DB verifiers (migration ledger, schema shape, integrity,
+#     persistence docs, payout/request invariants). Implied by RUN_DB_SMOKE=1.
+#   ALLOW_UNAPPLIED_MIGRATIONS=1 ./scripts/release.zsh
+#     Push even though the reachable DB is missing ledger migrations. Logs loudly.
+#     Only for a deliberate code-first deploy where the owner applies migrations after.
 
 emulate -L zsh
 setopt err_exit pipe_fail no_unset
@@ -49,6 +76,8 @@ UPDATE_LOCKS="${UPDATE_LOCKS:-$PUBLISH}"
 RUN_SCHEMA_GATES="${RUN_SCHEMA_GATES:-1}"
 RUN_DB_SMOKE="${RUN_DB_SMOKE:-0}"
 RUN_DB_CRUD="${RUN_DB_CRUD:-0}"
+# [TBO-79 K1] 읽기 전용 DB 검증기 — smoke를 켜면 함께 켠다(smoke가 쓰기이므로 그 전에 확인해야 한다).
+RUN_DB_VERIFY="${RUN_DB_VERIFY:-$RUN_DB_SMOKE}"
 VERIFY_DEPLOYMENT="${VERIFY_DEPLOYMENT:-0}"
 DB_ENV_FILE="${DOTENV_CONFIG_PATH:-.env.local}"
 BACKEND_URL="${BACKEND_URL:-https://taco-backend-omega.vercel.app}"
@@ -145,13 +174,47 @@ assert_main_branch() {
   [[ "$branch" == "$MAIN_BRANCH" ]] || die "$repo branch=$branch, expected=$MAIN_BRANCH"
 }
 
+# [TBO-79 K1 2026-07-30] 락 판정을 **나이 → 점유 프로세스**로 바꾼다.
+#  종전 규칙은 `-mmin +5`, 즉 "5분 이내 락은 살아 있는 git 프로세스의 것"이라는 가정이었다.
+#  그런데 에이전트가 FUSE 마운트에서 git을 돌려 남긴 고아 락은 정확히 그 창 안에 있다
+#  (마운트가 unlink를 거부해서 git 자신이 지우지 못한다). 결과: preflight는 통과하고
+#  한참 뒤 `commit_lock_update_if_needed`에서 `Unable to create ... index.lock`으로 죽는다.
+#  2026-07-30 대표 릴리스가 정확히 그 경로로 중단됐다.
+#  이제 `lsof`로 **실제 점유자**를 본다 — 점유자가 있으면 나이와 무관하게 남기고, 없으면
+#  나이와 무관하게 지운다. 이게 원래 의도("살아 있는 git을 깨지 말라")를 정확히 구현한다.
+#  `lsof`가 없는 환경에서는 정보가 없으므로 보수적으로 종전 나이 heuristic으로 후퇴한다.
 delete_stale_locks() {
   local repo="$1"
+  local lock holder
   [[ -d "$ROOT/$repo/.git" ]] || return 0
-  if is_true "${CLEAN_GIT_LOCKS:-1}"; then
-    # Fresh locks probably belong to a live git process; only old locks are removed.
-    find "$ROOT/$repo/.git" -maxdepth 4 -name "*.lock" -mmin +5 -delete 2>/dev/null || true
-  fi
+  is_true "${CLEAN_GIT_LOCKS:-1}" || return 0
+
+  local -a locks
+  locks=(${(f)"$(find "$ROOT/$repo/.git" -maxdepth 4 -name '*.lock' 2>/dev/null)"})
+  for lock in "${locks[@]}"; do
+    [[ -n "$lock" && -e "$lock" ]] || continue
+    if (( $+commands[lsof] )); then
+      # `lsof -t`는 점유자가 없으면 exit 1 — err_exit 아래에서는 반드시 if 문 형태로 물어야 한다
+      #  (명령 치환에 그대로 쓰면 스크립트가 **메시지 없이** 죽는다. 실측으로 한 번 겪었다).
+      if lsof -t -- "$lock" >/dev/null 2>&1; then
+        holder="$(lsof -t -- "$lock" 2>/dev/null | tr '\n' ' ' || true)"
+        warn "$repo: ${lock:t} 은 실행 중인 프로세스(pid ${holder% })가 점유 — 건드리지 않는다"
+        continue
+      fi
+      if rm -f -- "$lock" 2>/dev/null; then
+        ok "$repo: 고아 git 락 제거 ${lock:t}"
+      else
+        warn "$repo: ${lock:t} 제거 실패(권한/마운트) — 수동 정리가 필요합니다"
+      fi
+    else
+      find "$lock" -mmin +5 -delete 2>/dev/null || true
+    fi
+  done
+
+  # 같은 부류의 잔여물 — FUSE에서 객체를 쓰면 `.git/objects/**/tmp_obj_*`가 남는다(unlink 거부).
+  #  게이트를 막지는 않지만 `git fsck`가 garbage로 보고하고 계속 누적된다. 나이로 충분하다
+  #  (쓰는 중인 임시 객체는 방금 만들어진 것뿐이다).
+  find "$ROOT/$repo/.git/objects" -name 'tmp_obj_*' -mmin +5 -delete 2>/dev/null || true
 }
 
 json_value() {
@@ -283,12 +346,27 @@ require_db_config() {
 }
 
 run_db_gates() {
-  if ! is_true "$RUN_DB_SMOKE" && ! is_true "$RUN_DB_CRUD" && ! is_true "${RUN_DB_CLEANUP:-0}"; then
+  if ! is_true "$RUN_DB_SMOKE" && ! is_true "$RUN_DB_CRUD" && ! is_true "$RUN_DB_VERIFY" \
+     && ! is_true "${RUN_DB_CLEANUP:-0}"; then
     return 0
   fi
 
   require_db_config
   run_backend_with_db_env npm run db:check
+
+  # [TBO-79 K1] 읽기 전용 검증기 — 종전엔 release 경로에 **하나도 없었다**. 그래서 마이그레이션
+  #  미적용·shape 드리프트·무결성 위반이 있어도 release는 초록이었다. 쓰기(smoke/crud)보다 **먼저**
+  #  돌려서, 깨진 스키마 위에 데이터를 쓰지 않는다.
+  if is_true "$RUN_DB_VERIFY"; then
+    run_backend_with_db_env npm run db:verify-migrations
+    run_backend_with_db_env npm run db:verify-schema-shape
+    run_backend_with_db_env npm run db:verify-persistence-docs
+    run_backend_with_db_env npm run db:integrity
+    run_backend_with_db_env npm run db:verify:enrollment-payout-integrity
+    run_backend_with_db_env npm run db:verify:schedule-request-integrity
+    run_backend_with_db_env npm run db:verify:schedule-request-batch
+    ok "DB 읽기 전용 검증기 통과(원장·shape·영속화 문서·무결성)"
+  fi
 
   # [TBO-59 2026-07-24] 독립 QA/테스트 레코드 정리 — 스모크 없이도 실행 가능(대표 지시).
   #  기본 dry-run(카운트만) → CLEAN_DB_QA_APPLY=1일 때만 실제 적용(soft delete + 만료 챌린지
@@ -339,7 +417,21 @@ run_gates() {
   run_in backend npm run contracts:stage
   run_in backend npm run verify:runtime-data
   run_in backend npm run typecheck
+  # [TBO-79 K1] lint가 release 경로에 **없었다**. 이론적 구멍이 아니다 — 2026-07-30에 backend
+  #  lint가 깨진 채(78C4-1 잔여 unused import) release가 초록이었다. CODEX §6은 lint를 필수
+  #  게이트로 규정한다. typecheck는 lint를 대체하지 않는다(미사용 import·hook 규칙은 tsc가 통과시킨다).
+  if is_true "${SKIP_LINT:-0}"; then
+    warn "SKIP_LINT=1 - backend/frontend lint skipped (CODEX §6 필수 게이트를 건너뛴다)"
+  else
+    run_in backend npm run lint
+  fi
   run_in backend npm run build
+
+  # [TBO-79 K1] route coverage용 계측 로그. e2e가 append하므로 **실행 전에 지운다** — 지난 실행의
+  #  로그가 남아 있으면 지금 미커버인 라우트를 커버된 것으로 보이게 해서 게이트가 조용히 무력화된다.
+  local route_log="$ROOT/_logs/e2e-routes-$(date +%Y%m%d-%H%M%S).log"
+  mkdir -p "$ROOT/_logs"
+  rm -f "$route_log"
 
   if is_true "${SKIP_E2E:-0}"; then
     warn "SKIP_E2E=1 - backend e2e skipped"
@@ -347,7 +439,6 @@ run_gates() {
     # [2026-07-16] e2e 출력을 로그 파일로 보존 — 실패 시 어느 스위트/테스트인지 사후 추적 가능
     #  (2026-07-16 새벽 실패가 스크롤백 유실로 재현 불가였던 문제의 재발 방지). tee라 화면 출력 동일.
     local e2e_log="$ROOT/_logs/e2e-$(date +%Y%m%d-%H%M%S).log"
-    mkdir -p "$ROOT/_logs"
     # [TBO-59 2026-07-24] 셸에 DB URL이 export 돼 있어도 기본 e2e는 hermetic(in-memory)이다 —
     #  jest-e2e.setup.ts가 RUN_*_E2E opt-in 없으면 DB URL을 전량 제거(운영 Neon 오염 원천 차단).
     if [[ -n "${DATABASE_URL:-}" || -n "${POSTGRES_URL:-}" || -n "${POSTGRES_PRISMA_URL:-}" ]]; then
@@ -356,7 +447,7 @@ run_gates() {
     log "backend: npm run test:e2e (log: $e2e_log)"
     # [2026-07-16 수정] test:e2e는 이미 --runInBand(직렬) — maxWorkers 병기 시 jest가 거부한다
     #  (실측: "Both --runInBand and --maxWorkers were specified"). 플레이크 완화는 retryTimes(1)가 담당.
-    if ! ( setopt pipe_fail; cd "$ROOT/backend" && npm run test:e2e -- --silent 2>&1 | tee "$e2e_log" ); then
+    if ! ( setopt pipe_fail; cd "$ROOT/backend" && E2E_ROUTE_LOG="$route_log" npm run test:e2e -- --silent 2>&1 | tee "$e2e_log" ); then
       # [TBO-59 2026-07-24] 스톨-플레이크 완화 — 실측(2026-07-24 14:22): payouts 스위트가 앱 무응답
       #  스톨로 10개 연쇄 타임아웃, 단독 재실행은 15/15 green. retryTimes(1)는 앱 인스턴스 자체가
       #  멈추면 못 살리므로, "실패 스위트 ≤3개"에 한해 그 스위트만 새 프로세스로 1회 재실행한다.
@@ -370,7 +461,7 @@ run_gates() {
       fi
       local rerun_log="${e2e_log%.log}-rerun.log"
       warn "e2e 실패 스위트 ${#failed_suites}개 — 스톨-플레이크 판별 재실행: ${failed_suites[*]} (log: $rerun_log)"
-      if ! ( setopt pipe_fail; cd "$ROOT/backend" && npm run test:e2e -- --silent "${failed_suites[@]}" 2>&1 | tee "$rerun_log" ); then
+      if ! ( setopt pipe_fail; cd "$ROOT/backend" && E2E_ROUTE_LOG="$route_log" npm run test:e2e -- --silent "${failed_suites[@]}" 2>&1 | tee "$rerun_log" ); then
         warn "backend e2e FAILED (재실행도 실패 = 실제 회귀) — 로그: $e2e_log / $rerun_log"
         grep -E "^FAIL|✕" "$rerun_log" | head -20 || true
         return 1
@@ -381,11 +472,32 @@ run_gates() {
 
   if is_true "$RUN_SCHEMA_GATES"; then
     run_schema_gates
+  fi
+
+  # [TBO-79 K1] 미커버 라우트 0 게이트가 release 경로에 **없었다** — 라우트를 추가하고 e2e를 한 줄도
+  #  안 써도 통과했다. CODEX §6은 "엔드포인트는 e2e 없이 존재할 수 없다"의 기계 게이트로 규정한다.
+  #  openapi 재생성(run_schema_gates) **뒤에** 돌려야 방금 확정된 스펙과 대조된다.
+  #  판정: 미기록 = 미커버 · 401만 기록 = 가드에서만 튕김(본 로직 미실행) → 미커버.
+  if is_true "${SKIP_ROUTE_COVERAGE:-0}"; then
+    warn "SKIP_ROUTE_COVERAGE=1 - 미커버 라우트 게이트 건너뜀"
+  elif is_true "${SKIP_E2E:-0}"; then
+    warn "SKIP_E2E=1 이므로 라우트 계측 로그가 없어 미커버 게이트를 건너뜀(커버리지 미검증)"
+  elif [[ ! -s "$route_log" ]]; then
+    die "라우트 계측 로그가 비어 있습니다($route_log) — setup-app 계측이 깨졌는지 확인하세요"
   else
+    log "backend: route coverage (log: $route_log)"
+    ( cd "$ROOT/backend" && node dist/scripts/e2e-route-coverage.js "$route_log" openapi.json )
+    ok "미커버 라우트 0"
+  fi
+
+  if ! is_true "$RUN_SCHEMA_GATES"; then
     warn "RUN_SCHEMA_GATES=0 - Swagger and DBML gates skipped"
   fi
 
   run_in frontend npm run typecheck
+  if ! is_true "${SKIP_LINT:-0}"; then
+    run_in frontend npm run lint
+  fi
   if is_true "${SKIP_FE_TEST:-0}"; then
     warn "SKIP_FE_TEST=1 - frontend vitest skipped"
   else
@@ -398,12 +510,25 @@ run_gates() {
 refresh_contract_lock() {
   local repo="$1"
   local expected="$2"
+  local pkg_dir="$ROOT/$repo/node_modules/$CT_NAME"
+
+  # [TBO-79 K1] run_gates의 `contracts:stage`가 이 디렉터리를 로컬 빌드로 덮어쓰고 package.json의
+  #  version까지 바꿔놓는다. 그 상태로 `npm install <pkg>@<ver>`를 하면 npm은 "이미 그 버전"이라
+  #  판단해 **아무것도 하지 않는다** → 이 단계의 목적(진짜 tarball로 재설치해 검증)이 조용히
+  #  무력화된다. 표식이 있으면 지우고 설치해서 npm이 반드시 레지스트리에서 받아오게 한다.
+  if [[ -e "$pkg_dir/.taco-staged-from-local" ]]; then
+    log "$repo: 스테이징된 로컬 사본 제거 후 npm에서 재설치한다(표식 발견)"
+    rm -rf "$pkg_dir"
+  fi
   run_in "$repo" npm install "$CT_NAME@$expected" --save-exact=false
 
   local installed
   installed="$(cd "$ROOT/$repo" && node -p "require('./node_modules/$CT_NAME/package.json').version")"
   [[ "$installed" == "$expected" ]] || die "$repo installed $CT_NAME@$installed, expected $expected"
-  ok "$repo node_modules $CT_NAME@$installed"
+  # 버전 문자열만 보면 스테이징 사본과 구별되지 않는다 — 표식이 사라졌는지도 함께 확인한다.
+  [[ ! -e "$pkg_dir/.taco-staged-from-local" ]] \
+    || die "$repo $CT_NAME 이 여전히 로컬 사본입니다(표식 잔존) — npm 설치가 적용되지 않았습니다"
+  ok "$repo node_modules $CT_NAME@$installed (npm tarball)"
 }
 
 commit_lock_update_if_needed() {
@@ -672,6 +797,13 @@ if is_true "$UPDATE_LOCKS"; then
   run_in backend npm run typecheck
   run_in frontend npm run typecheck
 
+  # [TBO-79 K1] 커밋 **직전**에 락을 다시 쓸어낸다. preflight의 스윕은 게이트 전이라, 그 사이에
+  #  (다른 도구·에이전트가) 남긴 고아 락이 여기서 `Unable to create ... index.lock`으로 터진다 —
+  #  게이트를 30분 넘게 돌린 뒤 마지막 단계에서 죽는 게 정확히 2026-07-30 실측 경로였다.
+  for repo in backend frontend; do
+    delete_stale_locks "$repo"
+  done
+
   for repo in backend frontend; do
     commit_lock_update_if_needed "$repo" "$CT_LOCAL_VER"
   done
@@ -689,8 +821,69 @@ for repo in contracts docs; do
   assert_clean "$repo"
 done
 
+# [TBO-79 K1] 배포 전 마이그레이션 원장 확인. 종전엔 release 경로에 이 확인이 **전혀 없었고**,
+#  그래서 "release 초록"이 "프로덕션 스키마가 코드와 맞다"를 전혀 보장하지 않았다.
+#
+#  판정을 3갈래로 나눈다 — 이게 핵심이다. `db:verify-migrations`는 **연결 실패와 원장 불일치를
+#  똑같이 exit 1로** 낸다. 그래서 종료코드만 보고 die하면 "Neon에 못 닿는 머신에서는 배포 불가"가
+#  된다(실측: 이 컨테이너는 Neon 네트워크가 막혀 connection timeout이 난다). 불일치는 증거지만
+#  연결 실패는 **증거가 아니라 정보 부재**다. 부재를 위반으로 취급하면 게이트가 거짓말을 한다.
+#   ① 원장 일치        → 통과
+#   ② 원장 불일치(missing/unexpected) → die (ALLOW_UNAPPLIED_MIGRATIONS=1로만 우회)
+#   ③ 연결 실패        → warn (무엇을 검증하지 못했는지 명시하고 진행)
+verify_migration_ledger_before_push() {
+  local out verdict
+  log "backend: verify migration ledger before push"
+  out="$(cd "$ROOT/backend" && DOTENV_CONFIG_PATH="$DB_ENV_FILE" npm run --silent db:verify-migrations 2>&1 || true)"
+  verdict="$(printf '%s' "$out" | node -e "
+    let s='';
+    process.stdin.on('data', (d) => { s += d; }).on('end', () => {
+      const at = s.indexOf('{');
+      if (at < 0) return console.log('unreachable\tJSON 출력 없음');
+      let j;
+      try { j = JSON.parse(s.slice(at)); } catch { return console.log('unreachable\tJSON 파싱 실패'); }
+      if (j.ok === true) return console.log('ok\t' + (j.expectedCount ?? '?') + '/' + (j.expectedCount ?? '?'));
+      if (j.error) return console.log('unreachable\t' + j.error);
+      const missing = (j.missing ?? []).length, unexpected = (j.unexpected ?? []).length;
+      if (missing || unexpected) {
+        return console.log('drift\tmissing ' + missing + '건' + (missing ? ' → ' + j.missing.join(', ') : '')
+          + (unexpected ? ' / unexpected ' + unexpected + '건 → ' + j.unexpected.join(', ') : ''));
+      }
+      console.log('unreachable\t판정 불가(ok=false 인데 missing·error 모두 비어 있음)');
+    });
+  ")"
+  local kind="${verdict%%$'\t'*}"
+  local detail="${verdict#*$'\t'}"
+  case "$kind" in
+    ok)
+      ok "migration 원장 일치($detail) — 배포 대상 코드와 프로덕션 스키마가 맞다" ;;
+    drift)
+      if is_true "${ALLOW_UNAPPLIED_MIGRATIONS:-0}"; then
+        warn "⚠ 원장 불일치인데 ALLOW_UNAPPLIED_MIGRATIONS=1로 진행합니다: $detail"
+        warn "  배포 후 반드시 dry-run → APPLY → readback을 수행하세요(사전 Neon 스냅샷 필수)."
+      else
+        die "미적용 마이그레이션으로 push를 중단합니다: $detail\n  적용하거나(권장), 코드-선 배포를 의도한다면 ALLOW_UNAPPLIED_MIGRATIONS=1 을 붙여 다시 실행하세요."
+      fi ;;
+    *)
+      warn "migration 원장을 확인하지 못했습니다($detail) —"
+      warn "  이 실행의 초록은 **프로덕션 스키마 정합을 포함하지 않습니다**." ;;
+  esac
+}
+
+if is_true "$PUSH"; then
+  if is_true "$RUN_DB_VERIFY"; then
+    ok "migration 원장은 DB 게이트에서 이미 확인했다"
+  elif [[ -n "${DATABASE_URL_UNPOOLED:-}" || -n "${DATABASE_URL:-}" || -n "${POSTGRES_URL_NON_POOLING:-}" || -n "${POSTGRES_URL:-}" ]] || db_env_file_exists; then
+    verify_migration_ledger_before_push
+  else
+    warn "DB URL·backend/$DB_ENV_FILE 이 없어 migration 원장을 확인하지 못했습니다 —"
+    warn "  이 실행의 초록은 **프로덕션 스키마 정합을 포함하지 않습니다**(RUN_DB_VERIFY=1로 확인)."
+  fi
+fi
+
 if is_true "$PUSH"; then
   for repo in "${RELEASE_REPOS[@]}"; do
+    delete_stale_locks "$repo"
     push_repo "$repo"
   done
 else
