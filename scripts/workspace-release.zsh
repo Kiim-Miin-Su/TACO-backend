@@ -330,6 +330,13 @@ run_gates() {
   fi
 
   run_in contracts npm run build
+  # [TBO-79 J1] 게이트는 **배포될 contracts**로 돌아야 한다. 종전엔 여기서 빌드만 하고 실제 설치는
+  #  publish 뒤 refresh_contract_lock에서 했다 → 게이트가 npm의 **구버전**을 검사했다.
+  #  코드가 새 export를 쓰기 시작하면 닭-달걀이 된다(게이트 통과에 publish가 필요하고 그 반대도).
+  #  2026-07-30에 실제로 터졌다: typecheck 24 errors, 전부 "has no exported member".
+  #  publish를 대체하지 않는다 — 아래 refresh_contract_lock이 진짜 tarball로 다시 설치하고
+  #  게이트를 재실행한다. 이건 그 앞단의 정합 확보다.
+  run_in backend npm run contracts:stage
   run_in backend npm run verify:runtime-data
   run_in backend npm run typecheck
   run_in backend npm run build
