@@ -46,14 +46,24 @@ export class ClassSessionsStore implements OnModuleInit {
     await this.ensureReady();
   }
 
-  async ensureReady(): Promise<void> {
+  /** [TBO-80 80C] durable 판정 확정 — postgres 초기화·스키마 준비까지만 기다린다(미러 refresh 없음).
+   *  쓰기 6종이 이걸 선행해 `this.durable` 분기가 **부팅 순서가 아니라 판정 완료**에 묶이게 한다
+   *  (TBO-79 축5 위생 — 종전엔 읽기만 ensureReady를 기다려 불변식이 부팅 순서에 의존했다).
+   *  refreshMemory(전체 SELECT)를 쓰기마다 태우지 않기 위한 분리다. */
+  private async ensureDurableDecided(): Promise<void> {
     await this.postgres.ensureInitialized();
     if (!this.postgres.ready) return;
     if (!this.ready) await this.ensureSchema();
+  }
+
+  async ensureReady(): Promise<void> {
+    await this.ensureDurableDecided();
+    if (!this.postgres.ready) return;
     await this.refreshMemory();
   }
 
   async insert(data: Omit<ClassSession, keyof BaseRow>): Promise<ClassSession> {
+    await this.ensureDurableDecided();
     if (!this.durable) return this.memory.insert<ClassSession>(TABLE, data);
     const [saved] = await this.insertDb(data);
     if (!saved) throw new Error('class_sessions insert did not return a row');
@@ -62,6 +72,7 @@ export class ClassSessionsStore implements OnModuleInit {
   }
 
   async update(id: number, patch: Partial<Omit<ClassSession, keyof BaseRow>>): Promise<ClassSession | undefined> {
+    await this.ensureDurableDecided();
     if (!this.durable) return this.memory.update<ClassSession>(TABLE, id, patch);
     const payload = this.toDbPayload(patch as Record<string, unknown>);
     const keys = Object.keys(payload);
@@ -82,6 +93,7 @@ export class ClassSessionsStore implements OnModuleInit {
   /** 동시 정산 생성 시 한 세션을 한 정산서만 선점한다. 금액 스냅샷은 payout.lines,
    *  instructor_pay_amount는 사용자 override 전용이라 여기서 덮어쓰지 않는다. */
   async claimPayout(id: number, payoutId: number): Promise<ClassSession | undefined> {
+    await this.ensureDurableDecided();
     if (!this.durable) {
       const current = this.memory.findById<ClassSession>(TABLE, id);
       if (!current || current.payoutId != null || current.isPaid === true) return undefined; // [리뷰 P1-1] 지급 완료 세션 재선점 차단(fail-safe)
@@ -103,6 +115,7 @@ export class ClassSessionsStore implements OnModuleInit {
   /** [TBO-64 2026-07-24] 회차 가격 책정(정산 연결 전 override) — payout_id IS NULL 조건부 UPDATE로
    *  연결 경쟁과 직렬화(연결된 회차는 확정 스냅샷이라 불변). null = 책정 해제. */
   async setPayAmount(id: number, amount: number | null): Promise<ClassSession | undefined> {
+    await this.ensureDurableDecided();
     if (!this.durable) {
       const cur = this.memory.findById<ClassSession>(TABLE, id);
       if (!cur || cur.payoutId != null) return undefined;
@@ -120,6 +133,7 @@ export class ClassSessionsStore implements OnModuleInit {
   }
 
   async remove(id: number, deletedBy?: number): Promise<boolean> {
+    await this.ensureDurableDecided();
     if (!this.durable) return this.memory.remove(TABLE, id, deletedBy);
     const rows = await this.query(
       `UPDATE ${TABLE} SET deleted_at = now(), deleted_by = $1, updated_at = now() WHERE id = $2 AND deleted_at IS NULL RETURNING *`,
@@ -131,6 +145,7 @@ export class ClassSessionsStore implements OnModuleInit {
 
   /** [TBO-63 2026-07-24] soft delete 복구(undo) — 삭제 행만, 정산 미연결만. */
   async restore(id: number): Promise<ClassSession | undefined> {
+    await this.ensureDurableDecided();
     if (!this.durable) {
       const ok = this.memory.restore(TABLE, id);
       return ok ? this.memory.findById<ClassSession>(TABLE, id) : undefined;

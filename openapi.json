@@ -6879,6 +6879,54 @@
         ]
       }
     },
+    "/api/counsel/{id}/convert": {
+      "post": {
+        "operationId": "CounselController_convert",
+        "parameters": [
+          {
+            "name": "id",
+            "required": true,
+            "in": "path",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConvertCounselDto"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "{ form, enrollment } — 전이된 폼과 counselCardId로 연결된 신규 수강"
+          },
+          "403": {
+            "description": "관리 역할 아님"
+          }
+        },
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ],
+        "summary": "상담→수강 전환 [관리 역할] — 수강 생성+폼 registered 전이+감사를 한 transaction으로",
+        "tags": [
+          "counsel"
+        ]
+      }
+    },
     "/api/counsel/{id}/rounds": {
       "post": {
         "operationId": "CounselController_createRound",
@@ -12371,6 +12419,37 @@
             "maxLength": 2000
           }
         }
+      },
+      "ConvertCounselDto": {
+        "type": "object",
+        "properties": {
+          "courseId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "roadmapId": {
+            "type": "number",
+            "minimum": 1
+          },
+          "startDate": {
+            "type": "string"
+          },
+          "endDate": {
+            "type": "string"
+          },
+          "totalSessions": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000
+          },
+          "memo": {
+            "type": "string",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "courseId"
+        ]
       },
       "CounselFormSnapshotDto": {
         "type": "object",

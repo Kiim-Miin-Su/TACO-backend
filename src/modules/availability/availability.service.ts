@@ -14,6 +14,7 @@ import { RoomsService } from '../rooms/rooms.service';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
+import { buildCohortIndex } from '../schedule/session-participant.policy'; // [TBO-80 80C] 활성 코호트 규칙 SSOT
 import { sessionEndMin } from '../schedule/conflict.util';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { ENROLLMENTS_SPEC, ROOMS_SPEC, STUDENTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
@@ -157,8 +158,10 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   private ownerSessions(ownerType: AvailabilityOwner, ownerId: number): ClassSession[] {
+    // [TBO-80 80C] 활성 판정을 인라인 `status === 'active'`로 재선언하지 않는다 — 학생 행만 골라
+    //  정책(buildCohortIndex)에 활성 여부를 위임하면 keys가 곧 그 학생의 활성 코스 집합이다.
     const studentCourseIds = ownerType === 'student'
-      ? new Set(this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === ownerId && e.status === 'active').map((e) => e.courseId))
+      ? new Set(buildCohortIndex(this.db.findBy<Enrollment>(ENROLLMENTS, (e) => e.studentId === ownerId)).keys())
       : null;
     return this.db.findBy<ClassSession>(SESSIONS, (s) =>
       (ownerType === 'instructor'

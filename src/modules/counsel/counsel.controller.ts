@@ -7,6 +7,7 @@ import { CreateCounselDto } from './dto/create-counsel.dto';
 import { UpdateCounselDto } from './dto/update-counsel.dto';
 import { CreateCounselRoundDto } from './dto/create-round.dto';
 import { UpdateCounselRoundDto } from './dto/update-round.dto';
+import { ConvertCounselDto } from './dto/convert-counsel.dto'; // [TBO-80 80E]
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
@@ -99,6 +100,16 @@ export class CounselController {
   @ApiOperation({ summary: '상담 폼과 회차 soft delete [관리 역할] — 감사 스냅샷 포함' })
   removeForm(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.counsel.removeForm(id, req.user!.sub);
+  }
+
+  // [TBO-80 80E = TBO-30E] 전환의 진실원 = enrollment.counselCardId FK(표기가 아니라 실제 수강 행 연결).
+  @Post(':id/convert')
+  @Roles(...ADMIN_ROLES)
+  @ApiOperation({ summary: '상담→수강 전환 [관리 역할] — 수강 생성+폼 registered 전이+감사를 한 transaction으로' })
+  @ApiCreatedResponse({ description: '{ form, enrollment } — 전이된 폼과 counselCardId로 연결된 신규 수강' })
+  @ApiForbiddenResponse({ description: '관리 역할 아님' })
+  convert(@Param('id', PositiveIntPipe) id: number, @Body() dto: ConvertCounselDto, @Req() req: Request & { user?: JwtClaims }) {
+    return this.counsel.convert(id, dto, req.user!.sub);
   }
 
   @Post(':id/rounds')

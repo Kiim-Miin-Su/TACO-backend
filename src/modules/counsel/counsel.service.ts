@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { DbAnalyticsSnapshotRepository } from '../../database/db-analytics-snapshot.repository';
@@ -13,8 +13,10 @@ import { CounselForm, CounselRound, COUNSEL_FORMS } from './counsel.entity';
 import { CreateCounselDto } from './dto/create-counsel.dto';
 import { UpdateCounselDto } from './dto/update-counsel.dto';
 import { CreateCounselRoundDto } from './dto/create-round.dto';
-import type { CounselAggregate, CounselFormSnapshot, DeletedResult } from '@kms545487/contracts';
+import type { ConvertCounselResult, CounselAggregate, CounselFormSnapshot, DeletedResult } from '@kms545487/contracts';
 import { UpdateCounselRoundDto } from './dto/update-round.dto';
+import { ConvertCounselDto } from './dto/convert-counsel.dto';
+import { EnrollmentsService } from '../enrollments/enrollments.service'; // [TBO-80 80E] 전환 = 수강 생성 검증·audit 재사용
 import { StudentsService } from '../students/students.service';
 import { Student } from '../students/student.entity';
 // [TBO-30D/30E] 집계는 순수 함수(counsel-analytics — API·e2e 공용 단일 진실원)에 위임하고,
@@ -56,6 +58,7 @@ export class CounselService implements OnModuleInit {
     private readonly audit: AuditService,
     private readonly students: StudentsService,
     private readonly analytics: DbAnalyticsSnapshotRepository, // [TBO-54 C2] 분석 조인 4표 DB snapshot
+    private readonly enrollments: EnrollmentsService, // [TBO-80 80E] 상담→수강 전환 command
   ) {}
 
   // 상담의 학생 프로필·보호자·관심 수업은 student aggregate만 권위다.
@@ -159,6 +162,49 @@ export class CounselService implements OnModuleInit {
       });
       this.domainLog.log(`action=updateForm form=${id} actor=${actorId} status=${after.status} result=updated`); // [TBO-58 P2]
       return after;
+    });
+  }
+
+  // [TBO-80 80E = TBO-30E] 상담→수강 전환 — 전환의 진실원은 enrollment.counselCardId FK다
+  //  ("등록됐다고 표기"가 아니라 실제 수강 행과 연결 — TBO-30 §2 원칙). 한 UoW에서:
+  //  ① 폼 잠금·fresh read·전이 가능 상태 검증 ② 수강 생성(EnrollmentsService.create 재사용 —
+  //  중복·FK·로드맵 검증과 enrollment audit 그대로) ③ 폼 status CAS 전이 ④ 폼 audit.
+  //  어느 단계가 실패해도 전부 롤백된다(부분 전환 없음).
+  async convert(id: number, dto: ConvertCounselDto, actorId: number): Promise<ConvertCounselResult> {
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'counselForm', id }]);
+      const before = { ...(await this.findForm(id)) };
+      if (before.status === 'registered') {
+        throw new ConflictException('이미 등록 전환된 상담카드입니다.');
+      }
+      if (before.status === 'dropped') {
+        throw new ConflictException('이탈 처리된 상담카드는 전환할 수 없습니다. 상태를 먼저 되돌린 뒤 진행해 주세요.');
+      }
+      // 수강 생성 — studentId·counselCardId는 서버가 폼에서 결정(body 주입 채널 없음).
+      const enrollment = await this.enrollments.create({
+        studentId: before.studentId,
+        courseId: dto.courseId,
+        counselCardId: id,
+        roadmapId: dto.roadmapId,
+        startDate: dto.startDate,
+        endDate: dto.endDate,
+        totalSessions: dto.totalSessions,
+        memo: dto.memo,
+      }, actorId);
+      const after = await this.store.updateIf<CounselForm>(
+        COUNSEL_FORMS_SPEC,
+        id,
+        { status: before.status },
+        { status: 'registered' },
+      );
+      if (!after) throw new ConflictException('다른 사용자가 상담 상태를 먼저 변경했습니다. 새로고침 후 다시 시도해 주세요.');
+      await this.audit.log({
+        entity: COUNSEL_FORMS, entityId: id, action: 'update', actorId,
+        changes: this.audit.maskContactPii(this.audit.diffOf(before, after)),
+        reason: `상담 전환 — 수강 #${enrollment.id} 연결`,
+      });
+      this.domainLog.log(`action=convert form=${id} actor=${actorId} enrollment=${enrollment.id} result=registered`); // [TBO-58 P2]
+      return { form: after, enrollment };
     });
   }
 
@@ -339,34 +385,10 @@ export class CounselService implements OnModuleInit {
     });
   }
 
-  // [TBO-30D/30E] 분석 스냅샷 — 활성 읽기모델을 파생 전용으로 조립(원본 무변형·사본 저장 0).
-  //  퍼널은 forms/rounds, 상관관계는 student_interests(희망 권위)×enrollments(등록 권위) 조인.
-  private async analyticsSnapshot(): Promise<CounselAnalyticsSnapshot> {
-    return {
-      forms: (await this.findAllForms()).map((form) => ({
-        id: form.id, studentId: form.studentId, status: form.status, createdAt: form.createdAt,
-      })),
-      rounds: (await this.findAllRounds()).map((round) => ({
-        counselFormId: round.counselFormId, roundNo: round.roundNo,
-        result: round.result ?? null, completedAt: round.completedAt ?? null,
-      })),
-      ...(await this.joinTables()),
-    };
-  }
-
-  // [TBO-54 C2] 조인 4표 = DB 단일 snapshot 저장소(P0-4) — 메모리 projection 금지.
-  private async joinTables(): Promise<Pick<CounselAnalyticsSnapshot, 'interests' | 'enrollments' | 'courses' | 'subjects'>> {
-    const tables = await this.analytics.counselJoins();
-    return {
-      interests: tables.interests.map((interest) => ({
-        studentId: interest.studentId, courseId: interest.courseId ?? null, customLabel: interest.customLabel ?? null,
-      })),
-      enrollments: tables.enrollments.map((enrollment) => ({
-        studentId: enrollment.studentId, courseId: enrollment.courseId, status: enrollment.status,
-      })),
-      courses: tables.courses.map((course) => ({ id: course.id, subjectId: course.subjectId })),
-      subjects: tables.subjects.map((subject) => ({ id: subject.id, name: subject.name })),
-    };
+  // [TBO-30D/30E→TBO-80 80F] 분석 스냅샷 — 행 선별을 DB 저장소로 푸시다운(기간 창·조인 선별·최소 컬럼).
+  //  집계 로직은 여전히 counsel-analytics 순수 함수 단일 진실원이 수행한다(사본 0 — 저장소 주석 참조).
+  private async analyticsSnapshot(range: CounselAnalyticsRange = {}): Promise<CounselAnalyticsSnapshot> {
+    return this.analytics.counselAnalytics(range);
   }
 
   // [TBO-46 G1] 기간 검증은 공용 assertDayRange 소비(GraphQL 게이트웨이와 같은 규칙 — 사본 제거).
@@ -376,12 +398,12 @@ export class CounselService implements OnModuleInit {
 
   async funnel(range: CounselAnalyticsRange = {}): Promise<CounselFunnel> {
     this.assertRange(range);
-    return computeCounselFunnel(await this.analyticsSnapshot(), range);
+    return computeCounselFunnel(await this.analyticsSnapshot(range), range);
   }
 
   async correlation(range: CounselAnalyticsRange = {}): Promise<CounselCorrelation> {
     this.assertRange(range);
-    return computeCounselCorrelation(await this.analyticsSnapshot(), range);
+    return computeCounselCorrelation(await this.analyticsSnapshot(range), range);
   }
 
   // 상담 폼과 활성 회차를 함께 soft delete — 고아 회차·목록 재노출 방지.

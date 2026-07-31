@@ -20,6 +20,7 @@ import { AuditService } from '../audit/audit.service';
 import { Student, STUDENTS } from './student.entity';
 import { Enrollment, ENROLLMENTS } from '../enrollments/enrollment.entity';
 import { ClassSessionsStore } from '../schedule/class-sessions.store'; // [TBO-59 C3] 강사 스코프 판정(세션 참여 학생)
+import { buildCohortIndex } from '../schedule/session-participant.policy'; // [TBO-80 80C] 활성 코호트 규칙 SSOT 소비(인라인 사본 금지 — FC-1 부류)
 import type { Course } from '../courses/course.entity';
 import { CreateStudentDto } from './dto/create-student.dto';
 import { UpdateStudentDto } from './dto/update-student.dto';
@@ -121,8 +122,12 @@ export class StudentsService implements OnModuleInit {
     ]);
     const myCourseIds = new Set(courses.map((course) => course.id));
     const ids = new Set<number>();
-    for (const enrollment of enrollments) {
-      if (myCourseIds.has(enrollment.courseId) && enrollment.status === 'active') ids.add(enrollment.studentId);
+    // [TBO-80 80C] 종전엔 `status === 'active'` 필터를 여기서 재선언했다 — session-participant.policy가
+    //  "다른 곳에 사본 금지"로 못박은 활성 코호트 규칙의 인라인 사본(FC-1과 같은 부류, 드리프트 대기 상태).
+    //  이제 같은 정책 함수(buildCohortIndex)를 소비한다. 의미 불변: 담당 코스의 활성 수강생 합집합.
+    const cohortIndex = buildCohortIndex(enrollments);
+    for (const courseId of myCourseIds) {
+      for (const studentId of cohortIndex.get(courseId) ?? []) ids.add(studentId);
     }
     await this.sessionsStore.ensureReady(); // TTL 유계 read model(EP2)
     type SessionRow = { id: number; createdAt: string; updatedAt: string; instructorId?: number; studentIds?: number[] };

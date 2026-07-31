@@ -140,10 +140,8 @@ export class ScheduleReadService implements OnModuleInit {
   //  students.remove(소프트삭제)가 학생·수강 모두 'canceled'로 정리하므로 삭제 즉시 코호트에서 빠진다.
   activeStudentIds(courseId: number): number[] {
     // 인덱스 조회(courseId) — enrich가 세션마다 호출하는 핫패스(전체 스캔 제거)
-    return this.db
-      .findByField<Enrollment>(ENROLLMENTS_COL, 'courseId', courseId)
-      .filter((e) => e.status === 'active')
-      .map((e) => e.studentId)
+    // [TBO-80 80C] 활성 필터는 정책(buildCohortIndex) 위임 — 인라인 사본 금지(FC-1 부류).
+    return [...(buildCohortIndex(this.db.findByField<Enrollment>(ENROLLMENTS_COL, 'courseId', courseId)).get(courseId) ?? [])]
       .filter((sid) => {
         const student = this.studentOf(sid);
         return student != null && isScheduleVisibleStudentStatus(student.status);
@@ -206,12 +204,9 @@ export class ScheduleReadService implements OnModuleInit {
   ): Promise<ScheduleRow[]> {
     await this.ensureReady();
     const rooms = new Map(this.rooms.findAll().map((room) => [room.id, room]));
+    // [TBO-80 80C] 활성 판정은 정책 위임 — 학생 행만 인덱스로 골라 buildCohortIndex의 keys를 쓴다.
     const coursesOfStudent = opts.studentId != null
-      ? new Set(
-          this.db.findByField<Enrollment>(ENROLLMENTS_COL, 'studentId', opts.studentId)
-            .filter((enrollment) => enrollment.status === 'active')
-            .map((enrollment) => enrollment.courseId),
-        )
+      ? new Set(buildCohortIndex(this.db.findByField<Enrollment>(ENROLLMENTS_COL, 'studentId', opts.studentId)).keys())
       : null;
     const rows = await this.sessions.listDb(opts);
     return rows

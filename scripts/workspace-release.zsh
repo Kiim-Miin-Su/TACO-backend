@@ -320,6 +320,10 @@ run_schema_gates() {
   #  crud-surfaces는 substring 매칭이라 통과가 증거가 되지 못했다(거짓 완료 FC-4·FC-5).
   run_in backend npm run verify:crud-surfaces
   run_in backend npm run db:verify-contract-domains
+  # [TBO-80 80B·80C] 정책 선언·코호트 SSOT 정적 게이트 — TBO-79 C6·A4의 기계화.
+  #  종전엔 209 라우트 전수 선언·"사본 금지" 규약이 수동 확인이었다(FC-1 재발 방어 장치 없음).
+  run_in backend npm run verify:route-policies
+  run_in backend npm run verify:cohort-ssot
   log "docs: generate PostgreSQL SQL from erd.dbml"
   npx -y -p @dbml/cli dbml2sql "$ROOT/docs/erd.dbml" --postgres -o "$tmp/erd.sql"
   [[ -s "$tmp/erd.sql" ]] || die "DBML generated an empty PostgreSQL file"
