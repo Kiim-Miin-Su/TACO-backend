@@ -66,10 +66,19 @@ export class PayoutsReadService implements OnModuleInit {
     await this.store.hydrate(STUDENTS_SPEC);
   }
 
-  // 시수 측정(순수 계산) — preview/generate 공통.
+  // 시수 측정(순수 계산) — preview/generate 공통. 활성 가드는 명령·조회 라우트의 대상 검증이다.
   measure(instructorId: number, from: string, to: string): MeasureResult {
     if (!isActiveInstructor(this.db.findById<StaffAccount>(USERS, instructorId)))
       throw new BadRequestException('정산 대상은 활성 강사만 가능합니다.');
+    return this.measureCore(instructorId, from, to);
+  }
+
+  // [TBO-80 80J F-3 2026-07-31] 가드 없는 산정 코어 — uncovered 스캔 전용.
+  //  uncovered는 P1-2(2026-07-22) 설계상 비활성(퇴직·반려 등) 강사의 미지급분도 감지해야 하는데,
+  //  measure()의 활성 가드가 role=instructor 전체 순회 중 반려 계정에서 throw → 목록 전체가 400으로
+  //  죽는 결함(시뮬레이션 QA 실측: 반려 가입 1건 후 대표 /payouts 배너 영구 실패). 주석의 "자연
+  //  배제" 전제를 코드로 복원한다 — preview/generate 라우트의 활성 가드는 measure()에 그대로 유지.
+  private measureCore(instructorId: number, from: string, to: string): MeasureResult {
     if (!from || !to) throw new BadRequestException('정산 기간(from/to)이 필요합니다');
     if (from > to) throw new BadRequestException('정산 기간이 잘못되었습니다(from > to)');
 
@@ -291,7 +300,8 @@ export class PayoutsReadService implements OnModuleInit {
       const periodStart = first.toISOString().slice(0, 10);
       const periodEnd = last.toISOString().slice(0, 10);
       for (const instructor of instructors) {
-        const m = this.measure(instructor.id, periodStart, periodEnd);
+        // [80J F-3] 스캔은 가드 없는 코어 — 비활성 강사는 measure 0으로 자연 배제(라우트 가드는 measure()).
+        const m = this.measureCore(instructor.id, periodStart, periodEnd);
         // [TBO-66 T2 2026-07-25] 실행 미확정(종료 경과 scheduled·미연결)도 계상 — 종전엔 적격만 세어
         //  "출결·리포트를 아무도 안 찍은 달"이 대표 배너에서 완전히 보이지 않았다(readiness와 비대칭).
         const executionMissingCount = this.db.findBy<SessionWithPayout>(

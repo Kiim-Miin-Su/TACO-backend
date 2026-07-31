@@ -114,9 +114,13 @@ describe('[TBO-62] 긴급 수정 (e2e)', () => {
     const all = (await http.get('/api/payouts').set(auth('admin')).expect(200)).body;
     const pending = all.find((p: { status: string; instructorId: number }) => p.status !== 'paid' && p.instructorId === 2);
     if (pending) await http.get(`/api/payouts/${pending.id}`).set(auth('jung_inst')).expect(403);
-    // 시수 산정·누락 라우트는 강사에게 존재하지 않음(404 — 라우트 삭제)
+    // 시수 산정(금액) 라우트는 강사에게 존재하지 않음(404 — 라우트 삭제)
     await http.get('/api/payouts/me/preview').query({ from: '2026-07-01', to: '2026-07-31' })
       .set(auth('jung_inst')).expect(404);
-    await http.get('/api/payouts/me/readiness').set(auth('jung_inst')).expect(404);
+    // [TBO-80 80J F-2 2026-07-31] me/readiness는 비금전 이슈 한정으로 복원(강사 배지 소스) —
+    //  ⑥의 금액 비노출 원칙은 유지: rate_missing 제외·eligibleSessionIds(적격 시수 메타) 공백.
+    const myReadiness = (await http.get('/api/payouts/me/readiness').set(auth('jung_inst')).expect(200)).body;
+    expect(myReadiness.eligibleSessionIds).toEqual([]);
+    expect(myReadiness.issues.every((row: { type: string }) => row.type !== 'rate_missing')).toBe(true);
   });
 });

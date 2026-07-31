@@ -3602,6 +3602,19 @@ paths:
       summary: 내 지급 완료 정산 내역 [강사 본인] — paid만. 시수 산정·지급 전 정산은 관리자 전용(TBO-62 ⑥).
       tags:
         - payouts
+  /api/payouts/me/readiness:
+    get:
+      operationId: PayoutsController_myReadiness
+      parameters: []
+      responses:
+        '200':
+          description: ''
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 내 시수 준비 이슈 [강사 본인] — 비금전 이슈만(리포트·실행·로스터). rate_missing·적격 세션 메타 제외.
+      tags:
+        - payouts
   /api/payouts/readiness:
     get:
       operationId: PayoutsController_readinessAll

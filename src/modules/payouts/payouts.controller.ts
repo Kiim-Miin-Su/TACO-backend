@@ -65,6 +65,21 @@ export class PayoutsController {
     return this.payoutsRead.listByInstructorDb(req.user!.sub, { paidOnly: true });
   }
 
+  // [TBO-80 80J F-2 2026-07-31] 강사 배지 소스 복원 — TBO-62 ⑥이 강사 readiness 라우트를 통째로
+  //  제거하면서 FE 배지·To-do 피드(lib/tasks.ts 강사 분기: 리포트 미작성/반려·세션 실행 이슈)가
+  //  죽은 소비처가 됐다(시뮬레이션 QA 실측: held+리포트 0건인데 보고서 배지 0). 대표 정책(강사에게
+  //  시수 측정·예상 페이 비노출)은 유지한다: 본인 스코프 + **비금전 이슈만** — rate_missing(시급
+  //  미책정 = 페이 설정 큐, 강사가 해결할 수 없는 항목) 제외, eligibleSessionIds(정산 적격 시수
+  //  메타) 비움. 판정은 PayoutReadinessService 단일 소스 재사용 — 프론트/별도 재계산 금지.
+  @Get('me/readiness')
+  @Roles('instructor')
+  @ApiOperation({ summary: '내 시수 준비 이슈 [강사 본인] — 비금전 이슈만(리포트·실행·로스터). rate_missing·적격 세션 메타 제외.' })
+  async myReadiness(@Req() req: Request & { user?: JwtClaims }) {
+    const full = await this.readiness.evaluateFresh(req.user!.sub);
+    const issues = full.issues.filter((row) => row.type !== 'rate_missing');
+    return { ...full, eligibleSessionIds: [], issues, issueCount: issues.length };
+  }
+
   @Get('readiness')
   @RequireCapabilities('payout.readiness')
   @ApiOperation({ summary: '전체 또는 지정 강사의 시수·페이 누락 항목(학생별 보고서 포함) [매니저 이상]' })

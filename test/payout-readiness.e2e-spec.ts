@@ -114,14 +114,18 @@ describe('시수·페이 준비 API 권한', () => {
 
   afterAll(async () => app.close());
 
-  it('준비 상태(readiness)는 매니저 이상 전용 — 강사는 전량 차단(TBO-62 ⑥)', async () => {
+  it('준비 상태(readiness) 전체 조회는 매니저 이상 전용 — 강사는 본인 비금전 라우트만(TBO-62 ⑥ + 80J F-2)', async () => {
     await http.get('/api/payouts/readiness?from=2026-06-01&to=2026-06-30')
       .set('Authorization', `Bearer ${tokens.manager}`).expect(200);
     await http.get('/api/payouts/readiness?from=2026-06-01&to=2026-06-30')
       .set('Authorization', `Bearer ${tokens.park_inst}`).expect(403);
-    // [TBO-62 ⑥ 2026-07-24] 강사용 me/readiness 라우트 자체 제거(대표 지시: 강사는 받은 내역만) → 404.
-    await http.get('/api/payouts/me/readiness?from=2026-06-01&to=2026-06-30')
-      .set('Authorization', `Bearer ${tokens.park_inst}`).expect(404);
+    // [TBO-80 80J F-2 2026-07-31] 강사 me/readiness는 배지 소스로 복원(비금전 한정 — TBO-62의
+    //  시수·페이 비노출 원칙 유지: rate_missing 제외·eligibleSessionIds 공백·본인 스코프).
+    const mine = (await http.get('/api/payouts/me/readiness')
+      .set('Authorization', `Bearer ${tokens.park_inst}`).expect(200)).body;
+    expect(mine.eligibleSessionIds).toEqual([]);
+    expect((mine.issues as Array<{ instructorId: number; type: string }>)
+      .every((row) => row.instructorId === 1 && row.type !== 'rate_missing')).toBe(true);
   });
 
   it('잘못된 달력 날짜는 readiness 조회 전에 400으로 거부한다', async () => {
