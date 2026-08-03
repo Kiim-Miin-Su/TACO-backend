@@ -26,6 +26,8 @@ describe('role policy', () => {
     expect(roleHasCapability('manager', 'signup.decide')).toBe(true);
     expect(claimsHaveCapability(['instructor', 'manager'], 'calendar.manage')).toBe(true);
     expect(claimsHaveCapability(['instructor'], 'calendar.manage')).toBe(false);
+    expect(rolesForCapability('attendance.manage')).toEqual(['super_admin']);
+    expect(rolesForCapability('access.manage')).toEqual(['super_admin', 'admin']);
   });
 
   it('enforces the signup decision target matrix without role mutation', () => {

@@ -4,7 +4,7 @@
 //      재해석했다. 그래서 수강을 취소하면 이미 끝난 회차의 참가자 집합이 소급해서 바뀌고,
 //      그 위에 얹힌 리포트 완결·정산 적격·출결 배지·무결성 검사가 함께 흔들렸다.
 //      → held 전이 시점에 참가자를 확정(freeze)한다.
-//  D4: 강사의 "최초 1회 출결 기록" 가드가 tx 밖 판정이라 동시 요청 2건이 모두 통과할 수 있었다.
+//  D4: 대표 전용 출결 정책이 동시 비대표 요청에서도 fail-closed인지 확인한다.
 //  D5: 권한 코드의 fail-open 기본값(actor 미상 = 전체 반환)을 fail-closed로 뒤집었다.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -50,10 +50,10 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
 
     // 참가자(활성 수강 1·4) 전원 출결 + 강사 출결 → held 자동 전이
     for (const studentId of [1, 4]) {
-      await http.put('/api/attendance').set(as('manager'))
+      await http.put('/api/attendance').set(as('admin'))
         .send({ sessionId: created.id, studentId, status: 'present' }).expect(200);
     }
-    await http.patch(`/api/schedule/${created.id}`).set(as('manager'))
+    await http.patch(`/api/schedule/${created.id}`).set(as('admin'))
       .send({ instructorAttendance: 'present', force: true }).expect(200);
 
     const held = (await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body;
@@ -89,7 +89,7 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
     expect(future.studentIds).toEqual([1]);
   });
 
-  it('D4 — 강사 최초 1회 출결 기록은 동시 요청에서도 정확히 1건만 성공한다', async () => {
+  it('D4 — 동시 강사 출결 요청은 모두 차단되고 대표 기록만 영속화된다', async () => {
     const created = (await http.post('/api/schedule').set(as('manager'))
       .send({ courseId: 10, instructorId: 1, sessionDate: PAST, startTime: '14:00', durationMinutes: 60, force: true })
       .expect(201)).body.row as { id: number };
@@ -98,17 +98,15 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
       http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('park_inst')).send({ status: 'present' }),
       http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('park_inst')).send({ status: 'absent' }),
     ]);
-    const statuses = [first.status, second.status].sort();
-    expect(statuses[0]).toBeLessThan(300); // 하나는 성공
-    expect(statuses[1]).toBe(403); // 다른 하나는 "수정은 매니저 이상"
+    expect([first.status, second.status]).toEqual([403, 403]);
 
-    // 기록된 값은 승자 하나뿐 — 두 요청이 순차 덮어쓰기 되지 않았다.
+    // 거부된 요청은 저장 상태를 바꾸지 않는다.
     const readback = (await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body;
-    expect(['present', 'absent']).toContain(readback.instructorAttendance);
+    expect(readback.instructorAttendance ?? null).toBeNull();
 
-    // 이미 기록된 뒤의 강사 재시도는 항상 403.
-    await http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('park_inst'))
-      .send({ status: 'late' }).expect(403);
+    await http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('admin'))
+      .send({ status: 'present' }).expect(201);
+    expect((await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body.instructorAttendance).toBe('present');
   });
 
   // [TBO-79 F4] TBO-76 76E가 "미래→과거·과거→미래·자정 크로스를 검증한다"를 [x]로 닫았지만
@@ -136,10 +134,10 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
     expect((await http.get(`/api/attendance?sessionId=${created.id}`).set(as('manager')).expect(200)).body).toEqual([]);
 
     // 같은 정책으로 재전이 — 출결을 다시 채우면 held.
-    await http.put('/api/attendance').set(as('manager'))
+    await http.put('/api/attendance').set(as('admin'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
     expect((await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body.status).toBe('scheduled');
-    await http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('park_inst'))
+    await http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('admin'))
       .send({ status: 'present' }).expect(201);
     const held = (await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body;
     expect(held.status).toBe('held');
@@ -150,9 +148,9 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
     const created = (await http.post('/api/schedule').set(as('manager'))
       .send({ courseId: 10, instructorId: 1, studentIds: [1], sessionDate: addDaysISO(PAST, 4), startTime: '15:00', durationMinutes: 60, force: true })
       .expect(201)).body.row as { id: number };
-    await http.put('/api/attendance').set(as('manager'))
+    await http.put('/api/attendance').set(as('admin'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${created.id}`).set(as('manager'))
+    await http.patch(`/api/schedule/${created.id}`).set(as('admin'))
       .send({ instructorAttendance: 'present', force: true }).expect(200);
     expect((await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body.status).toBe('held');
 
@@ -183,9 +181,9 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
     const row = (await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body;
     expect(row.attendanceRequired).toBe(true); // 자정을 넘겨 종료했지만 과거 = 출결 필요
 
-    await http.put('/api/attendance').set(as('manager'))
+    await http.put('/api/attendance').set(as('admin'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('park_inst'))
+    await http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('admin'))
       .send({ status: 'present' }).expect(201);
     const held = (await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body;
     expect(held.status).toBe('held');

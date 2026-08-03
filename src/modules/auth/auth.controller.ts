@@ -19,7 +19,7 @@ import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags
 import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { Throttle } from '@nestjs/throttler';
 import { RolesGuard } from './roles.guard';
-import { ADMIN_ROLES, RequireCapabilities, Roles, STAFF_ROLES } from './roles.decorator';
+import { RequireCapabilities, Roles, STAFF_ROLES } from './roles.decorator';
 import type { Request, Response } from 'express';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { isForbiddenDemoCredential } from '../../config/production-guards';
@@ -54,6 +54,7 @@ import {
   setRefreshCookie,
   setSudoCookie,
 } from './browser-session';
+import { AccessControlService } from './access-control.service';
 
 
 @ApiTags('auth')
@@ -68,6 +69,7 @@ export class AuthController {
     private readonly refreshTokens: RefreshTokensService,
     private readonly signupChallenges: SignupEmailChallengesService,
     private readonly signupPhoneChallenges: SignupPhoneChallengesService, // [TBO-57]
+    private readonly access: AccessControlService,
   ) {}
 
   // ── 가입 전 이메일 OTP → 가입 신청 → 대표 승인 → 로그인 ──
@@ -442,7 +444,7 @@ export class AuthController {
 
   @Get('pending')
   @UseGuards(RolesGuard)
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('signup.decide')
   @ApiBearerAuth()
   @ApiOperation({ summary: '처리 가능한 승인 대기 계정 목록(매니저=강사, 관리자=강사·매니저, 대표=대표 외).' })
   @ApiOkResponse({ type: StaffAccountResponseDto, isArray: true })
@@ -454,7 +456,7 @@ export class AuthController {
   //  동시 approve/approve·approve/reject는 한 command만 성공(나머지 409). 미인증 계정 403(검사도 CAS 안).
   @Post('approve/:id')
   @UseGuards(RolesGuard)
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('signup.decide')
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 승인(요청 역할 보존, 역할별 범위 강제, 원자 tx+audit). 동시 결정은 409.' })
   @ApiOkResponse({ type: StaffAccountResponseDto })
@@ -482,7 +484,7 @@ export class AuthController {
 
   @Post('reject/:id')
   @UseGuards(RolesGuard)
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('signup.decide')
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 반려(역할별 범위 강제, 사유 필수, audit 기록). 동시 결정은 409.' })
   @ApiOkResponse({ type: StaffAccountResponseDto })
@@ -533,6 +535,8 @@ export class AuthController {
       ...claims,
       name: account.name,
       roles: [account.role],
+      accessVersion: authVersionOf(account),
+      effectiveCapabilities: await this.access.effectiveCapabilities(account.id, [account.role]),
       mustChangePassword: account.mustChangePassword === true,
     };
   }

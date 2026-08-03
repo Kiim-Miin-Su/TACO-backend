@@ -37,6 +37,14 @@ const S: Record<string, Surface> = {
   auth_rate_limits: { lifecycle: 'system', verdict: 'by-design', note: 'server throttle state; user CRUD forbidden' },
   nav_seen_states: { lifecycle: 'direct', api: ['GET /nav-seen', 'PUT /nav-seen'], frontend: ['api.navSeen'], verdict: 'complete', note: 'per-user read/update state' },
   auth_refresh_tokens: { lifecycle: 'system', api: ['POST /auth/refresh', 'POST /auth/logout'], verdict: 'by-design', note: 'rotation/revoke command only' },
+  user_capability_overrides: {
+    lifecycle: 'direct',
+    contract: ['UserPermissionsProjection', 'SetUserCapabilityInput'],
+    api: ['GET /users/{id}/permissions', 'PUT /users/{id}/permissions/{capability}'],
+    frontend: ['api.users.permissions', 'useUserPermissions'],
+    verdict: 'complete',
+    note: 'role defaults plus user overrides; sudo/CAS/authVersion/audit transaction; fixed representative permissions are not delegable',
+  },
   profile_change_requests: {
     lifecycle: 'direct',
     contract: ['ProfileChangeRequest', 'CreateProfileChangeRequestInput'],
@@ -70,7 +78,7 @@ const S: Record<string, Surface> = {
     api: ['GET /attendance', 'PUT /attendance', 'DELETE /attendance/{sessionId}/{studentId}'],
     frontend: ['api.attendance', 'useClearAttendance'],
     verdict: 'complete',
-    note: 'owner/admin upsert and reasoned clear; audit plus held-to-scheduled transition',
+    note: 'representative-only upsert and reasoned clear; audit plus held-to-scheduled transition',
   },
   staff_attendance_records: {
     lifecycle: 'direct',
@@ -78,7 +86,7 @@ const S: Record<string, Surface> = {
     api: ['GET /staff-attendance', 'GET /staff-attendance/instructor-ledger', 'PUT /staff-attendance', 'DELETE /staff-attendance/{id}'],
     frontend: ['api.staffAttendance'],
     verdict: 'complete',
-    note: 'staff daily attendance CRUD plus class-session attendance read projection; pay policy remains separate',
+    note: 'representative-only staff daily attendance CUD plus admin-area read projection; pay policy remains separate',
   },
   rooms: { lifecycle: 'direct', contract: ['Room'], api: ['POST /rooms', 'PATCH /rooms/{id}', 'DELETE /rooms/{id}'], frontend: ['api.rooms'], verdict: 'complete', note: 'resource CRUD' },
   availability_blocks: { lifecycle: 'direct', contract: ['AvailabilityBlock'], api: ['PUT /availability', 'DELETE /availability/{id}'], frontend: ['api.availability'], verdict: 'complete', note: 'upsert/delete plus approval path' },

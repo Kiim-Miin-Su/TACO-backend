@@ -1,4 +1,4 @@
-import type { DeletedResult } from '@kms545487/contracts';
+import type { DeletedResult, RoleCapability } from '@kms545487/contracts';
 import {
   BadRequestException,
   ConflictException,
@@ -12,7 +12,6 @@ import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service
 import { PROFILE_CHANGE_REQUESTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { AuditService } from '../audit/audit.service';
-import { hasAdminRole } from '../auth/roles.decorator';
 import { USERS, authVersionOf, profileVersionOf, type StaffAccount } from '../users/user.entity';
 import { UsersService, identityLockId } from '../users/users.service';
 import { ProfileVerificationsService } from '../profile-verifications/profile-verifications.service';
@@ -180,9 +179,9 @@ export class ProfileChangeRequestsService implements OnModuleInit {
     return rows.map((row) => this.maskRequest(row));
   }
 
-  async detail(id: number, actorId: number, roles?: string[]): Promise<ProfileChangeRequest> {
+  async detail(id: number, actorId: number, capabilities?: readonly RoleCapability[]): Promise<ProfileChangeRequest> {
     const row = await this.findAuthoritative(id);
-    if (row.requesterId !== actorId && !hasAdminRole(roles)) {
+    if (row.requesterId !== actorId && !capabilities?.includes('approval.manage')) {
       throw new ForbiddenException('본인의 프로필 변경 요청만 조회할 수 있습니다.');
     }
     return this.maskRequest(row);

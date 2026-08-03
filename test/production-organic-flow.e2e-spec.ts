@@ -188,6 +188,11 @@ describe("[TBO-76H] production organic journey", () => {
       .post(`/api/schedule/${sessionId}/instructor-attendance`)
       .set(auth("instructor"))
       .send({ status: "present" })
+      .expect(403);
+    await http
+      .post(`/api/schedule/${sessionId}/instructor-attendance`)
+      .set(auth("super_admin"))
+      .send({ status: "present" })
       .expect(201);
     await http
       .post(`/api/schedule/${sessionId}/instructor-attendance`)
@@ -196,7 +201,7 @@ describe("[TBO-76H] production organic journey", () => {
       .expect(403);
     await http
       .put("/api/attendance")
-      .set(auth("instructor"))
+      .set(auth("super_admin"))
       .send({ sessionId, studentId, status: "present" })
       .expect(200);
 

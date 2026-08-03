@@ -91,7 +91,7 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
 
   // ── J2 · 시수·정산 여정: 강사 사실 기록 → 매니저 운영 승인 → 대표 금액 확정·지급·회수 ──
   describe('J2 수업→출결→리포트→워크시트→정산 — 3역할 교차', () => {
-    let S1 = 0; // 정상 진행 회차(강사 셀프 출결·리포트 승인 → auto)
+    let S1 = 0; // 정상 진행 회차(대표 출결·리포트 승인 → auto)
     let S2 = 0; // 지각 회차(매니저 책정 필요 → 직접 int 입력)
     let payoutId = 0;
     let payoutAmount = 0; // ⑤에서 생성된 정산 총액(기준선 포함) — ⑥ me 목록 검증에 재사용
@@ -110,15 +110,17 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
       }
     });
 
-    it('② (강사) 본인 출결 셀프 체크 → 학생 출결 전 scheduled · 타인/재체크 403', async () => {
+    it('② 강사 출결 쓰기는 차단되고 대표 기록 후 학생 출결 전까지 scheduled', async () => {
       await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('jung_inst')).send({ status: 'present' }).expect(403); // 타인 세션
-      await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('park_inst')).send({ status: 'present' }).expect(201);
+      await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('park_inst')).send({ status: 'present' }).expect(403);
+      await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('admin')).send({ status: 'present' }).expect(201);
       expect((await http.get(`/api/schedule/${S1}`).set(as('manager')).expect(200)).body.status).toBe('scheduled');
-      await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('park_inst')).send({ status: 'late' }).expect(403); // 수정은 매니저만
+      await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('park_inst')).send({ status: 'late' }).expect(403);
     });
 
     it('③ (강사) 학생 출결 + 리포트 제출 → (매니저) 미승인 동안 워크시트는 빈칸(직접 입력 대상)', async () => {
-      await http.put('/api/attendance').set(as('park_inst')).send({ sessionId: S1, studentId: 1, status: 'present' }).expect(200);
+      await http.put('/api/attendance').set(as('park_inst')).send({ sessionId: S1, studentId: 1, status: 'present' }).expect(403);
+      await http.put('/api/attendance').set(as('admin')).send({ sessionId: S1, studentId: 1, status: 'present' }).expect(200);
       expect((await http.get(`/api/schedule/${S1}`).set(as('manager')).expect(200)).body.status).toBe('held');
       const report = (await http.post('/api/reports').set(as('park_inst'))
         .send({ sessionId: S1, studentId: 1, content: 'J2 수업 요약', status: 'submitted' }).expect(201)).body;
@@ -137,8 +139,9 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
     });
 
     it('④ (매니저 운영 처리 → 대표 금액 책정) 지각 회차 — 빈칸을 대표가 정수로 확정', async () => {
-      await http.patch(`/api/schedule/${S2}`).set(as('manager')).send({ instructorAttendance: 'late', force: true }).expect(200); // 자동 held
-      await http.put('/api/attendance').set(as('manager')).send({ sessionId: S2, studentId: 1, status: 'present' }).expect(200);
+      await http.patch(`/api/schedule/${S2}`).set(as('manager')).send({ instructorAttendance: 'late', force: true }).expect(403);
+      await http.patch(`/api/schedule/${S2}`).set(as('admin')).send({ instructorAttendance: 'late', force: true }).expect(200); // 자동 held
+      await http.put('/api/attendance').set(as('admin')).send({ sessionId: S2, studentId: 1, status: 'present' }).expect(200);
       const report = (await http.post('/api/reports').set(as('manager'))
         .send({ sessionId: S2, studentId: 1, instructorId: 1, content: 'J2 지각 회차', status: 'submitted' }).expect(201)).body;
       await http.post(`/api/reports/${report.id}/approve`).set(as('manager')).expect(201);

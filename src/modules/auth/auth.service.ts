@@ -10,6 +10,8 @@ export type JwtClaims = {
   //  만료 전 토큰도 즉시 거부한다(AccountStateService). 구 토큰(클레임 부재)=1로 간주.
   authVersion?: number;
   mustChangePassword?: boolean;
+  /** RolesGuard가 현재 DB override를 합성해 요청마다 채운다. JWT에는 저장하지 않는다. */
+  effectiveCapabilities?: import('@kms545487/contracts').RoleCapability[];
 }
 
 /**

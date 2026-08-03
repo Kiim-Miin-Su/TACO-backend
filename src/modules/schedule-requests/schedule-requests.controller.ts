@@ -10,7 +10,7 @@ import { CreateScheduleRequestDto } from './dto/create-schedule-request.dto';
 import { RejectScheduleRequestDto } from './dto/reject-schedule-request.dto';
 import { UpdateScheduleRequestDto } from './dto/update-schedule-request.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
+import { Roles, RequireCapabilities, STAFF_ROLES } from '../auth/roles.decorator';
 import { SessionAccountingImpactConflictResponseDto } from '../schedule/dto/accounting-impact-response.dto';
 import {
   CreateScheduleRequestBulkDto,
@@ -18,9 +18,6 @@ import {
 } from './dto/create-schedule-request-bulk.dto';
 
 type AuthedRequest = Request & { user?: JwtClaims };
-
-const isInstructorOnly = (u?: JwtClaims): boolean =>
-  !!u && (u.roles ?? []).includes('instructor') && !(u.roles ?? []).some((r) => ADMIN_ROLES.includes(r as never));
 
 const optionalBoolean = (name: string, value?: string): boolean | undefined => {
   if (value == null) return undefined;
@@ -36,14 +33,14 @@ export class ScheduleRequestsController {
   constructor(private readonly requests: ScheduleRequestsService) {}
 
   @Post()
-  @Roles(...STAFF_ROLES) // 강사 포함 — 요청은 누구나(직원), 확정은 관리자
+  @RequireCapabilities('calendar.request-own')
   @ApiOperation({ summary: '요청 생성(pending) — 수업 생성 또는 가용시간 변경 승인 요청. [로그인]' })
   create(@Body() dto: CreateScheduleRequestDto, @Req() req: AuthedRequest) {
     return this.requests.create(dto, req.user!.sub, req.user!.roles);
   }
 
   @Post('bulk')
-  @Roles(...STAFF_ROLES)
+  @RequireCapabilities('calendar.request-own')
   @ApiOperation({ summary: '반복 수업 승인 요청 bulk 생성 — 전체 원자 저장 + requester별 idempotency. [로그인]' })
   @ApiCreatedResponse({ type: ScheduleRequestBulkResultDto })
   createBulk(@Body() dto: CreateScheduleRequestBulkDto, @Req() req: AuthedRequest) {
@@ -56,12 +53,12 @@ export class ScheduleRequestsController {
   @ApiQuery({ name: 'status', required: false, enum: ['pending', 'approved', 'rejected'] })
   list(@Req() req: AuthedRequest, @Query('status') status?: 'pending' | 'approved' | 'rejected') {
     // 수평 권한: 강사(관리자 아님)는 requesterId=본인 강제 — 타 강사 요청 열람 차단
-    const requesterId = isInstructorOnly(req.user) ? req.user!.sub : undefined;
+    const requesterId = !req.user?.effectiveCapabilities?.includes('approval.manage') ? req.user!.sub : undefined;
     return this.requests.list({ status, requesterId });
   }
 
   @Post(':id/approve')
-  @Roles(...ADMIN_ROLES) // manager 이상(#8)
+  @RequireCapabilities('approval.manage')
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '요청 승인 → 충돌 강제와 회계 영향 확인을 분리하고 원자 전이 + audit. [관리자]' })
   @ApiQuery({ name: 'force', required: false, type: Boolean, deprecated: true, description: '레거시 충돌 강제. 회계 영향 확인에는 사용되지 않음' })
@@ -93,7 +90,7 @@ export class ScheduleRequestsController {
   }
 
   @Patch(':id')
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('approval.manage')
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '[C2C-b] pending 요청 수정(관리자) — 종류·대상 전환 금지, 생성과 동일 검증 재사용, audit update diff. [관리자]' })
   update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateScheduleRequestDto, @Req() req: AuthedRequest) {
@@ -101,7 +98,7 @@ export class ScheduleRequestsController {
   }
 
   @Post(':id/reject')
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('approval.manage')
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '요청 반려 — 사유 필수(Q2). [관리자]' })
   reject(@Param('id', PositiveIntPipe) id: number, @Body() body: RejectScheduleRequestDto, @Req() req: AuthedRequest) {
@@ -109,7 +106,7 @@ export class ScheduleRequestsController {
   }
 
   @Delete(':id')
-  @Roles(...STAFF_ROLES)
+  @RequireCapabilities('calendar.request-own')
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '본인 pending 요청 철회(soft delete) — 타인 요청 403. [로그인]' })
   withdraw(@Param('id', PositiveIntPipe) id: number, @Req() req: AuthedRequest) {

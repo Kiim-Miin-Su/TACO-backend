@@ -178,21 +178,23 @@ export class ScheduleController {
     description: '시간·자원 충돌 또는 시수·정산 영향 확인/지급 회수 필요.',
   })
   update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateScheduleDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.schedule.update(id, dto, req.user?.sub); // actor → audit_log(update diff)
+    return this.schedule.update(id, dto, req.user?.sub, {
+      actorCapabilities: req.user?.effectiveCapabilities ?? [],
+    }); // actor → audit_log(update diff)
   }
 
   // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크 — 최초 1회만(수정·삭제는 매니저 이상 PATCH 전용).
   @Post(':id/instructor-attendance')
-  @Roles(...STAFF_ROLES)
+  @RequireCapabilities('attendance.manage')
   @ApiParam({ name: 'id', description: '세션 id' })
-  @ApiOperation({ summary: '강사 출결 체크 — 강사는 본인 세션 최초 1회만, 관리자는 제한 없음. 수정·초기화는 매니저 이상 PATCH. [전 직원]' })
+  @ApiOperation({ summary: '강사 출결 체크 — 대표 전용. 수정·초기화도 같은 권한을 사용한다.' })
   @ApiOkResponse({ description: '{ row: ScheduleRow } — instructorAttendance 반영' })
   markInstructorAttendance(
     @Param('id', PositiveIntPipe) id: number,
     @Body() dto: MarkInstructorAttendanceDto,
     @Req() req: Request & { user?: JwtClaims },
   ) {
-    return this.schedule.markInstructorAttendance(id, dto.status, req.user?.sub, req.user?.roles ?? []);
+    return this.schedule.markInstructorAttendance(id, dto.status, req.user?.sub, req.user?.effectiveCapabilities ?? []);
   }
 
   // [TBO-74C-2] 종속 행 없는 단일 세션 복구는 무결성을 깨뜨리므로 현재 fail-closed.

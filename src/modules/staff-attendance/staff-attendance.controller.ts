@@ -21,12 +21,12 @@ import { StaffAttendanceService } from './staff-attendance.service';
 @ApiTags('staff-attendance')
 @ApiBearerAuth()
 @UseGuards(RolesGuard)
-@RequireCapabilities('admin.area')
 @Controller('staff-attendance')
 export class StaffAttendanceController {
   constructor(private readonly attendance: StaffAttendanceService) {}
 
   @Get()
+  @RequireCapabilities('admin.area')
   @ApiOperation({ summary: '직원 일별 출결 목록 - 기간·직원·상태 필터 [매니저 이상]' })
   @ApiOkResponse({ description: 'StaffAttendanceRecord[]' })
   list(@Query() query: ListStaffAttendanceQueryDto) {
@@ -34,6 +34,7 @@ export class StaffAttendanceController {
   }
 
   @Get('instructor-ledger')
+  @RequireCapabilities('admin.area')
   @ApiOperation({ summary: '강사 수업 출결+직원 일별 출결 통합 ledger [매니저 이상]' })
   @ApiOkResponse({ description: 'InstructorAttendanceLedger - 기간 합성 read projection' })
   ledger(@Query() query: InstructorAttendanceLedgerQueryDto) {
@@ -41,7 +42,8 @@ export class StaffAttendanceController {
   }
 
   @Put()
-  @ApiOperation({ summary: '직원·업무일 기준 일별 출결 생성 또는 수정 [매니저 이상]' })
+  @RequireCapabilities('attendance.manage')
+  @ApiOperation({ summary: '직원·업무일 기준 일별 출결 생성 또는 수정 [대표]' })
   @ApiOkResponse({ description: '저장된 StaffAttendanceRecord' })
   upsert(
     @Body() dto: UpsertStaffAttendanceDto,
@@ -51,7 +53,8 @@ export class StaffAttendanceController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: '직원 일별 출결 soft-delete, 사유 필수 [매니저 이상]' })
+  @RequireCapabilities('attendance.manage')
+  @ApiOperation({ summary: '직원 일별 출결 soft-delete, 사유 필수 [대표]' })
   @ApiOkResponse({ description: '{ id, deleted: true }' })
   remove(
     @Param('id', PositiveIntPipe) id: number,
@@ -61,4 +64,3 @@ export class StaffAttendanceController {
     return this.attendance.remove(id, dto.reason, req.user!.sub);
   }
 }
-

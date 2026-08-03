@@ -3,7 +3,7 @@ import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
-import { ADMIN_ROLES, Roles, STAFF_ROLES } from '../auth/roles.decorator';
+import { RequireCapabilities, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
 import { CreateProfileChangeRequestDto } from './dto/create-profile-change-request.dto';
 import { ProfileChangeRequestResponseDto } from './dto/profile-change-request-response.dto';
@@ -36,7 +36,7 @@ export class ProfileChangeRequestsController {
   }
 
   @Get()
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('approval.manage')
   @ApiOperation({ summary: '전체 프로필 변경 요청 목록. [관리자]' })
   @ApiOkResponse({ type: ProfileChangeRequestResponseDto, isArray: true })
   list() {
@@ -49,7 +49,7 @@ export class ProfileChangeRequestsController {
   @ApiOperation({ summary: '프로필 변경 요청 상세. 요청자 본인 또는 관리자.' })
   @ApiOkResponse({ type: ProfileChangeRequestResponseDto })
   detail(@Param('id', PositiveIntPipe) id: number, @Req() req: AuthedRequest) {
-    return this.requests.detail(id, this.actorOf(req), req.user?.roles);
+    return this.requests.detail(id, this.actorOf(req), req.user?.effectiveCapabilities);
   }
 
   @Delete(':id')
@@ -62,7 +62,7 @@ export class ProfileChangeRequestsController {
   }
 
   @Post(':id/approve')
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('approval.manage')
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '프로필 변경 요청 승인. 본인 승인 불가. [관리자]' })
   @ApiCreatedResponse({ type: ProfileChangeRequestResponseDto })
@@ -71,7 +71,7 @@ export class ProfileChangeRequestsController {
   }
 
   @Post(':id/reject')
-  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('approval.manage')
   @ApiParam({ name: 'id' })
   @ApiOperation({ summary: '프로필 변경 요청 반려. 사유 필수, 본인 반려 불가. [관리자]' })
   @ApiCreatedResponse({ type: ProfileChangeRequestResponseDto })

@@ -6,6 +6,7 @@ import { ENROLLMENTS_SPEC, STUDENTS_SPEC } from '../../database/calendar-asset-s
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { AuditService } from '../audit/audit.service'; // [출결 이력 2026-07-07] 학생 출결 변경도 audit_log에 기록
 import { hasAdminRole } from '../auth/roles.decorator';
+import type { RoleCapability } from '@kms545487/contracts';
 import { ClassSession, SESSIONS } from '../schedule/schedule.entity';
 import { Student } from '../students/student.entity';
 import { Attendance, ATTENDANCE } from './attendance.entity';
@@ -90,7 +91,7 @@ export class AttendanceService implements OnModuleInit {
   //  actorId·actorRoles(JWT sub·roles)는 컨트롤러가 전달. upsert+audit을 한 tx로(이력 포함 원자성).
   //  [보안 2026-07-07 H1] 소유권 검증(IDOR 차단): 비관리자(강사)는 **본인 담당 세션**의 출결만 기록 가능.
   //   관리자(ADMIN_ROLES)는 전 세션 허용. FE canStudent(=admin||ownSession)와 서버측 정합.
-  async upsert(dto: UpsertAttendanceDto, actorId?: number, actorRoles?: string[]): Promise<Attendance> {
+  async upsert(dto: UpsertAttendanceDto, actorId?: number, actorCapabilities?: RoleCapability[]): Promise<Attendance> {
     return this.unitOfWork.run(async () => {
       // [TBO-56 C2b] session lock + DB 재조회 — 교차 인스턴스 upsert 경쟁을 직렬화(중복 insert 500 경로 제거)
       //  하고, FK·코호트·소유권 판정을 전부 DB 기준으로 내린다(TBO-55 감사 B 항목 해소).
@@ -98,7 +99,7 @@ export class AttendanceService implements OnModuleInit {
         dto.sessionId,
         dto.studentId,
         actorId,
-        actorRoles,
+        actorCapabilities,
       );
 
       // (세션, 학생) 유니크 — DB 기준 판별: 있으면 갱신, 없으면 삽입(lock이 교차 인스턴스 경쟁 직렬화).
@@ -161,7 +162,7 @@ export class AttendanceService implements OnModuleInit {
     studentId: number,
     reason: string,
     actorId?: number,
-    actorRoles?: string[],
+    actorCapabilities?: RoleCapability[],
     ack?: AccountingAckInput,
   ): Promise<{ id: number; sessionId: number; studentId: number; deleted: true }> {
     return this.unitOfWork.run(async () => {
@@ -170,7 +171,7 @@ export class AttendanceService implements OnModuleInit {
         sessionId,
         studentId,
         actorId,
-        actorRoles,
+        actorCapabilities,
         false,
       );
       if (isPayoutLocked(session)) {
@@ -238,7 +239,7 @@ export class AttendanceService implements OnModuleInit {
     sessionId: number,
     studentId: number,
     actorId?: number,
-    actorRoles?: string[],
+    actorCapabilities?: RoleCapability[],
     lock = true,
   ): Promise<{ session: ClassSession; enrollments: Enrollment[] }> {
     if (lock) {
@@ -258,8 +259,8 @@ export class AttendanceService implements OnModuleInit {
     // [TBO-79 D5] fail-closed — 종전 `actorId != null &&`는 actor 미상 호출이 소유권 검사를 통째로
     //  건너뛰게 했다. 관리자 판정은 그대로 통과 경로다.
     if (actorId == null) throw new ForbiddenException('출결 기록에는 로그인 사용자 정보가 필요합니다.');
-    if (!hasAdminRole(actorRoles) && !isSessionVisibleToInstructor(session, actorId)) {
-      throw new ForbiddenException('담당 강사 또는 관리자만 이 세션의 출결을 기록할 수 있습니다.');
+    if (!actorCapabilities?.includes('attendance.manage')) {
+      throw new ForbiddenException('학생 출결 변경은 대표 권한이 필요합니다.');
     }
     return { session, enrollments };
   }

@@ -18,6 +18,7 @@ import { BrowserOriginGuard } from './browser-origin.guard';
 import { DatabaseModule } from '../../database/database.module';
 import { PostgresConnectionService } from '../../database/postgres-connection.service';
 import { PostgresThrottleStorage } from './postgres-throttle.storage';
+import { AccessControlService } from './access-control.service';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { PostgresThrottleStorage } from './postgres-throttle.storage';
   controllers: [AuthController],
   providers: [
     AuthService,
+    AccessControlService,
     SudoGuard,
     BrowserOriginGuard,
     { provide: APP_GUARD, useExisting: BrowserOriginGuard },
@@ -55,6 +57,6 @@ import { PostgresThrottleStorage } from './postgres-throttle.storage';
   ],
   // SignupEmailChallengesService export: UsersService.signup이 가입 tx에서 consumeForSignup을 호출
   //  (UsersModule ↔ AuthModule 기존 forwardRef 순환 위에 얹힘 — 주입부는 @Inject(forwardRef)).
-  exports: [AuthService, RolesGuard, AuthEventsService, SignupEmailChallengesService, SignupPhoneChallengesService, SudoGuard],
+  exports: [AuthService, RolesGuard, AccessControlService, AuthEventsService, SignupEmailChallengesService, SignupPhoneChallengesService, SudoGuard],
 })
 export class AuthModule {}

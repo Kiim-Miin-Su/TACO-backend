@@ -29,8 +29,8 @@ describe('[74D-0] session_update 영향 hash·stale 방어 (e2e)', () => {
       .send({ courseId: 10, instructorId: 1, studentIds: [1], sessionDate: addDaysISO(PAST, dayOffset), startTime, durationMinutes, force: true })
       .expect(201)).body.row;
     // 강사+학생 출결 완결 → held
-    await http.put('/api/attendance').set(as('manager')).send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${created.id}`).set(as('manager')).send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.put('/api/attendance').set(as('admin')).send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
+    await http.patch(`/api/schedule/${created.id}`).set(as('admin')).send({ instructorAttendance: 'present', force: true }).expect(200);
     expect((await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body.status).toBe('held');
     return created.id as number;
   };

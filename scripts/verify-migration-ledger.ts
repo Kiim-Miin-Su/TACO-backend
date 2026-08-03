@@ -49,6 +49,7 @@ import { SCHEDULE_REQUEST_BATCH_STRICT_MIGRATION_ID } from '../src/database/migr
 import { SCHEMA_SHAPE_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/schema-shape-integrity.migration';
 import { AUTH_EVENT_DOMAIN_MIGRATION_ID } from '../src/database/migrations/auth-event-domain.migration';
 import { STAFF_ATTENDANCE_MIGRATION_ID } from '../src/database/migrations/staff-attendance.migration';
+import { USER_CAPABILITY_OVERRIDES_MIGRATION_ID } from '../src/database/migrations/user-capability-overrides.migration';
 
 loadLocalEnv();
 
@@ -99,6 +100,7 @@ export const EXPECTED_MIGRATION_IDS = [
   SCHEMA_SHAPE_INTEGRITY_MIGRATION_ID, // [78C3] enum domains + join FKs + event default
   AUTH_EVENT_DOMAIN_MIGRATION_ID, // [78C3] shared AuthEventType domain completion
   STAFF_ATTENDANCE_MIGRATION_ID, // [81B] 직원 일별 출결 원부·unique/FK/CHECK/index
+  USER_CAPABILITY_OVERRIDES_MIGRATION_ID, // [82C] 사용자별 권한 override·actor/FK/CHECK/index
 ] as const;
 
 const url = directDatabaseUrl();

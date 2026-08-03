@@ -36,8 +36,8 @@ describe('[TBO-79] 회계 미리보기 ↔ 정산 산정 단일 정책 (e2e)', (
     const created = (await http.post('/api/schedule').set(as('manager'))
       .send({ courseId: 10, instructorId: 1, studentIds: [1], sessionDate: addDaysISO(PAST, dayOffset), startTime, durationMinutes, force: true })
       .expect(201)).body.row;
-    await http.put('/api/attendance').set(as('manager')).send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${created.id}`).set(as('manager')).send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.put('/api/attendance').set(as('admin')).send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
+    await http.patch(`/api/schedule/${created.id}`).set(as('admin')).send({ instructorAttendance: 'present', force: true }).expect(200);
     const report = (await http.post('/api/reports').set(as('park_inst'))
       .send({ sessionId: created.id, studentId: 1, content: 'TBO-79 정책 정합 회귀' }).expect(201)).body;
     await http.post(`/api/reports/${report.id}/submit`).set(as('park_inst')).send({}).expect(201);
@@ -64,7 +64,7 @@ describe('[TBO-79] 회계 미리보기 ↔ 정산 산정 단일 정책 (e2e)', (
     expect(line!.amount).toBeGreaterThan(0);
 
     // 정책 분기 시절엔 delta 0 → changed:false → 200이었다.
-    const blocked = await http.patch(`/api/schedule/${id}`).set(as('manager'))
+    const blocked = await http.patch(`/api/schedule/${id}`).set(as('admin'))
       .send({ instructorAttendance: 'late', force: true }).expect(409);
     expect(blocked.body.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
     expect(blocked.body.impactHash).toMatch(/^[a-f0-9]{64}$/);
@@ -78,7 +78,7 @@ describe('[TBO-79] 회계 미리보기 ↔ 정산 산정 단일 정책 (e2e)', (
     expect((await previewOf()).computedAmount).toBe(before.computedAmount);
 
     // ack + hash 결속 → 200. 이후 실제 정산이 미리보기와 일치한다.
-    await http.patch(`/api/schedule/${id}`).set(as('manager')).send({
+    await http.patch(`/api/schedule/${id}`).set(as('admin')).send({
       instructorAttendance: 'late',
       force: true,
       acknowledgeAccountingImpact: true,
@@ -117,12 +117,12 @@ describe('[TBO-79] 회계 미리보기 ↔ 정산 산정 단일 정책 (e2e)', (
     expect(line?.amount).toBeGreaterThan(0);
 
     // 출결 초기화 = held → scheduled. 정산 예상액이 빠지므로 ack 게이트가 걸려야 한다(B4).
-    const cleared = await http.delete(`/api/attendance/${id}/1`).set(as('manager')).send({ reason: 'TBO-79 미기록 회귀' });
+    const cleared = await http.delete(`/api/attendance/${id}/1`).set(as('admin')).send({ reason: 'TBO-79 미기록 회귀' });
     expect([200, 409]).toContain(cleared.status);
     if (cleared.status === 409) {
       expect(cleared.body.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
       expect((await previewOf()).computedAmount).toBe(before.computedAmount);
-      await http.delete(`/api/attendance/${id}/1`).set(as('manager')).send({
+      await http.delete(`/api/attendance/${id}/1`).set(as('admin')).send({
         reason: 'TBO-79 미기록 회귀',
         acknowledgeAccountingImpact: true,
         expectedAccountingImpactHash: cleared.body.impactHash,

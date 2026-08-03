@@ -10,6 +10,7 @@ import type {
   OpenClassResult,
   OpenClassSeriesInput,
   OpenClassSeriesResult,
+  RoleCapability,
   ScheduleRow,
   ScheduleSeries,
 } from '@kms545487/contracts';
@@ -24,7 +25,6 @@ import { detectConflicts } from './conflict.util';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CoursesService } from '../courses/courses.service';
 import type { StaffAccount } from '../users/user.entity';
-import { hasAdminRole } from '../auth/roles.decorator'; // [TBO-62 ④] 강사 본인 출결 체크 판정
 import { ClassSessionsStore } from './class-sessions.store';
 import { ScheduleReadService, SESSION_DEFAULTS } from './schedule-read.service'; // [TBO-69 C1]
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
@@ -656,20 +656,17 @@ export class ScheduleService {
    *  이미 표시된 출결의 변경·초기화는 관리자 PATCH 전용(403). 관리자는 제한 없이 이 라우트 사용 가능.
    *  실제 반영은 기존 update 파이프라인 재사용(lock·audit·read-model write-through 동일). */
   async markInstructorAttendance(
-    id: number, status: InstructorAttendanceStatus, actorId?: number, roles: string[] = [],
+    id: number,
+    status: InstructorAttendanceStatus,
+    actorId?: number,
+    actorCapabilities: RoleCapability[] = [],
   ): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }> {
     await this.read.ensureReady();
-    const isAdmin = hasAdminRole(roles);
-    if (!isAdmin) {
-      const cur = await this.sessions.findByIdDb(id);
-      if (!cur) throw new NotFoundException(`Session ${id} not found`);
-      if (cur.instructorId !== actorId) throw new ForbiddenException('본인 담당 수업만 출결을 체크할 수 있습니다.');
-      if (cur.instructorAttendance != null) throw new ForbiddenException('이미 체크된 출결의 수정은 매니저 이상만 가능합니다.');
+    if (!actorCapabilities.includes('attendance.manage')) {
+      throw new ForbiddenException('강사 출결 변경은 대표 권한이 필요합니다.');
     }
-    // [TBO-79 D4] 위 가드는 tx **밖** 판정이라 동시 요청 2건이 모두 null을 보고 통과할 수 있었다
-    //  ("수정은 매니저 이상" 규칙의 경쟁 우회). 잠금 후 같은 조건을 다시 확인하도록 넘긴다.
     return this.update(id, { instructorAttendance: status } as UpdateScheduleDto, actorId, {
-      requireUncheckedInstructorAttendance: !isAdmin,
+      actorCapabilities,
     });
   }
 
@@ -680,8 +677,7 @@ export class ScheduleService {
     // [74D-0] 승인 경로 전용 — 요청 생성 시 snapshot한 대상 집합과 잠금 후 실제 대상을 결속(drift=전체 rollback).
     internalOpts?: {
       expectedTargetIds?: readonly number[];
-      /** [TBO-79 D4] 강사 최초 1회 기록 경로 — 잠금 후에도 미표시여야 한다. */
-      requireUncheckedInstructorAttendance?: boolean;
+      actorCapabilities?: RoleCapability[];
     },
   ): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number; accountingImpact?: SessionAccountingImpact; accountingImpactHash?: string }> {
     await this.read.ensureReady();
@@ -735,9 +731,9 @@ export class ScheduleService {
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
     this.assertCompletionStatusCommand(cur.status, dto.status);
-    // [TBO-79 D4] 잠금 후 재확인 — 두 요청이 tx 밖에서 모두 null을 본 경우 여기서 패자가 걸린다.
-    if (internalOpts?.requireUncheckedInstructorAttendance && cur.instructorAttendance != null) {
-      throw new ForbiddenException('이미 체크된 출결의 수정은 매니저 이상만 가능합니다.');
+    if ((dto.instructorAttendance != null || dto.clearInstructorAttendance)
+      && !internalOpts?.actorCapabilities?.includes('attendance.manage')) {
+      throw new ForbiddenException('강사 출결 변경은 대표 권한이 필요합니다.');
     }
     await this.assertCeoOwnedSessionMutable(cur, actorId); // [TBO-59 C3-3]
     // 참조 무결성(FK) 검증

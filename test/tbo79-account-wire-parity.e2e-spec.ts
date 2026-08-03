@@ -88,9 +88,9 @@ describe('[TBO-79] 계정·세션 wire ↔ 계약 일치 (e2e)', () => {
     const created = (await http.post('/api/schedule').set(as('manager'))
       .send({ courseId: 10, instructorId: 1, studentIds: [1], sessionDate: PAST, startTime: '08:00', durationMinutes: 60, force: true })
       .expect(201)).body.row as { id: number };
-    await http.put('/api/attendance').set(as('manager'))
+    await http.put('/api/attendance').set(as('admin'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${created.id}`).set(as('manager'))
+    await http.patch(`/api/schedule/${created.id}`).set(as('admin'))
       .send({ instructorAttendance: 'present', force: true }).expect(200);
 
     const paid = (await http.put(`/api/schedule/${created.id}/pay-amount`).set(as('admin'))
@@ -107,9 +107,9 @@ describe('[TBO-79] 계정·세션 wire ↔ 계약 일치 (e2e)', () => {
     const created = (await http.post('/api/schedule').set(as('manager'))
       .send({ courseId: 10, instructorId: 1, studentIds: [1], sessionDate: PAST, startTime: '15:00', durationMinutes: 60, force: true })
       .expect(201)).body.row as { id: number };
-    await http.put('/api/attendance').set(as('manager'))
+    await http.put('/api/attendance').set(as('admin'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${created.id}`).set(as('manager'))
+    await http.patch(`/api/schedule/${created.id}`).set(as('admin'))
       .send({ instructorAttendance: 'present', force: true }).expect(200);
 
     const blocked = await http.patch(`/api/schedule/${created.id}`).set(as('manager'))

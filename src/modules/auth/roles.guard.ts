@@ -15,11 +15,12 @@ import type { Request } from 'express';
 import { AuthService, type JwtClaims } from './auth.service';
 import {
   CAPABILITIES_KEY,
+  ADMIN_ROLES,
   ROLES_KEY,
   type AppRole,
   type RoleCapability,
 } from './roles.decorator';
-import { claimsHaveCapability } from './role-policy';
+import { AccessControlService } from './access-control.service';
 import { AccountStateService } from '../../database/account-state.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { extractAccessToken } from './access-token'; // [TBO-34 C2-C] 추출 단일 진실원
@@ -52,6 +53,7 @@ export class RolesGuard implements CanActivate {
     private readonly auth: AuthService,
     private readonly reflector: Reflector,
     private readonly accounts: AccountStateService,
+    private readonly access: AccessControlService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -85,19 +87,6 @@ export class RolesGuard implements CanActivate {
       throw new UnauthorizedException('유효하지 않은 토큰입니다.');
     }
 
-    const roleAllowed = !required?.length || (claims.roles ?? []).some((r) => required.includes(r as AppRole));
-    const capabilitiesAllowed = !requiredCapabilities?.length
-      || requiredCapabilities.every((capability) => claimsHaveCapability(claims.roles, capability));
-    const ok = roleAllowed && capabilitiesAllowed;
-    if (!ok) {
-      const policy = [
-        ...(required ?? []).map((role) => `role:${role}`),
-        ...(requiredCapabilities ?? []).map((capability) => `cap:${capability}`),
-      ].join('|');
-      this.log.warn(`거부(권한부족): ${route} — 필요=${policy}`);
-      throw new ForbiddenException('접근 권한이 없습니다.');
-    }
-
     // [TBO-28B] 권위 대조 — 서명이 유효해도 계정 상태/버전이 바뀌었으면 즉시 거부.
     const verdict = await this.accounts.verifyClaims(claims);
     if (!verdict.ok) {
@@ -109,7 +98,25 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('임시 비밀번호를 먼저 변경해 주세요.');
     }
 
-    req.user = claims;
+    const effectiveCapabilities = await this.access.effectiveCapabilities(claims.sub, claims.roles ?? []);
+    const roleAllowed = !required?.length || (claims.roles ?? []).some((r) => required.includes(r as AppRole));
+    const adminAreaRequired = !!required?.length
+      && required.every((role) => ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number]));
+    const adminAreaAllowed = !adminAreaRequired || effectiveCapabilities.includes('admin.area');
+    const capabilitiesAllowed = !requiredCapabilities?.length
+      || requiredCapabilities.every((capability) => effectiveCapabilities.includes(capability));
+    const ok = roleAllowed && adminAreaAllowed && capabilitiesAllowed;
+    if (!ok) {
+      const policy = [
+        ...(required ?? []).map((role) => `role:${role}`),
+        ...(requiredCapabilities ?? []).map((capability) => `cap:${capability}`),
+        ...(adminAreaRequired ? ['cap:admin.area'] : []),
+      ].join('|');
+      this.log.warn(`거부(권한부족): ${route} — 필요=${policy}`);
+      throw new ForbiddenException('접근 권한이 없습니다.');
+    }
+
+    req.user = { ...claims, effectiveCapabilities };
     return true;
   }
 }

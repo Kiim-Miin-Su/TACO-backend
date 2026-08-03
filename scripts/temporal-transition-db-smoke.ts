@@ -70,12 +70,13 @@ async function main(): Promise<void> {
     await attendance.upsert(
       { sessionId, studentId, status: 'present' },
       instructorId,
-      ['super-admin'],
+      ['attendance.manage'],
     );
     await schedule.update(
       sessionId,
       { instructorAttendance: 'present' },
       instructorId,
+      { actorCapabilities: ['attendance.manage'] },
     );
     const report = await reports.create({
       sessionId,

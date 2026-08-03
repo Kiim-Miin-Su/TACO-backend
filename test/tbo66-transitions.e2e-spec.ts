@@ -30,26 +30,28 @@ describe('[TBO-66] 자동 전이·캐싱 (e2e)', () => {
   const statusOf = async (id: number) =>
     (await http.get(`/api/schedule/${id}`).set(auth('admin')).expect(200)).body.status as string;
 
-  it('강사 본인 출결만으로는 scheduled 유지, 학생 출결까지 완결되면 held 전이', async () => {
+  it('강사 출결 요청은 차단되고 대표가 강사·학생 출결을 완결하면 held 전이', async () => {
     const id = await makePastSession('08:00');
-    await http.post(`/api/schedule/${id}/instructor-attendance`).set(auth('park_inst')).send({ status: 'present' }).expect(201);
+    await http.post(`/api/schedule/${id}/instructor-attendance`).set(auth('park_inst')).send({ status: 'present' }).expect(403);
+    await http.post(`/api/schedule/${id}/instructor-attendance`).set(auth('admin')).send({ status: 'present' }).expect(201);
     expect(await statusOf(id)).toBe('scheduled');
     const incomplete = (await http.get(`/api/schedule/${id}`).set(auth('admin')).expect(200)).body;
     expect(incomplete).toMatchObject({
       attendanceRequired: true,
       missingAttendance: { instructor: false, studentIds: [1] },
     });
-    await http.put('/api/attendance').set(auth('manager')).send({ sessionId: id, studentId: 1, status: 'present' }).expect(200);
+    await http.put('/api/attendance').set(auth('admin')).send({ sessionId: id, studentId: 1, status: 'present' }).expect(200);
     expect(await statusOf(id)).toBe('held');
   });
 
-  it('매니저 강사 출결 PATCH도 완결 전에는 scheduled 유지하고 명시 status는 우선한다', async () => {
+  it('매니저 강사 출결 PATCH는 차단되고 대표의 명시 status는 우선한다', async () => {
     const id = await makePastSession('09:00');
-    await http.patch(`/api/schedule/${id}`).set(auth('manager')).send({ instructorAttendance: 'late', force: true }).expect(200);
+    await http.patch(`/api/schedule/${id}`).set(auth('manager')).send({ instructorAttendance: 'late', force: true }).expect(403);
+    await http.patch(`/api/schedule/${id}`).set(auth('admin')).send({ instructorAttendance: 'late', force: true }).expect(200);
     expect(await statusOf(id)).toBe('scheduled');
     // status 명시 동반이면 수동 지정 존중(자동 전이가 덮지 않음)
     const id2 = await makePastSession('10:00');
-    await http.patch(`/api/schedule/${id2}`).set(auth('manager'))
+    await http.patch(`/api/schedule/${id2}`).set(auth('admin'))
       .send({ instructorAttendance: 'present', status: 'canceled', force: true, acknowledgeAccountingImpact: true }).expect(200);
     expect(await statusOf(id2)).toBe('canceled');
   });
@@ -61,9 +63,9 @@ describe('[TBO-66] 자동 전이·캐싱 (e2e)', () => {
     expect(await statusOf(id)).toBe('scheduled'); // 작성만으로는 전이 없음(승인이 사실 확정)
     await http.post(`/api/reports/${report.id}/approve`).set(auth('admin')).expect(201);
     expect(await statusOf(id)).toBe('scheduled');
-    await http.put('/api/attendance').set(auth('manager')).send({ sessionId: id, studentId: 1, status: 'present' }).expect(200);
+    await http.put('/api/attendance').set(auth('admin')).send({ sessionId: id, studentId: 1, status: 'present' }).expect(200);
     expect(await statusOf(id)).toBe('scheduled');
-    await http.patch(`/api/schedule/${id}`).set(auth('manager')).send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.patch(`/api/schedule/${id}`).set(auth('admin')).send({ instructorAttendance: 'present', force: true }).expect(200);
     expect(await statusOf(id)).toBe('held');
   });
 
@@ -72,13 +74,13 @@ describe('[TBO-66] 자동 전이·캐싱 (e2e)', () => {
     const futureId = (await http.post('/api/schedule').set(auth('admin'))
       .send({ courseId: 10, instructorId: 1, studentIds: [1], sessionDate: future, startTime: '08:00', durationMinutes: 60, force: true })
       .expect(201)).body.row.id;
-    await http.patch(`/api/schedule/${futureId}`).set(auth('manager')).send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.patch(`/api/schedule/${futureId}`).set(auth('admin')).send({ instructorAttendance: 'present', force: true }).expect(200);
     expect(await statusOf(futureId)).toBe('scheduled'); // 미래 — 전이 금지
 
     const canceledId = await makePastSession('12:00');
     await http.patch(`/api/schedule/${canceledId}`).set(auth('manager'))
       .send({ status: 'canceled', force: true }).expect(200);
-    await http.put('/api/attendance').set(auth('manager')).send({ sessionId: canceledId, studentId: 1, status: 'present' }).expect(200);
+    await http.put('/api/attendance').set(auth('admin')).send({ sessionId: canceledId, studentId: 1, status: 'present' }).expect(200);
     expect(await statusOf(canceledId)).toBe('canceled'); // 종결 상태 불변(학생 출결 경로)
   });
 
@@ -93,7 +95,7 @@ describe('[TBO-66] 자동 전이·캐싱 (e2e)', () => {
     expect(entry!.executionMissingCount).toBeGreaterThan(0); // 위 세션 포함(이 스위트가 만든 잔여 scheduled들)
     // 학생+강사 출결 완결 후 재조회 — 해당 회차는 실행 미확정에서 빠진다
     await http.put('/api/attendance').set(auth('admin')).send({ sessionId: id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${id}`).set(auth('manager')).send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.patch(`/api/schedule/${id}`).set(auth('admin')).send({ instructorAttendance: 'present', force: true }).expect(200);
     const after = (await http.get('/api/payouts/uncovered?months=3').set(auth('admin')).expect(200)).body as typeof entries;
     const afterEntry = after.find((e) => e.instructorId === 1 && e.month === month);
     expect((afterEntry?.executionMissingCount ?? 0)).toBeLessThan(entry!.executionMissingCount);

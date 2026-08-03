@@ -20,8 +20,8 @@ describe('Staff attendance ledger (e2e)', () => {
 
   afterAll(async () => app.close());
 
-  it('manager가 직원·일자 기준으로 생성하고 같은 행을 수정하며 audit을 남긴다', async () => {
-    const created = (await http.put('/api/staff-attendance').set(auth('manager')).send({
+  it('대표가 직원·일자 기준으로 생성하고 같은 행을 수정하며 audit을 남긴다', async () => {
+    const created = (await http.put('/api/staff-attendance').set(auth('admin')).send({
       staffId: 1,
       workDate: '2026-08-03',
       status: 'present',
@@ -29,7 +29,7 @@ describe('Staff attendance ledger (e2e)', () => {
       checkOutAt: '2026-08-03T18:00:00+09:00',
       memo: '정상 출근',
     }).expect(200)).body;
-    const updated = (await http.put('/api/staff-attendance').set(auth('manager')).send({
+    const updated = (await http.put('/api/staff-attendance').set(auth('admin')).send({
       staffId: 1,
       workDate: '2026-08-03',
       status: 'paid_leave',
@@ -48,7 +48,7 @@ describe('Staff attendance ledger (e2e)', () => {
   });
 
   it('통합 ledger가 수업 출결과 직원 일별 출결을 source로 분리하고 이름 검색한다', async () => {
-    await http.put('/api/staff-attendance').set(auth('manager')).send({
+    await http.put('/api/staff-attendance').set(auth('admin')).send({
       staffId: 1,
       workDate: '2026-08-05',
       status: 'present',
@@ -70,7 +70,7 @@ describe('Staff attendance ledger (e2e)', () => {
   it('같은 직원·날짜 동시 upsert는 활성 행 하나만 유지한다', async () => {
     const input = { staffId: 1, workDate: '2026-08-04', memo: '동시 기록' };
     const responses = await Promise.all([
-      http.put('/api/staff-attendance').set(auth('manager')).send({ ...input, status: 'present' }),
+      http.put('/api/staff-attendance').set(auth('admin')).send({ ...input, status: 'present' }),
       http.put('/api/staff-attendance').set(auth('admin')).send({ ...input, status: 'remote_work' }),
     ]);
     expect(responses.every((response) => response.status === 200)).toBe(true);
@@ -83,18 +83,18 @@ describe('Staff attendance ledger (e2e)', () => {
   it('날짜·시간·직원 참조를 검증한다', async () => {
     await http.get('/api/staff-attendance?from=2026-08-31&to=2026-08-01').set(auth('manager')).expect(400);
     await http.get('/api/staff-attendance?from=2025-01-01&to=2026-08-03').set(auth('manager')).expect(400);
-    await http.put('/api/staff-attendance').set(auth('manager')).send({
+    await http.put('/api/staff-attendance').set(auth('admin')).send({
       staffId: 999999,
       workDate: '2026-08-03',
       status: 'present',
     }).expect(400);
-    await http.put('/api/staff-attendance').set(auth('manager')).send({
+    await http.put('/api/staff-attendance').set(auth('admin')).send({
       staffId: 1,
       workDate: '2026-08-05',
       status: 'present',
       checkInAt: '2026-08-05T09:00:00+09:00',
     }).expect(400);
-    await http.put('/api/staff-attendance').set(auth('manager')).send({
+    await http.put('/api/staff-attendance').set(auth('admin')).send({
       staffId: 1,
       workDate: '2026-08-05',
       status: 'present',
@@ -103,7 +103,13 @@ describe('Staff attendance ledger (e2e)', () => {
     }).expect(400);
   });
 
-  it('강사는 관리 ledger와 C/U/D에 접근할 수 없다', async () => {
+  it('manager는 조회만 가능하고 강사는 관리 ledger와 C/U/D에 접근할 수 없다', async () => {
+    await http.get('/api/staff-attendance?from=2026-08-01&to=2026-08-31').set(auth('manager')).expect(200);
+    await http.put('/api/staff-attendance').set(auth('manager')).send({
+      staffId: 1,
+      workDate: '2026-08-06',
+      status: 'present',
+    }).expect(403);
     await http.get('/api/staff-attendance?from=2026-08-01&to=2026-08-31').set(auth('park_inst')).expect(403);
     await http.get('/api/staff-attendance/instructor-ledger?from=2026-08-01&to=2026-08-31').set(auth('park_inst')).expect(403);
     await http.put('/api/staff-attendance').set(auth('park_inst')).send({
@@ -117,8 +123,8 @@ describe('Staff attendance ledger (e2e)', () => {
     const rows = (await http.get('/api/staff-attendance?from=2026-08-04&to=2026-08-04&staffId=1')
       .set(auth('manager')).expect(200)).body;
     const id = rows[0].id;
-    await http.delete(`/api/staff-attendance/${id}`).set(auth('manager')).send({ reason: 'x' }).expect(400);
-    await http.delete(`/api/staff-attendance/${id}`).set(auth('manager')).send({ reason: '중복 테스트 기록 정리' }).expect(200);
+    await http.delete(`/api/staff-attendance/${id}`).set(auth('admin')).send({ reason: 'x' }).expect(400);
+    await http.delete(`/api/staff-attendance/${id}`).set(auth('admin')).send({ reason: '중복 테스트 기록 정리' }).expect(200);
     const after = (await http.get('/api/staff-attendance?from=2026-08-04&to=2026-08-04&staffId=1')
       .set(auth('manager')).expect(200)).body;
     expect(after).toHaveLength(0);

@@ -6,7 +6,7 @@ import { AttendanceService } from './attendance.service';
 import { UpsertAttendanceDto } from './dto/upsert-attendance.dto';
 import { ClearAttendanceDto } from './dto/clear-attendance.dto';
 import { RolesGuard } from '../auth/roles.guard';
-import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
+import { RequireCapabilities, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 
 // [참조/처리] /api/attendance REST. @Roles(STAFF_ROLES) → 로그인 필수(강사 포함, 관리자 한정 아님).
@@ -34,17 +34,17 @@ export class AttendanceController {
   }
 
   @Put()
-  @Roles(...STAFF_ROLES) // 로그인 필수(강사가 마킹)
-  @ApiOperation({ summary: '출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장' })
+  @RequireCapabilities('attendance.manage')
+  @ApiOperation({ summary: '학생 출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장 [대표]' })
   @ApiOkResponse({ description: 'upsert된 Attendance' })
   upsert(@Body() dto: UpsertAttendanceDto, @Req() req: Request & { user?: JwtClaims }) {
     // actor(sub·roles) → 소유권 검증(H1 IDOR) + audit_log(출결 변경 이력)
-    return this.attendance.upsert(dto, req.user?.sub, req.user?.roles);
+    return this.attendance.upsert(dto, req.user?.sub, req.user?.effectiveCapabilities);
   }
 
   @Delete(':sessionId/:studentId')
-  @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '학생 출결 초기화 — 담당 강사 또는 관리자, 사유·감사 이력 필수' })
+  @RequireCapabilities('attendance.manage')
+  @ApiOperation({ summary: '학생 출결 초기화 — 대표, 사유·감사 이력 필수' })
   @ApiOkResponse({ description: '{ id, sessionId, studentId, deleted: true }' })
   clear(
     @Param('sessionId', PositiveIntPipe) sessionId: number,
@@ -52,6 +52,6 @@ export class AttendanceController {
     @Body() dto: ClearAttendanceDto,
     @Req() req: Request & { user?: JwtClaims },
   ) {
-    return this.attendance.clear(sessionId, studentId, dto.reason, req.user?.sub, req.user?.roles, dto);
+    return this.attendance.clear(sessionId, studentId, dto.reason, req.user?.sub, req.user?.effectiveCapabilities, dto);
   }
 }

@@ -61,14 +61,14 @@ describe('[TBO-64] 시수 워크시트 (e2e)', () => {
     ABSENT = (await makeSession({ startTime: '15:30' })).id;
     SCHED = (await makeSession({ startTime: '18:00' })).id;
     for (const id of [AUTO, LATE, NOREP, ABSENT]) await held(id);
-    // 강사 출결 수정(워크시트 요건 ③·⑥ — 기존 PATCH 재사용, 매니저)
-    expect((await patchSessionAckingImpact(http, auth('manager'), LATE, { instructorAttendance: 'late', force: true })).status).toBe(200); // [74D-0]
+    // 출결 수정은 대표 전용이며 정산 영향 확인 규약을 그대로 사용한다.
+    expect((await patchSessionAckingImpact(http, auth('admin'), LATE, { instructorAttendance: 'late', force: true })).status).toBe(200); // [74D-0]
     // held 회차의 출결 변경은 회계 영향 확인(ack) 규약 — FE 모달 확인과 동일 플래그 동반.
-    expect((await patchSessionAckingImpact(http, auth('manager'), ABSENT, { instructorAttendance: 'absent', force: true })).status).toBe(200); // [74D-0]
+    expect((await patchSessionAckingImpact(http, auth('admin'), ABSENT, { instructorAttendance: 'absent', force: true })).status).toBe(200); // [74D-0]
     AUTO_REPORT = await approveReport(AUTO);
     await approveReport(LATE);
     // 학생 출결도 워크시트 화면에서 수정 가능(기존 PUT 재사용) — 참가자 출결 표시 검증용
-    await http.put('/api/attendance').set(auth('manager')).send({ sessionId: AUTO, studentId: 1, status: 'present' }).expect(200);
+    await http.put('/api/attendance').set(auth('admin')).send({ sessionId: AUTO, studentId: 1, status: 'present' }).expect(200);
   });
 
   it('분류·기본값 — auto=시급×시간, 지각·리포트 미작성=빈칸(manual), 결석·미진행=excluded', async () => {

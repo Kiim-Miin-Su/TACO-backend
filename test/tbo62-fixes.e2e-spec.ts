@@ -1,5 +1,5 @@
 // [TBO-62 2026-07-24] 긴급 수정 회귀 스위트 — 대표 운영 QA 6건 중 서버 검증 대상 3건.
-//  ④ 강사 본인 출결 체크(최초 1회) — 수정·타인 세션은 403, 매니저는 PATCH로 자유 변경.
+//  ④ 출결 쓰기 = 대표 전용 — 강사·매니저는 403, 대표 기록만 상태를 바꾼다.
 //  ⑤ 출결 기록 = 진행 사실의 단일 진실원 — 종료 지난 scheduled 세션 자동 held(시수·보강 오분류 해소),
 //     미래 세션·종결 상태(canceled)는 전이하지 않음.
 //  ⑥ 강사 payouts 표면 = 지급 완료(paid)만 — me 목록 필터·단건 403·preview/readiness 라우트 404.
@@ -29,27 +29,26 @@ describe('[TBO-62] 긴급 수정 (e2e)', () => {
       startTime: '08:00', durationMinutes: 60, force: true, ...over,
     }).expect(201)).body.row;
 
-  it('④ 강사 본인 출결 — 최초 1회 200, 재체크 403, 타인 세션 403, 매니저 PATCH는 자유', async () => {
+  it('④ 출결 쓰기 — 강사·매니저 403, 대표만 기록·수정·초기화 가능', async () => {
     const row = await makeSession();
-    // park_inst(강사1) 본인 세션 최초 체크 → 성공
+    await http.post(`/api/schedule/${row.id}/instructor-attendance`)
+      .set(auth('park_inst')).send({ status: 'present' }).expect(403);
+    await http.patch(`/api/schedule/${row.id}`).set(auth('manager'))
+      .send({ instructorAttendance: 'present', force: true }).expect(403);
     const marked = (await http.post(`/api/schedule/${row.id}/instructor-attendance`)
-      .set(auth('park_inst')).send({ status: 'present' }).expect(201)).body;
+      .set(auth('admin')).send({ status: 'present' }).expect(201)).body;
     expect(marked.row.instructorAttendance).toBe('present');
-    // 이미 체크됨 → 강사 재체크 403(수정은 매니저)
     await http.post(`/api/schedule/${row.id}/instructor-attendance`)
       .set(auth('park_inst')).send({ status: 'late' }).expect(403);
-    // 타 강사(jung_inst) → 403
     const other = await makeSession({ startTime: '09:10' });
     await http.post(`/api/schedule/${other.id}/instructor-attendance`)
       .set(auth('jung_inst')).send({ status: 'present' }).expect(403);
-    // 매니저는 PATCH로 자유 변경·초기화(종전 규약 유지)
-    await http.patch(`/api/schedule/${row.id}`).set(auth('manager'))
+    await http.patch(`/api/schedule/${row.id}`).set(auth('admin'))
       .send({ instructorAttendance: 'late', force: true }).expect(200);
-    await http.patch(`/api/schedule/${row.id}`).set(auth('manager'))
+    await http.patch(`/api/schedule/${row.id}`).set(auth('admin'))
       .send({ clearInstructorAttendance: true, force: true }).expect(200);
-    // 초기화 후엔 강사가 다시 최초 체크 가능
     await http.post(`/api/schedule/${row.id}/instructor-attendance`)
-      .set(auth('park_inst')).send({ status: 'present' }).expect(201);
+      .set(auth('admin')).send({ status: 'present' }).expect(201);
   });
 
   it('⑤ 강사+대상 학생 전원 출결 완결 시 scheduled → held 자동 전이', async () => {
@@ -59,7 +58,7 @@ describe('[TBO-62] 긴급 수정 (e2e)', () => {
     await http.put('/api/attendance').set(auth('admin'))
       .send({ sessionId: past.id, studentId: 1, status: 'present' }).expect(200);
     expect((await http.get(`/api/schedule/${past.id}`).set(auth('admin')).expect(200)).body.status).toBe('scheduled');
-    await http.patch(`/api/schedule/${past.id}`).set(auth('manager'))
+    await http.patch(`/api/schedule/${past.id}`).set(auth('admin'))
       .send({ instructorAttendance: 'present', force: true }).expect(200);
     const after = (await http.get(`/api/schedule?from=${addDaysISO(MON, -7)}&to=${addDaysISO(MON, -7)}`)
       .set(auth('admin')).expect(200)).body.find((r: { id: number }) => r.id === past.id);

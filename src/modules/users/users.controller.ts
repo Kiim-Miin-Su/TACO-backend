@@ -1,6 +1,6 @@
-import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, ForbiddenException, Get, Param, Patch, Post, Put, Query, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
-import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery } from '@nestjs/swagger';
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiQuery } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { UsersService } from './users.service';
 import { SignupApprovalService } from './signup-approval.service'; // [TBO-68 C3] 직접 등록
@@ -21,6 +21,8 @@ import { smsChallengeAvailable } from '../profile-verifications/sms-availability
 import { profileVersionOf } from './user.entity';
 import { UserLifecycleDto } from './dto/user-lifecycle.dto';
 import { StaffAccountResponseDto } from './dto/staff-account-response.dto';
+import { AccessControlService } from '../auth/access-control.service';
+import { SetUserCapabilityDto } from '../auth/dto/set-user-capability.dto';
 
 @UseGuards(RolesGuard)
 @Controller('users')
@@ -28,6 +30,7 @@ export class UsersController {
   constructor(
     private readonly users: UsersService,
     private readonly signupApproval: SignupApprovalService, // [TBO-68 C3]
+    private readonly access: AccessControlService,
   ) {}
 
   @Get('me/profile')
@@ -114,6 +117,29 @@ export class UsersController {
       id,
       claimsHaveCapability(roles, 'executive.manage') ? 'super_admin' : 'admin',
     );
+  }
+
+  @Get(':id/permissions')
+  @RequireCapabilities('access.manage')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '사용자 유효 권한 projection — 역할 기본값+DB 개별 예외 [대표·관리자]' })
+  permissions(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    return this.access.permissionsFor(id, req.user!.sub);
+  }
+
+  @Put(':id/permissions/:capability')
+  @UseGuards(SudoGuard)
+  @RequireCapabilities('access.manage')
+  @ApiBearerAuth()
+  @ApiParam({ name: 'capability', description: 'contracts RoleCapability' })
+  @ApiOperation({ summary: '사용자 권한 허용·제한·역할 기본값 복원 — 사유·재인증·감사·원자 transaction [대표·관리자]' })
+  setPermission(
+    @Param('id', PositiveIntPipe) id: number,
+    @Param('capability') capability: string,
+    @Body() dto: SetUserCapabilityDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.access.setPermission(id, capability, dto, req.user!.sub);
   }
 
   @Patch(':id')

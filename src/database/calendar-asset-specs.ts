@@ -46,6 +46,10 @@ import {
   STAFF_ATTENDANCE_INDEX_SQL,
   STAFF_ATTENDANCE_TABLE_SQL,
 } from './migrations/staff-attendance.migration';
+import {
+  USER_CAPABILITY_OVERRIDES_INDEX_SQL,
+  USER_CAPABILITY_OVERRIDES_TABLE_SQL,
+} from './migrations/user-capability-overrides.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -112,6 +116,12 @@ export const USERS_SPEC: PostgresCollectionSpec = {
   // [TBO-28A drift 해소] timestamptz 컬럼은 pg 드라이버가 Date로 돌려주므로 ISO string으로 통일.
   //  (createdAt/updatedAt/deletedAt은 store 기본 변환 — 그 외 timestamptz는 여기 선언 필수)
   timestampFields: ['approvedAt', 'lastLoginAt', 'emailVerifyExpiresAt'],
+};
+
+export const USER_CAPABILITY_OVERRIDES_SPEC: PostgresCollectionSpec = {
+  table: 'user_capability_overrides',
+  createSql: USER_CAPABILITY_OVERRIDES_TABLE_SQL,
+  indexes: [...USER_CAPABILITY_OVERRIDES_INDEX_SQL],
 };
 
 export const PROFILE_CHANGE_REQUESTS_SPEC: PostgresCollectionSpec = {
