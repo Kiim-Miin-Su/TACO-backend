@@ -36,6 +36,7 @@ import { ProfileVerificationsModule } from './modules/profile-verifications/prof
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { CredentialsModule } from './modules/credentials/credentials.module';
 import { NavSeenModule } from './modules/nav-seen/nav-seen.module'; // [B3] 알림 뱃지 읽음
+import { StaffAttendanceModule } from './modules/staff-attendance/staff-attendance.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { NavSeenModule } from './modules/nav-seen/nav-seen.module'; // [B3] 알�
     EventsModule,
     InstructorContractsModule, // [TBO-19 Sprint4] 강사 계약
     AttendanceModule,
+    StaffAttendanceModule,
     ParentsModule,
     RegistrationsModule,
     NavSeenModule, // [B3 2026-07-16] 알림 뱃지 읽음(last-seen)

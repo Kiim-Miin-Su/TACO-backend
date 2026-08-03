@@ -68,6 +68,7 @@
     "db:verify-schema-shape": "ts-node scripts/verify-schema-shape.ts",
     "db:migrate-schema-shape-integrity": "ts-node scripts/migrate-schema-shape-integrity.ts",
     "db:migrate-auth-event-domain": "ts-node scripts/migrate-auth-event-domain.ts",
+    "db:migrate:staff-attendance": "ts-node scripts/migrate-staff-attendance.ts",
     "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts",
     "verify:runtime-data": "ts-node scripts/verify-runtime-data-boundary.ts",
     "verify:crud-surfaces": "ts-node scripts/verify-crud-surfaces.ts",
@@ -101,7 +102,7 @@
     "contracts:stage:check": "node scripts/stage-local-contracts.js --check"
   },
   "dependencies": {
-    "@kms545487/contracts": "^0.2.42",
+    "@kms545487/contracts": "^0.2.43",
     "@neondatabase/serverless": "^1.1.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",

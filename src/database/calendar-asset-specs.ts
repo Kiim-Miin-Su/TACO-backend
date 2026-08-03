@@ -42,6 +42,10 @@ import { INSTRUCTOR_CONTRACT_INTEGRITY_SQL } from './migrations/instructor-contr
 import { INSTRUCTOR_CONTRACT_BOUNDS_SQL } from './migrations/instructor-contract-bounds.migration';
 import { TRANSACTION_SOURCE_INTEGRITY_SQL } from './migrations/transaction-source-integrity.migration';
 import { REPORT_TEMPLATE_OWNER_MIGRATION_SQL } from './migrations/report-template-owner.migration';
+import {
+  STAFF_ATTENDANCE_INDEX_SQL,
+  STAFF_ATTENDANCE_TABLE_SQL,
+} from './migrations/staff-attendance.migration';
 
 const activeIndex = (table: string, name: string, columns: string): string =>
   `CREATE INDEX IF NOT EXISTS ${name} ON ${table} (${columns}) WHERE deleted_at IS NULL`;
@@ -863,6 +867,14 @@ export const SESSION_REPORTS_SPEC: PostgresCollectionSpec = {
     activeIndex('session_reports', 'idx_reports_instructor_status', 'instructor_id, status'),
     activeIndex('session_reports', 'idx_reports_instructor_approval', 'instructor_id, approval_status'),
   ],
+};
+
+export const STAFF_ATTENDANCE_SPEC: PostgresCollectionSpec = {
+  table: 'staff_attendance_records',
+  createSql: STAFF_ATTENDANCE_TABLE_SQL,
+  dateFields: ['workDate'],
+  timestampFields: ['checkInAt', 'checkOutAt'],
+  indexes: [...STAFF_ATTENDANCE_INDEX_SQL],
 };
 
 export const INSTRUCTOR_CONTRACTS_SPEC: PostgresCollectionSpec = {

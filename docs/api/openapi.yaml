@@ -4891,6 +4891,136 @@ paths:
       summary: 강사 기간 계약 수정·종료, 재인증·사유 필수 [대표]
       tags:
         - instructor-contracts
+  /api/staff-attendance:
+    get:
+      operationId: StaffAttendanceController_list
+      parameters:
+        - name: from
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: to
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: staffId
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            type: number
+        - name: status
+          required: false
+          in: query
+          schema:
+            type: string
+            enum:
+              - present
+              - late
+              - absent
+              - paid_leave
+              - unpaid_leave
+              - sick_leave
+              - remote_work
+      responses:
+        '200':
+          description: StaffAttendanceRecord[]
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 직원 일별 출결 목록 - 기간·직원·상태 필터 [매니저 이상]
+      tags:
+        - staff-attendance
+    put:
+      operationId: StaffAttendanceController_upsert
+      parameters: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpsertStaffAttendanceDto'
+      responses:
+        '200':
+          description: 저장된 StaffAttendanceRecord
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 직원·업무일 기준 일별 출결 생성 또는 수정 [매니저 이상]
+      tags:
+        - staff-attendance
+  /api/staff-attendance/instructor-ledger:
+    get:
+      operationId: StaffAttendanceController_ledger
+      parameters:
+        - name: from
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: to
+          required: true
+          in: query
+          schema:
+            type: string
+        - name: instructorId
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            type: integer
+            format: int32
+            maximum: 2147483647
+        - name: subjectId
+          required: false
+          in: query
+          schema:
+            minimum: 1
+            type: number
+        - name: q
+          required: false
+          in: query
+          schema:
+            maxLength: 100
+            type: string
+      responses:
+        '200':
+          description: InstructorAttendanceLedger - 기간 합성 read projection
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 강사 수업 출결+직원 일별 출결 통합 ledger [매니저 이상]
+      tags:
+        - staff-attendance
+  /api/staff-attendance/{id}:
+    delete:
+      operationId: StaffAttendanceController_remove
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeleteStaffAttendanceDto'
+      responses:
+        '200':
+          description: '{ id, deleted: true }'
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 직원 일별 출결 soft-delete, 사유 필수 [매니저 이상]
+      tags:
+        - staff-attendance
   /api/parents:
     get:
       operationId: ParentsController_findAll
@@ -8528,6 +8658,47 @@ components:
           type: string
           nullable: true
           maxLength: 500
+        reason:
+          type: string
+          minLength: 2
+          maxLength: 500
+      required:
+        - reason
+    UpsertStaffAttendanceDto:
+      type: object
+      properties:
+        staffId:
+          type: number
+          minimum: 1
+        workDate:
+          type: string
+        status:
+          type: string
+          enum:
+            - present
+            - late
+            - absent
+            - paid_leave
+            - unpaid_leave
+            - sick_leave
+            - remote_work
+        checkInAt:
+          type: string
+          nullable: true
+        checkOutAt:
+          type: string
+          nullable: true
+        memo:
+          type: string
+          nullable: true
+          maxLength: 500
+      required:
+        - staffId
+        - workDate
+        - status
+    DeleteStaffAttendanceDto:
+      type: object
+      properties:
         reason:
           type: string
           minLength: 2

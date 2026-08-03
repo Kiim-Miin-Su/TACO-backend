@@ -48,6 +48,7 @@ import { SCHEDULE_REQUEST_BATCH_MIGRATION_ID } from '../src/database/migrations/
 import { SCHEDULE_REQUEST_BATCH_STRICT_MIGRATION_ID } from '../src/database/migrations/schedule-request-batch-strict.migration';
 import { SCHEMA_SHAPE_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/schema-shape-integrity.migration';
 import { AUTH_EVENT_DOMAIN_MIGRATION_ID } from '../src/database/migrations/auth-event-domain.migration';
+import { STAFF_ATTENDANCE_MIGRATION_ID } from '../src/database/migrations/staff-attendance.migration';
 
 loadLocalEnv();
 
@@ -97,6 +98,7 @@ export const EXPECTED_MIGRATION_IDS = [
   SCHEDULE_REQUEST_BATCH_STRICT_MIGRATION_ID, // [78C2] CHECK NULL semantics hardening
   SCHEMA_SHAPE_INTEGRITY_MIGRATION_ID, // [78C3] enum domains + join FKs + event default
   AUTH_EVENT_DOMAIN_MIGRATION_ID, // [78C3] shared AuthEventType domain completion
+  STAFF_ATTENDANCE_MIGRATION_ID, // [81B] 직원 일별 출결 원부·unique/FK/CHECK/index
 ] as const;
 
 const url = directDatabaseUrl();
