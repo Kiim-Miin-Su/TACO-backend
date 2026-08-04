@@ -20,7 +20,6 @@ import {
   type AppRole,
   type RoleCapability,
 } from './roles.decorator';
-import { AccessControlService } from './access-control.service';
 import { AccountStateService } from '../../database/account-state.service';
 import { IS_PUBLIC_KEY } from './public.decorator';
 import { extractAccessToken } from './access-token'; // [TBO-34 C2-C] 추출 단일 진실원
@@ -53,7 +52,6 @@ export class RolesGuard implements CanActivate {
     private readonly auth: AuthService,
     private readonly reflector: Reflector,
     private readonly accounts: AccountStateService,
-    private readonly access: AccessControlService,
   ) {}
 
   async canActivate(ctx: ExecutionContext): Promise<boolean> {
@@ -98,8 +96,9 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('임시 비밀번호를 먼저 변경해 주세요.');
     }
 
-    const effectiveCapabilities = await this.access.effectiveCapabilities(claims.sub, claims.roles ?? []);
-    const roleAllowed = !required?.length || (claims.roles ?? []).some((r) => required.includes(r as AppRole));
+    const effectiveCapabilities = verdict.effectiveCapabilities;
+    const currentRoles = [verdict.role];
+    const roleAllowed = !required?.length || currentRoles.some((r) => required.includes(r as AppRole));
     const adminAreaRequired = !!required?.length
       && required.every((role) => ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number]));
     const adminAreaAllowed = !adminAreaRequired || effectiveCapabilities.includes('admin.area');
@@ -116,7 +115,13 @@ export class RolesGuard implements CanActivate {
       throw new ForbiddenException('접근 권한이 없습니다.');
     }
 
-    req.user = { ...claims, effectiveCapabilities };
+    req.user = {
+      ...claims,
+      name: verdict.name,
+      roles: currentRoles,
+      mustChangePassword: verdict.mustChangePassword,
+      effectiveCapabilities,
+    };
     return true;
   }
 }

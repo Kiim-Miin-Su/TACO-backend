@@ -9,7 +9,6 @@ import {
 } from '@nestjs/common';
 import {
   CAPABILITY_CATALOG,
-  ROLE_CAPABILITIES,
   isRoleCapability,
   roleHasCapability,
   type AuditLog,
@@ -29,6 +28,7 @@ import { PostgresCollectionStore } from '../../database/postgres-collection.stor
 import type { BaseRow } from '../../common/types/base';
 import { authVersionOf, type StaffAccount } from '../users/user.entity';
 import type { UserCapabilityOverride } from './user-capability-override.entity';
+import { resolveEffectiveCapabilities } from './effective-capabilities';
 
 type AuditRow = AuditLog & BaseRow;
 
@@ -46,20 +46,11 @@ export class AccessControlService implements OnModuleInit {
   }
 
   async effectiveCapabilities(userId: number, roles: readonly string[]): Promise<RoleCapability[]> {
-    const effective = new Set<RoleCapability>();
-    for (const capability of ROLE_CAPABILITIES) {
-      if (roles.some((role) => roleHasCapability(role, capability))) effective.add(capability);
-    }
     const overrides = await this.store.findActive<UserCapabilityOverride>(USER_CAPABILITY_OVERRIDES_SPEC, {
       where: { userId },
       orderBy: { field: 'id' },
     });
-    for (const override of overrides) {
-      if (!isRoleCapability(override.capability)) continue;
-      if (override.effect === 'allow') effective.add(override.capability);
-      else effective.delete(override.capability);
-    }
-    return ROLE_CAPABILITIES.filter((capability) => effective.has(capability));
+    return resolveEffectiveCapabilities(roles, overrides);
   }
 
   async permissionsFor(

@@ -7,18 +7,28 @@ import { Injectable } from '@nestjs/common';
 import { InMemoryDatabase } from './in-memory.database';
 import { PostgresConnectionService } from './postgres-connection.service';
 import { normalizeQueryRows } from './postgres-row.util';
+import type { RoleCapability } from '@kms545487/contracts';
+import { resolveEffectiveCapabilities, type CapabilityOverride } from '../modules/auth/effective-capabilities';
 
 type AccountState = {
+  name: string;
   role: string;
   status: string;
   authVersion: number;
   deleted: boolean;
   mustChangePassword: boolean;
+  effectiveCapabilities: RoleCapability[];
 };
 
 export type ClaimsToVerify = { sub: number; roles?: string[]; authVersion?: number };
 
-export type ClaimsVerdict = { ok: true; mustChangePassword: boolean } | { ok: false; code: 'missing' | 'inactive' | 'stale_token' | 'role_changed' };
+export type ClaimsVerdict = {
+  ok: true;
+  name: string;
+  role: string;
+  mustChangePassword: boolean;
+  effectiveCapabilities: RoleCapability[];
+} | { ok: false; code: 'missing' | 'inactive' | 'stale_token' | 'role_changed' };
 
 @Injectable()
 export class AccountStateService {
@@ -36,35 +46,60 @@ export class AccountStateService {
     // role 변경은 auth_version 증가로 이미 무효화되지만 이중 방어로 대조한다.
     const tokenRole = claims.roles?.[0];
     if (tokenRole && tokenRole !== state.role) return { ok: false, code: 'role_changed' };
-    return { ok: true, mustChangePassword: state.mustChangePassword };
+    return {
+      ok: true,
+      name: state.name,
+      role: state.role,
+      mustChangePassword: state.mustChangePassword,
+      effectiveCapabilities: state.effectiveCapabilities,
+    };
   }
 
   private async load(id: number): Promise<AccountState | undefined> {
     await this.postgres.ensureInitialized();
     if (this.postgres.ready) {
       const rows = normalizeQueryRows(await this.postgres.query(
-        `SELECT role, status, auth_version, must_change_password, deleted_at FROM users WHERE id = $1`,
+        `SELECT u.name, u.role, u.status, u.auth_version, u.must_change_password, u.deleted_at,
+                o.capability AS override_capability, o.effect AS override_effect
+           FROM users u
+           LEFT JOIN user_capability_overrides o
+             ON o.user_id = u.id AND o.deleted_at IS NULL
+          WHERE u.id = $1
+          ORDER BY o.id ASC`,
         [id],
       ));
       const row = rows[0];
       if (!row) return undefined;
+      const overrides = rows.flatMap((item): CapabilityOverride[] =>
+        typeof item.override_capability === 'string'
+          && (item.override_effect === 'allow' || item.override_effect === 'deny')
+          ? [{ capability: item.override_capability, effect: item.override_effect }]
+          : [],
+      );
+      const role = String(row.role);
       return {
-        role: String(row.role),
+        name: String(row.name),
+        role,
         status: String(row.status),
         authVersion: row.auth_version == null ? 1 : Number(row.auth_version),
         deleted: row.deleted_at != null,
         mustChangePassword: row.must_change_password === true,
+        effectiveCapabilities: resolveEffectiveCapabilities([role], overrides),
       };
     }
     type MemoryUserRow = { role: string; status: string; authVersion?: number; mustChangePassword?: boolean } & import('../common/types/base').BaseRow;
     const acc = this.memory.findById<MemoryUserRow>('users', id);
     if (!acc) return undefined;
+    type MemoryOverrideRow = CapabilityOverride & import('../common/types/base').BaseRow & { userId: number };
+    const overrides = this.memory.findByField<MemoryOverrideRow>('user_capability_overrides', 'userId', id);
     return {
+      name: String((acc as MemoryUserRow & { name?: string }).name ?? ''),
       role: acc.role,
       status: acc.status,
       authVersion: acc.authVersion ?? 1,
       deleted: acc.deletedAt != null,
       mustChangePassword: acc.mustChangePassword === true,
+      effectiveCapabilities: resolveEffectiveCapabilities([acc.role], overrides),
     };
   }
 }

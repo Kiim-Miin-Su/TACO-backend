@@ -53,7 +53,6 @@ import {
   setRefreshCookie,
   setSudoCookie,
 } from './browser-session';
-import { AccessControlService } from './access-control.service';
 
 
 @ApiTags('auth')
@@ -68,7 +67,6 @@ export class AuthController {
     private readonly refreshTokens: RefreshTokensService,
     private readonly signupChallenges: SignupEmailChallengesService,
     private readonly signupPhoneChallenges: SignupPhoneChallengesService, // [TBO-57]
-    private readonly access: AccessControlService,
   ) {}
 
   // ── 가입 전 이메일 OTP → 가입 신청 → 대표 승인 → 로그인 ──
@@ -522,16 +520,9 @@ export class AuthController {
   async me(@Req() req: Request & { user?: JwtClaims }) {
     const claims = req.user;
     if (!claims) throw new UnauthorizedException('인증 정보가 없습니다.');
-    await this.users.refreshFromDb();
-    const account = this.users.findById(claims.sub);
-    if (!account) throw new UnauthorizedException('계정 정보를 확인할 수 없습니다.');
     return {
       ...claims,
-      name: account.name,
-      roles: [account.role],
-      accessVersion: authVersionOf(account),
-      effectiveCapabilities: await this.access.effectiveCapabilities(account.id, [account.role]),
-      mustChangePassword: account.mustChangePassword === true,
+      accessVersion: claims.authVersion ?? 1,
     };
   }
 }
