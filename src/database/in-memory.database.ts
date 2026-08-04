@@ -77,7 +77,17 @@ export class InMemoryDatabase {
     }
   }
 
-  /** 컬렉션 전체를 다시 인덱싱(트랜잭션 롤백 후 복구용). */
+  /** 단일 컬렉션을 다시 인덱싱(DB read-model 스냅샷 교체용). */
+  private rebuildCollectionIndexes(name: string): void {
+    const registered = [...(this.fieldIndex.get(name)?.keys() ?? [])];
+    const ids = new Map<number, BaseRow>();
+    for (const row of this.collection(name)) ids.set(row.id, row);
+    this.idIndex.set(name, ids);
+    this.fieldIndex.delete(name);
+    for (const field of registered) this.ensureFieldIndex(name, field);
+  }
+
+  /** 모든 컬렉션을 다시 인덱싱(트랜잭션 롤백 후 복구용). */
   private rebuildIndexes(): void {
     this.idIndex = new Map();
     const registered = new Map<string, string[]>();
@@ -186,7 +196,7 @@ export class InMemoryDatabase {
     const replaced = rows.map((row) => structuredClone(row) as T);
     this.store.set(name, replaced);
     this.sequences.set(name, replaced.reduce((max, row) => Math.max(max, row.id), 0));
-    this.rebuildIndexes();
+    this.rebuildCollectionIndexes(name);
     return replaced;
   }
 

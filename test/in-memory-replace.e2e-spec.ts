@@ -24,4 +24,34 @@ describe('InMemoryDatabase.replaceExact', () => {
     expect(db.findByField<Row>('rows', 'ownerId', 30)).toHaveLength(1);
     expect(db.findAll<Row>('rows').map((row) => row.id)).toEqual([2, 3]);
   });
+
+  it('does not rebuild indexes for an unrelated collection', () => {
+    const db = new InMemoryDatabase();
+    const now = new Date().toISOString();
+    db.seedExact<Row>('target', [
+      { id: 1, ownerId: 10, label: 'before', createdAt: now, updatedAt: now },
+    ]);
+    db.seedExact<Row>('untouched', [
+      { id: 2, ownerId: 20, label: 'stable', createdAt: now, updatedAt: now },
+    ]);
+    db.findByField<Row>('target', 'ownerId', 10);
+    db.findByField<Row>('untouched', 'ownerId', 20);
+
+    const internals = db as unknown as {
+      idIndex: Map<string, Map<number, BaseRow>>;
+      fieldIndex: Map<string, Map<string, Map<unknown, Set<BaseRow>>>>;
+    };
+    const untouchedIds = internals.idIndex.get('untouched');
+    const untouchedFields = internals.fieldIndex.get('untouched');
+
+    db.replaceExact<Row>('target', [
+      { id: 3, ownerId: 30, label: 'after', createdAt: now, updatedAt: now },
+    ]);
+
+    expect(internals.idIndex.get('untouched')).toBe(untouchedIds);
+    expect(internals.fieldIndex.get('untouched')).toBe(untouchedFields);
+    expect(db.findByField<Row>('untouched', 'ownerId', 20)).toHaveLength(1);
+    expect(db.findByField<Row>('target', 'ownerId', 10)).toEqual([]);
+    expect(db.findByField<Row>('target', 'ownerId', 30)).toHaveLength(1);
+  });
 });
