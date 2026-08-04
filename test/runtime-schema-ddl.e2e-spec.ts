@@ -1,4 +1,8 @@
-import { PostgresConnectionService, runtimeSchemaDdlEnabled } from '../src/database/postgres-connection.service';
+import {
+  assertRuntimeRoleBoundary,
+  PostgresConnectionService,
+  runtimeSchemaDdlEnabled,
+} from '../src/database/postgres-connection.service';
 
 describe('production runtime schema DDL boundary', () => {
   const previousNodeEnv = process.env.NODE_ENV;
@@ -40,5 +44,13 @@ describe('production runtime schema DDL boundary', () => {
     process.env.NODE_ENV = 'test';
     delete process.env.RUNTIME_SCHEMA_DDL;
     expect(runtimeSchemaDdlEnabled()).toBe(true);
+  });
+
+  it('rejects a production runtime role with schema CREATE', () => {
+    process.env.NODE_ENV = 'production';
+    expect(() => assertRuntimeRoleBoundary({ role: 'neondb_owner', schemaCreate: true }))
+      .toThrow(/DML 전용 역할/);
+    expect(() => assertRuntimeRoleBoundary({ role: 'taco_runtime', schemaCreate: false }))
+      .not.toThrow();
   });
 });

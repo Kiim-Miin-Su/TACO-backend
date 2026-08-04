@@ -49,6 +49,19 @@ export function assertRuntimeDdlPolicy(): void {
   }
 }
 
+export type RuntimeRoleBoundary = {
+  role: string;
+  schemaCreate: boolean;
+};
+
+/** 운영 애플리케이션 연결은 DML 전용이어야 한다. migration owner를 runtime에 넣으면 부팅을 중단한다. */
+export function assertRuntimeRoleBoundary(boundary: RuntimeRoleBoundary): void {
+  if (!isProduction()) return;
+  if (boundary.schemaCreate) {
+    throw new Error(`[db] production runtime role '${boundary.role}'에 public schema CREATE 권한이 있습니다 — DML 전용 역할을 사용하세요.`);
+  }
+}
+
 @Injectable()
 export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PostgresConnectionService.name);
@@ -113,11 +126,16 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
 
     try {
       await this.dataSource.initialize();
-      await this.dataSource.query('select 1 as ok');
+      const [boundaryRow] = await this.dataSource.query(
+        `SELECT current_user AS role,
+                has_schema_privilege(current_user, 'public', 'CREATE') AS "schemaCreate"`,
+      ) as Array<{ role: string; schemaCreate: boolean }>;
+      if (!boundaryRow) throw new Error('[db] runtime role boundary readback returned no row');
+      assertRuntimeRoleBoundary(boundaryRow);
       this.attachPoolErrorLogger();
       this.lastError = null;
       const info = safeUrlInfo(url);
-      this.logger.log(`Postgres connection ready${info.host ? ` (${info.host})` : ''}`);
+      this.logger.log(`Postgres connection ready${info.host ? ` (${info.host})` : ''} role=${boundaryRow.role} schemaCreate=false`);
     } catch (e) {
       this.lastError = e instanceof Error ? e.message : String(e);
       await this.destroyDataSource();
