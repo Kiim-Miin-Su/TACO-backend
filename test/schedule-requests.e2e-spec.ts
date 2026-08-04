@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { completeSessionByAttendance, createTestApp } from './setup-app';
+import { completeSessionByAttendance, createTestApp, E2E_APP_BOOT_TIMEOUT_MS } from './setup-app';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { randomUUID } from 'crypto';
 
@@ -17,14 +17,18 @@ describe('Schedule Requests + Soft Delete + Audit (e2e)', () => {
   const asInst = () => ({ Authorization: `Bearer ${INST}` });
   const asInst2 = () => ({ Authorization: `Bearer ${INST2}` });
 
+  // Approval mutates both the request and its target session. Retrying only the failed test in
+  // this app turns the first attempt's successful command into an unrelated 409 on retry.
+  jest.retryTimes(0);
+
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
     ADMIN = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken;
     INST = (await http.post('/api/auth/login').send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
     INST2 = (await http.post('/api/auth/login').send({ webId: 'jung_inst', password: 'demo1234' }).expect(201)).body.accessToken;
-  });
-  afterAll(async () => { await app.close(); });
+  }, E2E_APP_BOOT_TIMEOUT_MS);
+  afterAll(async () => { if (app) await app.close(); });
 
   const SLOT = { courseId: 10, sessionDate: '2099-01-04', startTime: '09:00', endTime: '10:00' };
 
