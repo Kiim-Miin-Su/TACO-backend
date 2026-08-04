@@ -12,6 +12,7 @@
     "start": "node dist/src/main.js",
     "build": "nest build",
     "db:check": "ts-node scripts/db-check.ts",
+    "perf:baseline": "npm run build && node dist/scripts/performance-baseline.js",
     "db:inventory": "ts-node scripts/inventory-production-data.ts",
     "db:smoke:schedule-requests": "ts-node scripts/schedule-requests-db-smoke.ts",
     "db:smoke:calendar-assets": "ts-node scripts/calendar-assets-db-smoke.ts",

@@ -21,17 +21,18 @@ export type PerformancePayload = PerformanceDetails & {
 };
 
 type PerformanceLogSink = Pick<Logger, 'log'>;
+type PerformanceObserver = (payload: PerformancePayload) => void;
 
 const defaultLogger: PerformanceLogSink = {
   log(message: string): void {
     // Nest route discovery is muted during serverless cold start; performance JSON must remain visible.
-    // eslint-disable-next-line no-console
     console.log(message);
   },
 };
 const SAFE_NAME = /^[a-z][A-Za-z0-9_.-]{1,79}$/;
 let runtimeReady = false;
 let firstRequestStarted = false;
+let performanceObserver: PerformanceObserver | null = null;
 
 function safeCount(value: number | undefined): number | undefined {
   return Number.isFinite(value) && Number(value) >= 0 ? Math.round(Number(value)) : undefined;
@@ -82,10 +83,21 @@ export function resetPerformanceRuntimeForTest(): void {
   firstRequestStarted = false;
 }
 
+/** Benchmark harness hook. Production code must not install a process-global observer. */
+export function setPerformanceObserver(observer: PerformanceObserver | null): () => void {
+  const previous = performanceObserver;
+  performanceObserver = observer;
+  return () => { performanceObserver = previous; };
+}
+
 function emitPerformance(payload: PerformancePayload, sink: PerformanceLogSink): void {
   if (!performanceLoggingEnabled()) return;
   try {
-    sink.log(logLine('app', buildPerformancePayload(payload)));
+    const normalized = buildPerformancePayload(payload);
+    try { performanceObserver?.(normalized); } catch { /* observer must not affect the operation */ }
+    if (process.env.PERFORMANCE_LOG_CONSOLE?.trim().toLowerCase() !== 'false') {
+      sink.log(logLine('app', normalized));
+    }
   } catch {
     // Observability must never change command/query results or exception semantics.
   }

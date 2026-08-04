@@ -4,11 +4,13 @@ import {
   measurePerformance,
   measurePerformanceSync,
   resetPerformanceRuntimeForTest,
+  setPerformanceObserver,
   TimedModuleInit,
 } from '../src/common/performance-timing';
 import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
+import { assertDisposablePerformanceTarget, summarize } from '../scripts/performance-baseline';
 
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -129,5 +131,44 @@ describe('[TBO-84 84A] performance timing contract', () => {
     expect(line).toContain('5');
     expect(line).not.toContain('SELECT secret');
     expect(line).not.toContain('private');
+  });
+
+  it('keeps observer failures isolated and restores the previous observer', async () => {
+    const observed: string[] = [];
+    const restore = setPerformanceObserver((event) => observed.push(event.phase));
+    const restoreThrowing = setPerformanceObserver(() => { throw new Error('observer failure'); });
+    await expect(measurePerformance('db.query', async () => 1)).resolves.toBe(1);
+    restoreThrowing();
+    await expect(measurePerformance('db.query', async () => 2)).resolves.toBe(2);
+    restore();
+    expect(observed).toEqual(['db.query']);
+  });
+
+  it('rejects production, unpooled and weak-TLS benchmark targets', () => {
+    const production = 'postgresql://runtime:secret@ep-main.us-east-1.aws.neon.tech/neondb?sslmode=verify-full';
+    const productionPooler = 'postgresql://runtime:secret@ep-main-pooler.us-east-1.aws.neon.tech/neondb?sslmode=verify-full';
+    expect(() => assertDisposablePerformanceTarget(productionPooler, 'disposable-neon-branch', [production]))
+      .toThrow('matches a configured production endpoint');
+    expect(() => assertDisposablePerformanceTarget(
+      'postgresql://runtime:secret@ep-qa.us-east-1.aws.neon.tech/neondb?sslmode=verify-full',
+      'disposable-neon-branch',
+      [production],
+    )).toThrow('pooled Neon endpoint');
+    expect(() => assertDisposablePerformanceTarget(
+      'postgresql://runtime:secret@ep-qa-pooler.us-east-1.aws.neon.tech/neondb?sslmode=require',
+      'disposable-neon-branch',
+      [production],
+    )).toThrow('sslmode=verify-full');
+  });
+
+  it('calculates deterministic nearest-rank percentiles and variation', () => {
+    expect(summarize([10, 20, 30, 40, 50])).toEqual({
+      count: 5,
+      p50: 30,
+      p95: 50,
+      max: 50,
+      mean: 30,
+      cvPercent: 47.14,
+    });
   });
 });
