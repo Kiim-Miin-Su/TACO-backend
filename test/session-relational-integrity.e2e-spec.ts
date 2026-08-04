@@ -4,7 +4,12 @@ import { assertExpectedAfter } from '../src/common/expected-after.util';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { AuditService } from '../src/modules/audit/audit.service';
 import { SESSIONS, type ClassSession } from '../src/modules/schedule/schedule.entity';
-import { completeSessionByAttendance, createTestApp, patchSessionAckingImpact } from './setup-app';
+import {
+  clearInstructorAttendanceAckingImpact,
+  completeSessionByAttendance,
+  createTestApp,
+  setInstructorAttendanceAckingImpact,
+} from './setup-app';
 
 const FROM = '2026-06-01';
 const TO = '2026-06-30';
@@ -41,8 +46,8 @@ describe('session joined-table expected/after integrity (e2e)', () => {
     const beforeSummary = await summary();
     const beforeRelations = await relations(line.sessionId);
 
-    const blocked = await http.patch(`/api/schedule/${line.sessionId}`).set(auth())
-      .send({ instructorAttendance: 'absent' }).expect(409);
+    const blocked = await http.put(`/api/schedule/${line.sessionId}/instructor-attendance`).set(auth())
+      .send({ status: 'absent' }).expect(409);
     expect(blocked.body.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
     expect(blocked.body.impact.delta).toMatchObject({
       teachingMinutes: -line.durationMinutes,
@@ -51,7 +56,7 @@ describe('session joined-table expected/after integrity (e2e)', () => {
     });
     assertExpectedAfter('ack 전 관계 무변경', beforeRelations, await relations(line.sessionId));
 
-    expect((await patchSessionAckingImpact(http, auth(), line.sessionId, { instructorAttendance: 'absent' })).status).toBe(200); // [74D-0]
+    expect((await setInstructorAttendanceAckingImpact(http, auth(), line.sessionId, 'absent')).status).toBe(200);
     const afterPreview = await preview();
     const afterSummary = await summary();
     assertExpectedAfter('강사 결석 후 파생값', {
@@ -68,7 +73,7 @@ describe('session joined-table expected/after integrity (e2e)', () => {
       relations: await relations(line.sessionId),
     });
 
-    expect((await patchSessionAckingImpact(http, auth(), line.sessionId, { clearInstructorAttendance: true })).status).toBe(200); // [74D-0]
+    expect((await clearInstructorAttendanceAckingImpact(http, auth(), line.sessionId)).status).toBe(200);
     const cleared = await preview();
     assertExpectedAfter('강사 출결 clear는 held를 scheduled로 되돌려 시수 제외', {
       sessionCount: beforePreview.sessionCount - 1,

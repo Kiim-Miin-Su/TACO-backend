@@ -31,24 +31,24 @@ describe('[TBO-62] 긴급 수정 (e2e)', () => {
 
   it('④ 출결 쓰기 — 강사·매니저 403, 대표만 기록·수정·초기화 가능', async () => {
     const row = await makeSession();
-    await http.post(`/api/schedule/${row.id}/instructor-attendance`)
+    await http.put(`/api/schedule/${row.id}/instructor-attendance`)
       .set(auth('park_inst')).send({ status: 'present' }).expect(403);
     await http.patch(`/api/schedule/${row.id}`).set(auth('manager'))
-      .send({ instructorAttendance: 'present', force: true }).expect(403);
-    const marked = (await http.post(`/api/schedule/${row.id}/instructor-attendance`)
-      .set(auth('admin')).send({ status: 'present' }).expect(201)).body;
+      .send({ instructorAttendance: 'present', force: true }).expect(400);
+    const marked = (await http.put(`/api/schedule/${row.id}/instructor-attendance`)
+      .set(auth('admin')).send({ status: 'present' }).expect(200)).body;
     expect(marked.row.instructorAttendance).toBe('present');
-    await http.post(`/api/schedule/${row.id}/instructor-attendance`)
+    await http.put(`/api/schedule/${row.id}/instructor-attendance`)
       .set(auth('park_inst')).send({ status: 'late' }).expect(403);
     const other = await makeSession({ startTime: '09:10' });
-    await http.post(`/api/schedule/${other.id}/instructor-attendance`)
+    await http.put(`/api/schedule/${other.id}/instructor-attendance`)
       .set(auth('jung_inst')).send({ status: 'present' }).expect(403);
     await http.patch(`/api/schedule/${row.id}`).set(auth('admin'))
-      .send({ instructorAttendance: 'late', force: true }).expect(200);
-    await http.patch(`/api/schedule/${row.id}`).set(auth('admin'))
-      .send({ clearInstructorAttendance: true, force: true }).expect(200);
-    await http.post(`/api/schedule/${row.id}/instructor-attendance`)
-      .set(auth('admin')).send({ status: 'present' }).expect(201);
+      .send({ instructorAttendance: 'late', force: true }).expect(400);
+    await http.delete(`/api/schedule/${row.id}/instructor-attendance`).set(auth('admin'))
+      .send({ reason: 'e2e 초기화' }).expect(200);
+    await http.put(`/api/schedule/${row.id}/instructor-attendance`)
+      .set(auth('admin')).send({ status: 'present' }).expect(200);
   });
 
   it('⑤ 강사+대상 학생 전원 출결 완결 시 scheduled → held 자동 전이', async () => {
@@ -58,8 +58,8 @@ describe('[TBO-62] 긴급 수정 (e2e)', () => {
     await http.put('/api/attendance').set(auth('admin'))
       .send({ sessionId: past.id, studentId: 1, status: 'present' }).expect(200);
     expect((await http.get(`/api/schedule/${past.id}`).set(auth('admin')).expect(200)).body.status).toBe('scheduled');
-    await http.patch(`/api/schedule/${past.id}`).set(auth('admin'))
-      .send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.put(`/api/schedule/${past.id}/instructor-attendance`).set(auth('admin'))
+      .send({ status: 'present' }).expect(200);
     const after = (await http.get(`/api/schedule?from=${addDaysISO(MON, -7)}&to=${addDaysISO(MON, -7)}`)
       .set(auth('admin')).expect(200)).body.find((r: { id: number }) => r.id === past.id);
     expect(after.status).toBe('held');

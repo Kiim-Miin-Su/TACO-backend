@@ -74,8 +74,8 @@ describe('Attendance API (e2e)', () => {
   });
 
   it('DELETE /attendance/:sessionId/:studentId — 미선택 복귀·상태 자동전이·권한·감사 이력', async () => {
-    await http.patch('/api/schedule/1').set(auth())
-      .send({ instructorAttendance: 'present' }).expect(200);
+    await http.put('/api/schedule/1/instructor-attendance').set(auth())
+      .send({ status: 'present' }).expect(200);
     expect((await http.get('/api/schedule/1').set(auth()).expect(200)).body.status).toBe('held');
 
     await http.delete('/api/attendance/1/1').set(auth()).send({}).expect(400);

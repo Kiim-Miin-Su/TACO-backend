@@ -185,17 +185,17 @@ describe("[TBO-76H] production organic journey", () => {
     expect(instructorRead.attendanceRequired).toBe(true);
 
     await http
-      .post(`/api/schedule/${sessionId}/instructor-attendance`)
+      .put(`/api/schedule/${sessionId}/instructor-attendance`)
       .set(auth("instructor"))
       .send({ status: "present" })
       .expect(403);
     await http
-      .post(`/api/schedule/${sessionId}/instructor-attendance`)
+      .put(`/api/schedule/${sessionId}/instructor-attendance`)
       .set(auth("super_admin"))
       .send({ status: "present" })
-      .expect(201);
+      .expect(200);
     await http
-      .post(`/api/schedule/${sessionId}/instructor-attendance`)
+      .put(`/api/schedule/${sessionId}/instructor-attendance`)
       .set(auth("instructor"))
       .send({ status: "late" })
       .expect(403);

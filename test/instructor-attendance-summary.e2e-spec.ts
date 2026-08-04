@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp , patchSessionAckingImpact } from './setup-app';
+import { createTestApp, setInstructorAttendanceAckingImpact } from './setup-app';
 
 // [TBO-19] 강사 출결 현황 집계(관리자 대시보드) — 기간·강사 필터·카운트·시수·총계·권한.
 const JUN1 = '2026-06-01';
@@ -43,7 +43,7 @@ describe('강사 출결 현황 집계 (e2e)', () => {
     const held = (await http.get(`/api/schedule?from=${JUN1}&to=${JUN30}&instructorId=1`).set(auth(admin)).expect(200)).body
       .filter((x: { status: string }) => x.status === 'held');
     const sid = held[0].id;
-    expect((await patchSessionAckingImpact(http, auth(admin), sid, { instructorAttendance: 'absent' })).status).toBe(200); // [74D-0]
+    expect((await setInstructorAttendanceAckingImpact(http, auth(admin), sid, 'absent')).status).toBe(200);
     const after = (await summary(admin, `from=${JUN1}&to=${JUN30}&instructorId=1`)).rows[0];
     expect(after.absent).toBe(before.absent + 1);
     expect(after.teachingHours).toBeLessThan(before.teachingHours);

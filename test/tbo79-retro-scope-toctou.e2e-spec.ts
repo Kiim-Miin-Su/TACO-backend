@@ -53,8 +53,8 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
       await http.put('/api/attendance').set(as('admin'))
         .send({ sessionId: created.id, studentId, status: 'present' }).expect(200);
     }
-    await http.patch(`/api/schedule/${created.id}`).set(as('admin'))
-      .send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin'))
+      .send({ status: 'present' }).expect(200);
 
     const held = (await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body;
     expect(held.status).toBe('held');
@@ -95,8 +95,8 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
       .expect(201)).body.row as { id: number };
 
     const [first, second] = await Promise.all([
-      http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('park_inst')).send({ status: 'present' }),
-      http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('park_inst')).send({ status: 'absent' }),
+      http.put(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('park_inst')).send({ status: 'present' }),
+      http.put(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('park_inst')).send({ status: 'absent' }),
     ]);
     expect([first.status, second.status]).toEqual([403, 403]);
 
@@ -104,8 +104,8 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
     const readback = (await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body;
     expect(readback.instructorAttendance ?? null).toBeNull();
 
-    await http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('admin'))
-      .send({ status: 'present' }).expect(201);
+    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('admin'))
+      .send({ status: 'present' }).expect(200);
     expect((await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body.instructorAttendance).toBe('present');
   });
 
@@ -137,8 +137,8 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
     await http.put('/api/attendance').set(as('admin'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
     expect((await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body.status).toBe('scheduled');
-    await http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('admin'))
-      .send({ status: 'present' }).expect(201);
+    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('admin'))
+      .send({ status: 'present' }).expect(200);
     const held = (await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body;
     expect(held.status).toBe('held');
     expect(held.attendanceRequired).toBe(false);
@@ -150,8 +150,8 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
       .expect(201)).body.row as { id: number };
     await http.put('/api/attendance').set(as('admin'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${created.id}`).set(as('admin'))
-      .send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin'))
+      .send({ status: 'present' }).expect(200);
     expect((await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body.status).toBe('held');
 
     const FUTURE = addDaysISO(mondayISO(), 28);
@@ -183,8 +183,8 @@ describe('[TBO-79] 소급 재해석·TOCTOU (e2e)', () => {
 
     await http.put('/api/attendance').set(as('admin'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.post(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('admin'))
-      .send({ status: 'present' }).expect(201);
+    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(bearer('admin'))
+      .send({ status: 'present' }).expect(200);
     const held = (await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body;
     expect(held.status).toBe('held');
     expect(held.durationMinutes).toBe(120); // 자정 크로스 길이 보존(음수 파생 없음)

@@ -111,11 +111,11 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
     });
 
     it('② 강사 출결 쓰기는 차단되고 대표 기록 후 학생 출결 전까지 scheduled', async () => {
-      await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('jung_inst')).send({ status: 'present' }).expect(403); // 타인 세션
-      await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('park_inst')).send({ status: 'present' }).expect(403);
-      await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('admin')).send({ status: 'present' }).expect(201);
+      await http.put(`/api/schedule/${S1}/instructor-attendance`).set(as('jung_inst')).send({ status: 'present' }).expect(403); // 타인 세션
+      await http.put(`/api/schedule/${S1}/instructor-attendance`).set(as('park_inst')).send({ status: 'present' }).expect(403);
+      await http.put(`/api/schedule/${S1}/instructor-attendance`).set(as('admin')).send({ status: 'present' }).expect(200);
       expect((await http.get(`/api/schedule/${S1}`).set(as('manager')).expect(200)).body.status).toBe('scheduled');
-      await http.post(`/api/schedule/${S1}/instructor-attendance`).set(as('park_inst')).send({ status: 'late' }).expect(403);
+      await http.put(`/api/schedule/${S1}/instructor-attendance`).set(as('park_inst')).send({ status: 'late' }).expect(403);
     });
 
     it('③ (강사) 학생 출결 + 리포트 제출 → (매니저) 미승인 동안 워크시트는 빈칸(직접 입력 대상)', async () => {
@@ -139,8 +139,8 @@ describe('[TBO-67] 유저 여정 (e2e)', () => {
     });
 
     it('④ (매니저 운영 처리 → 대표 금액 책정) 지각 회차 — 빈칸을 대표가 정수로 확정', async () => {
-      await http.patch(`/api/schedule/${S2}`).set(as('manager')).send({ instructorAttendance: 'late', force: true }).expect(403);
-      await http.patch(`/api/schedule/${S2}`).set(as('admin')).send({ instructorAttendance: 'late', force: true }).expect(200); // 자동 held
+      await http.patch(`/api/schedule/${S2}`).set(as('manager')).send({ instructorAttendance: 'late', force: true }).expect(400);
+      await http.put(`/api/schedule/${S2}/instructor-attendance`).set(as('admin')).send({ status: 'late' }).expect(200); // 자동 held
       await http.put('/api/attendance').set(as('admin')).send({ sessionId: S2, studentId: 1, status: 'present' }).expect(200);
       const report = (await http.post('/api/reports').set(as('manager'))
         .send({ sessionId: S2, studentId: 1, instructorId: 1, content: 'J2 지각 회차', status: 'submitted' }).expect(201)).body;

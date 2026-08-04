@@ -3095,34 +3095,6 @@ paths:
       summary: 강사 출결 미선택 복귀 — 사유·회계 영향 ACK·held 자동 역전이, 대표 권한.
       tags:
         - scheduling
-    post:
-      deprecated: true
-      operationId: ScheduleController_markInstructorAttendance
-      parameters:
-        - name: id
-          required: true
-          in: path
-          description: 세션 id
-          schema:
-            type: integer
-            format: int32
-            minimum: 1
-            maximum: 2147483647
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/SetInstructorAttendanceDto'
-      responses:
-        '200':
-          description: '{ row: ScheduleRow } — instructorAttendance 반영'
-      security:
-        - bearer: []
-        - access_token: []
-      summary: '[deprecated] 강사 출결 기록. PUT /:id/instructor-attendance 사용.'
-      tags:
-        - scheduling
   /api/schedule/{id}/restore:
     post:
       operationId: ScheduleController_restore
@@ -7427,19 +7399,6 @@ components:
           maxLength: 20
           example: '#9a6700'
           description: 캘린더 색상 라벨
-        instructorAttendance:
-          enum:
-            - present
-            - late
-            - absent
-            - makeup
-          type: string
-          example: present
-          description: 강사 출결(출석/지각/결석/보강)
-        clearInstructorAttendance:
-          type: boolean
-          example: false
-          description: 강사 출결을 미표시로 초기화(clear)
         scope:
           enum:
             - this

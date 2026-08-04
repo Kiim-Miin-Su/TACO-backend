@@ -212,20 +212,6 @@ export class ScheduleController {
     return this.schedule.clearInstructorAttendance(id, dto, req.user?.sub, req.user?.effectiveCapabilities ?? []);
   }
 
-  // 한 배포 동안 구 클라이언트를 수용하는 deprecated alias. 신규 소비자는 PUT을 사용한다.
-  @Post(':id/instructor-attendance')
-  @RequireCapabilities('attendance.manage')
-  @ApiParam({ name: 'id', description: '세션 id' })
-  @ApiOperation({ summary: '[deprecated] 강사 출결 기록. PUT /:id/instructor-attendance 사용.', deprecated: true })
-  @ApiOkResponse({ description: '{ row: ScheduleRow } — instructorAttendance 반영' })
-  markInstructorAttendance(
-    @Param('id', PositiveIntPipe) id: number,
-    @Body() dto: SetInstructorAttendanceDto,
-    @Req() req: Request & { user?: JwtClaims },
-  ) {
-    return this.schedule.setInstructorAttendance(id, dto, req.user?.sub, req.user?.effectiveCapabilities ?? []);
-  }
-
   // [TBO-74C-2] 종속 행 없는 단일 세션 복구는 무결성을 깨뜨리므로 현재 fail-closed.
   @Post(':id/restore')
   @RequireCapabilities('calendar.manage')

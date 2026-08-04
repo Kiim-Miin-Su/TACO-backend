@@ -136,14 +136,15 @@ async function main(): Promise<void> {
       throw new Error(`report approve did not set approvalStatus=approved: ${JSON.stringify(approved.body)}`);
     }
 
-    const held = await http.patch(`/api/schedule/${sessionId}`).set(auth(manager)).send({ status: 'held', force: true });
+    const held = await http.put(`/api/schedule/${sessionId}/instructor-attendance`)
+      .set(auth(ceo)).send({ status: 'present' });
     if (held.status !== 200) throw new Error(`session held transition failed: ${held.status} ${JSON.stringify(held.body)}`);
     const beforePreview = (await http.get(`/api/payouts/preview?instructorId=1&from=${sessionDate}&to=${sessionDate}`)
       .set(auth(ceo)).expect(200)).body;
     const beforeLine = beforePreview.lines.find((line: { sessionId: number }) => line.sessionId === sessionId);
     if (!beforeLine) throw new Error(`held+approved session ${sessionId} missing from payout preview`);
-    const blocked = await http.patch(`/api/schedule/${sessionId}`).set(auth(manager))
-      .send({ instructorAttendance: 'absent' }).expect(409);
+    const blocked = await http.put(`/api/schedule/${sessionId}/instructor-attendance`).set(auth(ceo))
+      .send({ status: 'absent' }).expect(409);
     assertExpectedAfter('DB smoke accounting preview', {
       code: 'ACCOUNTING_IMPACT_ACK_REQUIRED',
       teachingMinutes: -60,
@@ -153,14 +154,22 @@ async function main(): Promise<void> {
       teachingMinutes: blocked.body.impact?.delta?.teachingMinutes,
       computedAmount: blocked.body.impact?.delta?.computedAmount,
     });
-    await http.patch(`/api/schedule/${sessionId}`).set(auth(manager))
-      .send({ instructorAttendance: 'absent', acknowledgeAccountingImpact: true }).expect(200);
+    await http.put(`/api/schedule/${sessionId}/instructor-attendance`).set(auth(ceo)).send({
+      status: 'absent',
+      acknowledgeAccountingImpact: true,
+      expectedAccountingImpactHash: blocked.body.impactHash,
+    }).expect(200);
     const absentPreview = (await http.get(`/api/payouts/preview?instructorId=1&from=${sessionDate}&to=${sessionDate}`)
       .set(auth(ceo)).expect(200)).body;
     if (absentPreview.lines.some((line: { sessionId: number }) => line.sessionId === sessionId))
       throw new Error(`absent session ${sessionId} remained payout eligible`);
-    await http.patch(`/api/schedule/${sessionId}`).set(auth(manager))
-      .send({ clearInstructorAttendance: true, acknowledgeAccountingImpact: true }).expect(200);
+    const clearBlocked = await http.delete(`/api/schedule/${sessionId}/instructor-attendance`).set(auth(ceo))
+      .send({ reason: 'DB smoke 출결 초기화' }).expect(409);
+    await http.delete(`/api/schedule/${sessionId}/instructor-attendance`).set(auth(ceo)).send({
+      reason: 'DB smoke 출결 초기화',
+      acknowledgeAccountingImpact: true,
+      expectedAccountingImpactHash: clearBlocked.body.impactHash,
+    }).expect(200);
 
     await http.get('/api/instructor-contracts').set(auth(manager)).expect(403);
     const contracts = (await http.get('/api/instructor-contracts').set(auth(ceo)).expect(200)).body as ContractRow[];

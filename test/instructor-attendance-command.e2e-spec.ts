@@ -31,6 +31,15 @@ describe('[TBO-83E] 강사 출결 전용 command (e2e)', () => {
     if (app) await app.close();
   });
 
+  it('구 POST alias와 범용 schedule PATCH 출결 payload는 fail-closed다', async () => {
+    await http.post('/api/schedule/1/instructor-attendance').set(as('admin'))
+      .send({ status: 'present' }).expect(404);
+    await http.patch('/api/schedule/1').set(as('admin'))
+      .send({ instructorAttendance: 'present' }).expect(400);
+    await http.patch('/api/schedule/1').set(as('admin'))
+      .send({ clearInstructorAttendance: true }).expect(400);
+  });
+
   it('set/update/clear가 권한·ACK·held 역전이·감사를 한 경로에서 보존한다', async () => {
     const created = (await http.post('/api/schedule').set(as('manager')).send({
       courseId: 10,

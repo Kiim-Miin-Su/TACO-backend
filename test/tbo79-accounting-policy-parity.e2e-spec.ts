@@ -43,7 +43,7 @@ describe('[TBO-79] 회계 미리보기 ↔ 정산 산정 단일 정책 (e2e)', (
       .send({ courseId: 10, instructorId: 1, studentIds: [1], sessionDate: addDaysISO(PAST, dayOffset), startTime, durationMinutes, force: true })
       .expect(201)).body.row;
     await http.put('/api/attendance').set(as('admin')).send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${created.id}`).set(as('admin')).send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin')).send({ status: 'present' }).expect(200);
     const report = (await http.post('/api/reports').set(as('park_inst'))
       .send({ sessionId: created.id, studentId: 1, content: 'TBO-79 정책 정합 회귀' }).expect(201)).body;
     await http.post(`/api/reports/${report.id}/submit`).set(as('park_inst')).send({}).expect(201);
@@ -70,8 +70,8 @@ describe('[TBO-79] 회계 미리보기 ↔ 정산 산정 단일 정책 (e2e)', (
     expect(line!.amount).toBeGreaterThan(0);
 
     // 정책 분기 시절엔 delta 0 → changed:false → 200이었다.
-    const blocked = await http.patch(`/api/schedule/${id}`).set(as('admin'))
-      .send({ instructorAttendance: 'late', force: true }).expect(409);
+    const blocked = await http.put(`/api/schedule/${id}/instructor-attendance`).set(as('admin'))
+      .send({ status: 'late' }).expect(409);
     expect(blocked.body.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
     expect(blocked.body.impactHash).toMatch(/^[a-f0-9]{64}$/);
     expect(blocked.body.impact.delta.computedAmount).toBe(-line!.amount);
@@ -84,9 +84,8 @@ describe('[TBO-79] 회계 미리보기 ↔ 정산 산정 단일 정책 (e2e)', (
     expect((await previewOf()).computedAmount).toBe(before.computedAmount);
 
     // ack + hash 결속 → 200. 이후 실제 정산이 미리보기와 일치한다.
-    await http.patch(`/api/schedule/${id}`).set(as('admin')).send({
-      instructorAttendance: 'late',
-      force: true,
+    await http.put(`/api/schedule/${id}/instructor-attendance`).set(as('admin')).send({
+      status: 'late',
       acknowledgeAccountingImpact: true,
       expectedAccountingImpactHash: blocked.body.impactHash,
     }).expect(200);

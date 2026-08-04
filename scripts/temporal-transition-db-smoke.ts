@@ -72,11 +72,11 @@ async function main(): Promise<void> {
       instructorId,
       ['attendance.manage'],
     );
-    await schedule.update(
+    await schedule.setInstructorAttendance(
       sessionId,
-      { instructorAttendance: 'present' },
+      { status: 'present' },
       instructorId,
-      { actorCapabilities: ['attendance.manage'] },
+      ['attendance.manage'],
     );
     const report = await reports.create({
       sessionId,

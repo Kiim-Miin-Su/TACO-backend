@@ -24,10 +24,10 @@ describe('세션 audit diff 노이즈 정리 (e2e)', () => {
     const sid = held[0].id;
     // [TBO-79 B1] 지각 전이는 정산 예상액을 바꾸므로 회계 확인이 선행된다(종전엔 정책 분기로 무ack 200).
     //  이 스위트의 관심사는 audit diff 노이즈이므로 ack만 통과시키고 단언은 그대로 둔다.
-    const blocked = await http.patch(`/api/schedule/${sid}`).set(auth()).send({ instructorAttendance: 'late' }).expect(409);
+    const blocked = await http.put(`/api/schedule/${sid}/instructor-attendance`).set(auth()).send({ status: 'late' }).expect(409);
     expect(blocked.body.code).toBe('ACCOUNTING_IMPACT_ACK_REQUIRED');
-    await http.patch(`/api/schedule/${sid}`).set(auth()).send({
-      instructorAttendance: 'late',
+    await http.put(`/api/schedule/${sid}/instructor-attendance`).set(auth()).send({
+      status: 'late',
       acknowledgeAccountingImpact: true,
       expectedAccountingImpactHash: blocked.body.impactHash,
     }).expect(200);

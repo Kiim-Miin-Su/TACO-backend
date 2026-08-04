@@ -235,11 +235,11 @@ describe("Permission matrix (e2e)", () => {
     it("super_admin → PUT /attendance 통과", async () => {
       await http.put("/api/attendance").set(auth("super_admin")).send({ sessionId: 21, studentId: 2, status: "present" }).expect(200);
     });
-    it("manager/instructor → 강사 출결 전용 POST와 일반 schedule PATCH 우회 모두 403", async () => {
-      await http.post("/api/schedule/20/instructor-attendance").set(auth("manager")).send({ status: "present" }).expect(403);
-      await http.post("/api/schedule/20/instructor-attendance").set(auth("instructor")).send({ status: "present" }).expect(403);
-      await http.patch("/api/schedule/20").set(auth("manager")).send({ instructorAttendance: "present" }).expect(403);
-      await http.patch("/api/schedule/20").set(auth("manager")).send({ clearInstructorAttendance: true }).expect(403);
+    it("manager/instructor → 강사 출결 전용 PUT과 일반 schedule PATCH 우회 모두 차단", async () => {
+      await http.put("/api/schedule/20/instructor-attendance").set(auth("manager")).send({ status: "present" }).expect(403);
+      await http.put("/api/schedule/20/instructor-attendance").set(auth("instructor")).send({ status: "present" }).expect(403);
+      await http.patch("/api/schedule/20").set(auth("manager")).send({ instructorAttendance: "present" }).expect(400);
+      await http.patch("/api/schedule/20").set(auth("manager")).send({ clearInstructorAttendance: true }).expect(400);
     });
     it("instructor(park) → POST /reports 타 강사 세션(21) 403", async () => {
       await http.post("/api/reports").set(auth("instructor")).send({ sessionId: 21, studentId: 2, instructorId: 2, content: "x" }).expect(403);

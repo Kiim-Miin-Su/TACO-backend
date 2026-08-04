@@ -672,12 +672,12 @@ export class ScheduleService {
       throw new ForbiddenException('강사 출결 변경은 대표 권한이 필요합니다.');
     }
     return this.update(id, {
-      instructorAttendance: input.status,
       acknowledgeAccountingImpact: input.acknowledgeAccountingImpact,
       expectedAccountingImpactHash: input.expectedAccountingImpactHash,
     } as UpdateScheduleDto, actorId, {
       actorCapabilities,
       auditReason: '강사 출결 기록/수정',
+      instructorAttendanceCommand: { kind: 'set', status: input.status },
     });
   }
 
@@ -692,12 +692,12 @@ export class ScheduleService {
       throw new ForbiddenException('강사 출결 변경은 대표 권한이 필요합니다.');
     }
     return this.update(id, {
-      clearInstructorAttendance: true,
       acknowledgeAccountingImpact: input.acknowledgeAccountingImpact,
       expectedAccountingImpactHash: input.expectedAccountingImpactHash,
     } as UpdateScheduleDto, actorId, {
       actorCapabilities,
       auditReason: input.reason,
+      instructorAttendanceCommand: { kind: 'clear' },
     });
   }
 
@@ -710,6 +710,9 @@ export class ScheduleService {
       expectedTargetIds?: readonly number[];
       actorCapabilities?: RoleCapability[];
       auditReason?: string;
+      instructorAttendanceCommand?:
+        | { kind: 'set'; status: NonNullable<ClassSession['instructorAttendance']> }
+        | { kind: 'clear' };
     },
   ): Promise<ScheduleMutationResult> {
     await this.read.ensureReady();
@@ -763,8 +766,8 @@ export class ScheduleService {
     const cur = this.db.findById<ClassSession>(SESSIONS, id);
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
     this.assertCompletionStatusCommand(cur.status, dto.status);
-    if ((dto.instructorAttendance != null || dto.clearInstructorAttendance)
-      && !internalOpts?.actorCapabilities?.includes('attendance.manage')) {
+    const instructorAttendanceCommand = internalOpts?.instructorAttendanceCommand;
+    if (instructorAttendanceCommand && !internalOpts?.actorCapabilities?.includes('attendance.manage')) {
       throw new ForbiddenException('강사 출결 변경은 대표 권한이 필요합니다.');
     }
     await this.assertCeoOwnedSessionMutable(cur, actorId); // [TBO-59 C3-3]
@@ -785,7 +788,12 @@ export class ScheduleService {
 
     // 1) 대상(primary) 세션의 새 필드 계산
     const primary = this.mergeFields(cur, dto);
-    if (dto.clearInstructorAttendance && cur.status === 'held') {
+    if (instructorAttendanceCommand?.kind === 'set') {
+      primary.instructorAttendance = instructorAttendanceCommand.status;
+    } else if (instructorAttendanceCommand?.kind === 'clear') {
+      primary.instructorAttendance = null;
+    }
+    if (instructorAttendanceCommand?.kind === 'clear' && cur.status === 'held') {
       primary.status = 'scheduled';
     }
 
@@ -848,7 +856,7 @@ export class ScheduleService {
           sessionId: before.id,
         });
       }
-      if (dto.status != null || dto.instructorAttendance != null || dto.clearInstructorAttendance) {
+      if (dto.status != null || instructorAttendanceCommand) {
         throw new BadRequestException('시간 변경과 상태/강사 출결 변경은 한 요청에 함께 보낼 수 없습니다.');
       }
       fields.status = 'scheduled';
@@ -860,7 +868,7 @@ export class ScheduleService {
 
     // 강사 출결만 기록하는 명령은 학생 전원의 출결까지 채워졌을 때만 held로 전이한다.
     // 학생 출결 명령은 AttendanceService가 같은 정책을 사용한다.
-    if (!temporalChangedIds.length && dto.status == null && dto.instructorAttendance != null) {
+    if (!temporalChangedIds.length && dto.status == null && instructorAttendanceCommand?.kind === 'set') {
       const holdPatch = attendanceCompletionHoldPatch(
         { ...cur, ...primary, id: cur.id },
         accountingContext.cohortIndex,
@@ -934,14 +942,18 @@ export class ScheduleService {
     const others = this.db.findBy<ClassSession>(SESSIONS, (s) => !movingIds.has(s.id));
     const blocks = this.availability.list();
     const conflicts: Conflict[] = [];
-    for (const f of [primary, ...seriesPatches.map((p) => p.fields)]) {
-      conflicts.push(...detectConflicts(
-        // [R-9→C4] 크로스 세션은 endTime이 null(명시) — durationMinutes로 이틀(±1일) 겹침 검사
-        { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime ?? undefined, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, studentIds: f.studentIds ?? this.read.activeStudentIds(f.courseId), mode: f.mode },
-        others, blocks,
-        this.read.effectiveStudentIds,
-        (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제 // [TBO-28C] 학생 세션 간 중복 포함
-      ));
+    // 출결 command는 일정의 시간·자원을 바꾸지 않는다. 기존 시드/운영 데이터에 과거 충돌이 있더라도
+    // 사실 기록 자체를 막으면 출결·시수 상태가 영원히 미완결로 남으므로 일정 충돌 검사를 재실행하지 않는다.
+    if (!instructorAttendanceCommand) {
+      for (const f of [primary, ...seriesPatches.map((p) => p.fields)]) {
+        conflicts.push(...detectConflicts(
+          // [R-9→C4] 크로스 세션은 endTime이 null(명시) — durationMinutes로 이틀(±1일) 겹침 검사
+          { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime ?? undefined, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, studentIds: f.studentIds ?? this.read.activeStudentIds(f.courseId), mode: f.mode },
+          others, blocks,
+          this.read.effectiveStudentIds,
+          (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제 // [TBO-28C] 학생 세션 간 중복 포함
+        ));
+      }
     }
     // 결강·취소(canceled/no_show)로 바꾸는 변경은 시간 점유가 사라지므로 충돌 검사와 무관 — 항상 허용.
     const becomesCanceled = primary.status === 'canceled' || primary.status === 'no_show';
@@ -1033,9 +1045,7 @@ export class ScheduleService {
       topic: dto.topic ?? (dto.courseId != null && course ? course.name : cur.topic),
       memo: dto.memo ?? cur.memo,
       color: dto.color ?? cur.color,
-      // [TBO-19 Sprint2] clear=미표시로 초기화(우회 sentinel) · 아니면 기존 병합(?? cur)
-      // DB에서도 실제로 비워지도록 clear는 undefined(UPDATE 생략)가 아니라 NULL을 기록한다.
-      instructorAttendance: dto.clearInstructorAttendance ? null : (dto.instructorAttendance ?? cur.instructorAttendance),
+      instructorAttendance: cur.instructorAttendance,
       studentIds: dto.studentIds ?? cur.studentIds, // 명시 코호트(v0.1.13) — 검증은 update() 본문
       // [R-6 audit 노이즈 정리 2026-07-07] merge는 **보존만**(기본값 채우기 제거) — 기본값은 create()·enrich()가 담당.
       //  종전 `?? SESSION_DEFAULTS`는 구/시드 세션(kind·mode 미저장)을 부분 PATCH할 때 undefined→기본값을

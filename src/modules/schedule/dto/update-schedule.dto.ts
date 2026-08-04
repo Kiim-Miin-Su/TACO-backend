@@ -1,15 +1,14 @@
 import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, IsBoolean, Max, IsArray, ArrayMaxSize } from 'class-validator';
-import { SESSION_STATUSES, INSTRUCTOR_ATT_STATUSES } from '../schedule.entity'; // [P2 M5]
+import { SESSION_STATUSES } from '../schedule.entity'; // [P2 M5]
 import { SESSION_MAX_MIN, SESSION_MIN_MIN } from '../session-time.policy'; // [P2 M7] 분 상한 단일 진실원
 import { MAX_AMOUNT } from '../../../common/validation-limits'; // [P2 M6]
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import type { SessionStatus, RecurrenceScope, InstructorAttendanceStatus, SessionKind, SessionMode, UpdateClassSessionInput } from '@kms545487/contracts';
+import type { SessionStatus, RecurrenceScope, SessionKind, SessionMode, UpdateClassSessionInput } from '@kms545487/contracts';
 import { SESSION_KINDS, SESSION_MODES } from './create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
 const STATUSES = SESSION_STATUSES; // [P2 M5]
 const SCOPES: RecurrenceScope[] = ['this', 'this_and_following', 'all'];
-const INSTRUCTOR_ATT = INSTRUCTOR_ATT_STATUSES; // [P2 M5]
 
 // PATCH /schedule/:id — 이동·리사이즈·상세편집 공용 부분수정 DTO. 모든 필드 선택.
 // [v0.1.14] implements UpdateClassSessionInput — contracts 필드 drift를 tsc가 강제(감사 A1 해소).
@@ -69,15 +68,6 @@ export class UpdateScheduleDto implements UpdateClassSessionInput {
   @ApiPropertyOptional({ example: '#9a6700', description: '캘린더 색상 라벨' })
   @IsOptional() @IsString() @MaxLength(20)
   color?: string;
-
-  @ApiPropertyOptional({ enum: INSTRUCTOR_ATT, example: 'present', description: '강사 출결(출석/지각/결석/보강)' })
-  @IsOptional() @IsIn(INSTRUCTOR_ATT)
-  instructorAttendance?: InstructorAttendanceStatus;
-
-  // [TBO-19 Sprint2] 강사 출결 초기화(미표시로) — true면 instructorAttendance를 비운다(`?? cur` 우회).
-  @ApiPropertyOptional({ example: false, description: '강사 출결을 미표시로 초기화(clear)' })
-  @IsOptional() @IsBoolean()
-  clearInstructorAttendance?: boolean;
 
   @ApiPropertyOptional({ enum: SCOPES, example: 'this', description: '반복 편집 범위: this=이 일정만, this_and_following=이후 전부, all=시리즈 전체(기본 this)' })
   @IsOptional() @IsIn(SCOPES)

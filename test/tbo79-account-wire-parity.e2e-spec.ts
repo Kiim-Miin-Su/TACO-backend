@@ -90,8 +90,8 @@ describe('[TBO-79] 계정·세션 wire ↔ 계약 일치 (e2e)', () => {
       .expect(201)).body.row as { id: number };
     await http.put('/api/attendance').set(as('admin'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${created.id}`).set(as('admin'))
-      .send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin'))
+      .send({ status: 'present' }).expect(200);
 
     const paid = (await http.put(`/api/schedule/${created.id}/pay-amount`).set(as('admin'))
       .send({ amount: 55000 }).expect(200)).body as { row: Record<string, unknown> };
@@ -109,8 +109,8 @@ describe('[TBO-79] 계정·세션 wire ↔ 계약 일치 (e2e)', () => {
       .expect(201)).body.row as { id: number };
     await http.put('/api/attendance').set(as('admin'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${created.id}`).set(as('admin'))
-      .send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin'))
+      .send({ status: 'present' }).expect(200);
 
     const blocked = await http.patch(`/api/schedule/${created.id}`).set(as('manager'))
       .send({ durationMinutes: 90, force: true }).expect(409);

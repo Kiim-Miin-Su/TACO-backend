@@ -114,8 +114,8 @@ describe('[TBO-76 E] 시간 변경과 출결 자동 전이', () => {
     }).expect(201)).body.row as { id: number };
     await http.put('/api/attendance').set(auth())
       .send({ sessionId: session.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${session.id}`).set(auth())
-      .send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.put(`/api/schedule/${session.id}/instructor-attendance`).set(auth())
+      .send({ status: 'present' }).expect(200);
     const report = (await http.post('/api/reports').set(auth())
       .send({ sessionId: session.id, studentId: 1, content: '시간 변경 후에도 보존할 보고서' })
       .expect(201)).body as { id: number };
@@ -238,8 +238,8 @@ describe('[TBO-76 E] 시간 변경과 출결 자동 전이', () => {
     for (const row of made.rows) {
       await http.put('/api/attendance').set(auth())
         .send({ sessionId: row.id, studentId: 1, status: 'present' }).expect(200);
-      await http.patch(`/api/schedule/${row.id}`).set(auth())
-        .send({ instructorAttendance: 'present', force: true }).expect(200);
+      await http.put(`/api/schedule/${row.id}/instructor-attendance`).set(auth())
+        .send({ status: 'present' }).expect(200);
     }
     const body = {
       startTime: '07:00',
@@ -275,8 +275,8 @@ describe('[TBO-76 E] 시간 변경과 출결 자동 전이', () => {
     }).expect(201)).body.row as { id: number };
     await http.put('/api/attendance').set(auth())
       .send({ sessionId: session.id, studentId: 1, status: 'present' }).expect(200);
-    await http.patch(`/api/schedule/${session.id}`).set(auth())
-      .send({ instructorAttendance: 'present', force: true }).expect(200);
+    await http.put(`/api/schedule/${session.id}/instructor-attendance`).set(auth())
+      .send({ status: 'present' }).expect(200);
     const instructorToken = (await http.post('/api/auth/login')
       .send({ webId: 'park_inst', password: 'demo1234' }).expect(201)).body.accessToken;
     const requestRow = (await http.post('/api/schedule-requests')

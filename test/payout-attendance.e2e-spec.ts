@@ -1,6 +1,6 @@
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp , patchSessionAckingImpact } from './setup-app';
+import { clearInstructorAttendanceAckingImpact, createTestApp, setInstructorAttendanceAckingImpact } from './setup-app';
 
 // [TBO-19 시수 정책] 강사 결석(instructorAttendance='absent') 세션은 정산 시수에서 제외됨을 검증.
 //  잠정 비즈니스 로직 — payouts.service.measure() 게이트 (1-b)와 한 쌍.
@@ -31,13 +31,13 @@ describe('Payouts 시수 정책 — 강사 결석 제외 (e2e)', () => {
     expect(target.sessionId).toBeTruthy();
 
     // 강사 결석 마킹 → 그 세션이 시수에서 빠짐
-    expect((await patchSessionAckingImpact(http, asAdmin(), target.sessionId, { instructorAttendance: 'absent' })).status).toBe(200); // [74D-0]
+    expect((await setInstructorAttendanceAckingImpact(http, asAdmin(), target.sessionId, 'absent')).status).toBe(200);
     const afterAbsent = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     expect(afterAbsent.sessionCount).toBe(2);
     expect(afterAbsent.totalMinutes).toBe(base.totalMinutes - target.durationMinutes);
 
     // 출석(present)으로 복구 → 다시 3건
-    expect((await patchSessionAckingImpact(http, asAdmin(), target.sessionId, { instructorAttendance: 'present' })).status).toBe(200); // [74D-0]
+    expect((await setInstructorAttendanceAckingImpact(http, asAdmin(), target.sessionId, 'present')).status).toBe(200);
     const restored = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     expect(restored.sessionCount).toBe(3);
     expect(restored.totalMinutes).toBe(base.totalMinutes);
@@ -47,10 +47,10 @@ describe('Payouts 시수 정책 — 강사 결석 제외 (e2e)', () => {
     const base = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     const sid = base.lines[0].sessionId;
     // 결석 마킹 → 제외
-    expect((await patchSessionAckingImpact(http, asAdmin(), sid, { instructorAttendance: 'absent' })).status).toBe(200); // [74D-0]
+    expect((await setInstructorAttendanceAckingImpact(http, asAdmin(), sid, 'absent')).status).toBe(200);
     expect((await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body.sessionCount).toBe(2);
     // 초기화(clear) → 미표시 + held→scheduled. 출결 사실이 미완결이므로 시수 제외 유지.
-    expect((await patchSessionAckingImpact(http, asAdmin(), sid, { clearInstructorAttendance: true })).status).toBe(200); // [74D-0]
+    expect((await clearInstructorAttendanceAckingImpact(http, asAdmin(), sid)).status).toBe(200);
     const sessions = (await http.get(`/api/schedule?from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     const s = sessions.find((x: { id: number }) => x.id === sid);
     expect(s.instructorAttendance == null).toBe(true); // 미표시로 비워짐

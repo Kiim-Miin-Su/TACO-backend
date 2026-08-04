@@ -6,7 +6,7 @@ import request from 'supertest';
 import {
   completeSessionByAttendance,
   createTestApp,
-  patchSessionAckingImpact,
+  setInstructorAttendanceAckingImpact,
   sudoAuthHeaders,
 } from './setup-app';
 
@@ -62,9 +62,9 @@ describe('[TBO-64] 시수 워크시트 (e2e)', () => {
     SCHED = (await makeSession({ startTime: '18:00' })).id;
     for (const id of [AUTO, LATE, NOREP, ABSENT]) await held(id);
     // 출결 수정은 대표 전용이며 정산 영향 확인 규약을 그대로 사용한다.
-    expect((await patchSessionAckingImpact(http, auth('admin'), LATE, { instructorAttendance: 'late', force: true })).status).toBe(200); // [74D-0]
+    expect((await setInstructorAttendanceAckingImpact(http, auth('admin'), LATE, 'late')).status).toBe(200);
     // held 회차의 출결 변경은 회계 영향 확인(ack) 규약 — FE 모달 확인과 동일 플래그 동반.
-    expect((await patchSessionAckingImpact(http, auth('admin'), ABSENT, { instructorAttendance: 'absent', force: true })).status).toBe(200); // [74D-0]
+    expect((await setInstructorAttendanceAckingImpact(http, auth('admin'), ABSENT, 'absent')).status).toBe(200);
     AUTO_REPORT = await approveReport(AUTO);
     await approveReport(LATE);
     // 학생 출결도 워크시트 화면에서 수정 가능(기존 PUT 재사용) — 참가자 출결 표시 검증용
