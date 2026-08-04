@@ -1,12 +1,12 @@
 import 'reflect-metadata';
 import { loadLocalEnv } from './config/load-env';
 import { NestFactory } from '@nestjs/core';
-import { SwaggerModule } from '@nestjs/swagger';
 import { AppModule } from './app.module';
 import { assertProductionBootSafety } from './config/production-guards';
 import { createOpenApiDocument } from './config/openapi';
 import { RidConsoleLogger } from './common/request-context'; // [TBO-58 P2]
 import { configureApp } from './config/configure-app';
+import { configureApiDocs } from './config/swagger-exposure';
 
 // [env 2026-07-03] .env 로드 — 네이티브(Node 20.12+/22, 의존성 없음). AuthService 등이 process.env를
 //  읽기 전(=NestFactory.create 인스턴스화 전)에 채워야 하므로 여기서 먼저 로드한다.
@@ -24,10 +24,10 @@ async function bootstrap() {
 
   // Swagger — http://localhost:3001/docs (JSON: /docs-json)
   const document = createOpenApiDocument(app);
-  SwaggerModule.setup('docs', app, document);
+  const docsEnabled = configureApiDocs(app, document);
 
   const port = Number(process.env.PORT ?? 3001);
   await app.listen(port);
-  console.log(`TACO API ready on http://localhost:${port}/api · docs: /docs`);
+  console.log(`TACO API ready on http://localhost:${port}/api${docsEnabled ? ' · docs: /docs' : ''}`);
 }
 bootstrap();

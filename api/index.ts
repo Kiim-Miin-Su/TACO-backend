@@ -1,13 +1,14 @@
 import "reflect-metadata";
 import type { ServerResponse } from "node:http";
 import { NestFactory } from "@nestjs/core";
-import { SwaggerModule, type OpenAPIObject } from "@nestjs/swagger";
+import type { OpenAPIObject } from "@nestjs/swagger";
 import { AppModule } from "../src/app.module";
 import { assertProductionBootSafety } from "../src/config/production-guards";
 import { createOpenApiDocument } from "../src/config/openapi";
 import { configureApp } from "../src/config/configure-app";
 import { RidConsoleLogger } from "../src/common/request-context";
 import staticOpenapiJson from "../openapi.json";
+import { configureApiDocs } from "../src/config/swagger-exposure";
 
 // Production cold starts initialize and hydrate the Postgres-backed runtime stores before
 // the first request can be served. Vercel's default function duration can expire during that
@@ -46,11 +47,11 @@ async function bootstrapServer() {
   const document = staticOpenapi ?? createOpenApiDocument(app);
   // 서버리스(Vercel)는 Swagger UI 정적 에셋을 서빙하지 못해 흰 화면이 됨.
   // → JS/CSS를 CDN(jsdelivr swagger-ui-dist)에서 로드하도록 지정.
-  SwaggerModule.setup("docs", app, document, {
-    customCssUrl: "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css",
+  configureApiDocs(app, document, {
+    customCssUrl: "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui.css",
     customJs: [
-      "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js",
-      "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-standalone-preset.js",
+      "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui-bundle.js",
+      "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui-standalone-preset.js",
     ],
   });
 

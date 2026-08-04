@@ -1,4 +1,5 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
+import helmet from 'helmet';
 import { AllExceptionsFilter } from '../common/all-exceptions.filter';
 import { webCorsOrigins } from '../common/cors-origin';
 import { LoggingInterceptor } from '../common/logging.interceptor';
@@ -18,6 +19,13 @@ export function configureApp(
   const { cors = true, observability = true } = options;
 
   configureTrustProxy(app);
+  // API responses do not render HTML, so CSP belongs to the frontend. The remaining Helmet
+  // defaults centrally remove framework disclosure and add MIME, framing and referrer guards.
+  app.use(helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+    strictTransportSecurity: process.env.NODE_ENV === 'production' ? undefined : false,
+  }));
   app.use(requestContextMiddleware);
   if (cors) {
     app.enableCors({
