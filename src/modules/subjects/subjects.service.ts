@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import type { BaseRow } from '../../common/types/base';
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -12,6 +13,7 @@ import { Course } from '../courses/course.entity';
 
 type SubjectReportRef = BaseRow & { subjectId: number };
 
+@TimedModuleInit()
 @Injectable()
 export class SubjectsService implements OnModuleInit {
   constructor(

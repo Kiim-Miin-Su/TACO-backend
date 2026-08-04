@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import type { DeletedResult } from '@kms545487/contracts';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -51,6 +52,7 @@ const actorIsAdmin = (actor?: ReportActor) => !!actor && actor.roles.some((r) =>
  *  `approval_status` CAS(updateIf) — approve-vs-reject/approve-vs-update 경쟁에서 정확히
  *  1승자(패자 409)·모순 audit 0. reject의 정산 연결 판정(session.payoutId)도 session lock+DB 재조회.
  */
+@TimedModuleInit()
 @Injectable()
 export class ReportsService implements OnModuleInit {
   // [TBO-54 C2 대표 지시 콘솔 로깅] 전이 관측 — allowlist(action·id·actor·상태 전이·결과)만, 본문·PII 0.

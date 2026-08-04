@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 // [참조/처리] 범용 변경 이력(audit_log — TBO-16 #7, erd.dbml v8 §29) — "누가·언제·무엇을·어떻게".
 //  - 기록 지점: schedule(세션 CRUD)·availability(가용/불가 upsert·삭제)·schedule-requests(승인/반려).
 //    TBO-13에서 students/enrollments status_change 편입 예정(같은 테이블 — 이력 메커니즘 단일화).
@@ -24,6 +25,7 @@ export type AuditEntry = {
   reason?: string;
 };
 
+@TimedModuleInit()
 @Injectable()
 export class AuditService implements OnModuleInit {
   constructor(

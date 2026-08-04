@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { AsyncLocalStorage } from 'async_hooks';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
@@ -20,6 +21,7 @@ const RECURRENCE_SCOPES = ['this', 'this_and_following', 'all'];
 
 const sqlList = (items: string[]): string => items.map((x) => `'${x}'`).join(', ');
 
+@TimedModuleInit()
 @Injectable()
 export class ScheduleRequestsStore implements OnModuleInit {
   private readonly logger = new Logger(ScheduleRequestsStore.name);

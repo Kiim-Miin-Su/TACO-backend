@@ -9,6 +9,12 @@ import { configureApp } from "../src/config/configure-app";
 import { RidConsoleLogger } from "../src/common/request-context";
 import staticOpenapiJson from "../openapi.json";
 import { configureApiDocs } from "../src/config/swagger-exposure";
+import {
+  markRuntimeReady,
+  measureFirstRequest,
+  measurePerformance,
+  measurePerformanceSync,
+} from "../src/common/performance-timing";
 
 // Production cold starts initialize and hydrate the Postgres-backed runtime stores before
 // the first request can be served. Vercel's default function duration can expire during that
@@ -30,34 +36,33 @@ let bootstrapPromise: Promise<((req: unknown, res: unknown) => void)> | undefine
 
 async function bootstrapServer() {
   console.log("[boot] serverless bootstrap start");
-  assertProductionBootSafety(); // [TBO-28B] production 필수 env fail-fast(§4 — DB·JWT·SMTP)
+  measurePerformanceSync("boot.productionGuard", () => assertProductionBootSafety()); // [TBO-28B] production 필수 env fail-fast(§4 — DB·JWT·SMTP)
   console.log("[boot] production guard passed");
   const logger = new RidConsoleLogger();
   // Nest route discovery emits hundreds of lines on every cold start. Keep the
   // finite Vercel invocation log budget for lifecycle failures, then restore
   // normal operational logging after initialization.
   logger.setLogLevels(["error", "warn"]);
-  const app = await NestFactory.create(AppModule, {
-    logger,
-  });
+  const app = await measurePerformance("boot.nestCreate", () => NestFactory.create(AppModule, { logger }));
   console.log("[boot] Nest application created");
-  configureApp(app);
+  measurePerformanceSync("boot.configureApp", () => configureApp(app));
 
   // 빌드 타임 스펙 우선(파라미터·스키마 정확). 없으면 런타임 생성으로 폴백.
   const document = staticOpenapi ?? createOpenApiDocument(app);
   // 서버리스(Vercel)는 Swagger UI 정적 에셋을 서빙하지 못해 흰 화면이 됨.
   // → JS/CSS를 CDN(jsdelivr swagger-ui-dist)에서 로드하도록 지정.
-  configureApiDocs(app, document, {
+  measurePerformanceSync("boot.configureDocs", () => configureApiDocs(app, document, {
     customCssUrl: "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui.css",
     customJs: [
       "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui-bundle.js",
       "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui-standalone-preset.js",
     ],
-  });
+  }));
 
   console.log("[boot] Nest application init start");
-  await app.init();
+  await measurePerformance("boot.appInit", () => app.init());
   logger.setLogLevels(["log", "error", "warn"]);
+  measurePerformanceSync("boot.ready", () => markRuntimeReady());
   console.log("[boot] serverless bootstrap ready");
   return app.getHttpAdapter().getInstance() as (req: unknown, res: unknown) => void;
 }
@@ -85,7 +90,7 @@ function getServer(): Promise<((req: unknown, res: unknown) => void)> {
 // Vercel Node 함수 시그니처(req, res는 Node IncomingMessage/ServerResponse 호환).
 export default async function handler(req: unknown, res: unknown): Promise<void> {
   try {
-    const server = await getServer();
+    const server = await measureFirstRequest(() => getServer());
     server(req, res);
   } catch {
     const response = res as ServerResponse;

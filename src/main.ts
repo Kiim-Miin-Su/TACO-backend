@@ -7,6 +7,11 @@ import { createOpenApiDocument } from './config/openapi';
 import { RidConsoleLogger } from './common/request-context'; // [TBO-58 P2]
 import { configureApp } from './config/configure-app';
 import { configureApiDocs } from './config/swagger-exposure';
+import {
+  markRuntimeReady,
+  measurePerformance,
+  measurePerformanceSync,
+} from './common/performance-timing';
 
 // [env 2026-07-03] .env 로드 — 네이티브(Node 20.12+/22, 의존성 없음). AuthService 등이 process.env를
 //  읽기 전(=NestFactory.create 인스턴스화 전)에 채워야 하므로 여기서 먼저 로드한다.
@@ -16,18 +21,21 @@ for (const f of ['.env', '.env.local']) {
 }
 
 async function bootstrap() {
-  loadLocalEnv();
-  assertProductionBootSafety(); // [TBO-28B] production 필수 env fail-fast(§4 — DB·JWT·SMTP)
+  measurePerformanceSync('boot.loadEnv', () => loadLocalEnv());
+  measurePerformanceSync('boot.productionGuard', () => assertProductionBootSafety()); // [TBO-28B] production 필수 env fail-fast(§4 — DB·JWT·SMTP)
   // [TBO-58 P2] RidConsoleLogger — 전 Logger 출력(HTTP·ERROR·money 등 도메인 스코프)에 rid 자동 첨부
-  const app = await NestFactory.create(AppModule, { logger: new RidConsoleLogger() });
-  configureApp(app);
+  const app = await measurePerformance('boot.nestCreate', () =>
+    NestFactory.create(AppModule, { logger: new RidConsoleLogger() }));
+  measurePerformanceSync('boot.configureApp', () => configureApp(app));
 
   // Swagger — http://localhost:3001/docs (JSON: /docs-json)
-  const document = createOpenApiDocument(app);
-  const docsEnabled = configureApiDocs(app, document);
+  const document = measurePerformanceSync('boot.openapiDocument', () => createOpenApiDocument(app));
+  const docsEnabled = measurePerformanceSync('boot.configureDocs', () => configureApiDocs(app, document));
 
   const port = Number(process.env.PORT ?? 3001);
-  await app.listen(port);
+  await measurePerformance('boot.appInit', () => app.init());
+  await measurePerformance('boot.listen', () => app.listen(port));
+  measurePerformanceSync('boot.ready', () => markRuntimeReady());
   console.log(`TACO API ready on http://localhost:${port}/api${docsEnabled ? ' · docs: /docs' : ''}`);
 }
 bootstrap();

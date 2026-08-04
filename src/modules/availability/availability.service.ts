@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { AVAILABILITY_SPEC } from '../../database/calendar-asset-specs';
@@ -21,6 +22,7 @@ import { ENROLLMENTS_SPEC, ROOMS_SPEC, STUDENTS_SPEC, USERS_SPEC } from '../../d
 import type { AvailabilityImpact } from '@kms545487/contracts';
 export type { AvailabilityImpact } from '@kms545487/contracts';
 
+@TimedModuleInit()
 @Injectable()
 export class AvailabilityService implements OnModuleInit {
   constructor(

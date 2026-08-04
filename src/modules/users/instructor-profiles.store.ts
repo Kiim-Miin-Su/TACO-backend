@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 // [TBO-28B] 강사 운영 프로필(instructor_profiles) — users.id와 동일한 1:1 PK/FK(user_id).
 //  별도 강사 식별자를 만들지 않는다(erd.dbml 노트). 계약 시급/시간은 instructor_contracts 책임.
 //  쓰기는 **승인 트랜잭션 안에서만** 일어난다(users.approve — 같은 tx에 users/profile/audit).
@@ -47,6 +48,7 @@ const CREATE_SQL = `
 `;
 const INDEX_SQL = `CREATE INDEX IF NOT EXISTS idx_instructor_profiles_active ON instructor_profiles (active, user_id) WHERE deleted_at IS NULL`;
 
+@TimedModuleInit()
 @Injectable()
 export class InstructorProfilesStore implements OnModuleInit {
   private readonly logger = new Logger(InstructorProfilesStore.name);

@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { COUNTRIES_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -10,6 +11,7 @@ import { type Country } from './country.entity';
 //  · 검증 API: isValidCountryCode / isValidTimeZone — profile 변경(countryCode/timeZone)이 사용.
 // [TBO-59 2026-07-24] READ = DB 권위(findActive) 전환 — 대표 지시 "특별한 이유 없으면 모두 DB 관리".
 //  쓰기 API가 없는 정적 시드라 stale 위험은 없었으나 메모리 미러 직접 반환 예외를 제거해 통일한다.
+@TimedModuleInit()
 @Injectable()
 export class CountriesService implements OnModuleInit {
   constructor(private readonly store: PostgresCollectionStore) {}

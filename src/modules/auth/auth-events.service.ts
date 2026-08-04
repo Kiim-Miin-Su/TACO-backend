@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 // [TBO-28B] 인증 보안 이벤트(auth_events) — append-only. 업무 audit_log와 분리.
 //  기록: login_success · login_failure · logout. users.last_login_at은 최신 성공 시각 summary이고
 //  전체 이력 진실원은 이 테이블이다(erd.dbml 노트).
@@ -36,6 +37,7 @@ export type AuthEvent = {
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
 
+@TimedModuleInit()
 @Injectable()
 export class AuthEventsService implements OnModuleInit {
   private readonly logger = new Logger(AuthEventsService.name);

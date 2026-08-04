@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import type { StudentInterestInput, DeletedResult } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -11,6 +12,7 @@ import { StudentInterest, STUDENT_INTERESTS } from './student-interest.entity';
 
 type NormalizedInterest = { courseId?: number; customLabel?: string; priority: number };
 
+@TimedModuleInit()
 @Injectable()
 export class StudentInterestsService implements OnModuleInit {
   constructor(

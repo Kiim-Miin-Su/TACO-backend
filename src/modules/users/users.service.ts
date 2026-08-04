@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 // [참조/처리] 직원 계정 서비스 — InMemoryDatabase 'users' 컬렉션(단일 자산) 기반.
 //  가입(pending) → 이메일 인증 → 대표 승인(active) 라이프사이클의 모든 상태 변화가 db에 기록된다.
 //  [자산화 점검 2026-07-02] 서비스 로컬 배열(this.accounts) → db.seed/insert/update 이관.
@@ -36,6 +37,7 @@ const sha256 = (value: string): string => createHash('sha256').update(value).dig
 export const identityLockId = (webId: string): number => Number.parseInt(sha256(webId.trim().toLowerCase()).slice(0, 7), 16);
 
 
+@TimedModuleInit()
 @Injectable()
 export class UsersService implements OnModuleInit {
   private readonly logger = new Logger(UsersService.name);

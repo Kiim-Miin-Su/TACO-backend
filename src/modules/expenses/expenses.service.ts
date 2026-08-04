@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import type { DeletedResult } from '@kms545487/contracts';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -10,6 +11,7 @@ import { Transaction } from '../transactions/transaction.entity';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 
+@TimedModuleInit()
 @Injectable()
 export class ExpensesService implements OnModuleInit {
   // [TBO-58 P2] 도메인 command 1줄 로그 — payments.service [money] 패턴 확장(allowlist: id·상태·금액만)

@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { VIEW_PRESETS_SPEC } from '../../database/calendar-asset-specs';
@@ -8,6 +9,7 @@ import { ViewPreset, VIEW_PRESETS } from './view-preset.entity';
 import { CreateViewPresetDto } from './dto/create-view-preset.dto';
 import { hasAdminRole } from '../auth/role-policy'; // [TBO-58 P2] IDOR 가드 — 소유자 or 매니저 이상
 
+@TimedModuleInit()
 @Injectable()
 export class ViewPresetsService implements OnModuleInit {
   constructor(

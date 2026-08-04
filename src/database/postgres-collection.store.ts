@@ -107,7 +107,7 @@ export class PostgresCollectionStore {
     }
     if (!(await this.ensureReady(spec))) return [];
     const table = safeTable(spec.table);
-    const rows = await this.query(`SELECT * FROM ${table} ORDER BY id ASC`);
+    const rows = await this.query(`SELECT * FROM ${table} ORDER BY id ASC`, [], `catalog.hydrate.${table}`);
     const parsed = rows.map((row) => this.fromDbRow<T>(spec, row));
     this.memory.replaceExact<T>(spec.table, parsed);
     return parsed;
@@ -389,8 +389,8 @@ export class PostgresCollectionStore {
     await this.query(`SELECT setval(pg_get_serial_sequence('${safe}', 'id'), COALESCE((SELECT MAX(id) FROM ${safe}), 1), true)`);
   }
 
-  private async query(sql: string, params: unknown[] = []): Promise<PostgresRow[]> {
-    const result = await this.postgres.query(sql, params);
+  private async query(sql: string, params: unknown[] = [], queryName?: string): Promise<PostgresRow[]> {
+    const result = await this.postgres.query(sql, params, queryName ? { queryName } : undefined);
     return normalizeQueryRows(result);
   }
 

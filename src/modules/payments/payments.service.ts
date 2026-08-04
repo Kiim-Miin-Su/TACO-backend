@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
@@ -22,6 +23,7 @@ import { Parent, ParentStudent } from '../parents/parent.entity';
  *  수납하면 paid_amount·원장이 과거 금액으로 기록될 수 있었다(2-instance race e2e가 회귀 가드).
  *  READ 목록/상세의 DB repository 전환은 C2(SSOT-P0) 범위.
  */
+@TimedModuleInit()
 @Injectable()
 export class PaymentsService implements OnModuleInit {
   // [TBO-54 C2 대표 지시 콘솔 로깅] 머니 전이 관측 — allowlist(action·id·actor·금액·결과)만, PII 0.

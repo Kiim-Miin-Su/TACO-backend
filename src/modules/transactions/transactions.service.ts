@@ -1,9 +1,11 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { TRANSACTIONS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { Transaction, TRANSACTIONS } from './transaction.entity';
 
+@TimedModuleInit()
 @Injectable()
 export class TransactionsService implements OnModuleInit {
   constructor(

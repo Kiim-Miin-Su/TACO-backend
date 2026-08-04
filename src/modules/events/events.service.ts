@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -14,6 +15,7 @@ import { UpdateEventDto } from './dto/update-event.dto';
  *  권한: 조회=로그인 직원 전원(강사 포함 — 캘린더 전체 뷰 공통 표시), CUD=매니저 이상(controller).
  *  무결성: endDate ≥ startDate(서비스 400 + DB CHECK 이중 방어). 생성/수정/삭제는 audit 포함 한 tx.
  */
+@TimedModuleInit()
 @Injectable()
 export class EventsService implements OnModuleInit {
   constructor(

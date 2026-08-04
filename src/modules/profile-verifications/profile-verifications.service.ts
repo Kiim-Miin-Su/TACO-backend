@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 // [TBO-29B-4] 연락처 재인증 서비스 — 발송/확인/재전송/소비.
 //  권위 규칙(§2·§5·§7): 현재 비밀번호 재확인 → 정규화(email lowercase·phone E.164) → 중복 검사 →
 //  provider 발송 → challenge 영속(만료 10분·재전송 60초·실패 5회 잠금 — 전부 DB 컬럼) →
@@ -48,6 +49,7 @@ const targetHashOf = (target: string): string => sha256(`${target}:${hashSecret(
 // 실패 메시지 일반화(§6) — 존재/원인 열거 방지용 공통 문구.
 const GENERIC_INVALID = '유효하지 않거나 만료된 인증입니다.';
 
+@TimedModuleInit()
 @Injectable()
 export class ProfileVerificationsService implements OnModuleInit {
   constructor(

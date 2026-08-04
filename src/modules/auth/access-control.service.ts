@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import {
   BadRequestException,
   ConflictException,
@@ -32,6 +33,7 @@ import { resolveEffectiveCapabilities } from './effective-capabilities';
 
 type AuditRow = AuditLog & BaseRow;
 
+@TimedModuleInit()
 @Injectable()
 export class AccessControlService implements OnModuleInit {
   private readonly logger = new Logger(AccessControlService.name);

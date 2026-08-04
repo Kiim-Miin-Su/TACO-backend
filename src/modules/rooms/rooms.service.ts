@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { ROOMS_SPEC } from '../../database/calendar-asset-specs';
@@ -8,6 +9,7 @@ import { Room, ROOMS } from './room.entity';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
 
+@TimedModuleInit()
 @Injectable()
 export class RoomsService implements OnModuleInit {
   constructor(

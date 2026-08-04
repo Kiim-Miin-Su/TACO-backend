@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 // [B3 2026-07-16 대표 결정 ①] 알림 뱃지 읽음 — 사용자×탭 마지막 열람 시각의 서버 영속.
 //  탭 진입 시 FE가 mark를 호출하고, 뱃지는 "열람 이후 새 활동"이 있을 때만 표시된다.
 //  감사 제외 근거: 이 행 자체가 열람 이력(고빈도 UI 상태) — erd.dbml audit_log Note의 명시 예외.
@@ -19,6 +20,7 @@ export type NavSeenRow = {
   lastSeenAt: string;
 } & BaseRow;
 
+@TimedModuleInit()
 @Injectable()
 export class NavSeenService implements OnModuleInit {
   constructor(

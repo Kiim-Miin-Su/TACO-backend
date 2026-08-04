@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { hasAdminRole } from '../auth/role-policy'; // [감사 M3]
@@ -41,6 +42,7 @@ export type InstructorStudentAggregate = Pick<StudentAggregate, 'interests'> & {
   student: Partial<Student>;
 };
 
+@TimedModuleInit()
 @Injectable()
 export class StudentsService implements OnModuleInit {
   constructor(

@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { INSTRUCTOR_CONTRACTS_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
@@ -12,6 +13,7 @@ import { todayKst } from '../../common/time.util';
 // [TBO-59 2026-07-24] READ = DB 권위(findActive) 전환 — 대표 지시 "특별한 이유 없으면 모두 DB 관리".
 //  쓰기 경로가 없어 stale 위험은 없었으나 메모리 미러 직접 반환 예외를 제거해 read 규약을 통일한다
 //  (users.service의 삭제 차단 판정은 이미 findActive — 이제 목록 조회까지 동일 원천).
+@TimedModuleInit()
 @Injectable()
 export class InstructorContractsService implements OnModuleInit {
   constructor(

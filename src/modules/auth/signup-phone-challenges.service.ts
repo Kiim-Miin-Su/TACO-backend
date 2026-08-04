@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 // [TBO-57 2026-07-24] 가입 전 휴대전화 OTP — **공개(비로그인) 흐름 전용** 서비스.
 //  signup_email_challenges(TBO-31 D1) 규약의 SMS판: 상수(TTL 10분·쿨다운 60초·시도/재전송 5회)·
 //  salted sha256 hash·masked 응답·GENERIC 400(열거 방지)·가입 tx 일회 소비를 그대로 미러한다.
@@ -67,6 +68,7 @@ const codeHashOf = (phone: string, code: string): string =>
 
 const GENERIC_INVALID = '유효하지 않거나 만료된 인증입니다.';
 
+@TimedModuleInit()
 @Injectable()
 export class SignupPhoneChallengesService implements OnModuleInit {
   private readonly logger = new Logger(SignupPhoneChallengesService.name);

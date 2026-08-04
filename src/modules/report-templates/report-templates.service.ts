@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
@@ -9,6 +10,7 @@ import { PostgresCollectionStore } from '../../database/postgres-collection.stor
 import { REPORT_TEMPLATES_SPEC } from '../../database/calendar-asset-specs';
 import { hasAdminRole } from '../auth/role-policy';
 
+@TimedModuleInit()
 @Injectable()
 export class ReportTemplatesService implements OnModuleInit {
   constructor(

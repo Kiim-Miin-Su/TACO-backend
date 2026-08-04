@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import type { DeletedResult } from '@kms545487/contracts';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { onlyDigits } from '../../common/digits.util'; // [P2 4-A]
@@ -29,6 +30,7 @@ import { UpdateParentDto } from './dto/update-parent.dto';
  *  + lockTargets(student)로 직렬화 — 대표 불변·중복 연결 경합이 재기동 후에도 결정적으로 유지된다.
  *  StudentsService 주입은 FK 검증 외에 **init 순서 보장**(students 테이블 선생성 → FK DO 블록 적용) 목적.
  */
+@TimedModuleInit()
 @Injectable()
 export class ParentsService implements OnModuleInit {
   constructor(

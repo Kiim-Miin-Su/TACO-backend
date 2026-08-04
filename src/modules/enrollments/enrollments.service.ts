@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ClassSessionsStore } from '../schedule/class-sessions.store'; // [TBO-66 R3]
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
@@ -26,6 +27,7 @@ import { CounselForm } from '../counsel/counsel.entity';
 import { enrollmentIncludesSessionDate, enrollmentLifecyclePatch } from './enrollment-lifecycle.policy';
 import type { Roadmap, RoadmapCourse } from '../roadmaps/roadmap.entity';
 
+@TimedModuleInit()
 @Injectable()
 export class EnrollmentsService implements OnModuleInit {
   constructor(

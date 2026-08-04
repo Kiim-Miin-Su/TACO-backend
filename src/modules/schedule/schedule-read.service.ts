@@ -2,7 +2,7 @@
 //  소유: 읽기 hydrate 게이트(EP2 TTL)·카탈로그/명단 lookup·enrich 읽기모델·목록/단건/집계/리소스·
 //  충돌 드라이런·세션 입력 검증(생성·요청 공용). **본문 이동만 — 규약 무변**(주석·산식·경계 그대로).
 //  명령(schedule.service)은 이 서비스를 단방향 주입해 ensureReady/lookup/enrich를 경유한다(순환 없음).
-import { BadRequestException, ForbiddenException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import type { Conflict, ScheduleRow } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { RoomsService } from '../rooms/rooms.service';
@@ -30,6 +30,7 @@ import type { Room } from '../rooms/room.entity';
 import { Attendance, ATTENDANCE } from '../attendance/attendance.entity';
 import { attendanceRequirementOf } from './session-temporal-transition.policy';
 import { buildCohortIndex } from './session-participant.policy';
+import { measurePerformance, TimedModuleInit } from '../../common/performance-timing';
 
 // 과목 색 폴백(표시용) — Subject 계약에 color가 없어 세션→코스 색이 모두 없을 때만 사용.
 const SUBJECT_FALLBACK_COLOR: Record<number, string> = { 1: '#0969da', 2: '#1a7f37' };
@@ -47,8 +48,11 @@ export const SESSION_DEFAULTS = {
 // [TBO-29C C4] 자정 크로스 endTime 규약은 session-time.policy 단일 소스(storedEndTimeOf 별칭).
 const endTimeOf = storedEndTimeOf;
 
+@TimedModuleInit()
 @Injectable()
 export class ScheduleReadService implements OnModuleInit {
+  private readonly logger = new Logger(ScheduleReadService.name);
+
   constructor(
     private readonly db: InMemoryDatabase,
     private readonly sessions: ClassSessionsStore,
@@ -81,33 +85,35 @@ export class ScheduleReadService implements OnModuleInit {
     : process.env.NODE_ENV === 'test' ? 0 : 2000;
 
   async ensureReady(): Promise<void> {
-    // [TBO-28F] users도 재조회 — 다른 인스턴스에서 승인/등록된 계정이 리소스·검증에 즉시 반영.
-    // [TBO-29C C2→C5 성능 수정] pg tx **안**(refreshAfterLock)에서는 단일 커넥션이라 순차 실행,
-    //  tx **밖**(일반 조회 경로)에서는 병렬 — 순차 고정이 Neon(WAN) 왕복 지연을 합산시켜
-    //  release 게이트 db-crud가 타임아웃하는 회귀를 만들었다(실측 2026-07-15).
-    const tasks = [
-      () => this.sessions.ensureReady(),
-      () => this.availability.refresh(),
-      () => this.collections.hydrate<StaffAccount>(USERS_SPEC),
-      () => this.collections.hydrate<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC),
-      () => this.collections.hydrate<Course>(COURSES_SPEC),
-      () => this.collections.hydrate<Subject>(SUBJECTS_SPEC),
-      () => this.collections.hydrate<Enrollment>(ENROLLMENTS_SPEC),
-      () => this.collections.hydrate<Student>(STUDENTS_SPEC),
-      () => this.collections.hydrate<Room>(ROOMS_SPEC), // [TBO-66 R2] roomId 검증·정원 충돌·이름 표기가 메모리 미러 소비 — 교차 인스턴스 신선화
-      () => this.collections.hydrate<Attendance>(ATTENDANCE_SPEC),
-    ];
-    if (this.unitOfWork.inPgTransaction) {
-      for (const task of tasks) await task();
-      this.hydratedAt = Date.now();
-      return;
-    }
-    if (this.hydrateTtlMs > 0 && Date.now() - this.hydratedAt < this.hydrateTtlMs) return;
-    if (this.hydrateInFlight) return this.hydrateInFlight;
-    this.hydrateInFlight = Promise.all(tasks.map((task) => task()))
-      .then(() => { this.hydratedAt = Date.now(); })
-      .finally(() => { this.hydrateInFlight = null; });
-    return this.hydrateInFlight;
+    return measurePerformance('calendar.readModelHydrate', async () => {
+      // [TBO-28F] users도 재조회 — 다른 인스턴스에서 승인/등록된 계정이 리소스·검증에 즉시 반영.
+      // [TBO-29C C2→C5 성능 수정] pg tx **안**(refreshAfterLock)에서는 단일 커넥션이라 순차 실행,
+      //  tx **밖**(일반 조회 경로)에서는 병렬 — 순차 고정이 Neon(WAN) 왕복 지연을 합산시켜
+      //  release 게이트 db-crud가 타임아웃하는 회귀를 만들었다(실측 2026-07-15).
+      const tasks = [
+        () => this.sessions.ensureReady(),
+        () => this.availability.refresh(),
+        () => this.collections.hydrate<StaffAccount>(USERS_SPEC),
+        () => this.collections.hydrate<ScheduleSeriesRow>(CLASS_SESSION_SERIES_SPEC),
+        () => this.collections.hydrate<Course>(COURSES_SPEC),
+        () => this.collections.hydrate<Subject>(SUBJECTS_SPEC),
+        () => this.collections.hydrate<Enrollment>(ENROLLMENTS_SPEC),
+        () => this.collections.hydrate<Student>(STUDENTS_SPEC),
+        () => this.collections.hydrate<Room>(ROOMS_SPEC), // [TBO-66 R2] roomId 검증·정원 충돌·이름 표기가 메모리 미러 소비 — 교차 인스턴스 신선화
+        () => this.collections.hydrate<Attendance>(ATTENDANCE_SPEC),
+      ];
+      if (this.unitOfWork.inPgTransaction) {
+        for (const task of tasks) await task();
+        this.hydratedAt = Date.now();
+        return;
+      }
+      if (this.hydrateTtlMs > 0 && Date.now() - this.hydratedAt < this.hydrateTtlMs) return;
+      if (this.hydrateInFlight) return this.hydrateInFlight;
+      this.hydrateInFlight = Promise.all(tasks.map((task) => task()))
+        .then(() => { this.hydratedAt = Date.now(); })
+        .finally(() => { this.hydrateInFlight = null; });
+      return this.hydrateInFlight;
+    }, undefined, this.logger);
   }
 
   /** [TBO-28C] 학생 세션 간 중복 검사용 유효 코호트 리졸버(명시 studentIds ?? 코스 활성 수강생). */

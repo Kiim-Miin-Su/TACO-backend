@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 // [TBO-69 C2 2026-07-26] 정산 **읽기(Read) 서비스** — payouts.service(677줄)에서 분리.
 //  소유: 시수 산정(measure/preview — 분류 진실원 classifySessionForPayout 소비)·워크시트·미정산
 //  감지(uncovered)·목록/단건(DB 권위 findActive)·강사 스코프 판정·판정 입력 표 재수화.
@@ -33,6 +34,7 @@ type SessionWithPayout = ClassSession & {
 
 export type MeasureResult = PayoutMeasure;
 
+@TimedModuleInit()
 @Injectable()
 export class PayoutsReadService implements OnModuleInit {
   private readonly logger = new Logger(PayoutsReadService.name);

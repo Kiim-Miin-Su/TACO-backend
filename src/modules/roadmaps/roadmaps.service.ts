@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import {
   COURSES_SPEC as COURSES_SPEC_REF,
@@ -24,6 +25,7 @@ export type RoadmapAggregate = SharedRoadmapAggregate;
  *  이 서비스가 hydrate 갭(roadmaps 미수화)을 해소하고 CRUD·연결·재정렬을 제공한다.
  *  규약: 쓰기 전부 uow.run+lock+audit(전 테이블 이력) · 코스 원부는 courses SSOT(사본 저장 0).
  */
+@TimedModuleInit()
 @Injectable()
 export class RoadmapsService implements OnModuleInit {
   // [TBO-56 C2b] InMemoryDatabase 주입 제거 — 읽기(listDb/getDb)·명령 판정 전부 DB 권위.

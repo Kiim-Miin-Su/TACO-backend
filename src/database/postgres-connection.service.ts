@@ -5,6 +5,11 @@ import { AsyncLocalStorage } from 'async_hooks';
 import { DataSource, type EntityManager } from 'typeorm';
 import * as pg from 'pg';
 import { runtimeDatabaseUrl } from './database-url';
+import {
+  measurePerformance,
+  TimedModuleInit,
+  type PerformancePoolSnapshot,
+} from '../common/performance-timing';
 
 export type DatabaseConnectionStatus = {
   runtimeStore: 'in-memory' | 'postgres';
@@ -62,6 +67,7 @@ export function assertRuntimeRoleBoundary(boundary: RuntimeRoleBoundary): void {
   }
 }
 
+@TimedModuleInit()
 @Injectable()
 export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PostgresConnectionService.name);
@@ -97,7 +103,7 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
     if (this.dataSource?.isInitialized) return;
     if (this.initPromise) return this.initPromise;
 
-    this.initPromise = this.initialize(url).finally(() => {
+    this.initPromise = measurePerformance('db.initialize', () => this.initialize(url), undefined, this.logger).finally(() => {
       this.initPromise = null;
     });
     return this.initPromise;
@@ -125,11 +131,21 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
     });
 
     try {
-      await this.dataSource.initialize();
-      const [boundaryRow] = await this.dataSource.query(
-        `SELECT current_user AS role,
-                has_schema_privilege(current_user, 'public', 'CREATE') AS "schemaCreate"`,
-      ) as Array<{ role: string; schemaCreate: boolean }>;
+      await measurePerformance(
+        'db.datasourceInitialize',
+        () => this.dataSource!.initialize(),
+        () => this.poolSnapshot(),
+        this.logger,
+      );
+      const [boundaryRow] = await measurePerformance(
+        'db.query',
+        () => this.dataSource!.query(
+          `SELECT current_user AS role,
+                  has_schema_privilege(current_user, 'public', 'CREATE') AS "schemaCreate"`,
+        ) as Promise<Array<{ role: string; schemaCreate: boolean }>>,
+        (rows) => ({ queryName: 'db.roleBoundary', rowCount: rows.length, ...this.poolSnapshot() }),
+        this.logger,
+      );
       if (!boundaryRow) throw new Error('[db] runtime role boundary readback returned no row');
       assertRuntimeRoleBoundary(boundaryRow);
       this.attachPoolErrorLogger();
@@ -164,7 +180,7 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
     }
     const started = Date.now();
     try {
-      await this.dataSource.query('select 1 as ok');
+      await this.query('select 1 as ok', [], { queryName: 'db.ping' });
       this.lastError = null;
       return {
         runtimeStore: 'postgres',
@@ -196,9 +212,19 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
     return !!this.transactionContext.getStore();
   }
 
-  async query<T = Record<string, unknown>>(sql: string, params: unknown[] = []): Promise<T[]> {
+  async query<T = Record<string, unknown>>(
+    sql: string,
+    params: unknown[] = [],
+    telemetry?: { queryName: string },
+  ): Promise<T[]> {
     const executor = this.transactionContext.getStore() ?? this.getDataSource();
-    return executor.query(sql, params) as Promise<T[]>;
+    if (!telemetry) return executor.query(sql, params) as Promise<T[]>;
+    return measurePerformance(
+      'db.query',
+      () => executor.query(sql, params) as Promise<T[]>,
+      (rows) => ({ queryName: telemetry.queryName, rowCount: rows.length, ...this.poolSnapshot() }),
+      this.logger,
+    );
   }
 
   // [TBO-28B] 스키마 DDL 전용 실행기 — 부팅 시 여러 모듈 onModuleInit이 병렬로 CREATE TABLE/INDEX
@@ -239,6 +265,17 @@ export class PostgresConnectionService implements OnModuleInit, OnModuleDestroy 
       this.lastError = err.message;
       this.logger.warn(`Postgres pool idle client error: ${err.message}`);
     });
+  }
+
+  private poolSnapshot(): PerformancePoolSnapshot {
+    const pool = (this.dataSource?.driver as unknown as {
+      master?: { totalCount?: number; idleCount?: number; waitingCount?: number };
+    })?.master;
+    return {
+      poolTotal: pool?.totalCount,
+      poolIdle: pool?.idleCount,
+      poolWaiting: pool?.waitingCount,
+    };
   }
 
   private async destroyDataSource(): Promise<void> {

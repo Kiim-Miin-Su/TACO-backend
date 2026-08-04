@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ConflictException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -46,6 +47,7 @@ const currentFormPatchOf = (
   nextContactAt: normalizeCounselInstant(snapshot.nextContactAt) ?? null,
 });
 
+@TimedModuleInit()
 @Injectable()
 export class CounselService implements OnModuleInit {
   // [TBO-58 P2] 도메인 command 1줄 로그 — allowlist(id·상태·회차번호만, 상담 내용·이름 금지)

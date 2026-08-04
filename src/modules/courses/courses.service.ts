@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ConflictException, Injectable, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { createHash } from 'crypto';
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -26,6 +27,7 @@ import { withEffectiveCourseRate } from './course-pay.resolver';
 
 export type InstructorCourseView = Omit<Course, 'price' | 'hourlyRate' | 'hourlyRateOverride'>;
 
+@TimedModuleInit()
 @Injectable()
 export class CoursesService implements OnModuleInit {
   constructor(

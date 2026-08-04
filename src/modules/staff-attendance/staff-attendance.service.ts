@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import {
   BadRequestException,
   ConflictException,
@@ -62,6 +63,7 @@ const emptySummary = (): InstructorAttendanceLedgerSummary => ({
   },
 });
 
+@TimedModuleInit()
 @Injectable()
 export class StaffAttendanceService implements OnModuleInit {
   constructor(

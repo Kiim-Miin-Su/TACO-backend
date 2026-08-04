@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 // [TBO-31 C1 D1] 가입 전 이메일 OTP — **공개(비로그인) 흐름 전용** 서비스.
 //  profile-verifications 자산은 requester_id NOT NULL FK·JWT·currentPassword 3중으로 비로그인
 //  재사용이 구조적으로 불가(§0 실측) → 상수(TTL 10분·쿨다운 60초·시도/재전송 5회)·sha256 salted
@@ -69,6 +70,7 @@ const codeHashOf = (purpose: EmailChallengePurpose, email: string, code: string)
 // 실패 메시지 일반화 — challenge 존재/상태 열거 방지(profile-verifications GENERIC 규약과 동일).
 const GENERIC_INVALID = '유효하지 않거나 만료된 인증입니다.';
 
+@TimedModuleInit()
 @Injectable()
 export class SignupEmailChallengesService implements OnModuleInit {
   private readonly logger = new Logger(SignupEmailChallengesService.name);

@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import type { DeletedResult, RoleCapability } from '@kms545487/contracts';
 import {
   BadRequestException,
@@ -25,6 +26,7 @@ import {
   type ProfileChanges,
 } from './profile-change-request.entity';
 
+@TimedModuleInit()
 @Injectable()
 export class ProfileChangeRequestsService implements OnModuleInit {
   constructor(

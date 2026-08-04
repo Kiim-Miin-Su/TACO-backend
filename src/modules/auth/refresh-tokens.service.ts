@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 // [대표 지시 ④ 2026-07-16] refresh token 발급·회전·폐기 — httpOnly 쿠키로만 운반되는 불투명
 //  랜덤 토큰(JWT 아님). 저장은 sha256 hash만(불변식 §5-3: 원문 토큰을 저장·로그·응답에 남기지 않음 —
 //  발급 응답의 Set-Cookie 1회가 유일한 원문 노출).
@@ -31,6 +32,7 @@ const ttlDays = (): number => {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : 14;
 };
 
+@TimedModuleInit()
 @Injectable()
 export class RefreshTokensService implements OnModuleInit {
   private readonly logger = new Logger(RefreshTokensService.name);

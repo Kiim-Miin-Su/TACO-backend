@@ -1,3 +1,4 @@
+import { TimedModuleInit } from '../../common/performance-timing';
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -33,6 +34,7 @@ import { SessionAccountingGuard, type AccountingAckInput } from '../schedule/ses
  *  - upsert: sessionId→class_sessions, studentId→students 존재 검증 후, (session,student) 있으면 status 갱신, 없으면 삽입.
  *    → 한 쌍당 1행 유지(ERD unique(session_id, student_id))로 이중 기록 방지.
  */
+@TimedModuleInit()
 @Injectable()
 export class AttendanceService implements OnModuleInit {
   // [TBO-58 P2] 도메인 command 1줄 로그 — [money] 패턴 확장(allowlist: id·상태만, 이름 없음)

@@ -18,6 +18,7 @@ import {
   CLASS_SESSION_SERIES_TABLE_SQL,
 } from '../../database/migrations/class-session-series.migration';
 import { TBO36_CLASS_SESSIONS_SQL } from '../../database/migrations/staff-pay-calendar.migration';
+import { TimedModuleInit } from '../../common/performance-timing';
 
 const TABLE = SESSIONS;
 
@@ -28,6 +29,7 @@ const INSTRUCTOR_ATTENDANCE = ['present', 'late', 'absent', 'makeup'];
 
 const sqlList = (items: readonly string[]): string => items.map((x) => `'${x}'`).join(', ');
 
+@TimedModuleInit()
 @Injectable()
 export class ClassSessionsStore implements OnModuleInit {
   private readonly logger = new Logger(ClassSessionsStore.name);
@@ -209,6 +211,7 @@ export class ClassSessionsStore implements OnModuleInit {
     const rows = await this.query(
       `SELECT * FROM ${TABLE} WHERE ${where.join(' AND ')} ORDER BY session_date ASC, start_time ASC, id ASC`,
       values,
+      'sessions.range',
     );
     return rows.map((row) => this.fromDbRow(row));
   }
@@ -334,13 +337,13 @@ export class ClassSessionsStore implements OnModuleInit {
   }
 
   private async refreshMemory(): Promise<void> {
-    const rows = await this.query(`SELECT * FROM ${TABLE} ORDER BY id ASC`);
+    const rows = await this.query(`SELECT * FROM ${TABLE} ORDER BY id ASC`, [], 'sessions.fullHydrate');
     const sessions = rows.map((r) => this.fromDbRow(r));
     this.memory.replaceExact<ClassSession>(TABLE, sessions);
   }
 
-  private async query(sql: string, params: unknown[] = []): Promise<PostgresRow[]> {
-    const result = await this.postgres.query(sql, params);
+  private async query(sql: string, params: unknown[] = [], queryName?: string): Promise<PostgresRow[]> {
+    const result = await this.postgres.query(sql, params, queryName ? { queryName } : undefined);
     return normalizeQueryRows(result);
   }
 
