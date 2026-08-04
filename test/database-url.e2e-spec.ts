@@ -62,7 +62,19 @@ describe('database URL role boundary', () => {
     expect(result.host).toBe('pooler.example');
     expect(result.username).toBe('taco_runtime');
     expect(result.password).toBe('safe-password');
+    expect(result.searchParams.get('sslmode')).toBe('verify-full');
     expect(result.searchParams.get('pgbouncer')).toBe('true');
+  });
+
+  it('runtime role URL 생성 시 Neon의 약한 호환 모드를 verify-full로 승격한다', () => {
+    const result = new URL(buildRuntimeRoleUrl(
+      'postgresql://owner@direct.example/app?sslmode=require',
+      'postgresql://owner@pooler.example/app?sslmode=require',
+      'taco_runtime',
+      'safe-password',
+    ));
+
+    expect(result.searchParams.get('sslmode')).toBe('verify-full');
   });
 
   it('다른 database의 runtime 연결원은 거부한다', () => {

@@ -18,11 +18,14 @@ const withEnv = async (patch: Record<string, string | undefined>, fn: () => void
 };
 
 describe('정책 단위 — TLS·DDL·RRN (TBO-34 C2-C)', () => {
-  it('TLS: production은 검증 강제(rejectUnauthorized=true), DB_SSL=false·sslmode=disable은 fail-closed', async () => {
+  it('TLS: production은 verify-full과 인증서 검증을 강제한다', async () => {
     await withEnv({ NODE_ENV: 'production', DB_SSL: undefined, DB_SSL_CA: undefined, DB_SSL_CA_FILE: undefined }, () => {
       expect(resolvePgSsl()).toEqual({ rejectUnauthorized: true });
-      expect(() => assertPgUrlPolicy('postgres://u:p@host/db?sslmode=disable')).toThrow(/sslmode=disable/);
-      expect(() => assertPgUrlPolicy('postgres://u:p@host/db?sslmode=require')).not.toThrow();
+      expect(() => assertPgUrlPolicy('postgres://u:p@host/db?sslmode=verify-full')).not.toThrow();
+      expect(() => assertPgUrlPolicy('postgres://u:p@host/db?sslmode=disable')).toThrow(/verify-full/);
+      expect(() => assertPgUrlPolicy('postgres://u:p@host/db?sslmode=require')).toThrow(/verify-full/);
+      expect(() => assertPgUrlPolicy('postgres://u:p@host/db')).toThrow(/verify-full/);
+      expect(() => assertPgUrlPolicy('not-a-postgres-url')).toThrow(/형식/);
     });
     await withEnv({ NODE_ENV: 'production', DB_SSL: 'false' }, () => {
       expect(() => resolvePgSsl()).toThrow(/DB_SSL=false/);

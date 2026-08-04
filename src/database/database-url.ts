@@ -48,5 +48,9 @@ export function buildRuntimeRoleUrl(
 
   runtime.username = role;
   runtime.password = password;
+  const sslMode = runtime.searchParams.get('sslmode')?.toLowerCase();
+  if (sslMode && ['prefer', 'require', 'verify-ca'].includes(sslMode)) {
+    runtime.searchParams.set('sslmode', 'verify-full');
+  }
   return runtime.toString();
 }
