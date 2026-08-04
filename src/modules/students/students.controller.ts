@@ -14,7 +14,6 @@ import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { StudentsService } from './students.service';
-import { RolesGuard } from '../auth/roles.guard';
 import { SudoGuard } from '../auth/sudo.guard'; // [TBO-59 C3-2] 파괴 명령 재인증
 import { RequireCapabilities, Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import { CreateStudentFamilyRelationDto, UpdateStudentFamilyRelationDto } from './dto/student-family-relation.dto';
@@ -23,7 +22,6 @@ import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ListStudentsQueryDto } from './dto/list-students-query.dto';
 
 @ApiTags('students')
-@UseGuards(RolesGuard)
 @Controller('students')
 export class StudentsController {
   constructor(private readonly students: StudentsService) {}

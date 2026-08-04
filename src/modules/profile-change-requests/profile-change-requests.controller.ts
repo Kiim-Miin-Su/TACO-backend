@@ -1,10 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { RequireCapabilities, Roles, STAFF_ROLES } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { CreateProfileChangeRequestDto } from './dto/create-profile-change-request.dto';
 import { ProfileChangeRequestResponseDto } from './dto/profile-change-request-response.dto';
 import { RejectProfileChangeRequestDto } from './dto/reject-profile-change-request.dto';
@@ -14,7 +13,6 @@ type AuthedRequest = Request & { user?: JwtClaims };
 
 @ApiTags('profile-change-requests')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('profile-change-requests')
 export class ProfileChangeRequestsController {
   constructor(private readonly requests: ProfileChangeRequestsService) {}

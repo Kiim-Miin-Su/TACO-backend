@@ -1,15 +1,13 @@
-import { Body, Controller, Delete, Get, Param, ParseArrayPipe, Post, Put, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, ParseArrayPipe, Post, Put, Req, UnauthorizedException } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ADMIN_ROLES, Roles, STAFF_ROLES } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { StudentInterestDto } from './dto/student-interest.dto';
 import { StudentInterestsService } from './student-interests.service';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('student-interests')
-@UseGuards(RolesGuard)
 @Controller('students/:studentId/interests')
 export class StudentInterestsController {
   constructor(private readonly interests: StudentInterestsService) {}

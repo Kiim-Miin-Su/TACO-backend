@@ -1,17 +1,15 @@
 // [E0] PATCH /users/me/credentials — UsersController에서 이 모듈로 이동(경로·계약 동일).
 //  이동 사유: 비밀번호 변경 이메일 OTP가 ProfileVerificationsService를 필요로 하는데
 //  Users↔ProfileVerifications는 모듈 순환이라 제3 모듈이 오케스트레이션한다(위 service 주석).
-import { Body, Controller, Patch, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Patch, Req, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOkResponse, ApiOperation } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { RolesGuard } from '../auth/roles.guard';
 import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 import { ChangeCredentialsDto } from '../users/dto/change-credentials.dto';
 import { CredentialAccountResponseDto } from '../users/dto/credential-account-response.dto';
 import { CredentialsService } from './credentials.service';
 
-@UseGuards(RolesGuard)
 @Controller('users')
 export class CredentialsController {
   constructor(private readonly credentials: CredentialsService) {}

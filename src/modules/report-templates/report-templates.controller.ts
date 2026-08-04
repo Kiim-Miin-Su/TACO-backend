@@ -1,17 +1,15 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ReportTemplatesService } from './report-templates.service';
 import { CreateReportTemplateDto } from './dto/create-report-template.dto';
 import { UpdateReportTemplateDto } from './dto/update-report-template.dto';
-import { RolesGuard } from '../auth/roles.guard';
 import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 
 // [참조/처리] /api/report-templates — 리포트 템플릿(강사 공용 자산). 로그인 직원 읽기·쓰기.
 @ApiTags('report-templates')
-@UseGuards(RolesGuard)
 @Controller('report-templates')
 export class ReportTemplatesController {
   constructor(private readonly templates: ReportTemplatesService) {}

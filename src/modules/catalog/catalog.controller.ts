@@ -1,13 +1,11 @@
 // [E0.5 ④] /api/catalog — 참조 데이터 조회(읽기 전용). 국가·시간대 토글 옵션의 단일 소스.
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
-import { RolesGuard } from '../auth/roles.guard';
 import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import { CountriesService } from './countries.service';
 
 @ApiTags('catalog')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('catalog')
 export class CatalogController {
   constructor(private readonly countries: CountriesService) {}

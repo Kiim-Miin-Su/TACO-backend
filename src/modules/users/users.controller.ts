@@ -4,7 +4,6 @@ import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiParam, ApiQuery } from '
 import type { Request } from 'express';
 import { UsersService } from './users.service';
 import { SignupApprovalService } from './signup-approval.service'; // [TBO-68 C3] 직접 등록
-import { RolesGuard } from '../auth/roles.guard';
 import {
   ADMIN_ROLES,
   RequireCapabilities,
@@ -24,7 +23,6 @@ import { StaffAccountResponseDto } from './dto/staff-account-response.dto';
 import { AccessControlService } from '../auth/access-control.service';
 import { SetUserCapabilityDto } from '../auth/dto/set-user-capability.dto';
 
-@UseGuards(RolesGuard)
 @Controller('users')
 export class UsersController {
   constructor(

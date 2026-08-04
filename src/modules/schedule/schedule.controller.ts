@@ -11,7 +11,6 @@ import { ClearInstructorAttendanceDto, SetInstructorAttendanceDto } from './dto/
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
-import { RolesGuard } from '../auth/roles.guard';
 import { SudoGuard } from '../auth/sudo.guard';
 import {
   RequireCapabilities,
@@ -25,7 +24,6 @@ import { SessionAccountingImpactConflictResponseDto } from './dto/accounting-imp
 
 @ApiTags('scheduling')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('schedule')
 export class ScheduleController {
   constructor(

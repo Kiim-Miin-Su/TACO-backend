@@ -1,4 +1,4 @@
-import { Logger, BadRequestException, Body, Controller, Post, UseGuards } from '@nestjs/common';
+import { Logger, BadRequestException, Body, Controller, Post } from '@nestjs/common';
 import { todayKst } from '../../common/time.util'; // [TBO-65 M2]
 import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
@@ -6,7 +6,6 @@ import {
   GraphQLError, NoSchemaIntrospectionCustomRule, graphql, parse, specifiedRules, validate,
   type DocumentNode, type SelectionSetNode,
 } from 'graphql';
-import { RolesGuard } from '../auth/roles.guard';
 import { RequireCapabilities } from '../auth/roles.decorator';
 import { DbAnalyticsSnapshotRepository } from '../../database/db-analytics-snapshot.repository';
 import { CounselService } from '../counsel/counsel.service';
@@ -43,7 +42,6 @@ const ceoLogger = new Logger('analytics'); // [TBO-60] 기간 파라미터 로�
  */
 @ApiTags('graphql')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @RequireCapabilities('finance.access')
 @Controller('graphql')
 export class GraphqlGatewayController {

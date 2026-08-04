@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiTags, ApiOperation, ApiQuery, ApiOkResponse, ApiCreatedResponse, ApiBearerAuth, ApiForbiddenResponse } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -8,7 +8,6 @@ import { UpdateCounselDto } from './dto/update-counsel.dto';
 import { CreateCounselRoundDto } from './dto/create-round.dto';
 import { UpdateCounselRoundDto } from './dto/update-round.dto';
 import { ConvertCounselDto } from './dto/convert-counsel.dto'; // [TBO-80 80E]
-import { RolesGuard } from '../auth/roles.guard';
 import { RequireCapabilities } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 
@@ -16,7 +15,6 @@ import type { JwtClaims } from '../auth/auth.service';
 //  폼 생성/수정 + 회차 추가. 관심 과목/코스 FK·부모 폼 FK를 서비스가 검증.
 @ApiTags('counsel')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('counsel')
 export class CounselController {
   constructor(private readonly counsel: CounselService) {}

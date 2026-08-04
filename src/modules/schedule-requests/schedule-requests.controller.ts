@@ -1,6 +1,6 @@
 // 강사 수업 요청 → 매니저 승인/반려 (TBO-16 #9).
 //  RBAC: 생성·조회·철회=STAFF(강사 포함 — 조회는 강사면 본인 것만 강제), 승인/반려=ADMIN(manager 이상).
-import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiConflictResponse, ApiCreatedResponse, ApiOperation, ApiParam, ApiQuery, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
@@ -9,7 +9,6 @@ import { ScheduleRequestsService } from './schedule-requests.service';
 import { CreateScheduleRequestDto } from './dto/create-schedule-request.dto';
 import { RejectScheduleRequestDto } from './dto/reject-schedule-request.dto';
 import { UpdateScheduleRequestDto } from './dto/update-schedule-request.dto';
-import { RolesGuard } from '../auth/roles.guard';
 import { Roles, RequireCapabilities, STAFF_ROLES } from '../auth/roles.decorator';
 import { SessionAccountingImpactConflictResponseDto } from '../schedule/dto/accounting-impact-response.dto';
 import {
@@ -27,7 +26,6 @@ const optionalBoolean = (name: string, value?: string): boolean | undefined => {
 
 @ApiTags('schedule-requests')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('schedule-requests')
 export class ScheduleRequestsController {
   constructor(private readonly requests: ScheduleRequestsService) {}

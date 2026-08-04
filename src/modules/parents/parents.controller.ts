@@ -1,11 +1,10 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiTags, ApiOperation, ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ParentsService } from './parents.service';
 import { CreateParentDto } from './dto/create-parent.dto';
 import { LinkParentDto, UpdateRelationDto } from './dto/link-parent.dto';
-import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 import { UpdateParentDto } from './dto/update-parent.dto';
@@ -14,7 +13,6 @@ import { UpdateParentDto } from './dto/update-parent.dto';
 //  - GET /parents · GET /parents/relations(M:N). POST /parents(신규+연결) · POST /parents/link(기존 연결).
 //  - PATCH /parents/relations/:id(대표 이전·납부자). 대표(primary)는 학생당 ≤1 불변으로 유지.
 @ApiTags('parents')
-@UseGuards(RolesGuard)
 @Controller('parents')
 export class ParentsController {
   constructor(private readonly parents: ParentsService) {}

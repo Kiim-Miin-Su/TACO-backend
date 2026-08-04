@@ -4,7 +4,6 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
 import { ADMIN_ROLES, RequireCapabilities, Roles } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { SudoGuard } from '../auth/sudo.guard'; // [TBO-79 C1]
 import { CreateInstructorDto } from './dto/create-instructor.dto';
 import { UpdateInstructorDto } from './dto/update-instructor.dto';
@@ -13,7 +12,6 @@ import { SignupApprovalService } from './signup-approval.service'; // [TBO-68 C3
 
 @ApiTags('instructors')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('instructors')
 export class InstructorsController {
   constructor(

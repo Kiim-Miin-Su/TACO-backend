@@ -1,8 +1,7 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { RolesGuard } from '../auth/roles.guard';
 import { ADMIN_ROLES, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 import { RoadmapsService } from './roadmaps.service';
@@ -11,7 +10,6 @@ import { AddRoadmapCourseDto, CreateRoadmapDto, ReorderRoadmapCoursesDto, Update
 // [TBO-47 2026-07-23] 수강 로드맵 — 코스 묶음 카탈로그(조회 전 직원·쓰기 매니저 이상).
 @ApiTags('roadmaps')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('roadmaps')
 export class RoadmapsController {
   constructor(private readonly roadmaps: RoadmapsService) {}

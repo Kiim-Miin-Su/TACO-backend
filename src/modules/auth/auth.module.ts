@@ -44,6 +44,8 @@ import { AccessControlService } from './access-control.service';
     SudoGuard,
     BrowserOriginGuard,
     { provide: APP_GUARD, useExisting: BrowserOriginGuard },
+    // 인증·RBAC의 단일 전역 경계. 컨트롤러에서 RolesGuard를 다시 선언하면
+    // 계정 상태와 capability DB 조회가 요청당 중복 실행된다.
     RolesGuard,
     { provide: APP_GUARD, useExisting: RolesGuard },
     LoginThrottlerGuard,

@@ -4,7 +4,6 @@ import { Body, Controller, Get, Param, Patch, Post, Query, Req, UseGuards } from
 import type { Request } from 'express';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
 import { InstructorContractsService } from './instructor-contracts.service';
-import { RolesGuard } from '../auth/roles.guard';
 import { RequireCapabilities } from '../auth/roles.decorator';
 import { SudoGuard } from '../auth/sudo.guard';
 import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
@@ -13,7 +12,6 @@ import { CreateInstructorContractDto, UpdateInstructorContractDto } from './dto/
 
 @ApiTags('instructor-contracts')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @RequireCapabilities('finance.access')
 @Controller('instructor-contracts')
 export class InstructorContractsController {

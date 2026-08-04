@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
 import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
@@ -7,12 +7,10 @@ import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
 import { ApproveReportDto, RejectReportDto } from './dto/report-action.dto';
-import { RolesGuard } from '../auth/roles.guard';
 import { RequireCapabilities, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 
 @ApiTags('reports')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly reports: ReportsService) {}

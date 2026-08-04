@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, ForbiddenException, Get, Param, Post, Put, Query, Req } from '@nestjs/common';
 import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
@@ -6,7 +6,6 @@ import { ApiTags, ApiOperation, ApiQuery, ApiParam, ApiOkResponse, ApiConflictRe
 import { AvailabilityService } from './availability.service';
 import { AvailabilityOwner } from './availability.entity';
 import { UpsertAvailabilityDto } from './dto/upsert-availability.dto';
-import { RolesGuard } from '../auth/roles.guard';
 import { isInstructorOnly, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import {
   AvailabilityImpactConflictResponseDto,
@@ -14,7 +13,6 @@ import {
 } from './dto/availability-impact-response.dto';
 
 @ApiTags('availability')
-@UseGuards(RolesGuard)
 @Controller('availability')
 export class AvailabilityController {
   constructor(private readonly availability: AvailabilityService) {}

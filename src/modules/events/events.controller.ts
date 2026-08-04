@@ -1,21 +1,19 @@
-// [참조/처리] /api/events REST. RolesGuard 적용:
+// [참조/처리] /api/events REST. 전역 RolesGuard 적용:
 //  - GET: 로그인만 필요(목록) → EventsService.findAll(시작일 오름차순).
 //  - POST: @Roles(ADMIN_ROLES) 관리자만 → CreateEventDto 검증(ValidationPipe) → 서비스가 end≥start 재검증(400).
 //  프론트 api.events가 이 라우트를 호출, EventsView 발행 폼이 POST 후 events 쿼리 무효화→하이드레이트.
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiCreatedResponse } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { EventsService } from './events.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
-import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 
 @ApiTags('events')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('events')
 export class EventsController {
   constructor(private readonly events: EventsService) {}

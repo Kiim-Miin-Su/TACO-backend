@@ -1,11 +1,10 @@
 // [TBO-29B-4 §6] 연락처 재인증 API — 전역 RolesGuard(default-auth) 아래 로그인 필수.
 //  ⚠ must_change_password 계정은 전역 가드가 차단(자격증명 회복 화이트리스트에 미포함 — 의도:
 //  임시 자격증명 상태에서는 연락처 변경보다 자격증명 교체가 선행).
-import { Body, Controller, Param, Post, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Param, Post, Req, UnauthorizedException } from '@nestjs/common';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { STAFF_ROLES } from '../auth/role-policy';
 import type { JwtClaims } from '../auth/auth.service';
@@ -16,7 +15,6 @@ import { ProfileVerificationResponseDto } from './dto/profile-verification-respo
 
 @ApiTags('profile-verifications')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('profile-verifications')
 export class ProfileVerificationsController {
   constructor(private readonly verifications: ProfileVerificationsService) {}

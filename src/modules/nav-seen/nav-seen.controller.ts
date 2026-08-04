@@ -1,10 +1,9 @@
 // [B3 2026-07-16] 알림 뱃지 읽음 API — 본인 것만 조회/마킹(계정 간 누출 금지 규약).
-import { Body, Controller, Get, Put, Req, UnauthorizedException, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Put, Req, UnauthorizedException } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { IsIn } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import type { Request } from 'express';
-import { RolesGuard } from '../auth/roles.guard';
 import { Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 import { NavSeenService, NAV_KEYS } from './nav-seen.service';
@@ -17,7 +16,6 @@ class MarkNavSeenDto {
 
 @ApiTags('nav-seen')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('nav-seen')
 export class NavSeenController {
   constructor(private readonly navSeen: NavSeenService) {}

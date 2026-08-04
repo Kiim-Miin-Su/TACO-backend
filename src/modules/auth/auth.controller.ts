@@ -18,7 +18,6 @@ import { StaffAccountResponseDto } from '../users/dto/staff-account-response.dto
 import { ApiBearerAuth, ApiCreatedResponse, ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 단일 진실원
 import { Throttle } from '@nestjs/throttler';
-import { RolesGuard } from './roles.guard';
 import { RequireCapabilities, Roles, STAFF_ROLES } from './roles.decorator';
 import type { Request, Response } from 'express';
 import { RefreshTokensService } from './refresh-tokens.service';
@@ -418,7 +417,7 @@ export class AuthController {
   // [유저 관리 2026-07-20 대표 지시] 재인증 게이트 — 민감 화면(유저 상세) 진입 전 비밀번호 재확인.
   //  검증만 하고 토큰을 새로 발급하지 않는다(세션 부작용 0). 오답은 로그인과 동일 문구·스로틀.
   @Post('reauth')
-  @UseGuards(RolesGuard, LoginThrottlerGuard)
+  @UseGuards(LoginThrottlerGuard)
   @Roles(...STAFF_ROLES)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
   @ApiBearerAuth()
@@ -443,7 +442,6 @@ export class AuthController {
   // ── 가입 승인 관리 ──
 
   @Get('pending')
-  @UseGuards(RolesGuard)
   @RequireCapabilities('signup.decide')
   @ApiBearerAuth()
   @ApiOperation({ summary: '처리 가능한 승인 대기 계정 목록(매니저=강사, 관리자=강사·매니저, 대표=대표 외).' })
@@ -455,7 +453,6 @@ export class AuthController {
   // [TBO-28B] 원자적 승인 command — actor=JWT sub(바디 위조 불가), users CAS + instructor_profiles + audit_log 단일 tx.
   //  동시 approve/approve·approve/reject는 한 command만 성공(나머지 409). 미인증 계정 403(검사도 CAS 안).
   @Post('approve/:id')
-  @UseGuards(RolesGuard)
   @RequireCapabilities('signup.decide')
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 승인(요청 역할 보존, 역할별 범위 강제, 원자 tx+audit). 동시 결정은 409.' })
@@ -467,7 +464,6 @@ export class AuthController {
   // [핫픽스 2026-07-20] 레거시 pending 계정 인증 메일 재발송 — 구 링크 가입자가 SMTP 부재기에
   //  메일을 못 받아 인증 불가 → 승인 403에 갇힌 케이스 구제(대표 실사용 보고: 강사 승인 불가).
   @Post('pending/:id/resend-verification')
-  @UseGuards(RolesGuard)
   @RequireCapabilities('executive.manage')
   @ApiBearerAuth()
   @ApiOperation({ summary: '승인 대기 계정 인증 메일 재발송(새 48h 토큰) — 대표 전용. 미인증 pending만.' })
@@ -483,7 +479,6 @@ export class AuthController {
   }
 
   @Post('reject/:id')
-  @UseGuards(RolesGuard)
   @RequireCapabilities('signup.decide')
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 반려(역할별 범위 강제, 사유 필수, audit 기록). 동시 결정은 409.' })
@@ -495,7 +490,7 @@ export class AuthController {
   // [핫픽스 2026-07-20] 가입 신청 삭제 — pending/rejected만. 식별자 해제(같은 아이디·이메일 재가입
   //  허용)+RRN 파기+soft delete+audit. 하드 UNIQUE 때문에 반려만으론 재가입이 영구 차단되던 문제 해소.
   @Delete('pending/:id')
-  @UseGuards(RolesGuard, SudoGuard)
+  @UseGuards(SudoGuard)
   @RequireCapabilities('executive.manage')
   @ApiBearerAuth()
   @ApiOperation({ summary: '가입 신청 삭제(pending·rejected만·재인증 필수) — 식별자 해제·RRN 파기·audit. 대표 전용, cookie 세션은 reauth 후 10분 내만 허용.' })
@@ -511,7 +506,7 @@ export class AuthController {
   }
 
   @Get('events')
-  @UseGuards(RolesGuard, SudoGuard)
+  @UseGuards(SudoGuard)
   @RequireCapabilities('security.events.read')
   @ApiBearerAuth()
   @ApiOperation({ summary: '인증 보안 이벤트 조회/검색(최대 200건) — 대표·관리자 재인증 필수, append-only.' })
@@ -522,7 +517,6 @@ export class AuthController {
   // 토큰 검증(claims 반환) — [A5 2026-07-06] 수동 Bearer 파싱 → RolesGuard 패턴 통일
   //  (파싱·검증·401 처리를 가드 한 곳으로 — 로그인 계정 role은 전부 STAFF_ROLES 안이므로 동작 동일).
   @Get('me')
-  @UseGuards(RolesGuard)
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '토큰 검증 → claims. [로그인]' })
   async me(@Req() req: Request & { user?: JwtClaims }) {

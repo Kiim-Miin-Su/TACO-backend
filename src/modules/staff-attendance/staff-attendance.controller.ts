@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, Put, Query, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Put, Query, Req } from '@nestjs/common';
 import type { Request } from 'express';
 import {
   ApiBearerAuth,
@@ -8,7 +8,6 @@ import {
 } from '@nestjs/swagger';
 import type { JwtClaims } from '../auth/auth.service';
 import { RequireCapabilities } from '../auth/roles.decorator';
-import { RolesGuard } from '../auth/roles.guard';
 import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import {
   DeleteStaffAttendanceDto,
@@ -20,7 +19,6 @@ import { StaffAttendanceService } from './staff-attendance.service';
 
 @ApiTags('staff-attendance')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('staff-attendance')
 export class StaffAttendanceController {
   constructor(private readonly attendance: StaffAttendanceService) {}

@@ -7,13 +7,11 @@ import { ExpensesService } from './expenses.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { RejectExpenseDto } from './dto/reject-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
-import { RolesGuard } from '../auth/roles.guard';
 import { RequireCapabilities } from '../auth/roles.decorator';
 import { SudoGuard } from '../auth/sudo.guard';
 
 @ApiTags('expenses')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @RequireCapabilities('finance.access')
 @Controller('expenses')
 export class ExpensesController {

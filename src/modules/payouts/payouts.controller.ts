@@ -9,7 +9,6 @@ import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiBadRequestResponse, ApiUnauthorizedResponse, ApiForbiddenResponse, ApiOkResponse } from '@nestjs/swagger';
 import { PayoutsService } from './payouts.service';
 import { PayoutsReadService } from './payouts-read.service'; // [TBO-69 C2]
-import { RolesGuard } from '../auth/roles.guard';
 import { RequireCapabilities, Roles } from '../auth/roles.decorator';
 import { SudoGuard } from '../auth/sudo.guard'; // [TBO-59 C3-2]
 import { GeneratePayoutDto, GenerateBulkPayoutDto, AdjustPayoutDto, RejectPayoutDto, ReversePayoutDto, UnconfirmPayoutDto } from './dto/payout.dto';
@@ -24,7 +23,6 @@ const OPTIONAL_PAYOUT_MONTHS = new OptionalBoundedIntPipe(1, 12, 'months');
 
 @ApiTags('payouts')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @Controller('payouts')
 export class PayoutsController {
   constructor(

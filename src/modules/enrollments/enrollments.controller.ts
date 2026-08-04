@@ -7,20 +7,17 @@ import {
   Post,
   Query,
   Req,
-  UseGuards,
 } from '@nestjs/common';
 import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import { EnrollmentsService } from './enrollments.service';
 import { CreateEnrollmentDto } from './dto/create-enrollment.dto';
 import { UpdateEnrollmentDto } from './dto/update-enrollment.dto';
-import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES, STAFF_ROLES, isInstructorOnly } from '../auth/roles.decorator';
 import type { JwtClaims } from '../auth/auth.service';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 
 @ApiTags('enrollments')
-@UseGuards(RolesGuard)
 @Controller('enrollments')
 export class EnrollmentsController {
   constructor(private readonly enrollments: EnrollmentsService) {}

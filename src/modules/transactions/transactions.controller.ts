@@ -1,12 +1,10 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
-import { RolesGuard } from '../auth/roles.guard';
+import { Controller, Get } from '@nestjs/common';
 import { RequireCapabilities } from '../auth/roles.decorator';
 import { ApiBearerAuth, ApiTags, ApiOperation, ApiOkResponse } from '@nestjs/swagger';
 import { TransactionsService } from './transactions.service';
 
 @ApiTags('transactions')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @RequireCapabilities('finance.access')
 @Controller('transactions')
 export class TransactionsController {

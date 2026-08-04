@@ -1,8 +1,7 @@
 // 변경 이력 조회 — ADMIN 전용(changes에 개인정보 스냅샷 가능 → 최소 노출 원칙).
-import { Controller, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { AuditService } from './audit.service';
-import { RolesGuard } from '../auth/roles.guard';
 import { Roles, ADMIN_ROLES } from '../auth/roles.decorator';
 import {
   OptionalBoundedIntPipe,
@@ -12,7 +11,6 @@ import {
 const OPTIONAL_AUDIT_LIMIT = new OptionalBoundedIntPipe(1, 500, 'limit');
 
 @ApiTags('audit')
-@UseGuards(RolesGuard)
 @Controller('audit')
 export class AuditController {
   constructor(private readonly audit: AuditService) {}

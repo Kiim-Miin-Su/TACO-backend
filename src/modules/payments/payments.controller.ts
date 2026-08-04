@@ -15,14 +15,12 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { PaymentsService } from './payments.service';
 import { CreatePaymentDto } from './dto/create-payment.dto';
 import { UpdatePaymentDto } from './dto/update-payment.dto';
-import { RolesGuard } from '../auth/roles.guard';
 import { RequireCapabilities } from '../auth/roles.decorator';
 import { SudoGuard } from '../auth/sudo.guard'; // [TBO-59 C3-2]
 
 // [참조/처리] /api/payments — 결제·수납은 돈 관련 정보라 대표(CEO)만 조회/처리한다.
 @ApiTags('payments')
 @ApiBearerAuth()
-@UseGuards(RolesGuard)
 @RequireCapabilities('finance.access')
 @Controller('payments')
 export class PaymentsController {
