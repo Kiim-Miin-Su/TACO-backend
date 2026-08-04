@@ -9,7 +9,13 @@
 //  이 스위트는 두 실패를 각각 못박는다. 수정 전 구현에서는 ①이 200으로, ②가 자동 산정액으로 통과한다.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp, mondayISO, addDaysISO, sudoAuthHeaders } from './setup-app';
+import {
+  createTestApp,
+  E2E_APP_BOOT_TIMEOUT_MS,
+  mondayISO,
+  addDaysISO,
+  sudoAuthHeaders,
+} from './setup-app';
 
 jest.setTimeout(20000);
 
@@ -28,7 +34,7 @@ describe('[TBO-79] 회계 미리보기 ↔ 정산 산정 단일 정책 (e2e)', (
     for (const webId of ['admin', 'manager', 'park_inst']) {
       tokens[webId] = (await http.post('/api/auth/login').send({ webId, password: 'demo1234' }).expect(201)).body.accessToken;
     }
-  });
+  }, E2E_APP_BOOT_TIMEOUT_MS);
   afterAll(async () => { await app.close(); });
 
   /** 정산 대상으로 완전히 익은 회차: held + 학생 출결 기록 + 리포트 승인. */

@@ -8,6 +8,11 @@ import { AuthService } from "../src/modules/auth/auth.service";
 import { SUDO_COOKIE } from "../src/modules/auth/browser-session";
 import { seedBusinessFixtures } from "./fixtures/seed-business-fixtures";
 
+// Full e2e runs compile and dispose more than a hundred Nest applications in one process.
+// Keep request/test stalls on the global 20s budget while allowing a later suite's one-time
+// module compilation to survive GC and CI CPU contention without relying on Jest retry.
+export const E2E_APP_BOOT_TIMEOUT_MS = 60_000;
+
 // main.ts와 동일한 부트 설정으로 e2e 앱 인스턴스 생성.
 export async function createTestApp(): Promise<INestApplication> {
   const shouldSeedFixtures = process.env.TEST_BUSINESS_FIXTURES !== '0';
