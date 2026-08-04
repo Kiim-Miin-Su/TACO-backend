@@ -4,7 +4,6 @@ import { BadRequestException, ConflictException, ForbiddenException, Injectable,
 import { randomUUID } from 'crypto';
 import type {
   Conflict,
-  InstructorAttendanceStatus,
   CreateScheduleSeriesResult,
   OpenClassInput,
   OpenClassResult,
@@ -13,6 +12,8 @@ import type {
   RoleCapability,
   ScheduleRow,
   ScheduleSeries,
+  SetInstructorAttendanceInput,
+  ClearInstructorAttendanceInput,
 } from '@kms545487/contracts';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { RoomsService } from '../rooms/rooms.service';
@@ -78,6 +79,15 @@ import { hhmmToMin as toMin, weekdayOf, addDaysISO, dayDiff } from '../../common
 //  (undefined는 PG UPDATE payload에서 skip돼 이전 end_time이 잔존 — 메모리/PG 투영 편차의 근본 원인).
 const addMinutes = addMinutesGuarded;
 const endTimeOf = storedEndTimeOf;
+
+type ScheduleMutationResult = {
+  row: ScheduleRow;
+  conflicts: Conflict[];
+  updated: number;
+  accountingImpact?: SessionAccountingImpact;
+  accountingImpactHash?: string;
+};
+
 // 병합된 세션 필드(업데이트 적용 단위) — 이동/리사이즈/편집 공통.
 type MergedFields = {
   studentIds?: number[]; // 명시 코호트(v0.1.13)
@@ -651,22 +661,43 @@ export class ScheduleService {
     });
   }
 
-  /** [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크 — 대표 지시 "강사 본인 출결은 체크 가능,
-   *  수정·삭제만 매니저 이상". 강사는 ① 본인 담당 세션 ② 현재 미표시(null)일 때만 1회 기록.
-   *  이미 표시된 출결의 변경·초기화는 관리자 PATCH 전용(403). 관리자는 제한 없이 이 라우트 사용 가능.
-   *  실제 반영은 기존 update 파이프라인 재사용(lock·audit·read-model write-through 동일). */
-  async markInstructorAttendance(
+  async setInstructorAttendance(
     id: number,
-    status: InstructorAttendanceStatus,
+    input: SetInstructorAttendanceInput,
     actorId?: number,
     actorCapabilities: RoleCapability[] = [],
-  ): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number }> {
+  ): Promise<ScheduleMutationResult> {
     await this.read.ensureReady();
     if (!actorCapabilities.includes('attendance.manage')) {
       throw new ForbiddenException('강사 출결 변경은 대표 권한이 필요합니다.');
     }
-    return this.update(id, { instructorAttendance: status } as UpdateScheduleDto, actorId, {
+    return this.update(id, {
+      instructorAttendance: input.status,
+      acknowledgeAccountingImpact: input.acknowledgeAccountingImpact,
+      expectedAccountingImpactHash: input.expectedAccountingImpactHash,
+    } as UpdateScheduleDto, actorId, {
       actorCapabilities,
+      auditReason: '강사 출결 기록/수정',
+    });
+  }
+
+  async clearInstructorAttendance(
+    id: number,
+    input: ClearInstructorAttendanceInput,
+    actorId?: number,
+    actorCapabilities: RoleCapability[] = [],
+  ): Promise<ScheduleMutationResult> {
+    await this.read.ensureReady();
+    if (!actorCapabilities.includes('attendance.manage')) {
+      throw new ForbiddenException('강사 출결 변경은 대표 권한이 필요합니다.');
+    }
+    return this.update(id, {
+      clearInstructorAttendance: true,
+      acknowledgeAccountingImpact: input.acknowledgeAccountingImpact,
+      expectedAccountingImpactHash: input.expectedAccountingImpactHash,
+    } as UpdateScheduleDto, actorId, {
+      actorCapabilities,
+      auditReason: input.reason,
     });
   }
 
@@ -678,8 +709,9 @@ export class ScheduleService {
     internalOpts?: {
       expectedTargetIds?: readonly number[];
       actorCapabilities?: RoleCapability[];
+      auditReason?: string;
     },
-  ): Promise<{ row: ScheduleRow; conflicts: Conflict[]; updated: number; accountingImpact?: SessionAccountingImpact; accountingImpactHash?: string }> {
+  ): Promise<ScheduleMutationResult> {
     await this.read.ensureReady();
     // [명시 코호트 v0.1.13] 부분집합 검증 — create와 동일 규칙(함수 통일: activeStudentIds 단일 소스)
     if (dto.studentIds?.length) {
@@ -753,6 +785,9 @@ export class ScheduleService {
 
     // 1) 대상(primary) 세션의 새 필드 계산
     const primary = this.mergeFields(cur, dto);
+    if (dto.clearInstructorAttendance && cur.status === 'held') {
+      primary.status = 'scheduled';
+    }
 
     // 2) 시리즈 동반 편집 대상 산출(this=대상만, this_and_following=대상 이후, all=시리즈 전체)
     //    [TBO-29C C3] 대상 집합은 selectSeriesScope 순수 함수(같은 날짜의 늦은 회차도 시간·id로 판정).
@@ -919,11 +954,11 @@ export class ScheduleService {
     // [TBO-29C C3] 구 구현은 대표 세션 1건만 audit — 이제 바뀐 **모든 회차**가 개별 before/after를 남기고
     //  공통 correlation(reason: series=<id> scope=<scope> corr=<uuid>)으로 한 명령임을 추적한다.
     const commandCorrelation = randomUUID();
-    const correlation = cur.seriesId != null
+    const correlation = internalOpts?.auditReason ?? (cur.seriesId != null
       ? `series=${cur.seriesId} scope=${scope} corr=${commandCorrelation}`
       : temporalChangedIds.length
         ? `${TEMPORAL_RESET_AUDIT_REASON} corr=${commandCorrelation}`
-        : undefined;
+        : undefined);
     const beforeSnap = { ...cur }; // audit diff용(적용 전 상태 — cur는 라이브 행이라 사본 필수)
     const updated = (await this.sessions.update(id, primary as never))!;
     const memberAfters: Array<{ before: ClassSession; after: ClassSession | undefined }> = [];

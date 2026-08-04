@@ -20,13 +20,6 @@ export class SetSessionPayAmountDto {
   amount?: number | null;
 }
 
-// [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크 전용 — status 하나만 받는다(수정·삭제는 매니저 이상 PATCH).
-export class MarkInstructorAttendanceDto {
-  @ApiPropertyOptional({ enum: INSTRUCTOR_ATT, example: 'present', description: '강사 출결(출석/지각/결석/보강)' })
-  @IsIn(INSTRUCTOR_ATT)
-  status!: InstructorAttendanceStatus;
-}
-
 export class UpdateScheduleDto implements UpdateClassSessionInput {
   @ApiPropertyOptional({ example: '2026-07-02', description: '이동할 날짜(YYYY-MM-DD)' })
   @IsOptional() @Matches(/^\d{4}-\d{2}-\d{2}$/)

@@ -69,12 +69,12 @@ describe('session joined-table expected/after integrity (e2e)', () => {
     });
 
     expect((await patchSessionAckingImpact(http, auth(), line.sessionId, { clearInstructorAttendance: true })).status).toBe(200); // [74D-0]
-    const restored = await preview();
-    assertExpectedAfter('강사 출결 clear 복원', {
-      sessionCount: beforePreview.sessionCount,
-      totalMinutes: beforePreview.totalMinutes,
-      computedAmount: beforePreview.computedAmount,
-    }, { sessionCount: restored.sessionCount, totalMinutes: restored.totalMinutes, computedAmount: restored.computedAmount });
+    const cleared = await preview();
+    assertExpectedAfter('강사 출결 clear는 held를 scheduled로 되돌려 시수 제외', {
+      sessionCount: beforePreview.sessionCount - 1,
+      totalMinutes: beforePreview.totalMinutes - line.durationMinutes,
+      computedAmount: beforePreview.computedAmount - line.amount,
+    }, { sessionCount: cleared.sessionCount, totalMinutes: cleared.totalMinutes, computedAmount: cleared.computedAmount });
   });
 
   it('학생 출결 변경은 강사 시수·정산액을 바꾸지 않는다', async () => {

@@ -6,7 +6,8 @@ import type { JwtClaims } from '../auth/auth.service';
 import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiOkResponse, ApiConflictResponse, ApiUnauthorizedResponse } from '@nestjs/swagger';
 import { ScheduleService } from './schedule.service';
 import { ScheduleReadService } from './schedule-read.service'; // [TBO-69 C1]
-import { MarkInstructorAttendanceDto, SetSessionPayAmountDto, UpdateScheduleDto } from './dto/update-schedule.dto';
+import { SetSessionPayAmountDto, UpdateScheduleDto } from './dto/update-schedule.dto';
+import { ClearInstructorAttendanceDto, SetInstructorAttendanceDto } from './dto/instructor-attendance-command.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
@@ -183,18 +184,46 @@ export class ScheduleController {
     }); // actor → audit_log(update diff)
   }
 
-  // [TBO-62 ④ 2026-07-24] 강사 본인 출결 체크 — 최초 1회만(수정·삭제는 매니저 이상 PATCH 전용).
+  @Put(':id/instructor-attendance')
+  @RequireCapabilities('attendance.manage')
+  @ApiParam({ name: 'id', description: '세션 id' })
+  @ApiOperation({ summary: '강사 출결 기록·수정 — 회계 영향 ACK 포함, 대표 권한.' })
+  @ApiOkResponse({ description: '{ row, accountingImpact?, accountingImpactHash? }' })
+  @ApiConflictResponse({ type: SessionAccountingImpactConflictResponseDto })
+  setInstructorAttendance(
+    @Param('id', PositiveIntPipe) id: number,
+    @Body() dto: SetInstructorAttendanceDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.schedule.setInstructorAttendance(id, dto, req.user?.sub, req.user?.effectiveCapabilities ?? []);
+  }
+
+  @Delete(':id/instructor-attendance')
+  @RequireCapabilities('attendance.manage')
+  @ApiParam({ name: 'id', description: '세션 id' })
+  @ApiOperation({ summary: '강사 출결 미선택 복귀 — 사유·회계 영향 ACK·held 자동 역전이, 대표 권한.' })
+  @ApiOkResponse({ description: '{ row, accountingImpact?, accountingImpactHash? }' })
+  @ApiConflictResponse({ type: SessionAccountingImpactConflictResponseDto })
+  clearInstructorAttendance(
+    @Param('id', PositiveIntPipe) id: number,
+    @Body() dto: ClearInstructorAttendanceDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.schedule.clearInstructorAttendance(id, dto, req.user?.sub, req.user?.effectiveCapabilities ?? []);
+  }
+
+  // 한 배포 동안 구 클라이언트를 수용하는 deprecated alias. 신규 소비자는 PUT을 사용한다.
   @Post(':id/instructor-attendance')
   @RequireCapabilities('attendance.manage')
   @ApiParam({ name: 'id', description: '세션 id' })
-  @ApiOperation({ summary: '강사 출결 체크 — 대표 전용. 수정·초기화도 같은 권한을 사용한다.' })
+  @ApiOperation({ summary: '[deprecated] 강사 출결 기록. PUT /:id/instructor-attendance 사용.', deprecated: true })
   @ApiOkResponse({ description: '{ row: ScheduleRow } — instructorAttendance 반영' })
   markInstructorAttendance(
     @Param('id', PositiveIntPipe) id: number,
-    @Body() dto: MarkInstructorAttendanceDto,
+    @Body() dto: SetInstructorAttendanceDto,
     @Req() req: Request & { user?: JwtClaims },
   ) {
-    return this.schedule.markInstructorAttendance(id, dto.status, req.user?.sub, req.user?.effectiveCapabilities ?? []);
+    return this.schedule.setInstructorAttendance(id, dto, req.user?.sub, req.user?.effectiveCapabilities ?? []);
   }
 
   // [TBO-74C-2] 종속 행 없는 단일 세션 복구는 무결성을 깨뜨리므로 현재 fail-closed.

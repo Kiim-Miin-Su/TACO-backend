@@ -43,17 +43,18 @@ describe('Payouts 시수 정책 — 강사 결석 제외 (e2e)', () => {
     expect(restored.totalMinutes).toBe(base.totalMinutes);
   });
 
-  it('[Sprint2] 강사 출결 초기화(clear) — 미표시로 비워짐(미표시는 시수 포함)', async () => {
+  it('강사 출결 초기화(clear) — 미표시+scheduled로 역전이되어 시수에서 제외', async () => {
     const base = (await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     const sid = base.lines[0].sessionId;
     // 결석 마킹 → 제외
     expect((await patchSessionAckingImpact(http, asAdmin(), sid, { instructorAttendance: 'absent' })).status).toBe(200); // [74D-0]
     expect((await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body.sessionCount).toBe(2);
-    // 초기화(clear) → 미표시(undefined) → 시수 재포함
+    // 초기화(clear) → 미표시 + held→scheduled. 출결 사실이 미완결이므로 시수 제외 유지.
     expect((await patchSessionAckingImpact(http, asAdmin(), sid, { clearInstructorAttendance: true })).status).toBe(200); // [74D-0]
     const sessions = (await http.get(`/api/schedule?from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body;
     const s = sessions.find((x: { id: number }) => x.id === sid);
     expect(s.instructorAttendance == null).toBe(true); // 미표시로 비워짐
-    expect((await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body.sessionCount).toBe(3);
+    expect(s.status).toBe('scheduled');
+    expect((await http.get(`/api/payouts/preview?instructorId=1&from=${JUN1}&to=${JUN30}`).set(asAdmin()).expect(200)).body.sessionCount).toBe(2);
   });
 });
