@@ -2,7 +2,9 @@
 //  픽스처: park_inst(강사1 — 코스10/12 담당), jung_inst(강사2 — 코스 없음), admin(super_admin), manager.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp } from './setup-app';
+import { createTestApp, E2E_APP_BOOT_TIMEOUT_MS } from './setup-app';
+
+jest.retryTimes(0);
 
 describe('[TBO-59 C3] SECURITY-P0 (e2e)', () => {
   let app: INestApplication;
@@ -16,7 +18,7 @@ describe('[TBO-59 C3] SECURITY-P0 (e2e)', () => {
     for (const webId of ['admin', 'manager', 'park_inst', 'jung_inst']) {
       tokens[webId] = (await http.post('/api/auth/login').send({ webId, password: 'demo1234' }).expect(201)).body.accessToken;
     }
-  });
+  }, E2E_APP_BOOT_TIMEOUT_MS);
   afterAll(async () => { await app.close(); });
 
   it('P0-5 ① 강사 목록 = 본인 담당 학생만 + PII 필드 자체가 없음(allowlist)', async () => {
@@ -88,8 +90,12 @@ describe('[TBO-59 C3] SECURITY-P0 (e2e)', () => {
     expect([400, 404]).toContain(afterRefund.status);
     const afterPay = await agent.post('/api/payouts/999999/pay');
     expect([400, 404]).toContain(afterPay.status);
-    // Bearer access token도 step-up을 우회할 수 없다.
-    const bearerDelete = await http.delete('/api/students/999999').set(auth('admin'));
+    // Bearer 검증은 이 시점에 새로 발급한 토큰을 사용한다. 스위트 부팅 때 발급한 토큰의
+    // 수명/계정 버전과 sudo 정책을 섞으면 401이 403 검증을 가리는 flaky 결과가 된다.
+    const freshAdmin = (await http.post('/api/auth/login')
+      .send({ webId: 'admin', password: 'demo1234' }).expect(201)).body.accessToken as string;
+    const bearerDelete = await http.delete('/api/students/999999')
+      .set({ Authorization: `Bearer ${freshAdmin}` });
     expect(bearerDelete.status).toBe(403);
     expect(JSON.stringify(bearerDelete.body)).toContain('SUDO_REQUIRED');
   });

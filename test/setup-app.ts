@@ -58,7 +58,10 @@ export async function createTestApp(): Promise<INestApplication> {
       },
     );
   }
-  await app.init();
+  // Supertest에 init-only server를 넘기면 요청마다 임시 listen/close가 반복된다. 전체 회귀는
+  // 100개가 넘는 앱과 수천 요청을 순차 실행하므로 이 포트 churn이 간헐 404/401을 만들었다.
+  // 스위트당 localhost ephemeral port를 한 번만 열어 운영과 같은 HTTP lifecycle을 사용한다.
+  await app.listen(0, '127.0.0.1');
   if (shouldSeedFixtures) seedBusinessFixtures(app);
   return app;
 }
