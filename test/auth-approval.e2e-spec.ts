@@ -5,7 +5,7 @@
 import { createHash } from 'crypto';
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
-import { createTestApp, sudoAuthHeaders } from './setup-app';
+import { createTestApp, E2E_APP_BOOT_TIMEOUT_MS, sudoAuthHeaders } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import { PostgresConnectionService } from '../src/database/postgres-connection.service';
 import { AuditService } from '../src/modules/audit/audit.service';
@@ -18,17 +18,38 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
   let app: INestApplication;
   let http: ReturnType<typeof request>;
   let db: InMemoryDatabase;
+  const actorTokens = new Map<string, string>();
+
+  // Signup challenges and approval commands mutate suite-owned state. Retrying one test in
+  // the same app would encounter its first attempt's account/cooldown and hide the real failure.
+  jest.retryTimes(0);
 
   beforeAll(async () => {
     app = await createTestApp();
     http = request(app.getHttpServer());
     db = app.get(InMemoryDatabase);
-  });
-  afterAll(async () => { await app.close(); });
+    for (const webId of ['admin', 'manager', 'prof_admin']) {
+      actorTokens.set(webId, await freshLogin(webId));
+    }
+  }, E2E_APP_BOOT_TIMEOUT_MS);
+  afterAll(async () => { if (app) await app.close(); });
+
+  async function freshLogin(webId: string, password = 'demo1234'): Promise<string> {
+    const res = await http.post('/api/auth/login').send({ webId, password });
+    if (res.status !== 201) {
+      const latestFailure = db?.findAll<Row & { id: number }>('auth_events')
+        .filter((event) => event.eventType === 'login_failure')
+        .at(-1);
+      throw new Error(
+        `Fixture login failed for ${webId}: ${res.status} ${JSON.stringify(res.body)} ` +
+        `(failureCode=${String(latestFailure?.failureCode ?? 'unknown')})`,
+      );
+    }
+    return res.body.accessToken;
+  }
 
   async function login(webId: string, password = 'demo1234'): Promise<string> {
-    const res = await http.post('/api/auth/login').send({ webId, password }).expect(201);
-    return res.body.accessToken;
+    return actorTokens.get(webId) ?? freshLogin(webId, password);
   }
 
   /** [TBO-31 C1] OTP 인증까지 마친 pending 계정 생성(emailVerified=true) → id 반환 */
@@ -228,19 +249,19 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
       if (pg.ready) await pg.query(`UPDATE users SET auth_version = ${v ?? 1} WHERE id = 1`);
       db.update('users', 1, { authVersion: (v ?? undefined) as unknown as number });
     };
-    const inst = await login('park_inst');
+    const inst = await freshLogin('park_inst');
     await http.get('/api/auth/me').set('Authorization', `Bearer ${inst}`).expect(200);
     // 외부 경로로 role/status/credential 변경이 일어났다고 가정 — auth_version +1
     await bump(2);
     await http.get('/api/auth/me').set('Authorization', `Bearer ${inst}`).expect(401); // 만료 전인데도 즉시 거부
-    const fresh = await login('park_inst');
+    const fresh = await freshLogin('park_inst');
     await http.get('/api/auth/me').set('Authorization', `Bearer ${fresh}`).expect(200);
     await bump(null); // 원복(다른 스펙 간섭 방지)
   });
 
   it('T11: auth_events — login 성공/실패·logout 기록, 원문 credential 미저장, last_login_at 갱신', async () => {
     await http.post('/api/auth/login').send({ webId: 'manager', password: 'wrongpass' }).expect(401);
-    const token = await login('manager');
+    const token = await freshLogin('manager');
     await http.post('/api/auth/logout').set('Authorization', `Bearer ${token}`).expect(201);
     const events = db.findAll<Row & { id: number }>('auth_events');
     const failure = events.filter((e) => e.eventType === 'login_failure' && e.failureCode === 'bad_credentials');
