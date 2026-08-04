@@ -2,6 +2,10 @@
   "name": "backend",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22 <25"
+  },
+  "packageManager": "npm@10.9.4",
   "description": "TACO ERP API (NestJS, in-memory first)",
   "scripts": {
     "dev": "nest start --watch",

@@ -134,6 +134,29 @@ require_command() {
   command -v "$1" >/dev/null 2>&1 || die "required command not found: $1"
 }
 
+select_supported_node() {
+  local major candidate
+  major="$(node -p 'Number(process.versions.node.split(".")[0])')"
+  if (( major >= 22 && major < 25 )); then
+    ok "Node $(node -v) is within the supported release range (22-24)"
+    return
+  fi
+
+  # Keep the one-command release path usable on developer machines whose global Node moved
+  # ahead of the Vercel-supported majors. Prefer an installed NVM 24, then 22.
+  for candidate in "$HOME"/.nvm/versions/node/v24*/bin/node(N) "$HOME"/.nvm/versions/node/v22*/bin/node(N); do
+    export PATH="${candidate:h}:$PATH"
+    rehash
+    major="$(node -p 'Number(process.versions.node.split(".")[0])')"
+    if (( major >= 22 && major < 25 )); then
+      ok "release runtime switched to $(node -v) (${candidate:h})"
+      return
+    fi
+  done
+
+  die "Node $(node -v)는 지원 범위(>=22 <25) 밖입니다. Node 24 또는 22를 설치한 뒤 다시 실행하세요."
+}
+
 run_in() {
   local repo="$1"
   shift
@@ -798,6 +821,7 @@ release_self_test() {
 }
 
 require_command node
+select_supported_node
 require_command npm
 require_command git
 require_command tar
