@@ -9578,6 +9578,12 @@ components:
           minimum: 1
           example: 10
           description: 수강 코스 — 있으면 enrollment를 같은 tx로 생성
+        familyRelations:
+          maxItems: 10
+          description: 기존 재원생과의 가족 관계 0~10건 — 같은 tx 원자 생성
+          type: array
+          items:
+            $ref: '#/components/schemas/CreateStudentFamilyRelationDto'
       required:
         - student
     NewStudentCounselDto:

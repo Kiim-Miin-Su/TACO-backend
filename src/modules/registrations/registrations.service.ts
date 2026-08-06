@@ -45,6 +45,17 @@ export class RegistrationsService {
       await this.interests.reloadCommandState();
       const interestInputs = dto.interests ?? [];
       this.interests.validate(interestInputs);
+      // [TBO-86I-4] 가족 연결 사전 검증 — 상대 학생 존재·배열 내 중복을 학생 생성 전에 확인해
+      //  실패 요청이 id조차 발급하지 않게 한다(권위 검증·잠금은 createFamilyRelation이 tx 안에서 재수행).
+      const familyInputs = dto.familyRelations ?? [];
+      if (familyInputs.length) {
+        await this.students.reloadCommandState();
+        const relatedIds = familyInputs.map((relation) => Number(relation.relatedStudentId));
+        if (new Set(relatedIds).size !== relatedIds.length) {
+          throw new ConflictException('같은 학생과의 가족 관계가 중복 입력됐습니다.');
+        }
+        for (const relatedId of relatedIds) this.students.findOne(relatedId);
+      }
       const locks = guardians
         .map((guardian) => onlyDigits(guardian.phone ?? '')) // [P2 4-A]
         .filter(Boolean)
@@ -60,6 +71,14 @@ export class RegistrationsService {
       const enrollment = dto.courseId != null
         ? await this.enrollments.create({ studentId: student.id, courseId: dto.courseId }, actorId)
         : null;
+      // [TBO-86I-4] 가족 관계 — 상세 화면과 같은 command 재사용(자기자신 금지·canonical pair·중복
+      //  409·linkGuardians 합집합·개별 audit). uow.run 중첩은 registerWithCounsel과 동일하게 같은
+      //  tx에 합류하므로 어느 한 건이라도 실패하면 학생·보호자·수강까지 전부 rollback된다.
+      const familyRelationIds: number[] = [];
+      for (const relation of familyInputs) {
+        const row = await this.students.createFamilyRelation(student.id, relation, actorId);
+        familyRelationIds.push(row.id);
+      }
 
       // PII 금지 — 보호자 연락처/이름은 남기지 않고 구성 요약만(관계 행 id는 추적 가능 참조).
       await this.audit.log({
@@ -77,6 +96,7 @@ export class RegistrationsService {
               interestCount: interestInputs.length,
               enrollmentId: enrollment?.id ?? null,
               courseId: dto.courseId ?? null,
+              familyRelationIds,
             },
           },
         }),

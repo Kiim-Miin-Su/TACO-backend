@@ -4,6 +4,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import type { CreateStudentAggregateInput } from '@kms545487/contracts';
 import { CreateStudentDto } from '../../students/dto/create-student.dto';
 import { StudentInterestDto } from '../../students/dto/student-interest.dto';
+import { CreateStudentFamilyRelationDto } from '../../students/dto/student-family-relation.dto';
 
 // [TBO-29D D2] 원자 등록 command 입력 — 학생(필수) + 보호자(선택) + 수강(선택)을 한 요청·한 tx로.
 //  학생/보호자에 webId 없음(로그인 계정 아님 — 29A 계약). 보호자 기본값: 대표(primary)·납부자(payer).
@@ -70,4 +71,14 @@ export class RegisterStudentDto implements CreateStudentAggregateInput {
   @IsInt()
   @Min(1)
   courseId?: number;
+
+  // [TBO-86I-4] 등록 시점 "기존에 다니는 가족" 연결 — 상세 화면 가족 추가와 같은 DTO·검증·audit
+  //  규칙을 재사용하고, 학생·보호자·수강과 **같은 등록 tx**에서 생성한다(중간 실패 시 전부 rollback).
+  @ApiPropertyOptional({ type: [CreateStudentFamilyRelationDto], maxItems: 10, description: '기존 재원생과의 가족 관계 0~10건 — 같은 tx 원자 생성' })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => CreateStudentFamilyRelationDto)
+  familyRelations?: CreateStudentFamilyRelationDto[];
 }
