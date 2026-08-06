@@ -8,7 +8,7 @@ import { CreateScheduleDto } from './create-schedule.dto';
  * 상태는 받지 않고, 서비스가 출결 사실을 함께 기록한 뒤 held를 자동 파생한다.
  */
 export class CreateHistoricalCompletedScheduleDto
-  extends OmitType(CreateScheduleDto, ['status', 'seriesId', 'force', 'instructorId', 'studentIds'] as const)
+  extends OmitType(CreateScheduleDto, ['status', 'seriesId', 'force', 'instructorId', 'studentIds', 'makeupForSessionId'] as const)
   implements CreateHistoricalCompletedSessionInput {
   @ApiProperty({ example: 1, description: '실제 수업을 진행한 강사 FK' })
   @IsInt() @Min(1)

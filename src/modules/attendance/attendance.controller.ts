@@ -5,7 +5,7 @@ import { ApiTags, ApiBearerAuth, ApiOperation, ApiOkResponse, ApiQuery } from '@
 import { AttendanceService } from './attendance.service';
 import { UpsertAttendanceDto } from './dto/upsert-attendance.dto';
 import { ClearAttendanceDto } from './dto/clear-attendance.dto';
-import { RequireCapabilities, Roles, STAFF_ROLES } from '../auth/roles.decorator';
+import { ADMIN_ROLES, RequireCapabilities, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 
 // [참조/처리] /api/attendance REST. @Roles(STAFF_ROLES) → 로그인 필수(강사 포함, 관리자 한정 아님).
@@ -32,8 +32,9 @@ export class AttendanceController {
   }
 
   @Put()
-  @RequireCapabilities('attendance.manage')
-  @ApiOperation({ summary: '학생 출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장 [대표]' })
+  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('session-attendance.manage')
+  @ApiOperation({ summary: '학생 출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장 [수업 출결 관리자]' })
   @ApiOkResponse({ description: 'upsert된 Attendance' })
   upsert(@Body() dto: UpsertAttendanceDto, @Req() req: Request & { user?: JwtClaims }) {
     // actor(sub·roles) → 소유권 검증(H1 IDOR) + audit_log(출결 변경 이력)
@@ -41,8 +42,9 @@ export class AttendanceController {
   }
 
   @Delete(':sessionId/:studentId')
-  @RequireCapabilities('attendance.manage')
-  @ApiOperation({ summary: '학생 출결 초기화 — 대표, 사유·감사 이력 필수' })
+  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('session-attendance.manage')
+  @ApiOperation({ summary: '학생 출결 초기화 — 수업 출결 관리자, 사유·감사 이력 필수' })
   @ApiOkResponse({ description: '{ id, sessionId, studentId, deleted: true }' })
   clear(
     @Param('sessionId', PositiveIntPipe) sessionId: number,

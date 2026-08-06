@@ -341,8 +341,10 @@ export class ScheduleService {
     actorId?: number,
     actorCapabilities: RoleCapability[] = [],
   ): Promise<HistoricalCompletedSessionResult> {
-    if (actorId == null || !actorCapabilities.includes('calendar.manage')) {
-      throw new ForbiddenException('과거 완료 수업 이관은 캘린더 관리 권한이 필요합니다.');
+    if (actorId == null
+      || !actorCapabilities.includes('calendar.manage')
+      || !actorCapabilities.includes('session-attendance.manage')) {
+      throw new ForbiddenException('과거 완료 수업 이관은 캘린더와 수업 출결 관리 권한이 필요합니다.');
     }
     const importReason = dto.importReason.trim();
     if (importReason.length < 5) throw new BadRequestException('이관 사유는 공백 제외 5자 이상 입력해 주세요.');
@@ -376,17 +378,11 @@ export class ScheduleService {
         auditReason: `과거 완료 수업 이관: ${importReason}`,
       });
 
-      // 외부 attendance.manage 권한을 확장하지 않는다. calendar.manage로 진입한 이 aggregate command
-      // 내부에서만 기존 출결 command에 필요한 시스템 권한을 부여한다.
-      const aggregateCapabilities = [...new Set<RoleCapability>([
-        ...actorCapabilities,
-        'attendance.manage',
-      ])];
       await this.setInstructorAttendance(
         created.row.id,
         { status: 'present' },
         actorId,
-        aggregateCapabilities,
+        actorCapabilities,
       );
       const attendance: HistoricalCompletedSessionResult['attendance'] = [];
       for (const studentId of dto.studentIds) {
@@ -394,7 +390,7 @@ export class ScheduleService {
           sessionId: created.row.id,
           studentId,
           status: 'present',
-        }, actorId, aggregateCapabilities));
+        }, actorId, actorCapabilities));
       }
 
       const final = await this.sessions.findByIdDb(created.row.id);
@@ -762,8 +758,8 @@ export class ScheduleService {
     actorCapabilities: RoleCapability[] = [],
   ): Promise<ScheduleMutationResult> {
     await this.read.ensureReady();
-    if (!actorCapabilities.includes('attendance.manage')) {
-      throw new ForbiddenException('강사 출결 변경은 대표 권한이 필요합니다.');
+    if (!actorCapabilities.includes('session-attendance.manage')) {
+      throw new ForbiddenException('강사 출결 변경은 수업 출결 관리 권한이 필요합니다.');
     }
     return this.update(id, {
       acknowledgeAccountingImpact: input.acknowledgeAccountingImpact,
@@ -782,8 +778,8 @@ export class ScheduleService {
     actorCapabilities: RoleCapability[] = [],
   ): Promise<ScheduleMutationResult> {
     await this.read.ensureReady();
-    if (!actorCapabilities.includes('attendance.manage')) {
-      throw new ForbiddenException('강사 출결 변경은 대표 권한이 필요합니다.');
+    if (!actorCapabilities.includes('session-attendance.manage')) {
+      throw new ForbiddenException('강사 출결 변경은 수업 출결 관리 권한이 필요합니다.');
     }
     return this.update(id, {
       acknowledgeAccountingImpact: input.acknowledgeAccountingImpact,
@@ -861,8 +857,8 @@ export class ScheduleService {
     if (!cur) throw new NotFoundException(`Session ${id} not found`);
     this.assertCompletionStatusCommand(cur.status, dto.status);
     const instructorAttendanceCommand = internalOpts?.instructorAttendanceCommand;
-    if (instructorAttendanceCommand && !internalOpts?.actorCapabilities?.includes('attendance.manage')) {
-      throw new ForbiddenException('강사 출결 변경은 대표 권한이 필요합니다.');
+    if (instructorAttendanceCommand && !internalOpts?.actorCapabilities?.includes('session-attendance.manage')) {
+      throw new ForbiddenException('강사 출결 변경은 수업 출결 관리 권한이 필요합니다.');
     }
     await this.assertCeoOwnedSessionMutable(cur, actorId); // [TBO-59 C3-3]
     // 참조 무결성(FK) 검증

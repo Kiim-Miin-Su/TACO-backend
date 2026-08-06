@@ -193,7 +193,7 @@ export class AccessControlService implements OnModuleInit {
         effective: override == null ? roleDefault : override === 'allow',
         manageable: targetMutable
           && definition.configurable
-          && (!['admin.area', 'signup.decide'].includes(definition.capability) || roleDefault)
+          && (!['admin.area', 'signup.decide', 'session-attendance.manage'].includes(definition.capability) || roleDefault)
           && (!definition.executiveOnly || actor.role === 'super_admin'),
       };
     });
@@ -216,6 +216,10 @@ export class AccessControlService implements OnModuleInit {
     }
     const definition = CAPABILITY_CATALOG.find((entry) => entry.capability === capability)!;
     if (!definition.configurable) throw new BadRequestException('고정 정책 권한은 개별 설정할 수 없습니다.');
+    if (['admin.area', 'signup.decide', 'session-attendance.manage'].includes(capability)
+      && !roleHasCapability(target.role, capability)) {
+      throw new BadRequestException('해당 권한은 역할 기본 범위를 넘어 부여할 수 없습니다.');
+    }
     if (definition.executiveOnly && actor.role !== 'super_admin') {
       throw new ForbiddenException('해당 권한은 대표만 위임할 수 있습니다.');
     }

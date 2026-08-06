@@ -16,12 +16,14 @@ import { SudoGuard } from '../auth/sudo.guard';
 import {
   RequireCapabilities,
   Roles,
+  ADMIN_ROLES,
   STAFF_ROLES,
   isInstructorOnly,
 } from '../auth/roles.decorator';
 import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
 import { OpenClassDto, OpenClassSeriesDto } from './dto/open-class.dto';
 import { SessionAccountingImpactConflictResponseDto } from './dto/accounting-impact-response.dto';
+import { HistoricalCompletedScheduleResponseDto } from './dto/historical-completed-schedule-response.dto';
 
 @ApiTags('scheduling')
 @ApiBearerAuth()
@@ -156,9 +158,10 @@ export class ScheduleController {
   }
 
   @Post('historical-completed')
-  @RequireCapabilities('calendar.manage')
+  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('calendar.manage', 'session-attendance.manage')
   @ApiOperation({ summary: '과거 완료 수업 이관 — 세션·강사/학생 정상 출석·held 자동 전이·감사를 한 트랜잭션으로 저장 [매니저 이상]' })
-  @ApiCreatedResponse({ description: '{ row(held), attendance(present[]), conflicts }' })
+  @ApiCreatedResponse({ type: HistoricalCompletedScheduleResponseDto })
   @ApiConflictResponse({ description: '자원/가용시간 충돌 시 전체 롤백' })
   createHistoricalCompleted(
     @Body() dto: CreateHistoricalCompletedScheduleDto,
@@ -200,9 +203,10 @@ export class ScheduleController {
   }
 
   @Put(':id/instructor-attendance')
-  @RequireCapabilities('attendance.manage')
+  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('session-attendance.manage')
   @ApiParam({ name: 'id', description: '세션 id' })
-  @ApiOperation({ summary: '강사 출결 기록·수정 — 회계 영향 ACK 포함, 대표 권한.' })
+  @ApiOperation({ summary: '강사 출결 기록·수정 — 회계 영향 ACK 포함, 수업 출결 관리 권한.' })
   @ApiOkResponse({ description: '{ row, accountingImpact?, accountingImpactHash? }' })
   @ApiConflictResponse({ type: SessionAccountingImpactConflictResponseDto })
   setInstructorAttendance(
@@ -214,9 +218,10 @@ export class ScheduleController {
   }
 
   @Delete(':id/instructor-attendance')
-  @RequireCapabilities('attendance.manage')
+  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('session-attendance.manage')
   @ApiParam({ name: 'id', description: '세션 id' })
-  @ApiOperation({ summary: '강사 출결 미선택 복귀 — 사유·회계 영향 ACK·held 자동 역전이, 대표 권한.' })
+  @ApiOperation({ summary: '강사 출결 미선택 복귀 — 사유·회계 영향 ACK·held 자동 역전이, 수업 출결 관리 권한.' })
   @ApiOkResponse({ description: '{ row, accountingImpact?, accountingImpactHash? }' })
   @ApiConflictResponse({ type: SessionAccountingImpactConflictResponseDto })
   clearInstructorAttendance(

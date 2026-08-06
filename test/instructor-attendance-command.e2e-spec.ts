@@ -51,15 +51,15 @@ describe('[TBO-83E] 강사 출결 전용 command (e2e)', () => {
       force: true,
     }).expect(201)).body.row as { id: number };
 
-    await http.put('/api/attendance').set(as('admin'))
+    await http.put('/api/attendance').set(as('manager'))
       .send({ sessionId: created.id, studentId: 1, status: 'present' }).expect(200);
 
-    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('manager'))
+    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('park_inst'))
       .send({ status: 'present' }).expect(403);
-    await http.delete(`/api/schedule/${created.id}/instructor-attendance`).set(as('manager'))
+    await http.delete(`/api/schedule/${created.id}/instructor-attendance`).set(as('park_inst'))
       .send({ reason: '권한 음성 검증' }).expect(403);
 
-    const held = (await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin'))
+    const held = (await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('manager'))
       .send({ status: 'present' }).expect(200)).body.row;
     expect(held).toMatchObject({ status: 'held', instructorAttendance: 'present' });
 
@@ -71,26 +71,26 @@ describe('[TBO-83E] 강사 출결 전용 command (e2e)', () => {
     await http.post(`/api/reports/${report.id}/submit`).set(as('park_inst')).send({}).expect(201);
     await http.post(`/api/reports/${report.id}/approve`).set(as('admin')).send({}).expect(201);
 
-    const blockedUpdate = await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin'))
+    const blockedUpdate = await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('manager'))
       .send({ status: 'late' }).expect(409);
     expect(blockedUpdate.body).toMatchObject({ code: 'ACCOUNTING_IMPACT_ACK_REQUIRED' });
     expect(blockedUpdate.body.impactHash).toMatch(/^[a-f0-9]{64}$/);
     expect((await http.get(`/api/schedule/${created.id}`).set(as('manager')).expect(200)).body)
       .toMatchObject({ status: 'held', instructorAttendance: 'present' });
 
-    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin')).send({
+    await http.put(`/api/schedule/${created.id}/instructor-attendance`).set(as('manager')).send({
       status: 'late',
       acknowledgeAccountingImpact: true,
       expectedAccountingImpactHash: blockedUpdate.body.impactHash,
     }).expect(200);
 
-    await http.delete(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin'))
+    await http.delete(`/api/schedule/${created.id}/instructor-attendance`).set(as('manager'))
       .send({}).expect(400);
-    const blockedClear = await http.delete(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin'))
+    const blockedClear = await http.delete(`/api/schedule/${created.id}/instructor-attendance`).set(as('manager'))
       .send({ reason: '오입력 정정' }).expect(409);
     expect(blockedClear.body).toMatchObject({ code: 'ACCOUNTING_IMPACT_ACK_REQUIRED' });
 
-    const acknowledgedClear = await http.delete(`/api/schedule/${created.id}/instructor-attendance`).set(as('admin')).send({
+    const acknowledgedClear = await http.delete(`/api/schedule/${created.id}/instructor-attendance`).set(as('manager')).send({
       reason: '오입력 정정',
       acknowledgeAccountingImpact: true,
       expectedAccountingImpactHash: blockedClear.body.impactHash,

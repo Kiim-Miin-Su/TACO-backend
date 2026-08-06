@@ -161,9 +161,11 @@ describe('[TBO-85] 2026년 7월 스케줄 입력부터 정산까지 월요일 �
     expect(instructorRows.every((row) => row.instructorId === INSTRUCTOR_ID)).toBe(true);
 
     await http.put(`/api/schedule/${targetId}/instructor-attendance`)
-      .set(auth('manager')).send({ status: 'present' }).expect(403);
+      .set(auth('manager')).send({ status: 'present' }).expect(200);
     await http.put(`/api/schedule/${targetId}/instructor-attendance`)
-      .set(auth('prof_admin')).send({ status: 'present' }).expect(403);
+      .set(auth('prof_admin')).send({ status: 'present' }).expect(200);
+    await http.put(`/api/schedule/${targetId}/instructor-attendance`)
+      .set(auth('park_inst')).send({ status: 'present' }).expect(403);
 
     const reportIds: number[] = [];
     for (const sessionId of activeIds) {

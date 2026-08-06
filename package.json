@@ -78,6 +78,7 @@
     "db:migrate-auth-event-domain": "ts-node scripts/migrate-auth-event-domain.ts",
     "db:migrate:staff-attendance": "ts-node scripts/migrate-staff-attendance.ts",
     "db:migrate:user-capabilities": "ts-node scripts/migrate-user-capability-overrides.ts",
+    "db:migrate:session-attendance-capability": "ts-node scripts/migrate-session-attendance-capability.ts",
     "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts",
     "verify:runtime-data": "ts-node scripts/verify-runtime-data-boundary.ts",
     "verify:crud-surfaces": "ts-node scripts/verify-crud-surfaces.ts",

@@ -50,6 +50,7 @@ import { SCHEMA_SHAPE_INTEGRITY_MIGRATION_ID } from '../src/database/migrations/
 import { AUTH_EVENT_DOMAIN_MIGRATION_ID } from '../src/database/migrations/auth-event-domain.migration';
 import { STAFF_ATTENDANCE_MIGRATION_ID } from '../src/database/migrations/staff-attendance.migration';
 import { USER_CAPABILITY_OVERRIDES_MIGRATION_ID } from '../src/database/migrations/user-capability-overrides.migration';
+import { SESSION_ATTENDANCE_CAPABILITY_MIGRATION_ID } from '../src/database/migrations/session-attendance-capability.migration';
 
 loadLocalEnv();
 
@@ -101,6 +102,7 @@ export const EXPECTED_MIGRATION_IDS = [
   AUTH_EVENT_DOMAIN_MIGRATION_ID, // [78C3] shared AuthEventType domain completion
   STAFF_ATTENDANCE_MIGRATION_ID, // [81B] 직원 일별 출결 원부·unique/FK/CHECK/index
   USER_CAPABILITY_OVERRIDES_MIGRATION_ID, // [82C] 사용자별 권한 override·actor/FK/CHECK/index
+  SESSION_ATTENDANCE_CAPABILITY_MIGRATION_ID, // [86D] 수업 출결 권한 분리·capability CHECK 확장
 ] as const;
 
 const url = directDatabaseUrl();

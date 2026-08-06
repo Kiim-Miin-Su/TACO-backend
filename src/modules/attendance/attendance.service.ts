@@ -261,8 +261,8 @@ export class AttendanceService implements OnModuleInit {
     // [TBO-79 D5] fail-closed — 종전 `actorId != null &&`는 actor 미상 호출이 소유권 검사를 통째로
     //  건너뛰게 했다. 관리자 판정은 그대로 통과 경로다.
     if (actorId == null) throw new ForbiddenException('출결 기록에는 로그인 사용자 정보가 필요합니다.');
-    if (!actorCapabilities?.includes('attendance.manage')) {
-      throw new ForbiddenException('학생 출결 변경은 대표 권한이 필요합니다.');
+    if (!actorCapabilities?.includes('session-attendance.manage')) {
+      throw new ForbiddenException('학생 출결 변경은 수업 출결 관리 권한이 필요합니다.');
     }
     return { session, enrollments };
   }

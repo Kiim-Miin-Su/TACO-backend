@@ -55,6 +55,12 @@ describe('User capability overrides (e2e)', () => {
       effective: true,
       manageable: true,
     });
+    expect(ceoView.permissions.find((row) => row.capability === 'session-attendance.manage')).toMatchObject({
+      roleDefault: true,
+      override: null,
+      effective: true,
+      manageable: true,
+    });
     await projection(managerId, admin);
     await http.get(`/api/users/${managerId}/permissions`).set(auth(manager)).expect(403);
   });
@@ -127,9 +133,18 @@ describe('User capability overrides (e2e)', () => {
 
     const instructorProjection = await projection(instructorId);
     expect(instructorProjection.permissions.find((row) => row.capability === 'admin.area')?.manageable).toBe(false);
+    expect(instructorProjection.permissions.find((row) => row.capability === 'session-attendance.manage')).toMatchObject({
+      roleDefault: false,
+      effective: false,
+      manageable: false,
+    });
     await http.put(`/api/users/${instructorId}/permissions/admin.area`)
       .set(sudoAuthHeaders(app, ceo))
       .send({ mode: 'allow', reason: '광역 관리자 권한 승격 차단', expectedAccessVersion: instructorProjection.accessVersion })
+      .expect(400);
+    await http.put(`/api/users/${instructorId}/permissions/session-attendance.manage`)
+      .set(sudoAuthHeaders(app, ceo))
+      .send({ mode: 'allow', reason: '강사 직접 출결 관리 승격 차단', expectedAccessVersion: instructorProjection.accessVersion })
       .expect(400);
   });
 

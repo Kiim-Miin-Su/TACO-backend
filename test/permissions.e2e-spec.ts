@@ -220,23 +220,23 @@ describe("Permission matrix (e2e)", () => {
     });
   });
 
-  // [TBO-82] 출결 쓰기는 대표 전용. 보고서 소유권은 담당 강사 규칙을 유지한다.
+  // [TBO-86D] 수업 출결은 운영 역할 전용, 직원 근태는 대표 전용. 보고서 소유권은 담당 강사 규칙을 유지한다.
   //  시드: 세션 20=강사1(park_inst) · 세션 21=강사2(jung_inst). 보고서 id 2=세션21·강사2.
-  describe("출결 대표 전용 + 보고서 소유권", () => {
+  describe("수업 출결 운영 역할 전용 + 보고서 소유권", () => {
     it("instructor(park) → PUT /attendance 타 강사 세션(21) 403", async () => {
       await http.put("/api/attendance").set(auth("instructor")).send({ sessionId: 21, studentId: 2, status: "present" }).expect(403);
     });
     it("instructor(park) → PUT /attendance 본인 세션(20)도 403", async () => {
       await http.put("/api/attendance").set(auth("instructor")).send({ sessionId: 20, studentId: 1, status: "present" }).expect(403);
     });
-    it("manager → PUT /attendance 타 강사 세션(21) 403", async () => {
-      await http.put("/api/attendance").set(auth("manager")).send({ sessionId: 21, studentId: 2, status: "present" }).expect(403);
+    it("manager → PUT /attendance 타 강사 세션(21) 통과", async () => {
+      await http.put("/api/attendance").set(auth("manager")).send({ sessionId: 21, studentId: 2, status: "present" }).expect(200);
     });
     it("super_admin → PUT /attendance 통과", async () => {
       await http.put("/api/attendance").set(auth("super_admin")).send({ sessionId: 21, studentId: 2, status: "present" }).expect(200);
     });
-    it("manager/instructor → 강사 출결 전용 PUT과 일반 schedule PATCH 우회 모두 차단", async () => {
-      await http.put("/api/schedule/20/instructor-attendance").set(auth("manager")).send({ status: "present" }).expect(403);
+    it("manager는 강사 출결 전용 PUT을 사용하고 instructor·일반 PATCH 우회는 차단", async () => {
+      await http.put("/api/schedule/20/instructor-attendance").set(auth("manager")).send({ status: "present" }).expect(200);
       await http.put("/api/schedule/20/instructor-attendance").set(auth("instructor")).send({ status: "present" }).expect(403);
       await http.patch("/api/schedule/20").set(auth("manager")).send({ instructorAttendance: "present" }).expect(400);
       await http.patch("/api/schedule/20").set(auth("manager")).send({ clearInstructorAttendance: true }).expect(400);

@@ -4980,7 +4980,14 @@
         },
         "responses": {
           "201": {
-            "description": "{ row(held), attendance(present[]), conflicts }"
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoricalCompletedScheduleResponseDto"
+                }
+              }
+            }
           },
           "409": {
             "description": "자원/가용시간 충돌 시 전체 롤백"
@@ -5089,7 +5096,7 @@
             "access_token": []
           }
         ],
-        "summary": "강사 출결 기록·수정 — 회계 영향 ACK 포함, 대표 권한.",
+        "summary": "강사 출결 기록·수정 — 회계 영향 ACK 포함, 수업 출결 관리 권한.",
         "tags": [
           "scheduling"
         ]
@@ -5143,7 +5150,7 @@
             "access_token": []
           }
         ],
-        "summary": "강사 출결 미선택 복귀 — 사유·회계 영향 ACK·held 자동 역전이, 대표 권한.",
+        "summary": "강사 출결 미선택 복귀 — 사유·회계 영향 ACK·held 자동 역전이, 수업 출결 관리 권한.",
         "tags": [
           "scheduling"
         ]
@@ -5291,7 +5298,7 @@
             "access_token": []
           }
         ],
-        "summary": "학생 출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장 [대표]",
+        "summary": "학생 출결 기록(upsert) — (세션,학생) 1행. FK·유니크 무결성 보장 [수업 출결 관리자]",
         "tags": [
           "attendance"
         ]
@@ -5347,7 +5354,7 @@
             "access_token": []
           }
         ],
-        "summary": "학생 출결 초기화 — 대표, 사유·감사 이력 필수",
+        "summary": "학생 출결 초기화 — 수업 출결 관리자, 사유·감사 이력 필수",
         "tags": [
           "attendance"
         ]
@@ -11518,12 +11525,6 @@
             "example": false,
             "description": "공통 일정 여부. true면 전 직원 조회 가능하나 수정 권한은 확장되지 않음"
           },
-          "makeupForSessionId": {
-            "type": "number",
-            "minimum": 1,
-            "example": 24,
-            "description": "[대표 지시 ⑭ 2026-07-16] 보강 세션이 가리키는 원본(결강) 세션 id — 지정 시 원본 실존 검증, 보강 미해소 뱃지가 해소로 판정"
-          },
           "instructorId": {
             "type": "number",
             "minimum": 1,
@@ -11559,6 +11560,151 @@
           "instructorId",
           "studentIds",
           "importReason"
+        ]
+      },
+      "HistoricalCompletedSessionRowDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 37
+          },
+          "courseId": {
+            "type": "number",
+            "example": 10
+          },
+          "instructorId": {
+            "type": "number",
+            "example": 1
+          },
+          "studentIds": {
+            "example": [
+              1,
+              2
+            ],
+            "type": "array",
+            "items": {
+              "type": "number"
+            }
+          },
+          "sessionDate": {
+            "type": "string",
+            "example": "2026-07-16"
+          },
+          "startTime": {
+            "type": "string",
+            "example": "13:00"
+          },
+          "durationMinutes": {
+            "type": "number",
+            "example": 90
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "held"
+            ],
+            "example": "held"
+          },
+          "instructorAttendance": {
+            "type": "string",
+            "enum": [
+              "present"
+            ],
+            "example": "present"
+          }
+        },
+        "required": [
+          "id",
+          "courseId",
+          "instructorId",
+          "studentIds",
+          "sessionDate",
+          "startTime",
+          "durationMinutes",
+          "status",
+          "instructorAttendance"
+        ]
+      },
+      "HistoricalCompletedConflictDto": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "example": "instructor_overlap"
+          },
+          "resource": {
+            "type": "string",
+            "example": "instructor"
+          },
+          "resourceId": {
+            "type": "number",
+            "example": 1
+          },
+          "detail": {
+            "type": "string",
+            "example": "기존 수업과 시간이 겹칩니다."
+          }
+        },
+        "required": [
+          "type",
+          "resource",
+          "resourceId"
+        ]
+      },
+      "HistoricalCompletedAttendanceDto": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "number",
+            "example": 101
+          },
+          "sessionId": {
+            "type": "number",
+            "example": 37
+          },
+          "studentId": {
+            "type": "number",
+            "example": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "present"
+            ],
+            "example": "present"
+          }
+        },
+        "required": [
+          "id",
+          "sessionId",
+          "studentId",
+          "status"
+        ]
+      },
+      "HistoricalCompletedScheduleResponseDto": {
+        "type": "object",
+        "properties": {
+          "row": {
+            "$ref": "#/components/schemas/HistoricalCompletedSessionRowDto"
+          },
+          "conflicts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoricalCompletedConflictDto"
+            }
+          },
+          "attendance": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/HistoricalCompletedAttendanceDto"
+            }
+          }
+        },
+        "required": [
+          "row",
+          "conflicts",
+          "attendance"
         ]
       },
       "CreateScheduleSeriesDto": {

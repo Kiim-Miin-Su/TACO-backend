@@ -26,6 +26,7 @@ describe('role policy', () => {
     expect(roleHasCapability('manager', 'signup.decide')).toBe(true);
     expect(claimsHaveCapability(['instructor', 'manager'], 'calendar.manage')).toBe(true);
     expect(claimsHaveCapability(['instructor'], 'calendar.manage')).toBe(false);
+    expect(rolesForCapability('session-attendance.manage')).toEqual(['super_admin', 'manager', 'admin']);
     expect(rolesForCapability('attendance.manage')).toEqual(['super_admin']);
     expect(rolesForCapability('access.manage')).toEqual(['super_admin', 'admin']);
   });
@@ -44,10 +45,12 @@ describe('role policy', () => {
     for (const role of ['super_admin', 'admin', 'manager']) {
       expect(roleHasCapability(role, 'approval.manage')).toBe(true);
       expect(roleHasCapability(role, 'calendar.manage')).toBe(true);
+      expect(roleHasCapability(role, 'session-attendance.manage')).toBe(true);
       expect(roleHasCapability(role, 'counsel.manage')).toBe(true);
       expect(roleHasCapability(role, 'payout.readiness')).toBe(true);
     }
     expect(roleHasCapability('instructor', 'calendar.manage')).toBe(false);
+    expect(roleHasCapability('instructor', 'session-attendance.manage')).toBe(false);
     expect(roleHasCapability('instructor', 'counsel.manage')).toBe(false);
   });
 

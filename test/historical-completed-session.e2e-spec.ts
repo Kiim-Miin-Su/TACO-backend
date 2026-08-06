@@ -122,10 +122,12 @@ describe('[TBO-86D] 과거 완료 수업 원자 이관 (e2e)', () => {
     };
     const audit = app.get(AuditService);
     const originalLog = audit.log.bind(audit);
-    const spy = jest.spyOn(audit, 'log')
-      .mockImplementationOnce(originalLog)
-      .mockImplementationOnce(originalLog)
-      .mockRejectedValueOnce(new Error('injected historical attendance audit failure'));
+    const spy = jest.spyOn(audit, 'log').mockImplementation(async (entry) => {
+      if (entry.entity === ATTENDANCE) {
+        throw new Error('injected historical attendance audit failure');
+      }
+      return originalLog(entry);
+    });
 
     await http.post('/api/schedule/historical-completed').set(auth('manager'))
       .send(body('06:00', '원자성 롤백 검증 이관'))
