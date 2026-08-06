@@ -1,13 +1,14 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
-import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
+import { PositiveIntPipe } from '../../common/positive-int.pipe';
 import type { Request } from 'express';
 import type { JwtClaims } from '../auth/auth.service';
-import { ApiTags, ApiOperation, ApiQuery, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiForbiddenResponse } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiBearerAuth, ApiParam, ApiCreatedResponse, ApiForbiddenResponse } from '@nestjs/swagger';
 import { ReportsService } from './reports.service';
 import { CreateReportDto } from './dto/create-report.dto';
 import { UpdateReportDto } from './dto/update-report.dto';
 import { ApproveReportDto, RejectReportDto } from './dto/report-action.dto';
 import { RequireCapabilities, Roles, STAFF_ROLES } from '../auth/roles.decorator';
+import { ListReportsQueryDto, ReportWorklistQueryDto } from './dto/list-reports-query.dto';
 
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -17,14 +18,24 @@ export class ReportsController {
 
   @Get()
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '보고서 목록(sessionId 필터). 학생/학년/수업/과목/시간 조인 context 포함. 강사는 본인 일반 일정만.' })
-  @ApiQuery({ name: 'sessionId', required: false })
+  @ApiOperation({ summary: '보고서 목록(기간·학생·과목·강사·상태 필터). 조인 context 포함, 강사는 JWT 본인 범위.' })
   findAll(
     @Req() req: Request & { user?: JwtClaims },
-    @Query('sessionId', OptionalPositiveIntPipe) sessionId?: number,
+    @Query() query: ListReportsQueryDto,
   ) {
     const actor = req.user ? { id: req.user.sub, roles: req.user.roles } : undefined;
-    return this.reports.listDbForActor(actor, sessionId); // [TBO-54 C2] DB 권위 READ
+    return this.reports.listDbForActor(actor, query); // [TBO-54 C2] DB 권위 READ
+  }
+
+  @Get('worklist')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '종료된 진행완료 수업의 학생별 리포트 작성 필요 목록. 목록·배지 공용 서버 모집단.' })
+  worklist(
+    @Req() req: Request & { user?: JwtClaims },
+    @Query() query: ReportWorklistQueryDto,
+  ) {
+    const actor = req.user ? { id: req.user.sub, roles: req.user.roles } : undefined;
+    return this.reports.worklistDbForActor(actor, query);
   }
 
   @Get(':id')

@@ -1,5 +1,10 @@
 import { TimedModuleInit } from '../../common/performance-timing';
-import type { DeletedResult } from '@kms545487/contracts';
+import type {
+  DeletedResult,
+  ReportListQuery,
+  ReportWorklist,
+  ReportWorklistQuery,
+} from '@kms545487/contracts';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import {
@@ -37,6 +42,7 @@ import { attendanceCompletionHoldPatch } from '../schedule/session-temporal-tran
 import { isPayoutLocked, type SessionAccountingImpact } from '../schedule/session-accounting.policy';
 import { SessionAccountingContextService } from '../schedule/session-accounting-context.service'; // [TBO-79 B5]
 import { SessionAccountingGuard, type AccountingAckInput } from '../schedule/session-accounting-guard.service'; // [TBO-79 B5]
+import { buildReportWorklist } from './report-worklist.policy';
 
 // [보안 2026-07-07 H2] 액터 컨텍스트 — 비관리자(강사)는 본인 세션·본인 보고서만 쓰기 가능(IDOR 차단).
 export type ReportActor = { id: number; roles: string[] };
@@ -102,7 +108,12 @@ export class ReportsService implements OnModuleInit {
       this.store.findActiveByFieldValues<Course>(COURSES_SPEC, 'id', courseIds),
       this.store.findActiveByFieldValues<StaffAccount>(USERS_SPEC, 'id', instructorIds),
     ]);
-    const subjectIds = courses.map((row) => row.subjectId);
+    // 작성 당시 과목 snapshot이 있으면 현재 course 과목보다 우선한다. 과거 보고서의 표시가
+    // 카탈로그 수정으로 소급 변경되지 않게 하면서 snapshot 없는 레거시만 현재 course로 보완한다.
+    const subjectIds = [...new Set([
+      ...rows.map((row) => row.subjectId).filter((id): id is number => id != null),
+      ...courses.map((row) => row.subjectId),
+    ])];
     const subjects = await this.store.findActiveByFieldValues<Subject>(SUBJECTS_SPEC, 'id', subjectIds);
     const studentById = new Map(students.map((row) => [row.id, row]));
     const courseById = new Map(courses.map((row) => [row.id, row]));
@@ -125,7 +136,7 @@ export class ReportsService implements OnModuleInit {
           `Report ${report.id} context is incomplete (session/student/course/instructor)`,
         );
       }
-      const subject = subjectById.get(course.subjectId);
+      const subject = subjectById.get(report.subjectId ?? course.subjectId);
       const academic = currentAcademicHistory(
         historiesByStudent.get(student.id) ?? [],
         session.sessionDate,
@@ -173,26 +184,78 @@ export class ReportsService implements OnModuleInit {
 
   /** [TBO-54 C2] 목록 READ = DB 권위(행 원부). 강사 가시성 필터는 세션 읽기모델
    *  (EP2 TTL hydrate — staleness 유계) 기반 — 세션 전환은 후속 청크. */
-  async listDbForActor(actor?: ReportActor, sessionId?: number): Promise<SessionReportViewRow[]> {
+  async listDbForActor(actor?: ReportActor, query: ReportListQuery = {}): Promise<SessionReportViewRow[]> {
     // [TBO-79 D5] fail-closed — 종전 `actor &&`는 actor 미상 호출이 세션 가시성 검사를 건너뛰게 했다.
     if (!actor) throw new ForbiddenException('보고서 조회에는 로그인 사용자 정보가 필요합니다.');
-    if (sessionId != null && !actorIsAdmin(actor)) {
-      const target = await this.sessionsStore.findByIdDb(sessionId);
+    this.assertQueryRange(query.from, query.to);
+    if (!actorIsAdmin(actor) && query.instructorId != null && query.instructorId !== actor.id) {
+      throw new ForbiddenException('강사는 본인 리포트만 조회할 수 있습니다.');
+    }
+    if (query.sessionId != null && !actorIsAdmin(actor)) {
+      const target = await this.sessionsStore.findByIdDb(query.sessionId);
       if (target && !isSessionVisibleToInstructor(target, actor.id))
         throw new ForbiddenException('담당 일반 수업 강사 또는 관리자만 이 보고서를 조회할 수 있습니다.');
     }
+    const where: Partial<SessionReportRow> = {};
+    if (query.sessionId != null) where.sessionId = query.sessionId;
+    if (query.studentId != null) where.studentId = query.studentId;
+    if (query.status != null) where.status = query.status;
+    if (query.approvalStatus != null) where.approvalStatus = query.approvalStatus;
+    const effectiveInstructorId = actorIsAdmin(actor) ? query.instructorId : actor.id;
+    if (effectiveInstructorId != null) where.instructorId = effectiveInstructorId;
     const rows = await this.store.findActive<SessionReportRow>(SESSION_REPORTS_SPEC, {
-      where: sessionId == null ? undefined : ({ sessionId } as Partial<SessionReportRow>),
+      where: Object.keys(where).length ? where : undefined,
       orderBy: { field: 'id' },
     });
     const sessions = await this.sessionsStore.findByIdsDb(rows.map((row) => row.sessionId));
-    if (!actor || actorIsAdmin(actor)) return this.projectViews(rows, sessions);
     const sessionById = new Map(sessions.map((row) => [row.id, row]));
-    const visible = rows.filter((report) => {
+    const filtered = rows.filter((report) => {
       const session = sessionById.get(report.sessionId);
-      return !!session && isSessionVisibleToInstructor(session, actor.id);
+      if (!session) return false;
+      if (query.from != null && session.sessionDate < query.from) return false;
+      if (query.to != null && session.sessionDate > query.to) return false;
+      return actorIsAdmin(actor) || isSessionVisibleToInstructor(session, actor.id);
     });
-    return this.projectViews(visible, sessions);
+    const projected = await this.projectViews(filtered, sessions);
+    return query.subjectId == null
+      ? projected
+      : projected.filter((report) => report.context.subject?.id === query.subjectId);
+  }
+
+  /** 목록·작성 필요 화면·내비게이션 배지가 공유하는 DB 권위 worklist. */
+  async worklistDbForActor(actor?: ReportActor, query: ReportWorklistQuery = {}): Promise<ReportWorklist> {
+    if (!actor) throw new ForbiddenException('보고서 조회에는 로그인 사용자 정보가 필요합니다.');
+    this.assertQueryRange(query.from, query.to);
+    if (!actorIsAdmin(actor) && query.instructorId != null && query.instructorId !== actor.id) {
+      throw new ForbiddenException('강사는 본인 리포트 작성 목록만 조회할 수 있습니다.');
+    }
+    const effectiveInstructorId = actorIsAdmin(actor) ? query.instructorId : actor.id;
+    const sessions = (await this.sessionsStore.listDb({
+      from: query.from,
+      to: query.to,
+      instructorId: effectiveInstructorId,
+      assignment: 'assigned',
+    })).filter((row) => actorIsAdmin(actor) || isSessionVisibleToInstructor(row, actor.id));
+    const [enrollments, reports, courses] = await Promise.all([
+      this.store.findActive<Enrollment>(ENROLLMENTS_SPEC),
+      this.store.findActive<SessionReportRow>(SESSION_REPORTS_SPEC),
+      this.store.findActive<Course>(COURSES_SPEC),
+    ]);
+    return buildReportWorklist({
+      sessions,
+      enrollments,
+      reports,
+      subjectIdByCourse: new Map(courses.map((course) => [course.id, course.subjectId])),
+      query,
+      effectiveInstructorId,
+      nowMs: Date.now(),
+    });
+  }
+
+  private assertQueryRange(from?: string, to?: string): void {
+    if (from != null && to != null && from > to) {
+      throw new BadRequestException('보고서 조회 기간이 잘못되었습니다(from > to).');
+    }
   }
 
   /** [TBO-54 C2] 단건 READ = DB 권위 + 기존 스코프 규칙(404→403 표준) 유지. */

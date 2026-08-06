@@ -11,7 +11,7 @@ const CANONICAL_POSITIVE_INTEGER = /^[1-9]\d*$/;
 const VALIDATION_MESSAGE =
   'Validation failed (positive PostgreSQL integer is expected)';
 
-function parsePositiveInt(value: unknown): number {
+export function parsePositiveInt(value: unknown): number {
   if (typeof value === 'number') {
     if (
       Number.isInteger(value) &&
