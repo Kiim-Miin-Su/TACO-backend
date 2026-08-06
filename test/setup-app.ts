@@ -14,7 +14,9 @@ import { seedBusinessFixtures } from "./fixtures/seed-business-fixtures";
 export const E2E_APP_BOOT_TIMEOUT_MS = 60_000;
 
 // main.ts와 동일한 부트 설정으로 e2e 앱 인스턴스 생성.
-export async function createTestApp(): Promise<INestApplication> {
+export async function createTestApp(
+  listen: { port?: number; host?: string } = {},
+): Promise<INestApplication> {
   const shouldSeedFixtures = process.env.TEST_BUSINESS_FIXTURES !== '0';
   const moduleRef = await Test.createTestingModule({ imports: [AppModule] }).compile();
   const app = moduleRef.createNestApplication();
@@ -61,7 +63,7 @@ export async function createTestApp(): Promise<INestApplication> {
   // Supertest에 init-only server를 넘기면 요청마다 임시 listen/close가 반복된다. 전체 회귀는
   // 100개가 넘는 앱과 수천 요청을 순차 실행하므로 이 포트 churn이 간헐 404/401을 만들었다.
   // 스위트당 localhost ephemeral port를 한 번만 열어 운영과 같은 HTTP lifecycle을 사용한다.
-  await app.listen(0, '127.0.0.1');
+  await app.listen(listen.port ?? 0, listen.host ?? '127.0.0.1');
   if (shouldSeedFixtures) seedBusinessFixtures(app);
   return app;
 }

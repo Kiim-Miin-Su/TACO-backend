@@ -18,9 +18,8 @@ import { seedQaPendingPayoutFixture } from './fixtures/seed-qa-payout-fixture';
 
 async function main() {
   const port = Number(process.env.PORT) || 3001;
-  const app = await createTestApp();
+  const app = await createTestApp({ port, host: '127.0.0.1' });
   const payoutFixture = await seedQaPendingPayoutFixture(app);
-  await app.listen(port);
   console.log(`[qa] fixture server on :${port} — in-memory·업무 픽스처 시드(재시작=초기화)`);
   console.log(`[qa] editable pending payout #${payoutFixture.payout.id} — service/UoW 생성`);
   console.log('[qa] 데모 계정: admin(대표) · manager(매니저) · park_inst/jung_inst(강사) — 비밀번호는 데모 공통값');
