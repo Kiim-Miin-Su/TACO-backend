@@ -9,6 +9,7 @@ import { UpdateReportDto } from './dto/update-report.dto';
 import { ApproveReportDto, RejectReportDto } from './dto/report-action.dto';
 import { RequireCapabilities, Roles, STAFF_ROLES } from '../auth/roles.decorator';
 import { ListReportsQueryDto, ReportWorklistQueryDto } from './dto/list-reports-query.dto';
+import { ReviseApprovedReportDto } from './dto/revise-report.dto';
 
 @ApiTags('reports')
 @ApiBearerAuth()
@@ -88,6 +89,24 @@ export class ReportsController {
     @Body() _body: ApproveReportDto, // [TBO-79 C2] 빈 DTO 바인딩 유지 = actor 필드 재유입을 400으로 차단
   ) {
     return this.reports.approve(id, req.user?.sub); // actor는 토큰만 권위 — body fallback 제거
+  }
+
+  @Get(':id/revisions')
+  @RequireCapabilities('approval.manage')
+  @ApiOperation({ summary: '승인 후 보고서 본문 수정 원장 조회 [관리자]' })
+  revisions(@Param('id', PositiveIntPipe) id: number) {
+    return this.reports.listRevisions(id);
+  }
+
+  @Post(':id/revise')
+  @RequireCapabilities('approval.manage')
+  @ApiOperation({ summary: '승인된 보고서 본문 수정 + append-only revision + audit [관리자]' })
+  revise(
+    @Param('id', PositiveIntPipe) id: number,
+    @Body() body: ReviseApprovedReportDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.reports.reviseApproved(id, body, req.user?.sub);
   }
 
   @Post(':id/reject')

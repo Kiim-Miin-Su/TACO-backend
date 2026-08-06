@@ -81,6 +81,7 @@
     "db:migrate:session-attendance-capability": "ts-node scripts/migrate-session-attendance-capability.ts",
     "db:migrate:unassigned-session-instructor": "ts-node scripts/migrate-unassigned-session-instructor.ts",
     "db:migrate:schedule-request-attendance-correction": "ts-node scripts/migrate-schedule-request-attendance-correction.ts",
+    "db:migrate:session-report-revisions": "ts-node scripts/migrate-session-report-revisions.ts",
     "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts",
     "verify:runtime-data": "ts-node scripts/verify-runtime-data-boundary.ts",
     "verify:crud-surfaces": "ts-node scripts/verify-crud-surfaces.ts",

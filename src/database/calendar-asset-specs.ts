@@ -43,6 +43,10 @@ import { INSTRUCTOR_CONTRACT_BOUNDS_SQL } from './migrations/instructor-contract
 import { TRANSACTION_SOURCE_INTEGRITY_SQL } from './migrations/transaction-source-integrity.migration';
 import { REPORT_TEMPLATE_OWNER_MIGRATION_SQL } from './migrations/report-template-owner.migration';
 import {
+  SESSION_REPORT_REVISIONS_SQL,
+  SESSION_REPORT_REVISIONS_TABLE_SQL,
+} from './migrations/session-report-revisions.migration';
+import {
   STAFF_ATTENDANCE_INDEX_SQL,
   STAFF_ATTENDANCE_TABLE_SQL,
 } from './migrations/staff-attendance.migration';
@@ -859,6 +863,7 @@ export const SESSION_REPORTS_SPEC: PostgresCollectionSpec = {
       approved_by integer,
       approved_at timestamptz,
       rejected_reason text,
+      version integer NOT NULL DEFAULT 1,
       created_at timestamptz NOT NULL DEFAULT now(),
       updated_at timestamptz NOT NULL DEFAULT now(),
       deleted_at timestamptz,
@@ -868,15 +873,29 @@ export const SESSION_REPORTS_SPEC: PostgresCollectionSpec = {
   timestampFields: ['submittedAt', 'approvedAt'],
   migrations: [
     'ALTER TABLE session_reports ADD COLUMN IF NOT EXISTS progress_page text',
+    ...SESSION_REPORT_REVISIONS_SQL.slice(0, 4),
   ],
   indexes: [
     "ALTER TABLE session_reports ADD COLUMN IF NOT EXISTS approval_status varchar(32) NOT NULL DEFAULT 'draft'",
-    "UPDATE session_reports SET approval_status = CASE WHEN status IN ('approved', 'rejected') THEN status WHEN status = 'submitted' THEN 'submitted' ELSE approval_status END, status = CASE WHEN status = 'approved' THEN 'sent' WHEN status = 'rejected' THEN 'draft' ELSE status END WHERE status IN ('approved', 'rejected') OR (status = 'submitted' AND approval_status = 'draft')",
+    `UPDATE session_reports
+        SET approval_status = CASE WHEN status IN ('approved', 'rejected') THEN status WHEN status = 'submitted' THEN 'submitted' ELSE approval_status END,
+            status = CASE WHEN status = 'approved' THEN 'sent' WHEN status = 'rejected' THEN 'draft' ELSE status END,
+            approved_at = CASE WHEN status = 'approved' THEN COALESCE(approved_at, updated_at, now()) ELSE approved_at END,
+            rejected_reason = CASE WHEN status = 'rejected' THEN COALESCE(NULLIF(btrim(rejected_reason), ''), '사유 미기재') ELSE rejected_reason END
+      WHERE status IN ('approved', 'rejected') OR (status = 'submitted' AND approval_status = 'draft')`,
     'CREATE UNIQUE INDEX IF NOT EXISTS uq_session_reports_session_student ON session_reports (session_id, student_id) WHERE deleted_at IS NULL',
     activeIndex('session_reports', 'idx_reports_session', 'session_id'),
     activeIndex('session_reports', 'idx_reports_instructor_status', 'instructor_id, status'),
     activeIndex('session_reports', 'idx_reports_instructor_approval', 'instructor_id, approval_status'),
   ],
+};
+
+export const SESSION_REPORT_REVISIONS_SPEC: PostgresCollectionSpec = {
+  table: 'session_report_revisions',
+  createSql: SESSION_REPORT_REVISIONS_TABLE_SQL,
+  indexes: [...SESSION_REPORT_REVISIONS_SQL.slice(5)],
+  timestampFields: ['createdAt'],
+  skipMemoryWhenDurable: true,
 };
 
 export const STAFF_ATTENDANCE_SPEC: PostgresCollectionSpec = {

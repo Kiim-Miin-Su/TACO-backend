@@ -48,6 +48,7 @@ export const LOGICAL_RELATION_POLICIES: LogicalRelationPolicy[] = [
   userReference('transactions', 'deleted_by', SOFT_DELETE_ACTOR_REASON),
   userReference('academy_events', 'deleted_by', SOFT_DELETE_ACTOR_REASON),
   userReference('session_reports', 'deleted_by', SOFT_DELETE_ACTOR_REASON),
+  userReference('session_report_revisions', 'deleted_by', SOFT_DELETE_ACTOR_REASON),
   userReference('report_templates', 'deleted_by', SOFT_DELETE_ACTOR_REASON),
   userReference(
     'students',

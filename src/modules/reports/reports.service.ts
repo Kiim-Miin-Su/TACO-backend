@@ -4,6 +4,7 @@ import type {
   ReportListQuery,
   ReportWorklist,
   ReportWorklistQuery,
+  ReviseApprovedSessionReportInput,
 } from '@kms545487/contracts';
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { InMemoryDatabase } from '../../database/in-memory.database';
@@ -11,6 +12,7 @@ import {
   ATTENDANCE_SPEC,
   COURSES_SPEC,
   ENROLLMENTS_SPEC,
+  SESSION_REPORT_REVISIONS_SPEC,
   SESSION_REPORTS_SPEC,
   STUDENTS_SPEC,
   STUDENT_ACADEMIC_HISTORIES_SPEC,
@@ -43,6 +45,7 @@ import { isPayoutLocked, type SessionAccountingImpact } from '../schedule/sessio
 import { SessionAccountingContextService } from '../schedule/session-accounting-context.service'; // [TBO-79 B5]
 import { SessionAccountingGuard, type AccountingAckInput } from '../schedule/session-accounting-guard.service'; // [TBO-79 B5]
 import { buildReportWorklist } from './report-worklist.policy';
+import { SessionReportRevisionRow } from './report-revision.entity';
 
 // [보안 2026-07-07 H2] 액터 컨텍스트 — 비관리자(강사)는 본인 세션·본인 보고서만 쓰기 가능(IDOR 차단).
 export type ReportActor = { id: number; roles: string[] };
@@ -80,6 +83,9 @@ export class ReportsService implements OnModuleInit {
       where: { id } as Partial<SessionReportRow>, limit: 1,
     });
     if (!row) throw new NotFoundException(`Report ${id} not found`);
+    if (row.version == null) {
+      return (await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, id, { version: 1 })) ?? { ...row, version: 1 };
+    }
     return row;
   }
 
@@ -175,7 +181,13 @@ export class ReportsService implements OnModuleInit {
   //  → 리포트 현황 대시보드에서 "작성/미작성"이 섞여 보임(전 슬롯 8개 중 3건 작성). 승인(approved) 아님 = 시수/정산 미반영(payouts 불변).
   //  고정 id로 멱등, payouts가 런타임 생성하는 승인 보고서(nextId)와 충돌 없음.
   async onModuleInit(): Promise<void> {
-    await this.store.hydrate<SessionReportRow>(SESSION_REPORTS_SPEC);
+    const reports = await this.store.hydrate<SessionReportRow>(SESSION_REPORTS_SPEC);
+    for (const report of reports) {
+      if (report.version == null) {
+        await this.store.update<SessionReportRow>(SESSION_REPORTS_SPEC, report.id, { version: 1 });
+      }
+    }
+    await this.store.hydrate<SessionReportRevisionRow>(SESSION_REPORT_REVISIONS_SPEC);
   }
 
   findAll(): SessionReportRow[] {
@@ -347,6 +359,7 @@ export class ReportsService implements OnModuleInit {
         status,
         approvalStatus: status === 'submitted' ? 'submitted' : 'draft',
         submittedAt: status === 'submitted' ? new Date().toISOString() : undefined,
+        version: 1,
       });
       // [감사 전수 2026-07-16] 보고서 생성 이력(본문 원문은 기록하지 않음 — 메타만).
       if (actor?.id != null && actor.id > 0) {
@@ -366,7 +379,6 @@ export class ReportsService implements OnModuleInit {
     dto: { content?: string; progressPage?: string; homework?: string },
     actor?: ReportActor,
   ): Promise<SessionReportRow> {
-    this.findOne(id, actor); // 조회 스코프(IDOR 404/403) 선판정 — READ 전환은 C2
     if (dto.content === undefined && dto.progressPage === undefined && dto.homework === undefined)
       throw new BadRequestException('수정할 내용(content/progressPage/homework)이 필요합니다.');
     return this.uow.run(async () => {
@@ -381,7 +393,11 @@ export class ReportsService implements OnModuleInit {
         throw new ForbiddenException('담당 강사 또는 관리자만 이 보고서를 수정할 수 있습니다.');
       if (r.approvalStatus === 'approved') throw new BadRequestException('이미 승인된 보고서는 수정할 수 없습니다.');
       // [C1] approval_status CAS — 수정과 승인이 겹치면 한쪽만 성공(승인된 본문 무단 변경 차단).
-      const after = await this.store.updateIf<SessionReportRow>(SESSION_REPORTS_SPEC, id, { approvalStatus: r.approvalStatus }, {
+      const version = r.version ?? 1;
+      const after = await this.store.updateIf<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+        approvalStatus: r.approvalStatus,
+        version,
+      }, {
         ...(dto.content !== undefined ? { content: dto.content } : {}),
         ...(dto.progressPage !== undefined
           ? { progressPage: (dto.progressPage.trim() ? dto.progressPage : null) as unknown as string }
@@ -392,6 +408,7 @@ export class ReportsService implements OnModuleInit {
         ...(dto.homework !== undefined
           ? { homework: (dto.homework.trim() ? dto.homework : null) as unknown as string }
           : {}),
+        version: version + 1,
       });
       if (!after) throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
       // [감사 전수 2026-07-16] 본문 수정 이력 — 원문 대신 수정 필드명만(내용 프라이버시).
@@ -446,7 +463,6 @@ export class ReportsService implements OnModuleInit {
 
   // 강사: 작성완료 제출(draft → submitted)
   async submit(id: number, actor?: ReportActor): Promise<SessionReportRow> {
-    this.findOne(id, actor); // 조회 스코프(IDOR 404/403) 선판정 — READ 전환은 C2
     return this.uow.run(async () => {
       const scoped = await this.reportFromDb(id);
       await this.uow.lockTargets(sessionAccountingLockKeys({
@@ -464,7 +480,9 @@ export class ReportsService implements OnModuleInit {
         status: 'submitted',
         approvalStatus: 'submitted',
         submittedAt: new Date().toISOString(),
-        rejectedReason: undefined,
+        rejectedReason: null as unknown as string,
+        approvedAt: null as unknown as string,
+        approvedBy: null as unknown as number,
       });
       if (!after) throw new ConflictException('보고서 상태가 이미 변경되었습니다. 새로고침 후 다시 시도해 주세요.');
       // [감사 전수 2026-07-16] 제출 이력.
@@ -512,6 +530,7 @@ export class ReportsService implements OnModuleInit {
         approvalStatus: 'approved',
         approvedAt: new Date().toISOString(),
         approvedBy,
+        rejectedReason: null as unknown as string,
       });
       if (!after) {
         this.transitionLog.warn(`action=approve report=${id} actor=${approvedBy ?? 0} result=conflict(cas)`);
@@ -603,6 +622,8 @@ export class ReportsService implements OnModuleInit {
       const after = await this.store.updateIf<SessionReportRow>(SESSION_REPORTS_SPEC, id, { approvalStatus: r.approvalStatus }, {
         approvalStatus: 'rejected',
         rejectedReason: reason ?? '사유 미기재',
+        approvedAt: null as unknown as string,
+        approvedBy: null as unknown as number,
       });
       if (!after) {
         this.transitionLog.warn(`action=reject report=${id} actor=${actorId ?? 0} result=conflict(cas)`);
@@ -621,6 +642,94 @@ export class ReportsService implements OnModuleInit {
           reason: reason ?? '사유 미기재',
         });
       }
+      return after;
+    });
+  }
+
+  async listRevisions(reportId: number): Promise<SessionReportRevisionRow[]> {
+    await this.reportFromDb(reportId);
+    const rows = await this.store.findActive<SessionReportRevisionRow>(SESSION_REPORT_REVISIONS_SPEC, {
+      where: { reportId } as Partial<SessionReportRevisionRow>,
+      orderBy: { field: 'afterVersion', direction: 'DESC' },
+    });
+    const editors = await this.store.findActiveByFieldValues<StaffAccount>(
+      USERS_SPEC,
+      'id',
+      rows.map((row) => row.editedBy),
+    );
+    const editorNameById = new Map(editors.map((editor) => [editor.id, editor.name]));
+    return rows.map((row) => ({ ...row, editedByName: editorNameById.get(row.editedBy) }));
+  }
+
+  /** 승인 상태는 유지하면서 본문만 수정한다. report/revision/audit는 같은 transaction이다. */
+  async reviseApproved(
+    id: number,
+    dto: ReviseApprovedSessionReportInput,
+    actorId?: number,
+  ): Promise<SessionReportRow> {
+    if (actorId == null || actorId <= 0) {
+      throw new ForbiddenException('승인 후 수정에는 관리자 정보가 필요합니다.');
+    }
+    const reason = dto.reason.trim();
+    if (!reason) throw new BadRequestException('승인 후 수정 사유가 필요합니다.');
+    return this.uow.run(async () => {
+      const scoped = await this.reportFromDb(id);
+      await this.uow.lockTargets(sessionAccountingLockKeys({
+        sessionIds: [scoped.sessionId],
+        reportIds: [id],
+      }));
+      const before = structuredClone(await this.reportFromDb(id));
+      if (before.approvalStatus !== 'approved') {
+        throw new BadRequestException('승인된 보고서만 수정 이력을 남기며 변경할 수 있습니다.');
+      }
+      const version = before.version ?? 1;
+      if (dto.expectedVersion !== version) {
+        throw new ConflictException({
+          code: 'REPORT_VERSION_STALE',
+          message: '보고서가 다른 요청에서 먼저 수정되었습니다. 새로고침 후 다시 확인해 주세요.',
+          expectedVersion: dto.expectedVersion,
+          currentVersion: version,
+        });
+      }
+      const progressPage = dto.progressPage?.trim() ? dto.progressPage : null;
+      const homework = dto.homework?.trim() ? dto.homework : null;
+      const after = await this.store.updateIf<SessionReportRow>(SESSION_REPORTS_SPEC, id, {
+        approvalStatus: 'approved',
+        version,
+      }, {
+        content: dto.content,
+        progressPage: progressPage as unknown as string,
+        homework: homework as unknown as string,
+        version: version + 1,
+      });
+      if (!after) {
+        throw new ConflictException('보고서가 다른 요청에서 먼저 변경되었습니다. 새로고침해 주세요.');
+      }
+      const revision = await this.store.insert<SessionReportRevisionRow>(SESSION_REPORT_REVISIONS_SPEC, {
+        reportId: id,
+        beforeVersion: version,
+        afterVersion: version + 1,
+        beforeContent: before.content,
+        afterContent: after.content,
+        beforeProgressPage: before.progressPage,
+        afterProgressPage: after.progressPage,
+        beforeHomework: before.homework,
+        afterHomework: after.homework,
+        reason,
+        editedBy: actorId,
+      });
+      await this.audit.log({
+        entity: 'session_reports',
+        entityId: id,
+        action: 'update',
+        actorId,
+        changes: {
+          version: { before: version, after: version + 1 },
+          revisionId: { after: revision.id },
+          editedFields: { after: ['content', 'progressPage', 'homework'] },
+        },
+        reason,
+      });
       return after;
     });
   }

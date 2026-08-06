@@ -3566,6 +3566,64 @@ paths:
       summary: 관리자 승인(submitted → approved) — 시수 적격 편입 [관리자]
       tags:
         - reports
+  /api/reports/{id}/revisions:
+    get:
+      operationId: ReportsController_revisions
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 승인 후 보고서 본문 수정 원장 조회 [관리자]
+      tags:
+        - reports
+  /api/reports/{id}/revise:
+    post:
+      operationId: ReportsController_revise
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviseApprovedReportDto'
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 승인된 보고서 본문 수정 + append-only revision + audit [관리자]
+      tags:
+        - reports
   /api/reports/{id}/reject:
     post:
       operationId: ReportsController_reject
@@ -8049,6 +8107,36 @@ components:
     ApproveReportDto:
       type: object
       properties: {}
+    ReviseApprovedReportDto:
+      type: object
+      properties:
+        expectedVersion:
+          type: number
+          minimum: 1
+          example: 2
+          description: 화면에서 확인한 현재 본문 version
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 1000
+          example: 학부모 전달 전 표현 보완
+          description: 승인 후 수정 사유
+        content:
+          type: string
+          maxLength: 4000
+          description: 수정할 수업 내용
+        progressPage:
+          type: string
+          maxLength: 2000
+          description: 수정할 진도 페이지. 빈 문자열은 비움.
+        homework:
+          type: string
+          maxLength: 2000
+          description: 수정할 숙제. 빈 문자열은 비움.
+      required:
+        - expectedVersion
+        - reason
+        - content
     RejectReportDto:
       type: object
       properties:

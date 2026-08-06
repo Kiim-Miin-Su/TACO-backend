@@ -110,6 +110,14 @@ const S: Record<string, Surface> = {
     verdict: 'complete',
     note: 'draft owner/admin soft-delete plus submission/decision lifecycle and audit',
   },
+  session_report_revisions: {
+    lifecycle: 'append-only',
+    contract: ['SessionReportRevision'],
+    api: ['GET /reports/{id}/revisions'],
+    frontend: ['useReportRevisions'],
+    verdict: 'complete',
+    note: 'manager-approved content edits append exact before/after; update/delete forbidden',
+  },
   calendar_view_presets: { lifecycle: 'direct', contract: ['CalendarViewPreset'], api: ['POST /view-presets', 'PATCH /view-presets/{id}', 'DELETE /view-presets/{id}'], frontend: ['api.viewPresets'], verdict: 'complete', note: 'owner-scoped persisted CRUD' },
   report_templates: {
     lifecycle: 'direct',

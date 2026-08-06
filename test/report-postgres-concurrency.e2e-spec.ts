@@ -129,6 +129,7 @@ describePostgres('report approve vs session terminal two-instance PostgreSQL con
       status: 'submitted',
       approvalStatus: 'submitted',
       submittedAt: new Date().toISOString(),
+      version: 1,
     });
     created.push({ sessionId: session.id, reportId: report.id });
 
@@ -299,6 +300,7 @@ describePostgres('report approve vs session terminal two-instance PostgreSQL con
       submittedAt: new Date().toISOString(),
       approvedAt: new Date().toISOString(),
       approvedBy: actorApprove,
+      version: 1,
     });
     const requestStore = appA.get(ScheduleRequestsStore);
     const requestRow = await requestStore.insert<ScheduleRequest & BaseRow>({
