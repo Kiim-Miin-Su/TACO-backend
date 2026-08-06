@@ -20,7 +20,8 @@ import { Student, STUDENTS } from '../students/student.entity';
 import type { PayoutWorksheet, PayoutWorksheetRow } from './payout-worksheet.policy';
 import { SessionReportRow, SESSION_REPORTS } from '../reports/report.entity';
 import { CoursesService } from '../courses/courses.service';
-import { USERS, isActiveInstructor, type StaffAccount } from '../users/user.entity'; // 대표 schedule owner는 정산 제외
+import { USERS, isTeachingAccount, type StaffAccount } from '../users/user.entity';
+import { INSTRUCTOR_PROFILES, activeTeachingProfileUserIds, type InstructorProfile } from '../users/instructor-profiles.store'; // 대표 schedule owner는 정산 제외
 import { InstructorPayoutRow, PayoutLine, PAYOUTS } from './payout.entity';
 import { Subject, SUBJECTS } from '../subjects/subject.entity';
 import { claimsHaveCapability } from '../auth/role-policy';
@@ -70,7 +71,7 @@ export class PayoutsReadService implements OnModuleInit {
 
   // 시수 측정(순수 계산) — preview/generate 공통. 활성 가드는 명령·조회 라우트의 대상 검증이다.
   measure(instructorId: number, from: string, to: string): MeasureResult {
-    if (!isActiveInstructor(this.db.findById<StaffAccount>(USERS, instructorId)))
+    if (!isTeachingAccount(this.db.findById<StaffAccount>(USERS, instructorId), this.teachingIds()))
       throw new BadRequestException('정산 대상은 활성 강사만 가능합니다.');
     return this.measureCore(instructorId, from, to);
   }
@@ -180,7 +181,7 @@ export class PayoutsReadService implements OnModuleInit {
    *  measure와 같은 분류 함수를 공유(단일 진실원)하되, 표시용으로 excluded 회차까지 전부 담는다. */
   async worksheetFresh(instructorId: number, from: string, to: string): Promise<PayoutWorksheet> {
     await this.refreshReadInputs();
-    if (!isActiveInstructor(this.db.findById<StaffAccount>(USERS, instructorId)))
+    if (!isTeachingAccount(this.db.findById<StaffAccount>(USERS, instructorId), this.teachingIds()))
       throw new BadRequestException('활성 강사만 조회할 수 있습니다.');
     if (!from || !to) throw new BadRequestException('기간(from/to)이 필요합니다');
     if (from > to) throw new BadRequestException('기간이 잘못되었습니다(from > to)');
@@ -267,10 +268,16 @@ export class PayoutsReadService implements OnModuleInit {
   }
 
 
-  /** 활성 강사 id 목록(일괄 산정 기본 대상). */
+  /** [TBO-87] 겸직 판정 집합 — 활성 강사원부 보유 userId(정산·검증 공용). */
+  private teachingIds(): Set<number> {
+    return activeTeachingProfileUserIds(this.db.findAll<InstructorProfile>(INSTRUCTOR_PROFILES));
+  }
+
+  /** 활성 강사 id 목록(일괄 산정 기본 대상) — 겸직 manager/admin 포함(87 결정: 정산 동일 포함). */
   activeInstructorIds(): number[] {
+    const teaching = this.teachingIds();
     return this.db
-      .findBy<StaffAccount>(USERS, (a) => a.role === 'instructor' && a.status === 'active')
+      .findBy<StaffAccount>(USERS, (a) => isTeachingAccount(a, teaching))
       .map((a) => a.id);
   }
 
@@ -289,7 +296,10 @@ export class PayoutsReadService implements OnModuleInit {
     // [리뷰 P1-2 2026-07-22] 비활성(퇴직 등) 강사의 미지급분도 감지 — 조용한 소실 방지.
     //  pending/rejected 강사는 수업이 없어 measure 0으로 자연 배제되고, active 외 상태는
     //  instructorStatus로 표시해 화면에서 구분한다(일괄 산정 기본 대상은 여전히 active만).
-    const instructors = this.db.findBy<StaffAccount>(USERS, (a) => a.role === 'instructor');
+    // [TBO-87] 미정산 감지 모집단 — 강사 role 전체 + 강사원부 이력 보유자(겸직·전 겸직 포함, 비활성도 감지).
+    const profileUserIds = new Set(
+      this.db.findAll<InstructorProfile>(INSTRUCTOR_PROFILES).map((p) => Number(p.userId)));
+    const instructors = this.db.findBy<StaffAccount>(USERS, (a) => a.role === 'instructor' || profileUserIds.has(a.id));
     // [TBO-65 M2] 월 경계 앵커 = KST 오늘(종전 UTC now — KST 1일 00~09시에 전월로 잡히던 어긋남)
     const [anchorYear, anchorMonth] = todayKst().split('-').map(Number);
     const nowMs = Date.now();

@@ -790,6 +790,55 @@ paths:
       summary: 사용자 권한 허용·제한·역할 기본값 복원 — 사유·재인증·감사·원자 transaction [대표·관리자]
       tags:
         - Users
+  /api/users/{id}/teaching:
+    post:
+      operationId: UsersController_grantTeaching
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      responses:
+        '201':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 강사 겸직 부여(manager/admin + 강사원부 활성) — 대표 재인증 필수. 대상 기존 세션 무효.
+      tags:
+        - Users
+    delete:
+      operationId: UsersController_revokeTeaching
+      parameters:
+        - name: id
+          required: true
+          in: path
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      responses:
+        '200':
+          description: ''
+          content:
+            application/json:
+              schema:
+                type: object
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 강사 겸직 해제 — 담당 수업·활성 계약이 있으면 409(강사 해제와 동일 가드).
+      tags:
+        - Users
   /api/users/{id}/restore:
     post:
       operationId: UsersController_restore
@@ -6263,6 +6312,11 @@ components:
             - admin
           type: string
           description: 역할 — 변경 시 기존 세션 전부 무효
+        keepTeaching:
+          type: boolean
+          description: |-
+            [TBO-87 겸직] 강사→manager/admin 승격 시 true면 강사원부(강사 활동)를 유지해 겸직으로 전환.
+             담당 수업이 있어도 승격 가능(종전엔 원부 비활성 가드가 409로 차단).
     UserLifecycleDto:
       type: object
       properties:

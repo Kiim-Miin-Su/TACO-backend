@@ -151,6 +151,29 @@ export class UsersController {
     return this.users.adminUpdateUser(id, sub, dto);
   }
 
+  // [TBO-87 겸직] 강사 활동 부여/해제 — 대표 sudo. roles 클레임 재발급을 위해 대상 세션 전부 무효.
+  @Post(':id/teaching')
+  @UseGuards(SudoGuard)
+  @RequireCapabilities('executive.manage')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '강사 겸직 부여(manager/admin + 강사원부 활성) — 대표 재인증 필수. 대상 기존 세션 무효.' })
+  grantTeaching(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    const sub = req.user?.sub;
+    if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
+    return this.users.setTeaching(id, sub, true);
+  }
+
+  @Delete(':id/teaching')
+  @UseGuards(SudoGuard)
+  @RequireCapabilities('executive.manage')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: '강사 겸직 해제 — 담당 수업·활성 계약이 있으면 409(강사 해제와 동일 가드).' })
+  revokeTeaching(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
+    const sub = req.user?.sub;
+    if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
+    return this.users.setTeaching(id, sub, false);
+  }
+
   @Delete(':id')
   @UseGuards(SudoGuard)
   @RequireCapabilities('executive.manage')

@@ -15,7 +15,8 @@ import { CalendarUnitOfWork, type CalendarLockKey } from '../../database/calenda
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import { AuditService } from '../audit/audit.service';
 import { Subject, SUBJECTS } from '../subjects/subject.entity';
-import { StaffAccount, USERS, isActiveInstructor } from '../users/user.entity';
+import { StaffAccount, USERS, isTeachingAccount } from '../users/user.entity';
+import { INSTRUCTOR_PROFILES, activeTeachingProfileUserIds, type InstructorProfile } from '../users/instructor-profiles.store';
 import { Enrollment } from '../enrollments/enrollment.entity';
 import { StudentInterest } from '../students/student-interest.entity';
 import { ROADMAP_COURSES, RoadmapCourse } from '../roadmaps/roadmap.entity';
@@ -299,7 +300,10 @@ export class CoursesService implements OnModuleInit {
     }
     if (dto.instructorId != null) {
       const account = this.db.findById<StaffAccount>(USERS, dto.instructorId);
-      if (!isActiveInstructor(account)) throw new BadRequestException(`instructorId ${dto.instructorId}는 활성 강사가 아닙니다`);
+      // [TBO-87] 겸직 포함 — 활성 강사원부 보유 manager/admin도 코스 담당 가능.
+      if (!isTeachingAccount(account, activeTeachingProfileUserIds(this.db.findAll<InstructorProfile>(INSTRUCTOR_PROFILES)))) {
+        throw new BadRequestException(`instructorId ${dto.instructorId}는 활성 강사(겸직 포함)가 아닙니다`);
+      }
       const profile = this.profiles.findActive(dto.instructorId);
       if (!profile) throw new BadRequestException(`instructorId ${dto.instructorId} 강사 프로필이 없습니다`);
       return profile;

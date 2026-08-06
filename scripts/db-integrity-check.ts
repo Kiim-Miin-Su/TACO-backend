@@ -160,15 +160,18 @@ async function main() {
     }
   }
 
-  // ②-2 [TBO-77 E-4a] 활성 instructor와 active instructor_profiles는 정확히 1:1이다.
-  // 역할 변경 command가 프로필 생성/재활성/비활성을 같은 transaction에서 수행하며,
-  // 이 센서는 우회 쓰기나 구버전 인스턴스가 만든 드리프트를 운영 readback에서 차단한다.
+  // ②-2 [TBO-77 E-4a → TBO-87 겸직] 활성 instructor는 active instructor_profiles를 반드시 보유한다.
+  // 역방향은 겸직 허용으로 완화: active profile 보유자는 활성 instructor/manager/admin이어야 한다
+  // (super_admin·비활성·타 role은 드리프트). 역할 전환·겸직 부여/해제 command만 원부를 전이한다.
   {
+    const activeUsers = rows<BaseRow & { role?: string; status?: string }>('users')
+      .filter((row) => row.status === 'active');
     const activeInstructorIds = new Set(
-      rows<BaseRow & { role?: string; status?: string }>('users')
-        .filter((row) => row.role === 'instructor' && row.status === 'active')
-        .map((row) => row.id),
-    );
+      activeUsers.filter((row) => row.role === 'instructor').map((row) => row.id));
+    const teachingEligibleIds = new Set(
+      activeUsers
+        .filter((row) => row.role === 'instructor' || row.role === 'manager' || row.role === 'admin')
+        .map((row) => row.id));
     const activeProfiles = rows<BaseRow & { userId: number; active?: boolean }>('instructor_profiles')
       .filter((row) => row.active === true);
     const activeProfileUserIds = new Set(activeProfiles.map((row) => Number(row.userId)));
@@ -184,13 +187,13 @@ async function main() {
       }
     }
     for (const profile of activeProfiles) {
-      if (!activeInstructorIds.has(Number(profile.userId))) {
+      if (!teachingEligibleIds.has(Number(profile.userId))) {
         push(
           issues,
           'ACTIVE_PROFILE_ROLE_MISMATCH',
           'instructor_profiles',
           profile.id,
-          `active profile userId=${profile.userId}가 active instructor 계정이 아님`,
+          `active profile userId=${profile.userId}가 활성 instructor/manager/admin(겸직) 계정이 아님`,
         );
       }
     }

@@ -22,6 +22,16 @@ export type InstructorProfileDetails = {
   canTeachKinder?: boolean;
 };
 
+/** [TBO-87] 겸직 판정 단일 소스 — 활성(active=true·미삭제) 강사원부 보유 userId 집합.
+ *  "가르치는 사람" = role=instructor 또는 (manager/admin + 이 집합 포함). 대표는 겸직 대상이 아니다. */
+export const activeTeachingProfileUserIds = (
+  profiles: readonly InstructorProfile[],
+): Set<number> => new Set(
+  profiles
+    .filter((profile) => profile.active === true && profile.deletedAt == null)
+    .map((profile) => Number(profile.userId)),
+);
+
 export type InstructorProfile = {
   userId: number; // = users.id (PK/FK)
   active: boolean;

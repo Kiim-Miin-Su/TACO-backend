@@ -9,12 +9,12 @@ import { COURSES_SPEC, INSTRUCTOR_CONTRACTS_SPEC, USERS_SPEC } from '../../datab
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { AuditService } from '../audit/audit.service';
-import { InstructorProfilesStore } from './instructor-profiles.store';
+import { INSTRUCTOR_PROFILES, InstructorProfilesStore, activeTeachingProfileUserIds } from './instructor-profiles.store';
 import type { InstructorProfile } from './instructor-profiles.store';
 import { ClassSessionsStore } from '../schedule/class-sessions.store';
 import type { Course } from '../courses/course.entity';
 import type { InstructorContract } from '../instructor-contracts/instructor-contract.entity';
-import { USERS, authVersionOf, toSafe, type StaffAccount } from './user.entity';
+import { isTeachingAccount, USERS, authVersionOf, toSafe, type StaffAccount } from './user.entity';
 import { UsersService } from './users.service';
 
 @Injectable()
@@ -51,8 +51,9 @@ export class InstructorHrService {
 
   async listInstructors(): Promise<InstructorAggregate[]> {
     await Promise.all([this.users.refreshFromDb(), this.profiles.hydrate()]);
-    return this.db.findBy<StaffAccount>(USERS, (account) =>
-      account.role === 'instructor' && account.status === 'active' && account.deletedAt == null)
+    // [TBO-87] 강사 원부 목록 = 가르치는 사람 전체(겸직 manager/admin 포함) — 활성 원부 보유 기준.
+    const teaching = activeTeachingProfileUserIds(this.db.findAll<InstructorProfile>(INSTRUCTOR_PROFILES));
+    return this.db.findBy<StaffAccount>(USERS, (account) => isTeachingAccount(account, teaching))
       .map((account) => {
         const profile = this.profiles.findActive(account.id);
         if (!profile) return null;

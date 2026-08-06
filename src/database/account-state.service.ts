@@ -13,6 +13,7 @@ import { resolveEffectiveCapabilities, type CapabilityOverride } from '../module
 type AccountState = {
   name: string;
   role: string;
+  roles: string[]; // [TBO-87] 겸직 합성 — [role] 또는 [role,'instructor'](manager/admin+활성 강사원부)
   status: string;
   authVersion: number;
   deleted: boolean;
@@ -26,6 +27,7 @@ export type ClaimsVerdict = {
   ok: true;
   name: string;
   role: string;
+  roles: string[]; // [TBO-87] 겸직 합성 — [role] 또는 [role,'instructor']
   mustChangePassword: boolean;
   effectiveCapabilities: RoleCapability[];
 } | { ok: false; code: 'missing' | 'inactive' | 'stale_token' | 'role_changed' };
@@ -50,6 +52,7 @@ export class AccountStateService {
       ok: true,
       name: state.name,
       role: state.role,
+      roles: state.roles,
       mustChangePassword: state.mustChangePassword,
       effectiveCapabilities: state.effectiveCapabilities,
     };
@@ -60,10 +63,13 @@ export class AccountStateService {
     if (this.postgres.ready) {
       const rows = normalizeQueryRows(await this.postgres.query(
         `SELECT u.name, u.role, u.status, u.auth_version, u.must_change_password, u.deleted_at,
-                o.capability AS override_capability, o.effect AS override_effect
+                o.capability AS override_capability, o.effect AS override_effect,
+                (ip.user_id IS NOT NULL) AS teaching_profile
            FROM users u
            LEFT JOIN user_capability_overrides o
              ON o.user_id = u.id AND o.deleted_at IS NULL
+           LEFT JOIN instructor_profiles ip
+             ON ip.user_id = u.id AND ip.active = true AND ip.deleted_at IS NULL
           WHERE u.id = $1
           ORDER BY o.id ASC`,
         [id],
@@ -77,14 +83,18 @@ export class AccountStateService {
           : [],
       );
       const role = String(row.role);
+      // [TBO-87] 겸직 합성 — manager/admin + 활성 강사원부면 roles에 'instructor' 동반(권한 합집합).
+      const teaching = row.teaching_profile === true && (role === 'manager' || role === 'admin');
+      const roles = teaching ? [role, 'instructor'] : [role];
       return {
         name: String(row.name),
         role,
+        roles,
         status: String(row.status),
         authVersion: row.auth_version == null ? 1 : Number(row.auth_version),
         deleted: row.deleted_at != null,
         mustChangePassword: row.must_change_password === true,
-        effectiveCapabilities: resolveEffectiveCapabilities([role], overrides),
+        effectiveCapabilities: resolveEffectiveCapabilities(roles, overrides),
       };
     }
     type MemoryUserRow = { role: string; status: string; authVersion?: number; mustChangePassword?: boolean } & import('../common/types/base').BaseRow;
@@ -92,14 +102,20 @@ export class AccountStateService {
     if (!acc) return undefined;
     type MemoryOverrideRow = CapabilityOverride & import('../common/types/base').BaseRow & { userId: number };
     const overrides = this.memory.findByField<MemoryOverrideRow>('user_capability_overrides', 'userId', id);
+    type MemoryProfileRow = { userId: number; active?: boolean } & import('../common/types/base').BaseRow;
+    const profile = this.memory.findById<MemoryProfileRow>('instructor_profiles', id);
+    const teaching = !!profile && profile.active === true && profile.deletedAt == null
+      && (acc.role === 'manager' || acc.role === 'admin');
+    const roles = teaching ? [acc.role, 'instructor'] : [acc.role];
     return {
       name: String((acc as MemoryUserRow & { name?: string }).name ?? ''),
       role: acc.role,
+      roles,
       status: acc.status,
       authVersion: acc.authVersion ?? 1,
       deleted: acc.deletedAt != null,
       mustChangePassword: acc.mustChangePassword === true,
-      effectiveCapabilities: resolveEffectiveCapabilities([acc.role], overrides),
+      effectiveCapabilities: resolveEffectiveCapabilities(roles, overrides),
     };
   }
 }

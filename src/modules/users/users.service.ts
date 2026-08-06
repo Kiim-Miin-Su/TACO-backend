@@ -20,9 +20,9 @@ import {
 } from '../../common/rrn-crypto.util'; // [TBO-31 C1 D2] (마스킹은 user.entity.rrnMaskedOf — TBO-68 C3)
 import { SignupEmailChallengesService } from '../auth/signup-email-challenges.service'; // [TBO-31 C1 D1]
 import { SignupPhoneChallengesService } from '../auth/signup-phone-challenges.service'; // [TBO-57]
-import { InstructorProfilesStore } from './instructor-profiles.store';
+import { INSTRUCTOR_PROFILES, InstructorProfilesStore, activeTeachingProfileUserIds, type InstructorProfile } from './instructor-profiles.store';
 import { UserRoleTransitionService } from './user-role-transition.service';
-import {
+import { claimRolesFor,
   USERS, authVersionOf, isStaffRole, rrnMaskedOf, toSafe,
   type SafeAccount, type StaffAccount, type StaffRole,
 } from './user.entity';
@@ -531,7 +531,7 @@ export class UsersService implements OnModuleInit {
   async adminUpdateUser(
     id: number,
     actorId: number,
-    patch: { name?: string; phone?: string; email?: string; role?: 'instructor' | 'manager' | 'admin' },
+    patch: { name?: string; phone?: string; email?: string; role?: 'instructor' | 'manager' | 'admin'; keepTeaching?: boolean },
   ): Promise<SafeAccount> {
     await this.refreshFromDb();
     return this.uow.run(async () => {
@@ -570,7 +570,7 @@ export class UsersService implements OnModuleInit {
       if (!Object.keys(next).length) return toSafe(before);
       if (bumpAuth) next.authVersion = authVersionOf(before) + 1;
       if (next.role) {
-        await this.roleTransitions.apply(before, next.role, actorId);
+        await this.roleTransitions.apply(before, next.role, actorId, { keepTeaching: patch.keepTeaching === true });
       }
       const updated = await this.store.update<StaffAccount>(USERS_SPEC, id, next as never);
       if (!updated) throw new NotFoundException(`계정 ${id} 없음`);
@@ -578,6 +578,40 @@ export class UsersService implements OnModuleInit {
         entity: 'users', entityId: id, action: 'update', actorId,
         changes: { ...changes, ...(bumpAuth ? { authVersion: { before: authVersionOf(before), after: authVersionOf(before) + 1 } } : {}) },
         reason: '대표 직접 수정(유저 관리)',
+      });
+      return toSafe(updated);
+    });
+  }
+
+  /** [TBO-87 겸직] JWT roles 클레임 합성 — manager/admin이 활성 강사원부를 보유하면 'instructor' 동반 발급. */
+  claimRolesOf(account: StaffAccount): string[] {
+    return claimRolesFor(
+      account,
+      activeTeachingProfileUserIds(this.db.findAll<InstructorProfile>(INSTRUCTOR_PROFILES)),
+    );
+  }
+
+  /** [TBO-87 겸직] 강사 활동 부여/해제 — 대표 sudo 전용. user lock + fresh-read + authVersion 증가
+   *  (roles 클레임이 바뀌므로 기존 세션 즉시 무효)와 원부 전이·audit를 한 UoW로 처리한다. */
+  async setTeaching(id: number, actorId: number, grant: boolean): Promise<SafeAccount> {
+    await this.refreshFromDb();
+    return this.uow.run(async () => {
+      await this.uow.lockTargets([{ kind: 'user', id }]);
+      await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
+      const before = this.db.findById<StaffAccount>(USERS, id);
+      if (!before) throw new NotFoundException(`계정 ${id} 없음`);
+      if (grant) await this.roleTransitions.grantTeaching(before, actorId);
+      else await this.roleTransitions.revokeTeaching(before, actorId);
+      const updated = await this.store.update<StaffAccount>(
+        USERS_SPEC, id, { authVersion: authVersionOf(before) + 1 } as never);
+      if (!updated) throw new NotFoundException(`계정 ${id} 없음`);
+      await this.audit.log({
+        entity: 'users', entityId: id, action: 'update', actorId,
+        changes: {
+          teaching: { before: grant ? '없음' : '겸직(강사 활동)', after: grant ? '겸직(강사 활동)' : '없음' },
+          authVersion: { before: authVersionOf(before), after: authVersionOf(before) + 1 },
+        },
+        reason: grant ? '강사 겸직 부여(대표)' : '강사 겸직 해제(대표)',
       });
       return toSafe(updated);
     });

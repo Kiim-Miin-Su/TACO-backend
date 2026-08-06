@@ -80,14 +80,41 @@ export const toSafe = (a: StaffAccount): SafeAccount => {
   return safe;
 };
 
-/** [TBO-28B] 강사 노출/배정 중앙 술어 — role=instructor AND status=active AND 미삭제.
- *  /schedule/resources·세션 입력 검증 등 모든 강사 후보 산출이 이 함수 하나를 쓴다(pending/rejected 노출 차단). */
+export const isActiveStaffAccount = (u: StaffAccount | undefined): u is StaffAccount =>
+  !!u && u.status === 'active' && u.deletedAt == null;
+
+/** [TBO-28B→TBO-87] 강사 role 전용 술어(가입 승인·역할 전환 내부용) — "가르치는 사람" 판정에는
+ *  쓰지 않는다(겸직 누락). 노출/배정/정산 후보 산출은 isTeachingAccount를 쓴다. */
 export const isActiveInstructor = (u: StaffAccount | undefined): u is StaffAccount =>
   !!u && u.role === 'instructor' && u.status === 'active' && u.deletedAt == null;
 
-/** 캘린더 배정 대상: 활성 강사 + 활성 대표. 대표는 일정 owner일 뿐 강사 출결/정산 대상은 아니다. */
-export const isActiveScheduleOwner = (u: StaffAccount | undefined): u is StaffAccount =>
-  !!u && u.status === 'active' && u.deletedAt == null && (u.role === 'instructor' || u.role === 'super_admin');
+/** [TBO-87 겸직] "가르치는 사람" 중앙 술어 = 활성 계정 ∧ (role=instructor ∨ manager/admin 겸직 —
+ *  활성 instructor_profiles 보유). activeTeachingProfileUserIds(db.findAll(INSTRUCTOR_PROFILES))로
+ *  집합을 만들어 주입한다. 대표(super_admin)는 겸직 대상이 아니다(일정 owner 규칙만 별도). */
+export const isTeachingAccount = (
+  u: StaffAccount | undefined,
+  activeProfileUserIds: ReadonlySet<number>,
+): u is StaffAccount =>
+  isActiveStaffAccount(u)
+  && (u.role === 'instructor'
+    || ((u.role === 'manager' || u.role === 'admin') && activeProfileUserIds.has(u.id)));
+
+/** 캘린더 배정 대상: 가르치는 사람(겸직 포함) + 활성 대표. 대표는 일정 owner일 뿐 출결/정산 대상은 아니다. */
+export const isActiveScheduleOwner = (
+  u: StaffAccount | undefined,
+  activeProfileUserIds: ReadonlySet<number>,
+): u is StaffAccount =>
+  isActiveStaffAccount(u) && (u.role === 'super_admin' || isTeachingAccount(u, activeProfileUserIds));
+
+/** [TBO-87] JWT roles 클레임 합성 — 겸직(manager/admin+활성 원부)이면 'instructor'를 함께 발급해
+ *  기존 capability 합성(resolveEffectiveCapabilities의 roles 합집합)·가드가 자동 적용되게 한다. */
+export const claimRolesFor = (
+  u: StaffAccount,
+  activeProfileUserIds: ReadonlySet<number>,
+): string[] =>
+  u.role !== 'instructor' && isTeachingAccount(u, activeProfileUserIds)
+    ? [u.role, 'instructor']
+    : [u.role];
 
 /** authVersion 규약 — 미설정(구 행)=1. */
 export const authVersionOf = (u: Pick<StaffAccount, 'authVersion'>): number => u.authVersion ?? 1;

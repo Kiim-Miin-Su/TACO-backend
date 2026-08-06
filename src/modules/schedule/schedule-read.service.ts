@@ -16,7 +16,8 @@ import { Student, STUDENTS as STUDENTS_COL } from '../students/student.entity';
 import { isScheduleVisibleStudentStatus } from '../students/student-status.policy';
 import { studentGradeLabel } from '../students/student-grade.policy';
 import { Enrollment, ENROLLMENTS as ENROLLMENTS_COL } from '../enrollments/enrollment.entity';
-import { USERS, isActiveInstructor, isActiveScheduleOwner, type StaffAccount } from '../users/user.entity';
+import { USERS, isActiveScheduleOwner, isTeachingAccount, type StaffAccount } from '../users/user.entity';
+import { INSTRUCTOR_PROFILES, activeTeachingProfileUserIds, type InstructorProfile } from '../users/instructor-profiles.store';
 import { ClassSessionsStore } from './class-sessions.store';
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
 import { storedEndTimeOf, SESSION_TIME_DEFAULTS } from './session-time.policy';
@@ -131,16 +132,20 @@ export class ScheduleReadService implements OnModuleInit {
     return this.db.findById<Student>(STUDENTS_COL, id);
   }
   // [강사 식별자 통일] 강사 = users(role='instructor'), 강사 id = users.id.
-  // [TBO-28B] 중앙 술어 isActiveInstructor(role=instructor AND status=active AND 미삭제) —
-  //  pending/rejected 강사가 리소스 피커·세션 배정에 노출되던 갭 차단(28A 조사 §2).
+  // [TBO-28B→TBO-87] 중앙 술어 = isTeachingAccount(겸직 포함) ∨ 대표(owner) —
+  //  pending/rejected 노출 차단 유지 + manager/admin 겸직(활성 강사원부)이 자동 포함된다.
+  private teachingProfileIds(): Set<number> {
+    return activeTeachingProfileUserIds(this.db.findAll<InstructorProfile>(INSTRUCTOR_PROFILES));
+  }
   scheduleOwnerUsers(): StaffAccount[] {
-    return this.db.findBy<StaffAccount>(USERS, (u) => isActiveScheduleOwner(u));
+    const teaching = this.teachingProfileIds();
+    return this.db.findBy<StaffAccount>(USERS, (u) => isActiveScheduleOwner(u, teaching));
   }
   instructorName(id?: number | null): string | undefined {
     return id == null ? undefined : this.db.findById<StaffAccount>(USERS, id)?.name;
   }
   isScheduleOwner(id: number): boolean {
-    return isActiveScheduleOwner(this.db.findById<StaffAccount>(USERS, id));
+    return isActiveScheduleOwner(this.db.findById<StaffAccount>(USERS, id), this.teachingProfileIds());
   }
   // 코호트 = 활성 수강(enrollment.status==='active') ∧ 캘린더 노출 상태 학생.
   //  students.remove(소프트삭제)가 학생·수강 모두 'canceled'로 정리하므로 삭제 즉시 코호트에서 빠진다.
@@ -245,9 +250,10 @@ export class ScheduleReadService implements OnModuleInit {
   instructorAttendanceSummary(
     opts: { from?: string; to?: string; instructorId?: number },
   ): import('@kms545487/contracts').InstructorAttendanceSummary {
+    const teaching = this.teachingProfileIds(); // [TBO-87] 겸직 포함 — 행별 재조회 대신 1회 산출
     const sessions = this.list(opts).filter((r) =>
       (r.status === 'held' || r.status === 'makeup')
-      && isActiveInstructor(this.db.findById<StaffAccount>(USERS, Number(r.instructorId))));
+      && isTeachingAccount(this.db.findById<StaffAccount>(USERS, Number(r.instructorId)), teaching));
     const byInst = new Map<number, ScheduleRow[]>();
     for (const r of sessions) {
       const k = Number(r.instructorId);

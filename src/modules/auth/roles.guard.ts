@@ -97,7 +97,7 @@ export class RolesGuard implements CanActivate {
     }
 
     const effectiveCapabilities = verdict.effectiveCapabilities;
-    const currentRoles = [verdict.role];
+    const currentRoles = verdict.roles ?? [verdict.role]; // [TBO-87] 겸직 합성 roles(권위=DB fresh)
     const roleAllowed = !required?.length || currentRoles.some((r) => required.includes(r as AppRole));
     const adminAreaRequired = !!required?.length
       && required.every((role) => ADMIN_ROLES.includes(role as (typeof ADMIN_ROLES)[number]));

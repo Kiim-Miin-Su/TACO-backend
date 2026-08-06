@@ -26,10 +26,21 @@ export class UserRoleTransitionService {
     account: StaffAccount,
     nextRole: StaffRole,
     actorId: number,
+    options: { keepTeaching?: boolean } = {},
   ): Promise<void> {
     if (account.role === nextRole || account.status !== 'active') return;
 
     if (account.role === 'instructor' && nextRole !== 'instructor') {
+      // [TBO-87 겸직] 강사→manager/admin 승격 시 keepTeaching이면 원부를 유지해 겸직으로 전환.
+      //  (종전엔 담당 수업이 있으면 승격 자체가 409로 막혔다 — 겸직 승격이 자연 경로.)
+      if (options.keepTeaching && (nextRole === 'manager' || nextRole === 'admin')) {
+        await this.audit.log({
+          entity: 'instructor_profiles', entityId: account.id, action: 'update', actorId,
+          changes: { teaching: { before: 'instructor(전임)', after: `${nextRole}(겸직 유지)` } },
+          reason: '역할 승격 — 강사 활동(겸직) 유지',
+        });
+        return;
+      }
       await this.deactivateInstructor(
         account,
         actorId,
@@ -44,8 +55,30 @@ export class UserRoleTransitionService {
   }
 
   async deactivateForTermination(account: StaffAccount, actorId: number): Promise<void> {
-    if (account.role !== 'instructor') return;
-    await this.deactivateInstructor(account, actorId, '강사 계정 종료에 따른 운영 프로필 비활성화');
+    // [TBO-87] 겸직 manager/admin 종료도 활성 원부를 방치하지 않는다(역할 무관 — 원부 보유 기준).
+    if (!this.profiles.findActive(account.id)) return;
+    await this.deactivateInstructor(account, actorId, '직원 계정 종료에 따른 강사 운영 프로필 비활성화');
+  }
+
+  /** [TBO-87 겸직] 강사 활동 부여 — manager/admin 활성 계정에 강사원부를 생성/재활성한다.
+   *  호출자는 user advisory lock + UoW 안에서 fresh-read 후 호출한다(대표 sudo 전용 command). */
+  async grantTeaching(account: StaffAccount, actorId: number): Promise<void> {
+    if (account.status !== 'active') throw new ConflictException('활성 직원 계정에만 강사 활동을 부여할 수 있습니다.');
+    if (account.role === 'instructor') throw new ConflictException('이미 강사 역할 계정입니다.');
+    if (account.role !== 'manager' && account.role !== 'admin') {
+      throw new ConflictException('강사 겸직은 매니저·관리자 계정에만 부여할 수 있습니다.');
+    }
+    if (this.profiles.findActive(account.id)) throw new ConflictException('이미 강사 활동(겸직)이 부여된 계정입니다.');
+    await this.activateInstructor(account, actorId, '강사 겸직 부여');
+  }
+
+  /** [TBO-87 겸직] 강사 활동 해제 — 담당 수업·활성 계약 가드는 강사 해제와 동일 규칙 재사용. */
+  async revokeTeaching(account: StaffAccount, actorId: number): Promise<void> {
+    if (account.role !== 'manager' && account.role !== 'admin') {
+      throw new ConflictException('강사 겸직 해제는 매니저·관리자 계정에만 적용됩니다.');
+    }
+    if (!this.profiles.findActive(account.id)) throw new ConflictException('부여된 강사 활동(겸직)이 없습니다.');
+    await this.deactivateInstructor(account, actorId, '강사 겸직 해제');
   }
 
   async activateForRestore(account: StaffAccount, actorId: number): Promise<void> {

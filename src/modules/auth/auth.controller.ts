@@ -202,7 +202,7 @@ export class AuthController {
     const claims: JwtClaims = {
       sub: account.id,
       name: account.name,
-      roles: [account.role],
+      roles: this.users.claimRolesOf(account), // [TBO-87] 겸직 합성 — manager/admin+활성 강사원부 → +'instructor'
       authVersion: authVersionOf(account),
       mustChangePassword: account.mustChangePassword === true,
     };
@@ -282,7 +282,7 @@ export class AuthController {
     const claims: JwtClaims = {
       sub: account.id,
       name: account.name,
-      roles: [account.role],
+      roles: this.users.claimRolesOf(account), // [TBO-87] 겸직 합성 — manager/admin+활성 강사원부 → +'instructor'
       authVersion: authVersionOf(account),
       mustChangePassword: account.mustChangePassword === true,
     };
