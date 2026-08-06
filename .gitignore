@@ -11,3 +11,6 @@ dist/
 # FUSE mount artifacts (sandbox)
 **/.fuse_hidden*
 tsconfig.oapi.json
+
+# git 잠금/임시 객체 대피 폴더(원격 세션 unlink 불가 우회) — 추적 금지
+tmp/_to_delete/
