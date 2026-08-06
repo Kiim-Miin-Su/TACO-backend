@@ -3,7 +3,7 @@
 //  충돌 드라이런·세션 입력 검증(생성·요청 공용). **본문 이동만 — 규약 무변**(주석·산식·경계 그대로).
 //  명령(schedule.service)은 이 서비스를 단방향 주입해 ensureReady/lookup/enrich를 경유한다(순환 없음).
 import { BadRequestException, ForbiddenException, Injectable, Logger, NotFoundException, OnModuleInit } from '@nestjs/common';
-import type { Conflict, ScheduleRow } from '@kms545487/contracts';
+import type { Conflict, ScheduleQuery, ScheduleRow } from '@kms545487/contracts';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { RoomsService } from '../rooms/rooms.service';
 import { AvailabilityService } from '../availability/availability.service';
@@ -136,7 +136,7 @@ export class ScheduleReadService implements OnModuleInit {
   scheduleOwnerUsers(): StaffAccount[] {
     return this.db.findBy<StaffAccount>(USERS, (u) => isActiveScheduleOwner(u));
   }
-  instructorName(id?: number): string | undefined {
+  instructorName(id?: number | null): string | undefined {
     return id == null ? undefined : this.db.findById<StaffAccount>(USERS, id)?.name;
   }
   isScheduleOwner(id: number): boolean {
@@ -165,7 +165,7 @@ export class ScheduleReadService implements OnModuleInit {
 
   // 기간/필터 조회 → enriched 읽기모델(주간 표/캘린더용)
   // studentId 필터: 해당 학생이 활성 수강 중인 코스의 세션만(enrollments 역추적 — 단일 소스).
-  list(opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number }): ScheduleRow[] {
+  list(opts: ScheduleQuery): ScheduleRow[] {
     const rooms = new Map(this.rooms.findAll().map((r) => [r.id, r]));
     const coursesOfStudent = opts.studentId != null
       ? new Set(
@@ -188,6 +188,8 @@ export class ScheduleReadService implements OnModuleInit {
         (opts.to ? s.sessionDate <= opts.to : true) &&
         (opts.instructorId ? s.instructorId === opts.instructorId : true) &&
         (opts.roomId ? s.roomId === opts.roomId : true) &&
+        (opts.assignment === 'assigned' ? s.instructorId != null : true) &&
+        (opts.assignment === 'unassigned' ? s.instructorId == null : true) &&
         (coursesOfStudent ? coursesOfStudent.has(s.courseId) : true),
       )
       .map((s) => this.enrich(s, rooms))
@@ -195,7 +197,7 @@ export class ScheduleReadService implements OnModuleInit {
   }
 
   listVisible(
-    opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number },
+    opts: ScheduleQuery,
     viewerInstructorId: number,
   ): ScheduleRow[] {
     return this.list(opts).filter((row) => isSessionVisibleToInstructor(row, viewerInstructorId));
@@ -206,7 +208,7 @@ export class ScheduleReadService implements OnModuleInit {
    * 카탈로그만 ensureReady의 bounded TTL 미러를 사용한다.
    */
   async listFresh(
-    opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number },
+    opts: ScheduleQuery,
   ): Promise<ScheduleRow[]> {
     await this.ensureReady();
     const rooms = new Map(this.rooms.findAll().map((room) => [room.id, room]));
@@ -221,7 +223,7 @@ export class ScheduleReadService implements OnModuleInit {
   }
 
   async listVisibleFresh(
-    opts: { from?: string; to?: string; instructorId?: number; roomId?: number; studentId?: number },
+    opts: ScheduleQuery,
     viewerInstructorId: number,
   ): Promise<ScheduleRow[]> {
     const rows = await this.listFresh({ ...opts, instructorId: undefined });
@@ -334,7 +336,7 @@ export class ScheduleReadService implements OnModuleInit {
         })),
       courses: courses.map((c) => ({
         id: c.id, name: c.name, subjectId: c.subjectId, instructorId: c.instructorId,
-        instructorName: this.instructorName(c.instructorId) ?? '',
+        instructorName: c.instructorId == null ? null : this.instructorName(c.instructorId) ?? null,
         subjectName: this.subjectOf(c.subjectId)?.name ?? '',
         color: c.color ?? SUBJECT_FALLBACK_COLOR[c.subjectId],
         durationMinutes: courseDurationById.get(Number(c.id)) ?? 90,
@@ -345,12 +347,12 @@ export class ScheduleReadService implements OnModuleInit {
 
   // 세션 생성(추천→배정). FK 검증 + 충돌 검사(force 아니면 충돌 시 409).
   /** [TBO-16 #9] 세션 입력 공통 검증(FK·코호트) — create와 schedule-requests가 **같은 함수** 사용(우회 경로 방지).
-   *  반환: 확정 instructorId(미지정=코스 기본 강사). */
-  validateSessionInput(input: { courseId: number; instructorId?: number; roomId?: number; studentIds?: number[] }): number {
+   *  반환: 확정 instructorId. undefined는 코스 기본값, null은 명시적 배정중이다. */
+  validateSessionInput(input: { courseId: number; instructorId?: number | null; roomId?: number; studentIds?: number[] }): number | null {
     const course = this.courseOf(input.courseId);
     if (!course) throw new BadRequestException(`courseId ${input.courseId} 없음`);
-    const instructorId = input.instructorId ?? course.instructorId;
-    if (!this.isScheduleOwner(instructorId)) throw new BadRequestException(`instructorId ${instructorId}는 활성 강사 또는 대표가 아닙니다`);
+    const instructorId = input.instructorId === undefined ? course.instructorId : input.instructorId;
+    if (instructorId != null && !this.isScheduleOwner(instructorId)) throw new BadRequestException(`instructorId ${instructorId}는 활성 강사 또는 대표가 아닙니다`);
     if (input.roomId != null && !this.rooms.findAll().some((r) => r.id === input.roomId))
       throw new BadRequestException(`roomId ${input.roomId} 없음`);
     if (input.studentIds?.length) {
@@ -365,19 +367,26 @@ export class ScheduleReadService implements OnModuleInit {
    *  프론트의 scoped resource picker를 신뢰하지 않고 코스 기본 강사·요청 강사·JWT actor가 모두 같은지
    *  매 요청마다 실제 course row로 재검증한다. 상담 일정은 관리 역할만 생성한다. */
   validateInstructorRequestInput(
-    input: { courseId: number; instructorId?: number; roomId?: number; studentIds?: number[]; kind?: ClassSession['kind'] },
+    input: { courseId: number; instructorId?: number | null; roomId?: number; studentIds?: number[]; kind?: ClassSession['kind'] },
     actorInstructorId: number,
   ): number {
     const course = this.courseOf(input.courseId);
-    if (!course) return this.validateSessionInput(input);
-    if (Number(course.instructorId) !== Number(actorInstructorId)
-      || (input.instructorId != null && Number(input.instructorId) !== Number(actorInstructorId))) {
+    if (!course) {
+      const resolved = this.validateSessionInput(input);
+      if (resolved == null) throw new ForbiddenException('강사는 배정중 코스의 수업을 요청할 수 없습니다.');
+      return resolved;
+    }
+    if (course.instructorId == null || Number(course.instructorId) !== Number(actorInstructorId)
+      || input.instructorId === null
+      || (input.instructorId !== undefined && Number(input.instructorId) !== Number(actorInstructorId))) {
       throw new ForbiddenException('강사는 본인이 담당하는 코스의 수업만 요청할 수 있습니다.');
     }
     if (input.kind === 'counsel') {
       throw new ForbiddenException('상담 일정은 관리 역할만 생성할 수 있습니다.');
     }
-    return this.validateSessionInput(input);
+    const resolved = this.validateSessionInput(input);
+    if (resolved == null) throw new ForbiddenException('강사는 배정중 코스의 수업을 요청할 수 없습니다.');
+    return resolved;
   }
 
 
@@ -418,7 +427,7 @@ export class ScheduleReadService implements OnModuleInit {
       endTime: s.endTime ?? (s.startTime ? endTimeOf(s.startTime, s.durationMinutes) ?? undefined : undefined),
       courseName: c?.name ?? `course ${s.courseId}`,
       subjectName: this.subjectOf(c?.subjectId)?.name ?? '',
-      instructorName: this.instructorName(s.instructorId) ?? `강사 ${s.instructorId}`,
+      instructorName: s.instructorId == null ? null : this.instructorName(s.instructorId) ?? `강사 ${s.instructorId}`,
       roomName: s.roomId ? rooms.get(s.roomId)?.name : undefined,
       color: s.color ?? c?.color ?? (c ? SUBJECT_FALLBACK_COLOR[c.subjectId] : undefined), // 세션 → 코스 → 과목 폴백
       studentIds,

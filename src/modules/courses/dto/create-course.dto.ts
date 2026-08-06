@@ -13,8 +13,8 @@ export class CreateCourseDto implements CreateCourseInput {
   @IsInt()
   subjectId!: number;
 
-  @IsInt()
-  instructorId!: number;
+  @IsOptional() @IsInt()
+  instructorId?: number | null;
 
   @IsInt()
   @Min(0)

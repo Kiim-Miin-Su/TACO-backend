@@ -55,7 +55,8 @@ export class PayoutReadinessService {
       periodStart,
       periodEnd,
       instructorId,
-      effectiveRateOf: (courseId) => this.courses.findOptional(courseId)?.hourlyRate,
+      effectiveRateOf: (courseId, sessionInstructorId) =>
+        this.courses.effectiveHourlyRateFor(courseId, sessionInstructorId),
       nowMs: now.getTime(), // [TBO-65 M1] 시각 술어는 epoch 하나로
     });
   }

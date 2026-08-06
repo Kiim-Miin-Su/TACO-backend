@@ -247,6 +247,7 @@ export class ReportsService implements OnModuleInit {
       // 1) 세션 FK 검증 — DB 재조회
       const session = await this.sessionsStore.findByIdDb(dto.sessionId);
       if (!session) throw new BadRequestException(`sessionId ${dto.sessionId} 없음(존재하지 않는 수업)`);
+      if (session.instructorId == null) throw new BadRequestException('배정중 수업에는 리포트를 작성할 수 없습니다. 담당 강사를 먼저 배정해 주세요.');
       const [student] = await this.store.findActive<Student>(STUDENTS_SPEC, { where: { id: dto.studentId } as Partial<Student>, limit: 1 });
       if (!student) throw new BadRequestException(`studentId ${dto.studentId} 없음(존재하지 않는 학생)`);
       if (!studentBelongsToSession(session, dto.studentId, await this.store.findActive<Enrollment>(ENROLLMENTS_SPEC)))

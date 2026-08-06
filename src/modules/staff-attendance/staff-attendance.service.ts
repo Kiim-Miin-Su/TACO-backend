@@ -193,10 +193,11 @@ export class StaffAttendanceService implements OnModuleInit {
     const instructorById = new Map(resources.instructors.map((row) => [Number(row.id), row]));
     const sessionEntries: InstructorAttendanceLedgerEntry[] = sessions
       .filter((session) =>
+        session.instructorId != null && (
         session.status === 'held'
         || session.status === 'makeup'
         || session.attendanceRequired
-        || session.instructorAttendance != null,
+        || session.instructorAttendance != null),
       )
       .map((session) => {
         const course = courseById.get(Number(session.courseId));
@@ -207,7 +208,7 @@ export class StaffAttendanceService implements OnModuleInit {
           recordId: Number(session.id),
           sessionId: Number(session.id),
           instructorId: Number(session.instructorId),
-          instructorName: session.instructorName,
+          instructorName: session.instructorName ?? `강사 ${session.instructorId}`,
           date: session.sessionDate,
           status: session.instructorAttendance ?? 'unmarked',
           courseId: Number(session.courseId),

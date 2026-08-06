@@ -12,6 +12,8 @@ export type {
 } from '@kms545487/contracts';
 
 export type AccountingSession = Pick<ClassSession, 'status' | 'durationMinutes'> & {
+  /** null은 명시적 배정중. 기존 테스트 입력의 undefined는 레거시 assigned shape로 취급한다. */
+  instructorId?: number | null;
   instructorAttendance?: ClassSession['instructorAttendance'] | null;
   payoutId?: number | null;
   isPaid?: boolean;
@@ -89,6 +91,9 @@ export function classifySessionForPayout(
 
   if (session.payoutId != null || session.isPaid === true) {
     return { kind: 'excluded', manualReasons: [], excludedReason: 'payout_linked', autoAmount: null, effectiveAmount: null, ...base };
+  }
+  if (session.instructorId === null) {
+    return { kind: 'excluded', manualReasons: [], excludedReason: 'instructor_unassigned', autoAmount: null, effectiveAmount: null, ...base };
   }
   if (session.status !== 'held') {
     return { kind: 'excluded', manualReasons: [], excludedReason: 'not_held', autoAmount: null, effectiveAmount: null, ...base };

@@ -16,6 +16,8 @@ import type {
   ScheduleSeries,
   SetInstructorAttendanceInput,
   ClearInstructorAttendanceInput,
+  UpdateSessionInstructorAssignmentInput,
+  UpdateSessionInstructorAssignmentResult,
 } from '@kms545487/contracts';
 import { InMemoryDatabase, type BaseRow } from '../../database/in-memory.database';
 import { RoomsService } from '../rooms/rooms.service';
@@ -96,7 +98,7 @@ type MergedFields = {
   // [R-9→C4] endTime은 자정 크로스(익일 종료)면 **명시 null** — durationMinutes 파생(단일 세션 모델).
   //  undefined는 PG UPDATE에서 skip돼 이전 값이 잔존하므로 update 경로는 null을 강제한다.
   sessionDate: string; startTime: string; endTime?: string | null; durationMinutes: number;
-  courseId: number; instructorId: number; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string; color?: string;
+  courseId: number; instructorId: number | null; roomId?: number; status: ClassSession['status']; topic?: string; memo?: string; color?: string;
   instructorAttendance?: ClassSession['instructorAttendance'] | null;
   kind?: ClassSession['kind']; price?: number; // [v0.1.14]
   mode?: ClassSession['mode']; // [v0.1.16] 수업방식
@@ -136,7 +138,7 @@ export class ScheduleService {
 
   // [TBO-28C] 캘린더 명령의 advisory lock 키 — 대상 강사·강의실·학생·세션. UoW.lockTargets가 정렬·중복 제거.
   private calendarLockKeys(t: {
-    instructorIds?: Array<number | undefined>;
+    instructorIds?: Array<number | null | undefined>;
     roomIds?: Array<number | undefined>;
     studentIds?: number[];
     sessionIds?: number[];
@@ -161,7 +163,7 @@ export class ScheduleService {
     return this.unitOfWork.run(async () => {
       await this.unitOfWork.lockTargets([
         this.courses.subjectNameLockKey(dto.subjectName),
-        { kind: 'user', id: dto.instructorId },
+        ...(dto.instructorId == null ? [] : [{ kind: 'user' as const, id: dto.instructorId }]),
         ...this.calendarLockKeys({ instructorIds: [dto.instructorId], roomIds: [dto.roomId], studentIds }),
       ]);
       await this.refreshAfterLock();
@@ -204,7 +206,7 @@ export class ScheduleService {
     return this.unitOfWork.run(async () => {
       await this.unitOfWork.lockTargets([
         this.courses.subjectNameLockKey(dto.subjectName),
-        { kind: 'user', id: dto.instructorId },
+        ...(dto.instructorId == null ? [] : [{ kind: 'user' as const, id: dto.instructorId }]),
         ...this.calendarLockKeys({ instructorIds: [dto.instructorId], roomIds: [dto.roomId], studentIds }),
       ]);
       await this.refreshAfterLock();
@@ -242,7 +244,7 @@ export class ScheduleService {
   }
 
   async create(dto: {
-    courseId: number; instructorId?: number; roomId?: number; sessionDate: string;
+    courseId: number; instructorId?: number | null; roomId?: number; sessionDate: string;
     startTime: string; endTime?: string; durationMinutes?: number; topic?: string; memo?: string; color?: string;
     studentIds?: number[]; // 명시 코호트(v0.1.13)
     seriesId?: number; status?: ClassSession['status']; force?: boolean;
@@ -283,7 +285,7 @@ export class ScheduleService {
           throw new BadRequestException('보강 세션을 원본으로 지정할 수 없습니다. 결강된 원 수업을 지정해 주세요.');
       }
       const conflicts = detectConflicts(
-        { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
+        { sessionDate: dto.sessionDate, startTime, durationMinutes, instructorId: instructorId ?? undefined, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
         this.db.findAll<ClassSession>(SESSIONS),
         this.availability.list(),
         this.read.effectiveStudentIds,
@@ -412,6 +414,109 @@ export class ScheduleService {
     });
   }
 
+  /**
+   * [TBO-86E] 배정중 회차 사후 배정 command.
+   * session/course/기존·신규 강사를 한 lock 공간에서 읽고 충돌을 다시 계산한 뒤 회차·선택적 코스·audit를
+   * 함께 커밋한다. 배정만으로 과거 회차를 held로 만들거나 출결을 추정하지 않는다.
+   */
+  async updateInstructorAssignment(
+    sessionId: number,
+    dto: UpdateSessionInstructorAssignmentInput,
+    actorId?: number,
+  ): Promise<UpdateSessionInstructorAssignmentResult> {
+    if (actorId == null) throw new ForbiddenException('담당자 배정에는 로그인 사용자 정보가 필요합니다.');
+    await this.read.ensureReady();
+    const preliminary = this.db.findById<ClassSession>(SESSIONS, sessionId);
+    if (!preliminary) throw new NotFoundException(`Session ${sessionId} not found`);
+
+    return this.unitOfWork.run(async () => {
+      await this.unitOfWork.lockTargets([
+        { kind: 'session', id: sessionId },
+        { kind: 'course', id: preliminary.courseId },
+        ...this.calendarLockKeys({ instructorIds: [preliminary.instructorId, dto.instructorId] }),
+      ]);
+      await this.refreshAfterLock();
+      const current = await this.sessions.findByIdDb(sessionId);
+      if (!current) throw new NotFoundException(`Session ${sessionId} not found`);
+      if (current.courseId !== preliminary.courseId) {
+        throw new ConflictException({
+          code: 'INSTRUCTOR_ASSIGNMENT_STALE',
+          message: '수업 과목이 이미 변경되었습니다. 최신 수업을 다시 확인해 주세요.',
+          currentCourseId: current.courseId,
+        });
+      }
+      const hasExpected = Object.prototype.hasOwnProperty.call(dto, 'expectedInstructorId');
+      if (hasExpected && current.instructorId !== dto.expectedInstructorId) {
+        throw new ConflictException({
+          code: 'INSTRUCTOR_ASSIGNMENT_STALE',
+          message: '담당 강사가 이미 변경되었습니다. 최신 수업을 다시 확인해 주세요.',
+          currentInstructorId: current.instructorId,
+        });
+      }
+      if (current.instructorId === dto.instructorId) {
+        throw new BadRequestException('현재 담당 강사와 동일합니다.');
+      }
+      const previousInstructorId = current.instructorId;
+      if (current.payoutId != null || current.paidPayoutId != null || current.isPaid === true) {
+        throw new ConflictException('정산 연결 또는 지급 완료 회차는 담당자를 변경할 수 없습니다.');
+      }
+      const context = await this.accountingContext.loadFresh([sessionId]);
+      this.accountingContext.assertDependentsCompatible(context, current, {
+        courseId: current.courseId,
+        studentIds: current.studentIds,
+        instructorId: dto.instructorId,
+      });
+      if (dto.instructorId == null) {
+        if (dto.setCourseDefault) throw new BadRequestException('배정중 전환과 코스 기본 담당자 갱신을 함께 요청할 수 없습니다.');
+        if (current.status === 'held' || current.status === 'makeup' || current.instructorAttendance != null
+          || current.instructorPayAmount != null || this.accountingContext.attendanceFor(context, sessionId).length > 0) {
+          throw new ConflictException('출결·완료·책정 이력이 있는 회차는 배정중으로 되돌릴 수 없습니다.');
+        }
+      } else {
+        if (!this.read.isScheduleOwner(dto.instructorId)) {
+          throw new BadRequestException(`instructorId ${dto.instructorId}는 활성 강사 또는 대표가 아닙니다`);
+        }
+        const conflicts = detectConflicts(
+          {
+            sessionDate: current.sessionDate,
+            startTime: current.startTime!,
+            endTime: current.endTime,
+            durationMinutes: current.durationMinutes,
+            instructorId: dto.instructorId,
+            roomId: current.roomId,
+            studentIds: current.studentIds ?? this.read.activeStudentIds(current.courseId),
+            ignoreSessionId: current.id,
+            mode: current.mode,
+          },
+          this.db.findAll<ClassSession>(SESSIONS),
+          this.availability.list(),
+          this.read.effectiveStudentIds,
+          (roomId) => this.rooms.capacityOf(roomId),
+        );
+        if (conflicts.length) throw new ConflictException({ message: '담당 강사 일정과 충돌합니다.', conflicts });
+      }
+
+      const saved = await this.sessions.update(sessionId, { instructorId: dto.instructorId });
+      if (!saved) throw new ConflictException('담당자 배정 중 회차가 변경되었습니다. 다시 시도해 주세요.');
+      if (dto.setCourseDefault && dto.instructorId != null) {
+        await this.courses.update(current.courseId, { instructorId: dto.instructorId }, actorId);
+      }
+      await this.audit.log({
+        entity: SESSIONS,
+        entityId: sessionId,
+        action: 'update',
+        actorId,
+        changes: { instructorId: { before: previousInstructorId, after: dto.instructorId } },
+        reason: dto.reason.trim(),
+      });
+      return {
+        row: this.read.enrich(saved, new Map(this.rooms.findAll().map((room) => [room.id, room]))),
+        previousInstructorId,
+        courseDefaultUpdated: dto.setCourseDefault === true && dto.instructorId != null,
+      };
+    });
+  }
+
   /** [TBO-29C C2] 반복 규칙 -> occurrence 날짜 정규화(순수) — [startsOn, endsOn]에서 weekdays에 속하는 날짜.
    *  범위 366일·회차 120건 상한(운영 가드). weekly는 요일 1개 강제. */
   static occurrenceDatesOf(repeat: { kind: 'weekly' | 'custom'; weekdays: number[]; startsOn: string; endsOn: string }): string[] {
@@ -459,7 +564,7 @@ export class ScheduleService {
       const allConflicts: Conflict[] = [];
       for (const sessionDate of dates) {
         allConflicts.push(...detectConflicts(
-          { sessionDate, startTime, durationMinutes, instructorId, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
+          { sessionDate, startTime, durationMinutes, instructorId: instructorId ?? undefined, roomId: dto.roomId, studentIds, mode: dto.mode ?? SESSION_DEFAULTS.mode },
           existing,
           this.availability.list(),
           this.read.effectiveStudentIds,
@@ -695,7 +800,7 @@ export class ScheduleService {
   // scope(this_and_following|all)면 같은 seriesId 세션에 동일 날짜·시간 델타를 함께 적용.
   /** [TBO-59 C3-3] 대표 소유 스케줄 보호 — 담당(instructorId)이 super_admin인 세션의 변경·삭제는
    *  대표 본인만(FABLE §3.1). 판정은 lock 후 재조회된 세션 행 + users DB 행(권위) 기준. */
-  private async assertCeoOwnedSessionMutable(session: { instructorId?: number }, actorId?: number): Promise<void> {
+  private async assertCeoOwnedSessionMutable(session: { instructorId?: number | null }, actorId?: number): Promise<void> {
     const ownerId = session.instructorId;
     if (ownerId == null) return;
     const [owner] = await this.collections.findActive<StaffAccount>(USERS_SPEC, {
@@ -725,6 +830,7 @@ export class ScheduleService {
       await this.unitOfWork.lockTargets([{ kind: 'session', id }]);
       const cur = await this.sessions.findByIdDb(id);
       if (!cur) throw new NotFoundException(`Session ${id} not found`);
+      if (cur.instructorId == null) throw new BadRequestException('배정중 수업에는 강사 책정가를 입력할 수 없습니다.');
       if (cur.payoutId != null)
         throw new ConflictException('이미 정산서에 연결된 회차는 금액을 바꿀 수 없습니다(정산 반려/회수 후 재산정).');
       if (cur.status !== 'held')
@@ -761,6 +867,9 @@ export class ScheduleService {
     if (!actorCapabilities.includes('session-attendance.manage')) {
       throw new ForbiddenException('강사 출결 변경은 수업 출결 관리 권한이 필요합니다.');
     }
+    const session = this.db.findById<ClassSession>(SESSIONS, id);
+    if (!session) throw new NotFoundException(`Session ${id} not found`);
+    if (session.instructorId == null) throw new ConflictException('담당 강사를 배정한 뒤 강사 출결을 입력할 수 있습니다.');
     return this.update(id, {
       acknowledgeAccountingImpact: input.acknowledgeAccountingImpact,
       expectedAccountingImpactHash: input.expectedAccountingImpactHash,
@@ -781,6 +890,9 @@ export class ScheduleService {
     if (!actorCapabilities.includes('session-attendance.manage')) {
       throw new ForbiddenException('강사 출결 변경은 수업 출결 관리 권한이 필요합니다.');
     }
+    const session = this.db.findById<ClassSession>(SESSIONS, id);
+    if (!session) throw new NotFoundException(`Session ${id} not found`);
+    if (session.instructorId == null) throw new ConflictException('배정중 수업에는 초기화할 강사 출결이 없습니다.');
     return this.update(id, {
       acknowledgeAccountingImpact: input.acknowledgeAccountingImpact,
       expectedAccountingImpactHash: input.expectedAccountingImpactHash,
@@ -845,7 +957,9 @@ export class ScheduleService {
         ])],
         sessionIds: [],
       }),
-      ...preliminaryTargets.map((session) => ({ kind: 'user' as const, id: session.instructorId })),
+      ...preliminaryTargets
+        .filter((session) => session.instructorId != null)
+        .map((session) => ({ kind: 'user' as const, id: session.instructorId! })),
       ...(dto.instructorId == null ? [] : [{ kind: 'user' as const, id: dto.instructorId }]),
       ...preliminaryTargets.map((session) => ({ kind: 'course' as const, id: session.courseId })),
       ...(dto.courseId == null ? [] : [{ kind: 'course' as const, id: dto.courseId }]),
@@ -1038,7 +1152,7 @@ export class ScheduleService {
       for (const f of [primary, ...seriesPatches.map((p) => p.fields)]) {
         conflicts.push(...detectConflicts(
           // [R-9→C4] 크로스 세션은 endTime이 null(명시) — durationMinutes로 이틀(±1일) 겹침 검사
-          { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime ?? undefined, durationMinutes: f.durationMinutes, instructorId: f.instructorId, roomId: f.roomId, studentIds: f.studentIds ?? this.read.activeStudentIds(f.courseId), mode: f.mode },
+          { sessionDate: f.sessionDate, startTime: f.startTime, endTime: f.endTime ?? undefined, durationMinutes: f.durationMinutes, instructorId: f.instructorId ?? undefined, roomId: f.roomId, studentIds: f.studentIds ?? this.read.activeStudentIds(f.courseId), mode: f.mode },
           others, blocks,
           this.read.effectiveStudentIds,
           (roomId) => this.rooms.capacityOf(roomId), // [B4] 정원 강제 // [TBO-28C] 학생 세션 간 중복 포함

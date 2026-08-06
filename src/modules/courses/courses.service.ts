@@ -117,7 +117,7 @@ export class CoursesService implements OnModuleInit {
    */
   async resolveSubjectCourse(input: {
     subjectName: string;
-    instructorId: number;
+    instructorId: number | null;
     hourlyRateOverride?: number | null;
     coursePrice?: number;
     isKinder?: boolean;
@@ -125,7 +125,10 @@ export class CoursesService implements OnModuleInit {
   }, actorId?: number): Promise<{ subject: Subject; course: Course }> {
     const requestedName = this.normalizeSubjectName(input.subjectName);
     return this.uow.run(async () => {
-      await this.uow.lockTargets([this.subjectNameLockKey(requestedName), { kind: 'instructor', id: input.instructorId }]);
+      await this.uow.lockTargets([
+        this.subjectNameLockKey(requestedName),
+        ...(input.instructorId == null ? [] : [{ kind: 'instructor' as const, id: input.instructorId }]),
+      ]);
       await this.reloadCommandState();
       const profile = this.assertRefs({ instructorId: input.instructorId });
 
@@ -150,7 +153,7 @@ export class CoursesService implements OnModuleInit {
       }
 
       const stored = this.db.findBy<StoredCourse>(COURSES, (row) =>
-        Number(row.subjectId) === Number(subject!.id) && Number(row.instructorId) === Number(input.instructorId),
+        Number(row.subjectId) === Number(subject!.id) && row.instructorId === input.instructorId,
       )[0];
       if (!stored) {
         const course = await this.create({
@@ -166,8 +169,8 @@ export class CoursesService implements OnModuleInit {
       }
 
       const nextOverride = input.hourlyRateOverride !== undefined ? input.hourlyRateOverride : stored.hourlyRateOverride ?? null;
-      const effectiveRate = nextOverride ?? profile!.defaultHourlyRate ?? 0;
-      if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
+      const effectiveRate = nextOverride ?? profile?.defaultHourlyRate ?? 0;
+      if (input.instructorId != null && effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
       // [TBO-61 2026-07-24] Kinder 가능 여부 게이트 제거(대표 지시 '유연하게') — 프로필 canTeachKinder는 정보 표시용으로만 유지.
       const patch = {
         name: subject.name,
@@ -199,12 +202,12 @@ export class CoursesService implements OnModuleInit {
         ? dto.hourlyRateOverride
         : dto.hourlyRate !== undefined ? dto.hourlyRate : null;
       const effectiveRate = explicitOverride ?? profile?.defaultHourlyRate ?? 0;
-      if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
+      if (dto.instructorId != null && effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
       // [TBO-61 2026-07-24] Kinder 가능 여부 게이트 제거(대표 지시 '유연하게') — 프로필 canTeachKinder는 정보 표시용으로만 유지.
       const row = await this.store.insert<StoredCourse>(COURSES_SPEC, {
         name: dto.name,
         subjectId: dto.subjectId,
-        instructorId: dto.instructorId,
+        instructorId: dto.instructorId ?? null,
         price: dto.price,
         hourlyRateOverride: explicitOverride,
         isKinder: dto.isKinder ?? false,
@@ -228,7 +231,7 @@ export class CoursesService implements OnModuleInit {
       const current = this.db.findById<StoredCourse>(COURSES, id);
       if (!current) throw new NotFoundException(`Course ${id} not found`);
       const before = this.effective(current);
-      const instructorId = dto.instructorId ?? current.instructorId;
+      const instructorId = dto.instructorId === undefined ? current.instructorId : dto.instructorId;
       const profile = this.assertRefs({ ...dto, instructorId });
       const explicitOverride = dto.hourlyRateOverride !== undefined
         ? dto.hourlyRateOverride
@@ -236,7 +239,7 @@ export class CoursesService implements OnModuleInit {
       const profileRate = profile?.defaultHourlyRate ?? 0;
       const effectiveRate = explicitOverride ?? profileRate;
       const isKinder = dto.isKinder ?? current.isKinder;
-      if (effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
+      if (instructorId != null && effectiveRate <= 0) throw new BadRequestException('강사 기본 시급 또는 수업 override를 1원 이상 설정해야 합니다.');
       // [TBO-61 2026-07-24] Kinder 가능 여부 게이트 제거(대표 지시 '유연하게') — 프로필 canTeachKinder는 정보 표시용으로만 유지.
       const { hourlyRate: _legacyInput, ...fields } = dto;
       void _legacyInput;
@@ -290,7 +293,7 @@ export class CoursesService implements OnModuleInit {
     return normalized;
   }
 
-  private assertRefs(dto: { subjectId?: number; instructorId?: number }) {
+  private assertRefs(dto: { subjectId?: number; instructorId?: number | null }) {
     if (dto.subjectId != null && !this.db.findById<Subject>(SUBJECTS, dto.subjectId)) {
       throw new BadRequestException(`subjectId ${dto.subjectId} 없음`);
     }
@@ -305,6 +308,17 @@ export class CoursesService implements OnModuleInit {
   }
 
   private effective(course: StoredCourse): Course {
-    return withEffectiveCourseRate(course, this.profiles.findActive(course.instructorId));
+    return withEffectiveCourseRate(
+      course,
+      course.instructorId == null ? undefined : this.profiles.findActive(course.instructorId),
+    );
+  }
+
+  /** 회차 실제 담당자 기준 유효 시급. 코스 override가 있으면 우선하고, 없으면 실제 강사 프로필을 쓴다. */
+  effectiveHourlyRateFor(courseId: number, instructorId: number | null): number | undefined {
+    if (instructorId == null) return undefined;
+    const course = this.db.findById<StoredCourse>(COURSES, courseId);
+    if (!course) return undefined;
+    return course.hourlyRateOverride ?? this.profiles.findActive(instructorId)?.defaultHourlyRate;
   }
 }

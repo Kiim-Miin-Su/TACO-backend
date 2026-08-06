@@ -44,10 +44,11 @@ async function main(): Promise<void> {
     const studentById = new Map(students.map((row) => [row.id, row]));
     const enrollment = enrollments.find((row) => {
       const course = courseById.get(row.courseId);
-      return !!course && !!studentById.get(row.studentId);
+      return course?.instructorId != null && !!studentById.get(row.studentId);
     });
-    if (!enrollment) throw new Error('active enrollment/course/student fixture is required');
+    if (!enrollment) throw new Error('active enrollment/assigned-course/student fixture is required');
     const course = courseById.get(enrollment.courseId)!;
+    if (course.instructorId == null) throw new Error('report smoke requires an assigned course');
     instructorId = course.instructorId;
     expectedStudentId = enrollment.studentId;
     expectedCourseId = course.id;

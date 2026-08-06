@@ -19,7 +19,7 @@ export type AccountingAckInput = {
   expectedAccountingImpactHash?: string;
 };
 
-type ImpactShape = Pick<ClassSession, 'courseId' | 'studentIds'>
+type ImpactShape = Pick<ClassSession, 'courseId' | 'instructorId' | 'studentIds'>
   & Parameters<typeof accountingImpactOf>[0];
 
 /**
@@ -46,14 +46,14 @@ export class SessionAccountingGuard {
   private inputFor(
     context: SessionAccountingContext,
     sessionId: number,
-    shape: Pick<ClassSession, 'courseId' | 'studentIds'>,
+    shape: Pick<ClassSession, 'courseId' | 'instructorId' | 'studentIds'>,
     exclude?: { attendanceStudentIds?: readonly number[]; approvedReportStudentIds?: readonly number[] },
   ): SessionPricingInput {
     const base = this.context.pricingInputFor(
       context,
       sessionId,
       shape,
-      this.courses.findOptional(Number(shape.courseId))?.hourlyRate,
+      this.courses.effectiveHourlyRateFor(Number(shape.courseId), shape.instructorId),
     );
     if (!exclude?.attendanceStudentIds?.length && !exclude?.approvedReportStudentIds?.length) return base;
     const clearedAttendance = new Set((exclude.attendanceStudentIds ?? []).map(Number));

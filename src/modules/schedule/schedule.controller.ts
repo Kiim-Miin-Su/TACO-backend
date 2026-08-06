@@ -24,6 +24,8 @@ import { isSessionVisibleToInstructor } from './schedule-visibility.policy';
 import { OpenClassDto, OpenClassSeriesDto } from './dto/open-class.dto';
 import { SessionAccountingImpactConflictResponseDto } from './dto/accounting-impact-response.dto';
 import { HistoricalCompletedScheduleResponseDto } from './dto/historical-completed-schedule-response.dto';
+import { UpdateSessionInstructorAssignmentDto } from './dto/instructor-assignment.dto';
+import type { ScheduleQuery } from '@kms545487/contracts';
 
 @ApiTags('scheduling')
 @ApiBearerAuth()
@@ -41,6 +43,7 @@ export class ScheduleController {
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })
   @ApiQuery({ name: 'instructorId', required: false }) @ApiQuery({ name: 'roomId', required: false })
   @ApiQuery({ name: 'studentId', required: false, description: '학생 코호트(enrollment status≠drop) 역추적' })
+  @ApiQuery({ name: 'assignment', required: false, enum: ['assigned', 'unassigned'], description: '담당 강사 배정 여부' })
   async list(
     @Req() req: Request & { user?: JwtClaims },
     @Res({ passthrough: true }) res: Response,
@@ -49,13 +52,18 @@ export class ScheduleController {
     @Query('instructorId', OptionalPositiveIntPipe) instructorId?: number,
     @Query('roomId', OptionalPositiveIntPipe) roomId?: number,
     @Query('studentId', OptionalPositiveIntPipe) studentId?: number,
+    @Query('assignment') assignment?: string,
   ) {
+    if (assignment != null && assignment !== 'assigned' && assignment !== 'unassigned') {
+      throw new BadRequestException('assignment는 assigned 또는 unassigned만 허용합니다.');
+    }
     const filters = {
       from,
       to,
       instructorId,
       roomId,
       studentId,
+      assignment: assignment as ScheduleQuery['assignment'],
     };
     const rows = await (isInstructorOnly(req.user?.roles)
       ? this.scheduleRead.listVisibleFresh(filters, req.user!.sub)
@@ -200,6 +208,21 @@ export class ScheduleController {
     return this.schedule.update(id, dto, req.user?.sub, {
       actorCapabilities: req.user?.effectiveCapabilities ?? [],
     }); // actor → audit_log(update diff)
+  }
+
+  @Put(':id/instructor-assignment')
+  @Roles(...ADMIN_ROLES)
+  @RequireCapabilities('calendar.manage')
+  @ApiParam({ name: 'id', description: '세션 id' })
+  @ApiOperation({ summary: '배정중 회차 담당자 지정 — CAS·충돌 재검사·선택적 코스 기본 담당자·감사 원자 갱신' })
+  @ApiOkResponse({ description: '{ row: ScheduleRow, previousInstructorId, courseDefaultUpdated }' })
+  @ApiConflictResponse({ description: '담당자 상태 변경 또는 강사 일정/가용시간 충돌' })
+  updateInstructorAssignment(
+    @Param('id', PositiveIntPipe) id: number,
+    @Body() dto: UpdateSessionInstructorAssignmentDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.schedule.updateInstructorAssignment(id, dto, req.user?.sub);
   }
 
   @Put(':id/instructor-attendance')

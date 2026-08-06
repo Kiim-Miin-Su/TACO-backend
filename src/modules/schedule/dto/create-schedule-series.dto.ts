@@ -40,9 +40,9 @@ export class CreateScheduleSeriesDto implements CreateScheduleSeriesCommand {
   @IsInt()
   courseId!: number;
 
-  @ApiPropertyOptional({ example: 1, description: '강사 FK(미지정 시 코스 기본 강사)' })
+  @ApiPropertyOptional({ nullable: true, example: 1, description: 'undefined=코스 기본 강사, null=배정중, 숫자=지정 강사' })
   @IsOptional() @IsInt()
-  instructorId?: number;
+  instructorId?: number | null;
 
   @ApiPropertyOptional({ example: 2, description: '강의실 FK' })
   @IsOptional() @IsInt()

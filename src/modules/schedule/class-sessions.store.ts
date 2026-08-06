@@ -18,6 +18,7 @@ import {
   CLASS_SESSION_SERIES_TABLE_SQL,
 } from '../../database/migrations/class-session-series.migration';
 import { TBO36_CLASS_SESSIONS_SQL } from '../../database/migrations/staff-pay-calendar.migration';
+import { UNASSIGNED_SESSION_INSTRUCTOR_RUNTIME_SQL } from '../../database/migrations/unassigned-session-instructor.migration';
 import { TimedModuleInit } from '../../common/performance-timing';
 
 const TABLE = SESSIONS;
@@ -190,13 +191,15 @@ export class ClassSessionsStore implements OnModuleInit {
    * 목록 Query의 세션 권위 READ. 카탈로그 hydrate TTL과 분리해 다른 인스턴스가 방금 만든
    * 회차도 첫 GET에서 PostgreSQL로 확인한다. in-memory 테스트 모드는 같은 필터 의미를 유지한다.
    */
-  async listDb(opts: { from?: string; to?: string; instructorId?: number; roomId?: number }): Promise<ClassSession[]> {
+  async listDb(opts: { from?: string; to?: string; instructorId?: number; roomId?: number; assignment?: 'assigned' | 'unassigned' }): Promise<ClassSession[]> {
     if (!this.durable) {
       return this.memory.findAll<ClassSession>(TABLE).filter((row) =>
         (opts.from ? row.sessionDate >= opts.from : true)
         && (opts.to ? row.sessionDate <= opts.to : true)
         && (opts.instructorId != null ? row.instructorId === opts.instructorId : true)
-        && (opts.roomId != null ? row.roomId === opts.roomId : true));
+        && (opts.roomId != null ? row.roomId === opts.roomId : true)
+        && (opts.assignment === 'assigned' ? row.instructorId != null : true)
+        && (opts.assignment === 'unassigned' ? row.instructorId == null : true));
     }
     const where = ['deleted_at IS NULL'];
     const values: unknown[] = [];
@@ -208,6 +211,8 @@ export class ClassSessionsStore implements OnModuleInit {
     if (opts.to) add('session_date <= ?', opts.to);
     if (opts.instructorId != null) add('instructor_id = ?', opts.instructorId);
     if (opts.roomId != null) add('room_id = ?', opts.roomId);
+    if (opts.assignment === 'assigned') where.push('instructor_id IS NOT NULL');
+    if (opts.assignment === 'unassigned') where.push('instructor_id IS NULL');
     const rows = await this.query(
       `SELECT * FROM ${TABLE} WHERE ${where.join(' AND ')} ORDER BY session_date ASC, start_time ASC, id ASC`,
       values,
@@ -268,7 +273,7 @@ export class ClassSessionsStore implements OnModuleInit {
         series_id integer,
         enrollment_id integer,
         course_id integer NOT NULL,
-        instructor_id integer NOT NULL,
+        instructor_id integer,
         room_id integer,
         student_id integer,
         payout_id integer,
@@ -302,6 +307,7 @@ export class ClassSessionsStore implements OnModuleInit {
     await this.postgres.ddl(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS is_paid boolean NOT NULL DEFAULT false`);
     await this.postgres.ddl(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS paid_payout_id integer`);
     for (const sql of TBO36_CLASS_SESSIONS_SQL) await this.postgres.ddl(sql);
+    for (const sql of UNASSIGNED_SESSION_INSTRUCTOR_RUNTIME_SQL) await this.postgres.ddl(sql);
     //  backfill은 instructor_payouts 존재 시에만(부팅 순서상 이 store가 먼저 뜰 수 있음 — fresh DB는
     //  backfill 대상 자체가 없어 스킵이 정답).
     await this.postgres.ddl(`

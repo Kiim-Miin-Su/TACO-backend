@@ -21,7 +21,7 @@ export type PayoutReadinessInput = {
   periodStart: string;
   periodEnd: string;
   instructorId?: number;
-  effectiveRateOf: (courseId: number) => number | undefined;
+  effectiveRateOf: (courseId: number, instructorId: number) => number | undefined;
   /** [TBO-65 M1] 판정 시점 epoch(ms) — 시각 술어는 session-time.policy 단일 진실원. */
   nowMs: number;
 };
@@ -44,7 +44,7 @@ const issue = (
     : `${type.replace(/_/g, '-')}:${session.id}`,
   type,
   sessionId: session.id,
-  instructorId: session.instructorId,
+  instructorId: session.instructorId!,
   sessionDate: session.sessionDate,
   startTime: session.startTime,
   topic: session.topic,
@@ -66,6 +66,7 @@ export function evaluatePayoutReadiness(input: PayoutReadinessInput): PayReadine
     .filter((session) =>
       session.sessionDate >= input.periodStart
       && session.sessionDate <= input.periodEnd
+      && session.instructorId != null
       && (input.instructorId == null || session.instructorId === input.instructorId)
       && session.payoutId == null
       && session.isPaid !== true,
@@ -104,7 +105,7 @@ export function evaluatePayoutReadiness(input: PayoutReadinessInput): PayReadine
       }
     }
 
-    const rate = input.effectiveRateOf(session.courseId);
+    const rate = input.effectiveRateOf(session.courseId, session.instructorId!);
     if (rate == null || rate <= 0) sessionIssues.push(issue('rate_missing', session));
 
     // [TBO-64 2026-07-24] 적격 판정 = 워크시트 분류의 auto(단일 진실원) — 지각(late)은 이제
@@ -114,7 +115,7 @@ export function evaluatePayoutReadiness(input: PayoutReadinessInput): PayReadine
       participantIds,
       reportOf: (studentId) => reportsByKey.get(`${session.id}:${studentId}`),
       attendanceOf: (studentId) => attendanceByKey.get(`${session.id}:${studentId}`), // [기간설정 ①]
-      hourlyRate: input.effectiveRateOf(session.courseId),
+      hourlyRate: input.effectiveRateOf(session.courseId, session.instructorId!),
     });
     if (classification.kind === 'auto') eligibleSessionIds.push(session.id);
     issues.push(...sessionIssues);

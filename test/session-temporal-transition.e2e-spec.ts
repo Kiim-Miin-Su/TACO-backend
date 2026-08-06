@@ -29,6 +29,7 @@ describe('[TBO-76 E] 시간 변경과 출결 자동 전이', () => {
     const session = {
       id: 91,
       courseId: 10,
+      instructorId: 1,
       studentIds: [1, 4],
       sessionDate: past,
       startTime: '08:00',
@@ -51,6 +52,7 @@ describe('[TBO-76 E] 시간 변경과 출결 자동 전이', () => {
     const session = {
       id: 92,
       courseId: 10,
+      instructorId: 1,
       studentIds: [1],
       sessionDate: '2026-07-29',
       startTime: '10:00',

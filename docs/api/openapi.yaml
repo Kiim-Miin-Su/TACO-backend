@@ -2746,6 +2746,15 @@ paths:
             format: int32
             minimum: 1
             maximum: 2147483647
+        - name: assignment
+          required: false
+          in: query
+          description: 담당 강사 배정 여부
+          schema:
+            enum:
+              - assigned
+              - unassigned
+            type: string
       responses:
         '200':
           description: ''
@@ -3051,6 +3060,36 @@ paths:
         - bearer: []
         - access_token: []
       summary: 반복 세션 bulk 생성 — 서버 발급 series ID + 규칙 자산화 + 원자 커밋. [로그인]
+      tags:
+        - scheduling
+  /api/schedule/{id}/instructor-assignment:
+    put:
+      operationId: ScheduleController_updateInstructorAssignment
+      parameters:
+        - name: id
+          required: true
+          in: path
+          description: 세션 id
+          schema:
+            type: integer
+            format: int32
+            minimum: 1
+            maximum: 2147483647
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateSessionInstructorAssignmentDto'
+      responses:
+        '200':
+          description: '{ row: ScheduleRow, previousInstructorId, courseDefaultUpdated }'
+        '409':
+          description: 담당자 상태 변경 또는 강사 일정/가용시간 충돌
+      security:
+        - bearer: []
+        - access_token: []
+      summary: 배정중 회차 담당자 지정 — CAS·충돌 재검사·선택적 코스 기본 담당자·감사 원자 갱신
       tags:
         - scheduling
   /api/schedule/{id}/instructor-attendance:
@@ -6456,6 +6495,7 @@ components:
           type: number
         instructorId:
           type: number
+          nullable: true
         price:
           type: number
           minimum: 0
@@ -6474,7 +6514,6 @@ components:
       required:
         - name
         - subjectId
-        - instructorId
         - price
     UpdateCourseDto:
       type: object
@@ -6489,6 +6528,7 @@ components:
           type: number
         instructorId:
           type: number
+          nullable: true
         price:
           type: number
           minimum: 0
@@ -6986,8 +7026,10 @@ components:
           example: Writing
         instructorId:
           type: number
+          nullable: true
           minimum: 1
           example: 7
+          description: null이면 배정중 수업으로 개설
         studentIds:
           uniqueItems: true
           maxItems: 20
@@ -7136,8 +7178,10 @@ components:
           example: Writing
         instructorId:
           type: number
+          nullable: true
           minimum: 1
           example: 7
+          description: null이면 배정중 반복 수업으로 개설
         studentIds:
           uniqueItems: true
           maxItems: 20
@@ -7173,8 +7217,9 @@ components:
           description: 코스 FK(필수)
         instructorId:
           type: number
+          nullable: true
           example: 1
-          description: 강사 FK(미지정 시 코스 기본 강사)
+          description: undefined=코스 기본 강사, null=배정중, 숫자=지정 강사
         roomId:
           type: number
           example: 2
@@ -7480,8 +7525,9 @@ components:
           description: 코스 FK(필수)
         instructorId:
           type: number
+          nullable: true
           example: 1
-          description: 강사 FK(미지정 시 코스 기본 강사)
+          description: undefined=코스 기본 강사, null=배정중, 숫자=지정 강사
         roomId:
           type: number
           example: 2
@@ -7732,6 +7778,33 @@ components:
         - code
         - message
         - impact
+    UpdateSessionInstructorAssignmentDto:
+      type: object
+      properties:
+        instructorId:
+          type: number
+          nullable: true
+          minimum: 1
+          example: 7
+          description: null=배정중, 숫자=담당 강사
+        reason:
+          type: string
+          minLength: 5
+          maxLength: 500
+          example: 담당 가능 강사 확정
+        expectedInstructorId:
+          type: number
+          nullable: true
+          minimum: 1
+          example: null
+          description: 현재 담당자 CAS. null은 현재도 배정중이어야 함
+        setCourseDefault:
+          type: boolean
+          example: false
+          description: 같은 transaction에서 코스 기본 담당자도 갱신
+      required:
+        - instructorId
+        - reason
     SetInstructorAttendanceDto:
       type: object
       properties:

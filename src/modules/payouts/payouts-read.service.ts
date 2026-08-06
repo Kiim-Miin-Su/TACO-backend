@@ -104,12 +104,13 @@ export class PayoutsReadService implements OnModuleInit {
     const lines: PayoutLine[] = [];
     for (const s of sessions) {
       const course = this.courses.findOptional(s.courseId);
+      const hourlyRate = this.courses.effectiveHourlyRateFor(s.courseId, s.instructorId);
       const participantIds = participantIdsForSession(s, cohortIndex);
       const classification = classifySessionForPayout(s, {
         participantIds,
         reportOf: (studentId) => reportsByKey.get(`${s.id}:${studentId}`),
         attendanceOf: (studentId) => attendanceByKey.get(`${s.id}:${studentId}`),
-        hourlyRate: course?.hourlyRate,
+        hourlyRate,
       });
       if (classification.effectiveAmount == null) continue; // manual 미책정·excluded — 정산 라인 제외
       lines.push({
@@ -118,7 +119,7 @@ export class PayoutsReadService implements OnModuleInit {
         courseName: course?.name ?? `코스 ${s.courseId}`,
         sessionDate: s.sessionDate,
         durationMinutes: s.durationMinutes,
-        hourlyRate: course?.hourlyRate ?? 0,
+        hourlyRate: hourlyRate ?? 0,
         amount: classification.effectiveAmount,
       });
     }
@@ -201,12 +202,13 @@ export class PayoutsReadService implements OnModuleInit {
 
     const rows: PayoutWorksheetRow[] = sessions.map((session) => {
       const course = this.courses.findOptional(session.courseId);
+      const hourlyRate = this.courses.effectiveHourlyRateFor(session.courseId, session.instructorId);
       const participantIds = participantIdsForSession(session, cohortIndex);
       const classification = classifySessionForPayout(session, {
         participantIds,
         reportOf: (studentId) => reportsByKey.get(`${session.id}:${studentId}`),
         attendanceOf: (studentId) => attendanceByKey.get(`${session.id}:${studentId}`), // [기간설정 ①]
-        hourlyRate: course?.hourlyRate,
+        hourlyRate,
       });
       return {
         sessionId: session.id,
@@ -217,7 +219,7 @@ export class PayoutsReadService implements OnModuleInit {
         courseName: course?.name ?? `코스 ${session.courseId}`,
         subjectId: course?.subjectId ?? null,
         subjectName: subjectNameOf(course?.subjectId),
-        hourlyRate: course?.hourlyRate ?? null,
+        hourlyRate: hourlyRate ?? null,
         status: session.status,
         instructorAttendance: session.instructorAttendance ?? null,
         payoutId: session.payoutId ?? null,

@@ -211,13 +211,13 @@ export class AvailabilityService implements OnModuleInit {
   }
 
   private impactOfSession(s: ClassSession, reason: AvailabilityImpact['reason']): AvailabilityImpact {
-    const instructor = this.db.findById<StaffAccount>(USERS, s.instructorId);
+    const instructor = s.instructorId == null ? undefined : this.db.findById<StaffAccount>(USERS, s.instructorId);
     return {
       sessionId: s.id,
       sessionDate: s.sessionDate,
       startTime: s.startTime,
       endTime: s.endTime,
-      instructorId: s.instructorId,
+      instructorId: s.instructorId ?? undefined,
       instructorName: instructor?.name,
       courseId: s.courseId,
       topic: s.topic,

@@ -7,7 +7,7 @@ import { sessionEndPassed } from './session-time.policy';
 type TemporalFields = Pick<ClassSession, 'sessionDate' | 'startTime' | 'durationMinutes'>;
 type AttendanceSession = Pick<
   ClassSession,
-  'id' | 'courseId' | 'studentIds' | 'sessionDate' | 'startTime' | 'durationMinutes' | 'status'
+  'id' | 'courseId' | 'instructorId' | 'studentIds' | 'sessionDate' | 'startTime' | 'durationMinutes' | 'status'
 > & {
   instructorAttendance?: ClassSession['instructorAttendance'] | null;
 };
@@ -35,6 +35,9 @@ export function attendanceRequirementOf(
   nowMs: number,
 ): AttendanceRequirement {
   const participantIds = participantIdsForSession(session, cohortIndex);
+  if (session.instructorId == null) {
+    return { attendanceRequired: false, missingAttendance: { instructor: false, studentIds: [] } };
+  }
   const recordedStudentIds = new Set(attendance.map((row) => Number(row.studentId)));
   const missingStudentIds = participantIds.filter((studentId) => !recordedStudentIds.has(studentId));
   const missingInstructor = session.instructorAttendance == null;
@@ -67,7 +70,7 @@ export function attendanceCompletionHoldPatch(
   attendance: readonly Pick<Attendance, 'studentId'>[],
   nowMs: number,
 ): { status: 'held'; studentIds?: number[] } | null {
-  if (session.status !== 'scheduled' || !sessionEndPassed(session, nowMs)) return null;
+  if (session.instructorId == null || session.status !== 'scheduled' || !sessionEndPassed(session, nowMs)) return null;
   if (session.instructorAttendance == null) return null;
   const participantIds = participantIdsForSession(session, cohortIndex);
   if (!participantIds.length) return null;

@@ -3,6 +3,7 @@ import {
   ArrayUnique,
   IsArray,
   IsBoolean,
+  IsDefined,
   IsInt,
   IsOptional,
   IsString,
@@ -10,6 +11,7 @@ import {
   Max,
   MaxLength,
   Min,
+  ValidateIf,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional, OmitType } from '@nestjs/swagger';
 import type { OpenClassInput, OpenClassSeriesInput } from '@kms545487/contracts';
@@ -28,9 +30,9 @@ export class OpenClassDto extends OmitType(CreateScheduleDto, [
   @IsString() @Matches(/\S/) @MaxLength(50)
   subjectName!: string;
 
-  @ApiProperty({ example: 7 })
-  @IsInt() @Min(1)
-  instructorId!: number;
+  @ApiProperty({ nullable: true, example: 7, description: 'null이면 배정중 수업으로 개설' })
+  @IsDefined() @ValidateIf((_object, value) => value !== null) @IsInt() @Min(1)
+  instructorId!: number | null;
 
   @ApiPropertyOptional({ type: [Number] })
   @IsOptional() @IsArray() @ArrayUnique() @ArrayMaxSize(20) @IsInt({ each: true }) @Min(1, { each: true })
@@ -58,9 +60,9 @@ export class OpenClassSeriesDto extends OmitType(CreateScheduleSeriesDto, [
   @IsString() @Matches(/\S/) @MaxLength(50)
   subjectName!: string;
 
-  @ApiProperty({ example: 7 })
-  @IsInt() @Min(1)
-  instructorId!: number;
+  @ApiProperty({ nullable: true, example: 7, description: 'null이면 배정중 반복 수업으로 개설' })
+  @IsDefined() @ValidateIf((_object, value) => value !== null) @IsInt() @Min(1)
+  instructorId!: number | null;
 
   @ApiPropertyOptional({ type: [Number] })
   @IsOptional() @IsArray() @ArrayUnique() @ArrayMaxSize(20) @IsInt({ each: true }) @Min(1, { each: true })

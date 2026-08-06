@@ -48,9 +48,10 @@ async function main(): Promise<void> {
       store.findActive<Course>(COURSES_SPEC),
     ]);
     const courseById = new Map(courses.map((row) => [row.id, row]));
-    const enrollment = enrollments.find((row) => courseById.has(row.courseId));
-    if (!enrollment) throw new Error('active enrollment/course fixture is required');
+    const enrollment = enrollments.find((row) => courseById.get(row.courseId)?.instructorId != null);
+    if (!enrollment) throw new Error('active enrollment/assigned-course fixture is required');
     const course = courseById.get(enrollment.courseId)!;
+    if (course.instructorId == null) throw new Error('temporal smoke requires an assigned course');
     instructorId = course.instructorId;
     studentId = enrollment.studentId;
 

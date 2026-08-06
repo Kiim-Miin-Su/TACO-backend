@@ -249,6 +249,7 @@ export class AttendanceService implements OnModuleInit {
     }
     const session = await this.sessionsStore.findByIdDb(sessionId);
     if (!session) throw new BadRequestException(`sessionId ${sessionId} 없음(존재하지 않는 수업)`);
+    if (session.instructorId == null) throw new BadRequestException('배정중 수업에는 출결을 기록할 수 없습니다. 담당 강사를 먼저 배정해 주세요.');
     const [student] = await this.store.findActive<Student>(STUDENTS_SPEC, {
       where: { id: studentId } as Partial<Student>,
       limit: 1,

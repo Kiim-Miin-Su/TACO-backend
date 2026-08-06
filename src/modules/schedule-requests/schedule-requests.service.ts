@@ -68,6 +68,7 @@ export class ScheduleRequestsService {
     const instructorId = hasAdminRole(requesterRoles)
       ? this.schedule.validateSessionInput(sessionInput)
       : this.schedule.validateInstructorRequestInput(sessionInput, requesterId);
+    if (instructorId == null) throw new BadRequestException('배정중 수업은 관리자가 캘린더에서 직접 생성해 주세요.');
     // [TBO-29C C4] 시간 정규화 = session-time.policy 단일 소스 — 경로별 `?? 60`/범위 검사 사본 폐기.
     const { durationMinutes } = normalizeSessionTime({ startTime: dto.startTime!, endTime: dto.endTime, durationMinutes: dto.durationMinutes });
     // 참고용 충돌 드라이런(승인 시점에 재검사가 확정본)
@@ -171,7 +172,7 @@ export class ScheduleRequestsService {
     else this.schedule.validateInstructorRequestInput(merged, requesterId);
     const conflicts = this.schedule.checkConflicts({
       sessionDate: merged.sessionDate!, startTime: merged.startTime!, endTime: merged.endTime,
-      durationMinutes: merged.durationMinutes, instructorId: merged.instructorId, roomId: merged.roomId,
+      durationMinutes: merged.durationMinutes, instructorId: merged.instructorId ?? undefined, roomId: merged.roomId,
       studentIds: merged.studentIds, ignoreSessionId: target.id, mode: merged.mode,
     });
     // [74D-0] 반복 update 요청도 생성 시 대상 집합 snapshot(삭제와 동일) — 승인 시 drift 판정의 기준.
@@ -258,7 +259,7 @@ export class ScheduleRequestsService {
     return { row, conflicts: [] };
   }
 
-  private sessionUpdateSummary(before: { sessionDate?: string; startTime?: string; endTime?: string; roomId?: number; instructorId?: number }, after: { sessionDate?: string; startTime?: string; endTime?: string; roomId?: number; instructorId?: number }): string {
+  private sessionUpdateSummary(before: { sessionDate?: string; startTime?: string; endTime?: string; roomId?: number; instructorId?: number | null }, after: { sessionDate?: string; startTime?: string; endTime?: string; roomId?: number; instructorId?: number | null }): string {
     const changes: string[] = [];
     if (before.sessionDate !== after.sessionDate) changes.push(`${before.sessionDate} -> ${after.sessionDate}`);
     if (before.startTime !== after.startTime || before.endTime !== after.endTime) changes.push(`${before.startTime ?? ''}-${before.endTime ?? ''} -> ${after.startTime ?? ''}-${after.endTime ?? ''}`);
