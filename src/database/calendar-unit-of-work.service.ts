@@ -34,6 +34,7 @@ export const LOCK_KIND = {
   enrollment: 20, // [TBO-77] 수강 상태/기간 수정 직렬화
   reportTemplate: 21, // [TBO-77D-5] 공용 템플릿 수정/삭제 소유권 fresh-read 직렬화
   permission: 22, // [TBO-82] 사용자별 capability override 변경 직렬화
+  reportTemplateScope: 23, // [TBO-86G3b] global/personal default·enforced 교체 직렬화
   // ⚠ 관찰(기존): payout·course가 13을 공유 — 과직렬화(payout N ↔ course N 상호 대기 가능).
   //  분리는 TBO-50 §6 P2 방침대로 롤링 배포 상호배제 공백 없는 **단계적 전환**(C7)으로 수행한다.
 } as const;

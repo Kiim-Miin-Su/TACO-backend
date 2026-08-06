@@ -4,6 +4,7 @@ import { AuditModule } from '../audit/audit.module'; // 쓰기 이력(audit_log)
 import { ReportTemplatesController } from './report-templates.controller';
 import { ReportTemplatesService } from './report-templates.service';
 import { DatabaseModule } from '../../database/database.module';
+import { UsersModule } from '../users/users.module';
 
-@Module({ imports: [AuthModule, AuditModule, DatabaseModule], controllers: [ReportTemplatesController], providers: [ReportTemplatesService] })
+@Module({ imports: [AuthModule, AuditModule, DatabaseModule, UsersModule], controllers: [ReportTemplatesController], providers: [ReportTemplatesService] })
 export class ReportTemplatesModule {}

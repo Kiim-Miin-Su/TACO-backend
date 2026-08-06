@@ -1,5 +1,5 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post, Req } from '@nestjs/common';
-import { PositiveIntPipe } from '../../common/positive-int.pipe';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query, Req } from '@nestjs/common';
+import { OptionalPositiveIntPipe, PositiveIntPipe } from '../../common/positive-int.pipe';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import type { Request } from 'express';
 import { ReportTemplatesService } from './report-templates.service';
@@ -17,16 +17,26 @@ export class ReportTemplatesController {
   @Get()
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '수업 리포트 템플릿 목록 조회 [전 직원]' })
-  findAll() {
+  findAll(@Req() req: Request & { user?: JwtClaims }) {
     // [TBO-56 C2b] 목록 READ = DB 권위(findActive) — 메모리 미러 직접 반환 제거.
-    return this.templates.listDb();
+    return this.templates.listDb(req.user?.sub, req.user?.roles);
+  }
+
+  @Get('effective')
+  @Roles(...STAFF_ROLES)
+  @ApiOperation({ summary: '강사별 유효 리포트 템플릿 조회 [전 직원, 강사는 본인 scope]' })
+  effective(
+    @Query('instructorId', OptionalPositiveIntPipe) instructorId: number | undefined,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.templates.effective(instructorId, req.user?.sub, req.user?.roles);
   }
 
   @Post()
   @Roles(...STAFF_ROLES)
   @ApiOperation({ summary: '수업 리포트 템플릿 생성 [전 직원]' })
   create(@Body() dto: CreateReportTemplateDto, @Req() req: Request & { user?: JwtClaims }) {
-    return this.templates.create(dto, req.user?.sub);
+    return this.templates.create(dto, req.user?.sub, req.user?.roles);
   }
 
   @Patch(':id')

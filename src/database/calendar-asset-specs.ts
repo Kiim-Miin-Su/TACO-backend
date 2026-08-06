@@ -43,6 +43,9 @@ import { INSTRUCTOR_CONTRACT_BOUNDS_SQL } from './migrations/instructor-contract
 import { TRANSACTION_SOURCE_INTEGRITY_SQL } from './migrations/transaction-source-integrity.migration';
 import { REPORT_TEMPLATE_OWNER_MIGRATION_SQL } from './migrations/report-template-owner.migration';
 import {
+  REPORT_TEMPLATE_SCOPE_MIGRATION_SQL,
+} from './migrations/report-template-scope.migration';
+import {
   SESSION_REPORT_REVISIONS_SQL,
   SESSION_REPORT_REVISIONS_TABLE_SQL,
 } from './migrations/session-report-revisions.migration';
@@ -627,10 +630,17 @@ export const ROADMAP_COURSES_SPEC: PostgresCollectionSpec = {
 export const REPORT_TEMPLATES_SPEC: PostgresCollectionSpec = {
   table: 'report_templates',
   createSql: REPORT_TEMPLATES_TABLE_SQL,
-  migrations: [...REPORT_TEMPLATE_OWNER_MIGRATION_SQL],
+  migrations: [...REPORT_TEMPLATE_OWNER_MIGRATION_SQL, ...REPORT_TEMPLATE_SCOPE_MIGRATION_SQL],
   indexes: [
-    `CREATE UNIQUE INDEX IF NOT EXISTS uq_report_templates_active_name
-       ON report_templates (name) WHERE deleted_at IS NULL`,
+    `CREATE INDEX IF NOT EXISTS idx_report_templates_owner_active
+       ON report_templates (owner_user_id, id) WHERE deleted_at IS NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_report_templates_scope_name
+       ON report_templates (COALESCE(owner_user_id, 0), name) WHERE deleted_at IS NULL`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_report_templates_scope_default
+       ON report_templates (COALESCE(owner_user_id, 0)) WHERE deleted_at IS NULL AND is_default`,
+    `CREATE UNIQUE INDEX IF NOT EXISTS uq_report_templates_global_enforced
+       ON report_templates (is_enforced)
+       WHERE deleted_at IS NULL AND owner_user_id IS NULL AND is_enforced`,
   ],
 };
 

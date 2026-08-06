@@ -31,12 +31,18 @@ export const REPORT_TEMPLATES_TABLE_SQL = `
     id serial PRIMARY KEY,
     name varchar(40) NOT NULL,
     content text NOT NULL,
+    progress_page text,
     homework text,
+    owner_user_id integer REFERENCES instructor_profiles(user_id) ON DELETE RESTRICT,
+    is_default boolean NOT NULL DEFAULT false,
+    is_enforced boolean NOT NULL DEFAULT false,
     created_by integer REFERENCES users(id) ON DELETE SET NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
     deleted_at timestamptz,
-    deleted_by integer
+    deleted_by integer,
+    CONSTRAINT c_report_templates_enforced_global
+      CHECK (NOT is_enforced OR owner_user_id IS NULL)
   )`;
 
 export const REMAINING_PERSISTENCE_MIGRATION_SQL = [
@@ -58,8 +64,8 @@ export const REMAINING_PERSISTENCE_MIGRATION_SQL = [
      ON roadmap_courses (roadmap_id, course_id) WHERE deleted_at IS NULL`,
   `CREATE INDEX IF NOT EXISTS idx_roadmap_courses_roadmap
      ON roadmap_courses (roadmap_id, sort_order) WHERE deleted_at IS NULL`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS uq_report_templates_active_name
-     ON report_templates (name) WHERE deleted_at IS NULL`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS uq_report_templates_scope_name
+     ON report_templates (COALESCE(owner_user_id, 0), name) WHERE deleted_at IS NULL`,
   `INSERT INTO report_templates (id, name, content, homework)
      VALUES
        (1, '정규 수업(기본)', E'오늘 학습 내용: \\n이해도: 상/중/하\\n특이사항: ', '교재 p.   ~   풀이'),

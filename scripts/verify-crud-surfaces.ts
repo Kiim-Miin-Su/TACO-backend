@@ -122,10 +122,10 @@ const S: Record<string, Surface> = {
   report_templates: {
     lifecycle: 'direct',
     contract: ['ReportTemplate', 'CreateReportTemplateInput', 'UpdateReportTemplateInput'],
-    api: ['POST /report-templates', 'PATCH /report-templates/{id}', 'DELETE /report-templates/{id}'],
-    frontend: ['api.reportTemplates', 'useUpdateReportTemplate'],
+    api: ['POST /report-templates', 'GET /report-templates/effective', 'PATCH /report-templates/{id}', 'DELETE /report-templates/{id}'],
+    frontend: ['api.reportTemplates', 'useEffectiveReportTemplate', 'useUpdateReportTemplate'],
     verdict: 'complete',
-    note: 'shared read/apply; creator or admin update/delete with persisted owner',
+    note: 'global/personal scope with server-effective priority; owner or admin persisted CRUD',
   },
 };
 

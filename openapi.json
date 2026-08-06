@@ -8250,6 +8250,48 @@
         ]
       }
     },
+    "/api/report-templates/effective": {
+      "get": {
+        "operationId": "ReportTemplatesController_effective",
+        "parameters": [
+          {
+            "name": "instructorId",
+            "required": false,
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 1,
+              "maximum": 2147483647
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "summary": "강사별 유효 리포트 템플릿 조회 [전 직원, 강사는 본인 scope]",
+        "tags": [
+          "report-templates"
+        ],
+        "security": [
+          {
+            "bearer": []
+          },
+          {
+            "access_token": []
+          }
+        ]
+      }
+    },
     "/api/report-templates/{id}": {
       "patch": {
         "operationId": "ReportTemplatesController_update",
@@ -14005,9 +14047,24 @@
             "type": "string",
             "maxLength": 2000
           },
+          "progressPage": {
+            "type": "string",
+            "maxLength": 1000
+          },
           "homework": {
             "type": "string",
             "maxLength": 1000
+          },
+          "ownerUserId": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "isEnforced": {
+            "type": "boolean"
           }
         },
         "required": [
@@ -14026,9 +14083,24 @@
             "type": "string",
             "maxLength": 2000
           },
+          "progressPage": {
+            "type": "string",
+            "maxLength": 1000
+          },
           "homework": {
             "type": "string",
             "maxLength": 1000
+          },
+          "ownerUserId": {
+            "type": "number",
+            "nullable": true,
+            "minimum": 1
+          },
+          "isDefault": {
+            "type": "boolean"
+          },
+          "isEnforced": {
+            "type": "boolean"
           }
         },
         "required": [

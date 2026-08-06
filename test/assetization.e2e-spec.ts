@@ -67,9 +67,12 @@ describe('Assetization sweep 2 (e2e)', () => {
     expect(updated).toMatchObject({
       id: created.id, name: '레벨테스트 수정', content: '수정된 템플릿', homework: '복습', createdBy: 1,
     });
+    const globalSameName = (await http.post('/api/report-templates').set(asAdmin())
+      .send({ name: '레벨테스트 수정', content: '전역은 같은 이름 허용' }).expect(201)).body;
     await http.post('/api/report-templates').set(asAdmin())
-      .send({ name: '레벨테스트 수정', content: 'x' }).expect(400);
+      .send({ name: '레벨테스트 수정', content: '같은 전역 scope 중복' }).expect(400);
     await http.delete(`/api/report-templates/${created.id}`).set(bearer(PARK)).expect(200);
+    await http.delete(`/api/report-templates/${globalSameName.id}`).set(asAdmin()).expect(200);
     await http.patch(`/api/report-templates/${created.id}`).set(asAdmin())
       .send({ name: '삭제 후 수정', content: 'x' }).expect(404);
   });

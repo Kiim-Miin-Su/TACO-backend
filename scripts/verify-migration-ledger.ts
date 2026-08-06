@@ -54,6 +54,7 @@ import { SESSION_ATTENDANCE_CAPABILITY_MIGRATION_ID } from '../src/database/migr
 import { UNASSIGNED_SESSION_INSTRUCTOR_MIGRATION_ID } from '../src/database/migrations/unassigned-session-instructor.migration';
 import { SCHEDULE_REQUEST_ATTENDANCE_CORRECTION_MIGRATION_ID } from '../src/database/migrations/schedule-request-attendance-correction.migration';
 import { SESSION_REPORT_REVISIONS_MIGRATION_ID } from '../src/database/migrations/session-report-revisions.migration';
+import { REPORT_TEMPLATE_SCOPE_MIGRATION_ID } from '../src/database/migrations/report-template-scope.migration';
 
 loadLocalEnv();
 
@@ -109,6 +110,7 @@ export const EXPECTED_MIGRATION_IDS = [
   UNASSIGNED_SESSION_INSTRUCTOR_MIGRATION_ID, // [86E] nullable 담당자·FK/CHECK·assigned/unassigned index
   SCHEDULE_REQUEST_ATTENDANCE_CORRECTION_MIGRATION_ID, // [86F] 출결 정정 요청 snapshot/CHECK/pending unique
   SESSION_REPORT_REVISIONS_MIGRATION_ID, // [86G3] 승인 후 본문 version/revision 원장·승인 메타 CHECK
+  REPORT_TEMPLATE_SCOPE_MIGRATION_ID, // [86G3b] 리포트 템플릿 owner/default/enforced scope
 ] as const;
 
 const url = directDatabaseUrl();
