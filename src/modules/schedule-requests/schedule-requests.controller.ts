@@ -84,7 +84,7 @@ export class ScheduleRequestsController {
       forceConflicts: explicitForce ?? legacy ?? false,
       acknowledgeAccountingImpact: acknowledge ?? false,
       expectedAccountingImpactHash,
-    });
+    }, req.user?.effectiveCapabilities ?? []);
   }
 
   @Patch(':id')

@@ -862,6 +862,10 @@ export class ScheduleService {
     input: SetInstructorAttendanceInput,
     actorId?: number,
     actorCapabilities: RoleCapability[] = [],
+    internal?: {
+      expectedInstructorAttendance?: ClassSession['instructorAttendance'] | null;
+      auditReason?: string;
+    },
   ): Promise<ScheduleMutationResult> {
     await this.read.ensureReady();
     if (!actorCapabilities.includes('session-attendance.manage')) {
@@ -870,12 +874,17 @@ export class ScheduleService {
     const session = this.db.findById<ClassSession>(SESSIONS, id);
     if (!session) throw new NotFoundException(`Session ${id} not found`);
     if (session.instructorId == null) throw new ConflictException('담당 강사를 배정한 뒤 강사 출결을 입력할 수 있습니다.');
+    const expectedAttendance = internal
+      && Object.prototype.hasOwnProperty.call(internal, 'expectedInstructorAttendance')
+      ? { expectedInstructorAttendance: internal.expectedInstructorAttendance }
+      : {};
     return this.update(id, {
       acknowledgeAccountingImpact: input.acknowledgeAccountingImpact,
       expectedAccountingImpactHash: input.expectedAccountingImpactHash,
     } as UpdateScheduleDto, actorId, {
       actorCapabilities,
-      auditReason: '강사 출결 기록/수정',
+      auditReason: internal?.auditReason ?? '강사 출결 기록/수정',
+      ...expectedAttendance,
       instructorAttendanceCommand: { kind: 'set', status: input.status },
     });
   }
@@ -912,6 +921,7 @@ export class ScheduleService {
       expectedTargetIds?: readonly number[];
       actorCapabilities?: RoleCapability[];
       auditReason?: string;
+      expectedInstructorAttendance?: ClassSession['instructorAttendance'] | null;
       instructorAttendanceCommand?:
         | { kind: 'set'; status: NonNullable<ClassSession['instructorAttendance']> }
         | { kind: 'clear' };
@@ -973,6 +983,19 @@ export class ScheduleService {
     const instructorAttendanceCommand = internalOpts?.instructorAttendanceCommand;
     if (instructorAttendanceCommand && !internalOpts?.actorCapabilities?.includes('session-attendance.manage')) {
       throw new ForbiddenException('강사 출결 변경은 수업 출결 관리 권한이 필요합니다.');
+    }
+    if (
+      instructorAttendanceCommand
+      && internalOpts != null
+      && Object.prototype.hasOwnProperty.call(internalOpts, 'expectedInstructorAttendance')
+      && (cur.instructorAttendance ?? null) !== internalOpts?.expectedInstructorAttendance
+    ) {
+      throw new ConflictException({
+        code: 'REQUEST_TARGET_STALE',
+        message: '요청 이후 강사 출결이 변경되었습니다. 최신 출결을 확인한 새 요청이 필요합니다.',
+        expectedInstructorAttendance: internalOpts?.expectedInstructorAttendance ?? null,
+        currentInstructorAttendance: cur.instructorAttendance ?? null,
+      });
     }
     await this.assertCeoOwnedSessionMutable(cur, actorId); // [TBO-59 C3-3]
     // 참조 무결성(FK) 검증

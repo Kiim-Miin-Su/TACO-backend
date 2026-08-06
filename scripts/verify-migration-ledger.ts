@@ -52,6 +52,7 @@ import { STAFF_ATTENDANCE_MIGRATION_ID } from '../src/database/migrations/staff-
 import { USER_CAPABILITY_OVERRIDES_MIGRATION_ID } from '../src/database/migrations/user-capability-overrides.migration';
 import { SESSION_ATTENDANCE_CAPABILITY_MIGRATION_ID } from '../src/database/migrations/session-attendance-capability.migration';
 import { UNASSIGNED_SESSION_INSTRUCTOR_MIGRATION_ID } from '../src/database/migrations/unassigned-session-instructor.migration';
+import { SCHEDULE_REQUEST_ATTENDANCE_CORRECTION_MIGRATION_ID } from '../src/database/migrations/schedule-request-attendance-correction.migration';
 
 loadLocalEnv();
 
@@ -105,6 +106,7 @@ export const EXPECTED_MIGRATION_IDS = [
   USER_CAPABILITY_OVERRIDES_MIGRATION_ID, // [82C] 사용자별 권한 override·actor/FK/CHECK/index
   SESSION_ATTENDANCE_CAPABILITY_MIGRATION_ID, // [86D] 수업 출결 권한 분리·capability CHECK 확장
   UNASSIGNED_SESSION_INSTRUCTOR_MIGRATION_ID, // [86E] nullable 담당자·FK/CHECK·assigned/unassigned index
+  SCHEDULE_REQUEST_ATTENDANCE_CORRECTION_MIGRATION_ID, // [86F] 출결 정정 요청 snapshot/CHECK/pending unique
 ] as const;
 
 const url = directDatabaseUrl();

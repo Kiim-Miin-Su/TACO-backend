@@ -11,6 +11,8 @@ import type {
   ScheduleRequestApprovalOptions,
   ScheduleRequestBulkResult,
   ScheduleRequestKind,
+  InstructorAttendanceStatus,
+  RoleCapability,
 } from '@kms545487/contracts';
 import type { BaseRow } from '../../database/in-memory.database';
 import { ScheduleReadService } from '../schedule/schedule-read.service'; // [TBO-69 C1] 검증·충돌·목록
@@ -26,6 +28,9 @@ import { normalizeSessionTime } from '../schedule/session-time.policy';
 import { selectSeriesScope } from '../schedule/series-scope.policy';
 import { CreateScheduleRequestBulkDto } from './dto/create-schedule-request-bulk.dto';
 import { scheduleRequestBatchFingerprint } from './schedule-request-idempotency.policy';
+import { ClassSessionsStore } from '../schedule/class-sessions.store';
+import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
+import { sessionEndPassed } from '../schedule/session-time.policy';
 
 export const SCHEDULE_REQUESTS = 'schedule_requests';
 
@@ -45,6 +50,8 @@ export class ScheduleRequestsService {
     private readonly scheduleCmd: ScheduleService, // 승인 확정 시 명령(생성·수정·삭제)
     private readonly availability: AvailabilityService,
     private readonly audit: AuditService,
+    private readonly sessions: ClassSessionsStore,
+    private readonly unitOfWork: CalendarUnitOfWork,
   ) {}
 
   /** 요청 생성(pending) — 세션과 동일 검증 + 참고용 충돌 목록 반환. */
@@ -55,6 +62,9 @@ export class ScheduleRequestsService {
     batch?: BatchMetadata,
   ): Promise<{ row: RequestRow; conflicts: Conflict[] }> {
     await this.schedule.ensureReady();
+    if (dto.requestKind === 'instructor_attendance_correction') {
+      return { row: await this.createInstructorAttendanceCorrection(dto, requesterId, requesterRoles), conflicts: [] };
+    }
     if (dto.requestKind === 'availability_upsert' || dto.requestKind === 'availability_delete') {
       return { row: await this.createAvailabilityRequest(dto, requesterId, requesterRoles), conflicts: [] };
     }
@@ -102,6 +112,86 @@ export class ScheduleRequestsService {
       return created;
     });
     return { row, conflicts };
+  }
+
+  private async createInstructorAttendanceCorrection(
+    dto: CreateScheduleRequestDto,
+    requesterId: number,
+    requesterRoles?: string[],
+  ): Promise<RequestRow> {
+    if (!requesterRoles?.includes('instructor') || hasAdminRole(requesterRoles)) {
+      throw new ForbiddenException('강사 본인만 자신의 출결 정정을 요청할 수 있습니다.');
+    }
+    if (dto.targetSessionId == null || dto.requestedInstructorAttendance == null) {
+      throw new BadRequestException('대상 수업과 요청 출결이 필요합니다.');
+    }
+    const requestedAttendance = dto.requestedInstructorAttendance;
+    const requestReason = dto.requestReason?.trim() ?? '';
+    if (requestReason.length < 2) throw new BadRequestException('정정 요청 사유를 2자 이상 입력해 주세요.');
+
+    return this.store.transaction(async () => {
+      await this.unitOfWork.lockTargets([{ kind: 'session', id: dto.targetSessionId! }]);
+      const target = await this.sessions.findByIdDb(dto.targetSessionId!);
+      if (!target) throw new NotFoundException(`Session ${dto.targetSessionId} not found`);
+      if (target.instructorId == null) throw new ConflictException('배정중 수업에는 강사 출결 정정을 요청할 수 없습니다.');
+      if (!target.startTime) throw new BadRequestException('시작 시각이 없는 수업은 출결 정정을 요청할 수 없습니다.');
+      if (Number(target.instructorId) !== requesterId) {
+        throw new ForbiddenException('강사는 본인 수업의 출결만 정정 요청할 수 있습니다.');
+      }
+      if (!sessionEndPassed(target, Date.now())) {
+        throw new ConflictException('종료된 수업의 출결만 정정 요청할 수 있습니다.');
+      }
+      const before = target.instructorAttendance ?? null;
+      if (before === requestedAttendance) {
+        throw new BadRequestException('현재 강사 출결과 다른 값을 선택해 주세요.');
+      }
+      const duplicate = await this.store.findPendingAttendanceCorrection<RequestRow>(requesterId, target.id);
+      if (duplicate) {
+        throw new ConflictException({
+          code: 'ATTENDANCE_CORRECTION_ALREADY_PENDING',
+          message: '이 수업에 처리 대기 중인 출결 정정 요청이 있습니다.',
+          requestId: duplicate.id,
+        });
+      }
+      const created = await this.store.insert<RequestRow>({
+        requesterId,
+        requestKind: 'instructor_attendance_correction',
+        targetSessionId: target.id,
+        courseId: target.courseId,
+        instructorId: requesterId,
+        roomId: target.roomId,
+        sessionDate: target.sessionDate,
+        startTime: target.startTime,
+        endTime: target.endTime,
+        durationMinutes: target.durationMinutes,
+        kind: target.kind ?? 'class',
+        mode: target.mode,
+        topic: target.topic,
+        studentIds: target.studentIds,
+        requestReason,
+        instructorAttendanceBefore: before,
+        requestedInstructorAttendance: requestedAttendance,
+        changeSummary: `강사 출결 정정 요청 · ${this.attendanceLabel(before)} → ${this.attendanceLabel(requestedAttendance)}`,
+        status: 'pending',
+      } as unknown as Omit<RequestRow, keyof BaseRow>);
+      await this.audit.log({
+        entity: SCHEDULE_REQUESTS,
+        entityId: created.id,
+        action: 'create',
+        actorId: requesterId,
+        changes: this.audit.snapshotOf(created) as never,
+        reason: requestReason,
+      });
+      return created;
+    });
+  }
+
+  private attendanceLabel(status: InstructorAttendanceStatus | null): string {
+    if (status === 'present') return '출석';
+    if (status === 'late') return '지각';
+    if (status === 'absent') return '결석';
+    if (status === 'makeup') return '보강';
+    return '미선택';
   }
 
   /** 반복 session_create 요청 전체를 한 transaction으로 저장하고 같은 key 재시도를 재생한다. */
@@ -338,10 +428,18 @@ export class ScheduleRequestsService {
   }
 
   /** 승인 — [요청 상태 + 세션 생성(충돌 409·force 재검사) + 역참조 + audit] 단일 tx 원자화. */
-  async approve(id: number, decidedBy: number, options: ApprovalOptions = {}): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
+  async approve(
+    id: number,
+    decidedBy: number,
+    options: ApprovalOptions = {},
+    approverCapabilities: RoleCapability[] = [],
+  ): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
     await this.schedule.ensureReady();
     return this.store.transaction(async () => {
       const req = await this.mustPending(id, true);
+      if (req.requestKind === 'instructor_attendance_correction') {
+        return this.approveInstructorAttendanceCorrection(req, decidedBy, options, approverCapabilities);
+      }
       if (req.requestKind === 'availability_upsert' || req.requestKind === 'availability_delete') {
         return this.approveAvailability(req, decidedBy);
       }
@@ -367,6 +465,56 @@ export class ScheduleRequestsService {
       await this.audit.log({ entity: SCHEDULE_REQUESTS, entityId: id, action: 'approve', actorId: decidedBy, changes: this.audit.diffOf(before, updated) as never });
       return { request: updated, conflicts };
     });
+  }
+
+  private async approveInstructorAttendanceCorrection(
+    req: RequestRow,
+    decidedBy: number,
+    options: ApprovalOptions,
+    approverCapabilities: RoleCapability[],
+  ): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
+    if (!approverCapabilities.includes('session-attendance.manage')) {
+      throw new ForbiddenException('출결 정정 승인에는 수업 출결 관리 권한이 필요합니다.');
+    }
+    if (req.targetSessionId == null || req.requestedInstructorAttendance == null) {
+      throw new BadRequestException('출결 정정 요청의 대상 또는 목표 값이 없습니다.');
+    }
+    const before = { ...req };
+    const result = await this.scheduleCmd.setInstructorAttendance(
+      req.targetSessionId,
+      {
+        status: req.requestedInstructorAttendance,
+        acknowledgeAccountingImpact: options.acknowledgeAccountingImpact,
+        expectedAccountingImpactHash: options.expectedAccountingImpactHash,
+      },
+      decidedBy,
+      approverCapabilities,
+      {
+        expectedInstructorAttendance: req.instructorAttendanceBefore ?? null,
+        auditReason: `강사 출결 정정 요청 #${req.id} 승인`,
+      },
+    );
+    const updated = this.mustStored(await this.store.update<RequestRow>(req.id, {
+      status: 'approved',
+      decidedBy,
+      decidedAt: new Date().toISOString(),
+    }));
+    const changes = this.audit.diffOf(before, updated);
+    if (result.accountingImpact && result.accountingImpactHash) {
+      changes.accountingImpactAcknowledgement = {
+        before: null,
+        after: { hash: result.accountingImpactHash, impact: result.accountingImpact },
+      };
+    }
+    await this.audit.log({
+      entity: SCHEDULE_REQUESTS,
+      entityId: req.id,
+      action: 'approve',
+      actorId: decidedBy,
+      changes,
+      reason: req.requestReason,
+    });
+    return { request: updated, conflicts: [] };
   }
 
   private async approveSessionUpdate(req: RequestRow, decidedBy: number, options: ApprovalOptions): Promise<{ request: RequestRow; conflicts: Conflict[] }> {
@@ -465,7 +613,11 @@ export class ScheduleRequestsService {
     await this.schedule.ensureReady();
     return this.store.transaction(async () => {
       const req = await this.mustPending(id, true);
-      if (req.requestKind === 'availability_delete' || req.requestKind === 'session_delete') {
+      if (
+        req.requestKind === 'availability_delete'
+        || req.requestKind === 'session_delete'
+        || req.requestKind === 'instructor_attendance_correction'
+      ) {
         throw new BadRequestException('삭제 요청은 수정할 항목이 없습니다 — 반려 후 재요청하세요.');
       }
       const patch: Record<string, unknown> = {};

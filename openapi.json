@@ -12370,7 +12370,8 @@
               "session_update",
               "session_delete",
               "availability_upsert",
-              "availability_delete"
+              "availability_delete",
+              "instructor_attendance_correction"
             ],
             "type": "string",
             "example": "session_create",
@@ -12462,6 +12463,17 @@
             "maxLength": 500,
             "example": "학부모 요청으로 30분 늦춰야 합니다.",
             "description": "변경/삭제/가용성 요청의 필수 사유(신규 수업 요청은 선택)"
+          },
+          "requestedInstructorAttendance": {
+            "enum": [
+              "present",
+              "late",
+              "absent",
+              "makeup"
+            ],
+            "type": "string",
+            "example": "late",
+            "description": "instructor_attendance_correction 목표 강사 출결. 현재 값은 서버가 DB에서 snapshot한다."
           },
           "scope": {
             "enum": [

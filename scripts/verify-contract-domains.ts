@@ -51,6 +51,7 @@ const BINDINGS: DomainBinding[] = [
   { contract: 'PaymentStatus', dbmlEnum: 'payment_status' },
   { contract: 'PayoutStatus', dbmlEnum: 'payout_status' },
   { contract: 'ScheduleRequestStatus', dbmlEnum: 'request_status' },
+  { contract: 'ScheduleRequestKind', dbmlEnum: 'schedule_request_kind' },
 ];
 
 const root = resolve(__dirname, '..');

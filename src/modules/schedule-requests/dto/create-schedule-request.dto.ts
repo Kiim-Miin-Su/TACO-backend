@@ -5,6 +5,7 @@ import type {
   AvailabilityKind,
   AvailabilityOwner,
   CreateScheduleRequestInput,
+  InstructorAttendanceStatus,
   RecurrenceScope,
   ScheduleRequestKind,
   SessionKind,
@@ -13,7 +14,8 @@ import type {
 import { SESSION_KINDS } from '../../schedule/dto/create-schedule.dto';
 
 const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
-const REQUEST_KINDS: ScheduleRequestKind[] = ['session_create', 'session_update', 'session_delete', 'availability_upsert', 'availability_delete'];
+const REQUEST_KINDS: ScheduleRequestKind[] = ['session_create', 'session_update', 'session_delete', 'availability_upsert', 'availability_delete', 'instructor_attendance_correction'];
+const INSTRUCTOR_ATTENDANCE_STATUSES: InstructorAttendanceStatus[] = ['present', 'late', 'absent', 'makeup'];
 const AVAILABILITY_KINDS: AvailabilityKind[] = ['available', 'unavailable', 'online_only'];
 const SESSION_MODES: SessionMode[] = ['in_person', 'online'];
 const OWNER_TYPES: AvailabilityOwner[] = ['student', 'instructor', 'room'];
@@ -21,7 +23,11 @@ const RECURRENCE_SCOPES: RecurrenceScope[] = ['this', 'this_and_following', 'all
 
 const isSessionCreate = (o: CreateScheduleRequestDto): boolean => !o.requestKind || o.requestKind === 'session_create';
 const isSessionRequest = (o: CreateScheduleRequestDto): boolean => isSessionCreate(o) || o.requestKind === 'session_update';
-const isSessionTargetRequest = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'session_update' || o.requestKind === 'session_delete';
+const isSessionTargetRequest = (o: CreateScheduleRequestDto): boolean =>
+  o.requestKind === 'session_update'
+  || o.requestKind === 'session_delete'
+  || o.requestKind === 'instructor_attendance_correction';
+const isAttendanceCorrection = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'instructor_attendance_correction';
 const isAvailabilityUpsert = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'availability_upsert';
 const isAvailabilityDelete = (o: CreateScheduleRequestDto): boolean => o.requestKind === 'availability_delete';
 const isAvailabilityRequest = (o: CreateScheduleRequestDto): boolean => isAvailabilityUpsert(o) || isAvailabilityDelete(o);
@@ -93,6 +99,16 @@ export class CreateScheduleRequestDto implements CreateScheduleRequestInput {
   @ValidateIf((o: CreateScheduleRequestDto) => !!o.requestKind && o.requestKind !== 'session_create')
   @IsDefined() @IsString() @MinLength(1) @MaxLength(500)
   requestReason?: string;
+
+  @ApiPropertyOptional({
+    enum: INSTRUCTOR_ATTENDANCE_STATUSES,
+    example: 'late',
+    description: 'instructor_attendance_correction 목표 강사 출결. 현재 값은 서버가 DB에서 snapshot한다.',
+  })
+  @ValidateIf(isAttendanceCorrection)
+  @IsDefined()
+  @IsIn(INSTRUCTOR_ATTENDANCE_STATUSES)
+  requestedInstructorAttendance?: InstructorAttendanceStatus;
 
   @ApiPropertyOptional({ enum: RECURRENCE_SCOPES, example: 'this', description: 'session_update/session_delete 반복 수업 적용 범위' })
   @ValidateIf(isSessionTargetRequest)

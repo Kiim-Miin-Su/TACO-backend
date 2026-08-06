@@ -12,10 +12,11 @@ import {
   toIsoString,
   type PostgresRow,
 } from '../../database/postgres-row.util';
+import { SCHEDULE_REQUEST_ATTENDANCE_CORRECTION_RUNTIME_SQL } from '../../database/migrations/schedule-request-attendance-correction.migration';
 
 const TABLE = 'schedule_requests';
 
-const REQUEST_KINDS = ['session_create', 'session_update', 'session_delete', 'availability_upsert', 'availability_delete'];
+const REQUEST_KINDS = ['session_create', 'session_update', 'session_delete', 'availability_upsert', 'availability_delete', 'instructor_attendance_correction'];
 const REQUEST_STATUSES = ['pending', 'approved', 'rejected'];
 const RECURRENCE_SCOPES = ['this', 'this_and_following', 'all'];
 
@@ -107,6 +108,30 @@ export class ScheduleRequestsStore implements OnModuleInit {
     return rows.map((r) => this.fromDbRow<T>(r));
   }
 
+  async findPendingAttendanceCorrection<T extends BaseRow>(
+    requesterId: number,
+    targetSessionId: number,
+  ): Promise<T | undefined> {
+    if (!this.durable) {
+      return this.memory.findAll<T>(TABLE).find((row) => {
+        const value = row as Record<string, unknown>;
+        return value.requestKind === 'instructor_attendance_correction'
+          && value.status === 'pending'
+          && Number(value.requesterId) === requesterId
+          && Number(value.targetSessionId) === targetSessionId;
+      });
+    }
+    const [row] = await this.query(
+      `SELECT * FROM ${TABLE}
+        WHERE requester_id=$1 AND target_session_id=$2
+          AND request_kind='instructor_attendance_correction'
+          AND status='pending' AND deleted_at IS NULL
+        LIMIT 1`,
+      [requesterId, targetSessionId],
+    );
+    return row ? this.fromDbRow<T>(row) : undefined;
+  }
+
   async findById<T extends BaseRow>(id: number, options?: { forUpdate?: boolean }): Promise<T | undefined> {
     if (!this.durable) return this.memory.findById<T>(TABLE, id);
     const lock = options?.forUpdate ? ' FOR UPDATE' : '';
@@ -158,6 +183,8 @@ export class ScheduleRequestsStore implements OnModuleInit {
         memo text,
         student_ids text NOT NULL DEFAULT '[]',
         request_reason text,
+        instructor_attendance_before varchar(32),
+        requested_instructor_attendance varchar(32),
         scope varchar(32) DEFAULT 'this' CHECK (scope IS NULL OR scope IN (${sqlList(RECURRENCE_SCOPES)})),
         target_availability_id integer,
         availability_owner_type varchar(32),
@@ -194,6 +221,9 @@ export class ScheduleRequestsStore implements OnModuleInit {
         )
       )
     `);
+    for (const sql of SCHEDULE_REQUEST_ATTENDANCE_CORRECTION_RUNTIME_SQL) {
+      await this.postgres.ddl(sql);
+    }
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_status ON ${TABLE} (status) WHERE deleted_at IS NULL`);
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_requester_id ON ${TABLE} (requester_id) WHERE deleted_at IS NULL`);
     await this.postgres.ddl(`CREATE INDEX IF NOT EXISTS idx_schedule_requests_request_kind ON ${TABLE} (request_kind) WHERE deleted_at IS NULL`);
