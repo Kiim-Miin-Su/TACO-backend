@@ -9,6 +9,8 @@ import type {
   OpenClassResult,
   OpenClassSeriesInput,
   OpenClassSeriesResult,
+  CreateHistoricalCompletedSessionInput,
+  HistoricalCompletedSessionResult,
   RoleCapability,
   ScheduleRow,
   ScheduleSeries,
@@ -30,7 +32,7 @@ import { ClassSessionsStore } from './class-sessions.store';
 import { ScheduleReadService, SESSION_DEFAULTS } from './schedule-read.service'; // [TBO-69 C1]
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
 import { selectSeriesScope, type SeriesScope } from './series-scope.policy';
-import { addMinutesGuarded, normalizeSessionTime, storedEndTimeOf } from './session-time.policy';
+import { addMinutesGuarded, normalizeSessionTime, sessionEndPassed, storedEndTimeOf } from './session-time.policy';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import {
   CalendarUnitOfWork,
@@ -248,7 +250,7 @@ export class ScheduleService {
     mode?: ClassSession['mode']; // [v0.1.16] 수업방식(기본 in_person)
     isPublic?: boolean;
     makeupForSessionId?: number; // [대표 지시 ⑭ 2026-07-16] 보강 세션 → 원본(결강) 세션 링크
-  }, actorId?: number): Promise<{ row: ScheduleRow; conflicts: Conflict[] }> {
+  }, actorId?: number, options?: { auditReason?: string }): Promise<{ row: ScheduleRow; conflicts: Conflict[] }> {
     await this.read.ensureReady();
     this.assertCompletionStatusCommand(undefined, dto.status);
     const instructorId = this.read.validateSessionInput(dto); // FK·코호트 공통 검증(함수 통일)
@@ -315,11 +317,103 @@ export class ScheduleService {
         color: dto.color ?? course.color,
       } as Omit<ClassSession, keyof BaseRow>);
       if (actorId != null)
-        await this.audit.log({ entity: SESSIONS, entityId: created.id, action: 'create', actorId, changes: this.audit.snapshotOf(created) as never });
+        await this.audit.log({
+          entity: SESSIONS,
+          entityId: created.id,
+          action: 'create',
+          actorId,
+          changes: this.audit.snapshotOf(created) as never,
+          reason: options?.auditReason,
+        });
       return { row: created, conflicts };
     });
     const roomsMap = new Map(this.rooms.findAll().map((r) => [r.id, r]));
     return { row: this.read.enrich(row, roomsMap), conflicts };
+  }
+
+  /**
+   * [TBO-86D] 과거 완료 수업 이관 command.
+   * 일반 create의 held 직접 주입 금지는 유지하고, 기존 세션 생성/강사 출결/학생 출결 command를
+   * 하나의 UoW에서 실행해 출결 완결 정책이 held를 파생하도록 한다. 어느 audit라도 실패하면 전부 롤백된다.
+   */
+  async createHistoricalCompleted(
+    dto: CreateHistoricalCompletedSessionInput,
+    actorId?: number,
+    actorCapabilities: RoleCapability[] = [],
+  ): Promise<HistoricalCompletedSessionResult> {
+    if (actorId == null || !actorCapabilities.includes('calendar.manage')) {
+      throw new ForbiddenException('과거 완료 수업 이관은 캘린더 관리 권한이 필요합니다.');
+    }
+    const importReason = dto.importReason.trim();
+    if (importReason.length < 5) throw new BadRequestException('이관 사유는 공백 제외 5자 이상 입력해 주세요.');
+    if (new Set(dto.studentIds).size !== dto.studentIds.length) {
+      throw new BadRequestException('학생은 중복 선택할 수 없습니다.');
+    }
+    await this.read.ensureReady();
+    const normalized = normalizeSessionTime({
+      startTime: dto.startTime,
+      endTime: dto.endTime,
+      durationMinutes: dto.durationMinutes,
+    });
+    if (!sessionEndPassed({
+      sessionDate: dto.sessionDate,
+      startTime: normalized.startTime,
+      durationMinutes: normalized.durationMinutes,
+    }, Date.now())) {
+      throw new BadRequestException({
+        code: 'HISTORICAL_SESSION_NOT_ENDED',
+        message: '종료된 과거 수업만 완료 상태로 이관할 수 있습니다.',
+      });
+    }
+    if (dto.kind === 'counsel') {
+      throw new BadRequestException('상담 일정은 강사·학생 출결 기반 완료 수업 이관 대상이 아닙니다.');
+    }
+
+    return this.unitOfWork.run(async () => {
+      const { importReason: omittedImportReason, ...createInput } = dto;
+      void omittedImportReason;
+      const created = await this.create(createInput, actorId, {
+        auditReason: `과거 완료 수업 이관: ${importReason}`,
+      });
+
+      // 외부 attendance.manage 권한을 확장하지 않는다. calendar.manage로 진입한 이 aggregate command
+      // 내부에서만 기존 출결 command에 필요한 시스템 권한을 부여한다.
+      const aggregateCapabilities = [...new Set<RoleCapability>([
+        ...actorCapabilities,
+        'attendance.manage',
+      ])];
+      await this.setInstructorAttendance(
+        created.row.id,
+        { status: 'present' },
+        actorId,
+        aggregateCapabilities,
+      );
+      const attendance: HistoricalCompletedSessionResult['attendance'] = [];
+      for (const studentId of dto.studentIds) {
+        attendance.push(await this.attendance.upsert({
+          sessionId: created.row.id,
+          studentId,
+          status: 'present',
+        }, actorId, aggregateCapabilities));
+      }
+
+      const final = await this.sessions.findByIdDb(created.row.id);
+      if (!final || final.status !== 'held' || final.instructorAttendance !== 'present') {
+        throw new ConflictException({
+          code: 'HISTORICAL_SESSION_TRANSITION_INCOMPLETE',
+          message: '출결 사실이 완결되지 않아 과거 수업 이관을 취소했습니다.',
+        });
+      }
+      const roomsMap = new Map(this.rooms.findAll().map((room) => [room.id, room]));
+      this.logger.log(
+        `action=create_historical_completed session=${final.id} actor=${actorId} students=${attendance.length} result=success`,
+      );
+      return {
+        row: this.read.enrich(final, roomsMap),
+        conflicts: created.conflicts,
+        attendance,
+      };
+    });
   }
 
   /** [TBO-29C C2] 반복 규칙 -> occurrence 날짜 정규화(순수) — [startsOn, endsOn]에서 weekdays에 속하는 날짜.

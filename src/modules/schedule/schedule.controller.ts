@@ -9,6 +9,7 @@ import { ScheduleReadService } from './schedule-read.service'; // [TBO-69 C1]
 import { SetSessionPayAmountDto, UpdateScheduleDto } from './dto/update-schedule.dto';
 import { ClearInstructorAttendanceDto, SetInstructorAttendanceDto } from './dto/instructor-attendance-command.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
+import { CreateHistoricalCompletedScheduleDto } from './dto/create-historical-completed-schedule.dto';
 import { CreateScheduleSeriesDto } from './dto/create-schedule-series.dto';
 import { ConflictCheckDto } from './dto/conflict-check.dto';
 import { SudoGuard } from '../auth/sudo.guard';
@@ -152,6 +153,22 @@ export class ScheduleController {
   @ApiUnauthorizedResponse({ description: '토큰 없음(로그인 필요)' })
   create(@Body() dto: CreateScheduleDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.schedule.create(dto, req.user?.sub); // actor → audit_log(create)
+  }
+
+  @Post('historical-completed')
+  @RequireCapabilities('calendar.manage')
+  @ApiOperation({ summary: '과거 완료 수업 이관 — 세션·강사/학생 정상 출석·held 자동 전이·감사를 한 트랜잭션으로 저장 [매니저 이상]' })
+  @ApiCreatedResponse({ description: '{ row(held), attendance(present[]), conflicts }' })
+  @ApiConflictResponse({ description: '자원/가용시간 충돌 시 전체 롤백' })
+  createHistoricalCompleted(
+    @Body() dto: CreateHistoricalCompletedScheduleDto,
+    @Req() req: Request & { user?: JwtClaims },
+  ) {
+    return this.schedule.createHistoricalCompleted(
+      dto,
+      req.user?.sub,
+      req.user?.effectiveCapabilities ?? [],
+    );
   }
 
   // [TBO-29C C2] POST /api/schedule/series — 반복 생성 bulk command. 서버가 series ID 발급,
