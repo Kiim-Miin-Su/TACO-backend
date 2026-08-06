@@ -47,7 +47,7 @@ export class ReportsController {
   }
 
   @Post()
-  @Roles(...STAFF_ROLES)
+  @RequireCapabilities('report.write') // [TBO-86I-2] 작성 표면 공통 판정 — 소유권은 서비스가 검증
   @ApiOperation({ summary: '보고서 작성(강사 본인 또는 관리자 대리 작성, 세션 FK·중복·담당 강사·참여 학생 검증). 기본 submitted(승인요청).' })
   create(@Body() dto: CreateReportDto, @Req() req: Request & { user?: JwtClaims }) {
     // 소유권 검증(H2 IDOR): 비관리자는 본인 담당 세션만.
@@ -56,21 +56,21 @@ export class ReportsController {
 
   // [TBO-76 76D] 작성값 수정(임시 저장) — 승인 전까지, 본인 보고서만.
   @Patch(':id')
-  @Roles(...STAFF_ROLES)
+  @RequireCapabilities('report.write') // [TBO-86I-2] 작성 표면 공통 판정 — 소유권은 서비스가 검증
   @ApiOperation({ summary: '보고서 수업내용/진도페이지/숙제 수정(승인 전) — 본인 보고서만.' })
   update(@Param('id', PositiveIntPipe) id: number, @Body() dto: UpdateReportDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.reports.updateContent(id, dto, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }
 
   @Delete(':id')
-  @Roles(...STAFF_ROLES)
+  @RequireCapabilities('report.write') // [TBO-86I-2] 작성 표면 공통 판정 — 소유권은 서비스가 검증
   @ApiOperation({ summary: '잘못 만든 draft 보고서 철회(soft delete) — 작성자 본인 또는 관리자.' })
   remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.reports.removeDraft(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
   }
 
   @Post(':id/submit')
-  @Roles(...STAFF_ROLES)
+  @RequireCapabilities('report.write') // [TBO-86I-2] 작성 표면 공통 판정 — 소유권은 서비스가 검증
   @ApiOperation({ summary: '강사 제출(draft → submitted) — 본인 보고서만' })
   submit(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.reports.submit(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined);
