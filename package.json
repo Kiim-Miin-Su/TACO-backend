@@ -84,6 +84,7 @@
     "db:migrate:schedule-request-attendance-correction": "ts-node scripts/migrate-schedule-request-attendance-correction.ts",
     "db:migrate:session-report-revisions": "ts-node scripts/migrate-session-report-revisions.ts",
     "db:migrate:report-template-scope": "ts-node scripts/migrate-report-template-scope.ts",
+    "db:migrate:softdelete-unique-midnight": "ts-node scripts/migrate-softdelete-unique-midnight.ts",
     "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts",
     "verify:runtime-data": "ts-node scripts/verify-runtime-data-boundary.ts",
     "verify:crud-surfaces": "ts-node scripts/verify-crud-surfaces.ts",
@@ -117,7 +118,7 @@
     "contracts:stage:check": "node scripts/stage-local-contracts.js --check"
   },
   "dependencies": {
-    "@kms545487/contracts": "^0.2.55",
+    "@kms545487/contracts": "^0.2.47",
     "@neondatabase/serverless": "^1.1.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",

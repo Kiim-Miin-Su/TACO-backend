@@ -19,6 +19,7 @@ import {
 } from '../../database/migrations/class-session-series.migration';
 import { TBO36_CLASS_SESSIONS_SQL } from '../../database/migrations/staff-pay-calendar.migration';
 import { UNASSIGNED_SESSION_INSTRUCTOR_RUNTIME_SQL } from '../../database/migrations/unassigned-session-instructor.migration';
+import { SOFTDELETE_UNIQUE_MIDNIGHT_SQL } from '../../database/migrations/softdelete-unique-midnight.migration';
 import { TimedModuleInit } from '../../common/performance-timing';
 
 const TABLE = SESSIONS;
@@ -308,6 +309,8 @@ export class ClassSessionsStore implements OnModuleInit {
     await this.postgres.ddl(`ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS paid_payout_id integer`);
     for (const sql of TBO36_CLASS_SESSIONS_SQL) await this.postgres.ddl(sql);
     for (const sql of UNASSIGNED_SESSION_INSTRUCTOR_RUNTIME_SQL) await this.postgres.ddl(sql);
+    // [TBO-86J] 자정 크로스 방어 CHECK(R-9 보존형: end_time IS NULL OR end>start) — guard 멱등.
+    for (const sql of SOFTDELETE_UNIQUE_MIDNIGHT_SQL) await this.postgres.ddl(sql);
     //  backfill은 instructor_payouts 존재 시에만(부팅 순서상 이 store가 먼저 뜰 수 있음 — fresh DB는
     //  backfill 대상 자체가 없어 스킵이 정답).
     await this.postgres.ddl(`

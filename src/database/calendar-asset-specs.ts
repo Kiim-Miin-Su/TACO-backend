@@ -41,6 +41,7 @@ import { AUTH_REFRESH_TOKEN_INTEGRITY_SQL } from './migrations/auth-refresh-toke
 import { INSTRUCTOR_CONTRACT_INTEGRITY_SQL } from './migrations/instructor-contract-integrity.migration';
 import { INSTRUCTOR_CONTRACT_BOUNDS_SQL } from './migrations/instructor-contract-bounds.migration';
 import { TRANSACTION_SOURCE_INTEGRITY_SQL } from './migrations/transaction-source-integrity.migration';
+import { SOFTDELETE_UNIQUE_MIDNIGHT_SQL } from './migrations/softdelete-unique-midnight.migration';
 import { REPORT_TEMPLATE_OWNER_MIGRATION_SQL } from './migrations/report-template-owner.migration';
 import {
   REPORT_TEMPLATE_SCOPE_MIGRATION_SQL,
@@ -115,6 +116,8 @@ export const USERS_SPEC: PostgresCollectionSpec = {
     // [TBO-31 C1 D2] 주민등록번호 — AES-256-GCM 암호문만 저장(평문·마스킹 저장 금지).
     //  birth_year는 RRN 앞자리 파생값으로 계속 채운다(승인센터·instructor_profiles 승계 무파괴).
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS rrn_encrypted text`,
+    // [TBO-86J] soft delete partial unique 잔여(email ci)·자정 CHECK — 표 부재 guard 포함(멱등).
+    ...SOFTDELETE_UNIQUE_MIDNIGHT_SQL,
   ],
   indexes: [
     activeIndex('users', 'idx_users_role', 'role'),
@@ -579,6 +582,8 @@ export const SUBJECTS_SPEC: PostgresCollectionSpec = {
       deleted_by integer
     )
   `,
+  // [TBO-86J] code 전체 UNIQUE → 활성 한정 partial unique(+users email·sessions CHECK 동반, guard 멱등).
+  migrations: [...SOFTDELETE_UNIQUE_MIDNIGHT_SQL],
 };
 
 export const COURSES_SPEC: PostgresCollectionSpec = {
