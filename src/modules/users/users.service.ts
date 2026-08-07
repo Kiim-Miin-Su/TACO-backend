@@ -536,7 +536,9 @@ export class UsersService implements OnModuleInit {
     await this.refreshFromDb();
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'user', id }]);
-      await this.refreshFromDb();
+      // 원부도 fresh read — role 전이(apply/keepTeaching)의 profiles.findActive가 메모리 판정이라
+      //  교차 인스턴스 겸직 부여/해제를 봐야 한다(setTeaching·terminate와 동일 규약).
+      await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
       const before = this.findById(id);
       if (!before) throw new NotFoundException(`계정 ${id} 없음`);
       if (before.role === 'super_admin') throw new BadRequestException('대표(super_admin) 계정은 여기서 수정할 수 없습니다(마이페이지 사용).');
@@ -621,7 +623,9 @@ export class UsersService implements OnModuleInit {
     await this.refreshFromDb();
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'user', id }, { kind: 'user', id: actorId }]);
-      await this.refreshFromDb();
+      // [SSOT 감사 2026-08-07] 원부 전이(deactivateForTermination)의 profiles.findActive는 메모리 판정 —
+      //  교차 인스턴스 겸직 부여를 보려면 users와 함께 원부도 fresh read(setTeaching과 동일 규약).
+      await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]);
       const before = this.db.findById<StaffAccount>(USERS, id, { withDeleted: true });
       if (!before || before.deletedAt) throw new NotFoundException(`활성 계정 ${id} 없음`);
       if (id === actorId) throw new BadRequestException('현재 로그인한 본인 계정은 종료할 수 없습니다.');
@@ -660,7 +664,8 @@ export class UsersService implements OnModuleInit {
     await this.refreshFromDb();
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'user', id }, { kind: 'user', id: actorId }]);
-      await this.refreshFromDb();
+      await Promise.all([this.refreshFromDb(), this.profiles.hydrate()]); // 원부 복구 전이 fresh read
+
       const before = this.db.findById<StaffAccount>(USERS, id, { withDeleted: true });
       if (!before?.deletedAt) throw new NotFoundException(`종료된 계정 ${id} 없음`);
       if (before.role === 'super_admin') throw new BadRequestException('대표 계정은 이 경로로 복구할 수 없습니다.');

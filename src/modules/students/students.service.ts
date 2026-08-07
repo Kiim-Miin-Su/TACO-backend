@@ -331,6 +331,9 @@ export class StudentsService implements OnModuleInit {
     const normalized = this.normalizeFamilyRelation(dto.relationType, dto.relationLabel);
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: studentIdA }, { kind: 'student', id: studentIdB }]);
+      // [SSOT 감사 2026-08-07] lock 뒤 DB fresh read — 교차 인스턴스가 만든 가족 관계·보호자 링크를
+      //  미러가 모르면 중복 판정(아래)과 unionGuardianLinks의 "이미 연결 skip"이 stale로 뚫린다.
+      await this.reloadCommandState({ cascade: true });
       const duplicate = this.db.findBy<StudentFamilyRelation>(STUDENT_FAMILY_RELATIONS, (row) =>
         row.studentIdA === studentIdA && row.studentIdB === studentIdB)[0];
       if (duplicate) throw new ConflictException('두 학생의 활성 가족 관계가 이미 존재합니다.');
@@ -377,8 +380,11 @@ export class StudentsService implements OnModuleInit {
     actorId: number,
   ): Promise<StudentFamilyRelation> {
     return this.uow.run(async () => {
+      // lock 대상 산출용 사전 조회 → lock → DB fresh read → 권위 before 재조회(사전 조회는 판정에 쓰지 않는다).
+      const target = this.familyRelationForStudent(studentId, relationId);
+      await this.uow.lockTargets([{ kind: 'student', id: target.studentIdA }, { kind: 'student', id: target.studentIdB }]);
+      await this.reloadCommandState({ cascade: true });
       const before = { ...this.familyRelationForStudent(studentId, relationId) };
-      await this.uow.lockTargets([{ kind: 'student', id: before.studentIdA }, { kind: 'student', id: before.studentIdB }]);
       const normalized = this.normalizeFamilyRelation(
         dto.relationType ?? before.relationType,
         dto.relationLabel !== undefined
@@ -397,8 +403,10 @@ export class StudentsService implements OnModuleInit {
 
   async removeFamilyRelation(studentId: number, relationId: number, actorId: number): Promise<DeletedResult> {
     return this.uow.run(async () => {
+      const target = this.familyRelationForStudent(studentId, relationId);
+      await this.uow.lockTargets([{ kind: 'student', id: target.studentIdA }, { kind: 'student', id: target.studentIdB }]);
+      await this.reloadCommandState({ cascade: true });
       const before = { ...this.familyRelationForStudent(studentId, relationId) };
-      await this.uow.lockTargets([{ kind: 'student', id: before.studentIdA }, { kind: 'student', id: before.studentIdB }]);
       await this.store.remove(STUDENT_FAMILY_RELATIONS_SPEC, relationId, actorId);
       await this.audit.log({
         entity: STUDENT_FAMILY_RELATIONS, entityId: relationId, action: 'delete', actorId,
@@ -423,6 +431,9 @@ export class StudentsService implements OnModuleInit {
     const normalized = this.normalizeAcademicHistory(dto);
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
+      // [SSOT 감사 2026-08-07] student_academic_histories는 DB 겹침 제약이 없어 이 앱단 판정이 유일
+      //  방어선이다 — lock 뒤 fresh read 없이는 교차 인스턴스 이력과 겹친 구간이 저장된다(투영 오염).
+      await this.reloadCommandState();
       this.assertNoAcademicOverlap(studentId, normalized);
       const row = await this.store.insert<StudentAcademicHistory>(STUDENT_ACADEMIC_HISTORIES_SPEC, {
         studentId, ...normalized, changedBy: actorId, changedAt: new Date().toISOString(),
@@ -444,6 +455,7 @@ export class StudentsService implements OnModuleInit {
   ): Promise<StudentAcademicHistory> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
+      await this.reloadCommandState();
       const before = { ...this.academicHistoryForStudent(studentId, historyId) };
       const normalized = this.normalizeAcademicHistory({ ...before, ...dto });
       this.assertNoAcademicOverlap(studentId, normalized, historyId);
@@ -463,6 +475,7 @@ export class StudentsService implements OnModuleInit {
   async removeAcademicHistory(studentId: number, historyId: number, actorId: number): Promise<DeletedResult> {
     return this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'student', id: studentId }]);
+      await this.reloadCommandState();
       const before = { ...this.academicHistoryForStudent(studentId, historyId) };
       await this.store.remove(STUDENT_ACADEMIC_HISTORIES_SPEC, historyId, actorId);
       await this.audit.log({
@@ -604,12 +617,17 @@ export class StudentsService implements OnModuleInit {
 
   // 부분 수정 — 업무 상태 전이는 status_change audit, 삭제는 remove의 deleted_at 경로로 완전히 분리한다.
   async update(id: number, dto: UpdateStudentDto, actorId: number): Promise<Student> {
-    // ⚠ live-reference 함정: findOne은 메모리 행 참조를 그대로 주므로 update가 before까지 바꾼다 — 클론 필수.
-    const before = { ...this.findOne(id) };
-    const merged = { ...before, ...dto };
-    const gradeError = studentGradeBirthDateError(merged.grade, merged.birthDate);
-    if (gradeError) throw new BadRequestException(gradeError);
+    this.findOne(id); // 사전 404 fail-fast(판정은 lock 뒤 fresh before 기준)
     return this.uow.run(async () => {
+      // [SSOT 감사 2026-08-07] 종전엔 lock 없이 tx 밖 메모리 before로 학년 전이·audit before를 만들었다
+      //  — stale 학년으로 이력 전이/감사 오염 가능. lock → DB fresh read → 권위 before로 교정.
+      await this.uow.lockTargets([{ kind: 'student', id }]);
+      await this.reloadCommandState();
+      // ⚠ live-reference 함정: findOne은 메모리 행 참조를 그대로 주므로 update가 before까지 바꾼다 — 클론 필수.
+      const before = { ...this.findOne(id) };
+      const merged = { ...before, ...dto };
+      const gradeError = studentGradeBirthDateError(merged.grade, merged.birthDate);
+      if (gradeError) throw new BadRequestException(gradeError);
       const { grade, schoolName, ...profilePatch } = dto;
       if (Object.keys(profilePatch).length) await this.store.update<Student>(STUDENTS_SPEC, id, profilePatch);
       if (grade !== undefined || schoolName !== undefined) {

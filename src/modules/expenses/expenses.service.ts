@@ -108,7 +108,12 @@ export class ExpensesService implements OnModuleInit {
       const row = await this.getDb(id);
       if (row.status !== 'requested')
         throw new BadRequestException(`철회 불가 상태(${row.status}) — requested만 철회 가능`);
-      const removed = await this.store.remove(EXPENSES_SPEC, id, actorId);
+      // [SSOT 감사 2026-08-07] getDb 판정과 remove 사이 경합 봉쇄 — 같은 파일 update/approve/reject는
+      //  전부 status CAS(updateIf)인데 withdraw만 무조건 remove였다. 교차 인스턴스가 그 사이 approve하면
+      //  원장 출금 1줄이 남은 채 지출이 soft-delete되는 원장 불일치. updateIf(status='requested')가
+      //  행 잠금 + 상태 가드를 겸한다(같은 tx라 remove까지 원자).
+      const guarded = await this.store.updateIf<Expense>(EXPENSES_SPEC, id, { status: 'requested' }, { status: 'requested' });
+      const removed = guarded ? await this.store.remove(EXPENSES_SPEC, id, actorId) : false;
       if (!removed) {
         this.moneyLog.warn(`action=withdraw expense=${id} actor=${actorId ?? 0} result=conflict`);
         throw new ConflictException('지출이 이미 변경/삭제되었습니다. 새로고침 후 다시 시도해 주세요.');

@@ -1,4 +1,5 @@
 import { ConflictException, Injectable } from '@nestjs/common';
+import type { AccountingAckInput } from '@kms545487/contracts';
 import { CoursesService } from '../courses/courses.service';
 import type { ClassSession } from './schedule.entity';
 import {
@@ -13,11 +14,9 @@ import {
   type SessionAccountingContext,
 } from './session-accounting-context.service';
 
-/** 회계 영향 확인을 요구하는 명령이 공통으로 받는 입력. */
-export type AccountingAckInput = {
-  acknowledgeAccountingImpact?: boolean;
-  expectedAccountingImpactHash?: string;
-};
+/** 회계 영향 확인 공통 입력 — [SSOT 감사 2026-08-07] 로컬 사본 제거, contracts가 단일 소스
+ *  (Clear/SetInstructorAttendance/RejectReport 등 4개 입력의 기반 타입 — 계약 드리프트 방지). */
+export type { AccountingAckInput };
 
 type ImpactShape = Pick<ClassSession, 'courseId' | 'instructorId' | 'studentIds'>
   & Parameters<typeof accountingImpactOf>[0];
