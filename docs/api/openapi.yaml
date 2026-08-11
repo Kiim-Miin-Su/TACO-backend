@@ -587,9 +587,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: >-
-        강사 직접 등록(대표 전용·재인증 필수) — 즉시 active, users+instructor_profiles+audit 원자 tx. cookie 세션은 reauth 후 10분 내만 허용(403
-        SUDO_REQUIRED).
+      summary: 강사 직접 등록 alias(매니저 이상·재인증 필수) — users+instructor_profiles+audit 원자 tx. 기본 시급은 재무 권한 필요.
       tags:
         - Users
   /api/users/exists:
@@ -908,7 +906,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 강사 직접 생성. 대표 전용, users+profile+audit 원자 처리.
+      summary: 강사 직접 생성. 매니저 이상+재인증, users+profile+audit 원자 처리. 기본 시급은 재무 권한 필요.
       tags:
         - instructors
   /api/instructors/{id}:
@@ -963,7 +961,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 강사 프로필·기본 페이·Kinder 수정. 대표 전용, audit 기록.
+      summary: 강사 프로필·Kinder 수정. 매니저 이상+재인증, audit 기록. 기본 시급은 재무 권한 필요.
       tags:
         - instructors
     delete:
@@ -987,7 +985,7 @@ paths:
       security:
         - bearer: []
         - access_token: []
-      summary: 강사 soft delete. 대표 전용, 활성 수업·스케줄·계약은 409.
+      summary: 강사 soft delete. 매니저 이상+재인증, 활성 수업·스케줄·계약은 409.
       tags:
         - instructors
   /api/audit:
@@ -1709,7 +1707,7 @@ paths:
             application/json:
               schema:
                 type: object
-      summary: 학생 원부 soft delete 및 관련 활성 관계 정리(재인증 필수) [대표/관리자]. 매니저는 퇴원 상태 변경만 가능.
+      summary: 학생 원부 soft delete 및 관련 활성 관계 정리(재인증 필수) [매니저 이상].
       tags:
         - students
       security:
@@ -6337,6 +6335,7 @@ components:
           maxLength: 20
         email:
           type: string
+          nullable: true
           format: email
         university:
           type: string
