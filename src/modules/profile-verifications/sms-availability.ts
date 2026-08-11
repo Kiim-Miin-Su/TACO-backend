@@ -13,6 +13,10 @@ export function smsChallengeAvailable(): boolean {
 //  provider 코드 소유)는 마이페이지 재인증 fallback으로만 남기고, 공개 가입 흐름은 서비스 코드
 //  소유(hash 대조) 규약이 강제되는 SENS만 지원한다(signup-phone-challenges.service 상단 주석).
 export function sensChallengeAvailable(): boolean {
-  return Boolean(process.env.NCP_SENS_ACCESS_KEY && process.env.NCP_SENS_SECRET_KEY
-    && process.env.NCP_SENS_SERVICE_ID && process.env.NCP_SENS_FROM);
+  return [
+    process.env.NCP_SENS_ACCESS_KEY,
+    process.env.NCP_SENS_SECRET_KEY,
+    process.env.NCP_SENS_SERVICE_ID,
+    process.env.NCP_SENS_FROM,
+  ].every((value) => Boolean(value?.trim()));
 }
