@@ -88,11 +88,11 @@ export class InstructorHrService {
       if (patch.name !== undefined) userPatch.name = patch.name.trim();
       if (patch.phone !== undefined) userPatch.phone = patch.phone.trim() || null;
       if (patch.email !== undefined) {
-        const email = patch.email.trim().toLowerCase();
-        const taken = this.db.findBy<StaffAccount>(USERS, (a) => a.id !== id && !!a.email && a.email.toLowerCase() === email).length > 0;
+        const email = patch.email?.trim().toLowerCase() || null;
+        const taken = email != null && this.db.findBy<StaffAccount>(USERS, (a) => a.id !== id && !!a.email && a.email.toLowerCase() === email).length > 0;
         if (taken) throw new BadRequestException('이미 사용 중인 이메일입니다.');
         userPatch.email = email;
-        if (email !== (beforeAccount.email ?? '').toLowerCase()) userPatch.authVersion = authVersionOf(beforeAccount) + 1;
+        if ((email ?? '') !== (beforeAccount.email ?? '').toLowerCase()) userPatch.authVersion = authVersionOf(beforeAccount) + 1;
       }
       if (patch.countryCode !== undefined) userPatch.countryCode = patch.countryCode?.trim() || null;
       if (patch.timeZone !== undefined) userPatch.timeZone = patch.timeZone?.trim() || null;

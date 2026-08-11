@@ -50,9 +50,11 @@ describe('Instructor aggregate CRUD (e2e)', () => {
 
     await http.patch(`/api/instructors/${id}`).set(sudo(role)).send({ defaultHourlyRate: 60000 }).expect(403);
     const updated = (await http.patch(`/api/instructors/${id}`).set(sudo(role)).send({
-      name: `${role} 수정 강사`, canTeachKinder: false,
+      name: `${role} 수정 강사`, email: `${webId}@tnacademy.test`, canTeachKinder: false,
     }).expect(200)).body;
-    expect(updated).toMatchObject({ name: `${role} 수정 강사`, defaultHourlyRate: 0, canTeachKinder: false });
+    expect(updated).toMatchObject({ name: `${role} 수정 강사`, email: `${webId}@tnacademy.test`, defaultHourlyRate: 0, canTeachKinder: false });
+    await http.patch(`/api/instructors/${id}`).set(sudo(role)).send({ email: null }).expect(200)
+      .expect(({ body }) => expect(body.email).toBeNull());
 
     const audit = app.get(AuditService);
     const profileAudit = await audit.list({ entity: 'instructor_profiles', entityId: id });

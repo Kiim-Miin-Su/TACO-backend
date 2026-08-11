@@ -12,9 +12,9 @@ export class UpdateInstructorDto implements UpdateInstructorInput {
   @IsOptional() @IsString() @MaxLength(20)
   phone?: string;
 
-  @ApiPropertyOptional()
+  @ApiPropertyOptional({ nullable: true })
   @IsOptional() @IsEmail()
-  email?: string;
+  email?: string | null;
 
   @ApiPropertyOptional({ nullable: true, maxLength: 100 })
   @IsOptional() @IsString() @MaxLength(100)
