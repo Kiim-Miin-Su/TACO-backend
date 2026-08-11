@@ -88,11 +88,12 @@ describe('Signup email OTP + RRN + webId policy (e2e, TBO-31 C1)', () => {
     }
     // challenge는 같은 tx에서 일회 소비 — consumed + consumed_by_user_id
     expect(challengeOf(fresh.id)).toMatchObject({ status: 'consumed', consumedByUserId: id });
-    // 소진된 챌린지 재사용 가입 → 400
-    await http.post('/api/auth/signup').send({
+    // 같은 이메일 재가입은 OTP 재사용 판정보다 앞선 연락처 중복 게이트에서 409.
+    const replay = await http.post('/api/auth/signup').send({
       webId: 't31_otp1_re', name: '재사용', email, password: 'password123',
       rrn: '950101-1234567', emailChallengeId: fresh.id,
-    }).expect(400);
+    }).expect(409);
+    expect(replay.body.code).toBe('SIGNUP_EMAIL_ALREADY_REGISTERED');
 
     // 승인센터 pending 목록 — rrnMasked 형식('950101-1******')·평문/암호문 미노출·birthYear 유지
     const admin = await login('admin');
@@ -103,25 +104,21 @@ describe('Signup email OTP + RRN + webId policy (e2e, TBO-31 C1)', () => {
     expect(JSON.stringify(pending)).not.toContain('950101-1234567');
   });
 
-  it('①b 쿨다운 400 + 이미 가입된 이메일도 create 응답 동일(발송 생략 — 열거 방지)', async () => {
+  it('①b 쿨다운 400 + 이미 가입된 이메일은 409이고 challenge를 만들지 않는다', async () => {
     const email = 'cooldown@t31.test';
     const first = (await http.post('/api/auth/signup-email-challenge').send({ email }).expect(201)).body;
     // 쿨다운(60초) 내 재요청 → 400 (pending 활성 기준)
     await http.post('/api/auth/signup-email-challenge').send({ email }).expect(400);
     expect(challengeOf(first.id).status).toBe('pending');
 
-    // 이미 가입된 이메일(시드 admin) — 미가입과 **동일 형태** 201 응답. 발송만 생략되며,
-    //  confirm→signup까지 가도 가입의 이메일 중복 400으로 끝난다(계정 존재를 열거할 수 없다).
-    const taken = (await http.post('/api/auth/signup-email-challenge').send({ email: 'admin@tnacademy.test' }).expect(201)).body;
-    expect(taken.id).toBeGreaterThan(0);
-    expect(String(taken.devOtpCode)).toMatch(/^\d{6}$/);
-    expect(Object.keys(taken).sort()).toEqual(Object.keys(first).sort()); // 응답 shape 동일
-    await http.post(`/api/auth/signup-email-challenge/${taken.id}/confirm`)
-      .send({ email: 'admin@tnacademy.test', code: taken.devOtpCode }).expect(201);
-    await http.post('/api/auth/signup').send({
-      webId: 't31_dupemail', name: '중복', email: 'admin@tnacademy.test', password: 'password123',
-      rrn: '950101-1234567', emailChallengeId: taken.id,
-    }).expect(400);
+    const before = db.findAll<ChallengeRow>('signup_email_challenges').length;
+    const taken = await http.post('/api/auth/signup-email-challenge')
+      .send({ email: 'ADMIN@tnacademy.test' }).expect(409);
+    expect(taken.body).toMatchObject({
+      code: 'SIGNUP_EMAIL_ALREADY_REGISTERED',
+      message: '이미 가입된 이메일입니다.',
+    });
+    expect(db.findAll<ChallengeRow>('signup_email_challenges')).toHaveLength(before);
   });
 
   it('② 미인증(pending) 챌린지로 signup → 400, 계정 미생성(같은 tx 롤백)', async () => {

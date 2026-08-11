@@ -9,7 +9,6 @@ import { TimedModuleInit } from '../../common/performance-timing';
 //  이메일판 devOtpCode 관례. production+SENS 부재는 fail-closed 503).
 import { BadRequestException, Inject, Injectable, Logger, OnModuleInit, ServiceUnavailableException } from '@nestjs/common';
 import { createHash, randomInt } from 'crypto';
-import parsePhoneNumberFromString from 'libphonenumber-js';
 import { isProduction } from '../../common/env';
 import type { BaseRow } from '../../common/types/base';
 import { logLine } from '../../common/log-line';
@@ -22,6 +21,7 @@ import {
   type ContactVerificationProvider,
 } from '../profile-verifications/contact-verification.provider';
 import { sensChallengeAvailable } from '../profile-verifications/sms-availability';
+import { SignupContactAvailabilityService } from './signup-contact-availability.service';
 import {
   CHALLENGE_TTL_MS,
   MAX_ATTEMPTS,
@@ -77,6 +77,7 @@ export class SignupPhoneChallengesService implements OnModuleInit {
     private readonly db: InMemoryDatabase,
     private readonly store: PostgresCollectionStore,
     private readonly uow: CalendarUnitOfWork,
+    private readonly contacts: SignupContactAvailabilityService,
     @Inject(CONTACT_VERIFICATION_PROVIDER) private readonly provider: ContactVerificationProvider,
   ) {}
 
@@ -94,13 +95,14 @@ export class SignupPhoneChallengesService implements OnModuleInit {
   // ── 발송 ────────────────────────────────────────────────────────────────
   /**
    * challenge 생성 + OTP 발송. 재발송 규약 = 이메일판과 동일(별도 resend 없이 쿨다운 60초 후
-   * 기존 pending supersede). 전화번호는 계정 유니크 제약이 없어 열거 방지 발송 생략 분기가 없다
-   * (항상 발송). 발송은 tx 안·insert 전 — SENS 호출 실패(예외) 시 row +0.
+   * 기존 pending supersede). users 권위 DB에서 E.164 기준 기존 번호를 먼저 막으며, 중복이면
+   * challenge와 provider 호출 모두 +0이다. 발송은 tx 안·insert 전 — SENS 실패 시 row +0.
    */
   async create(rawPhone: string): Promise<SignupPhoneChallengeResponse> {
-    const phone = this.normalizePhone(rawPhone);
+    const phone = this.contacts.normalize('sms', rawPhone);
     const result = await this.uow.run(async () => {
       await this.refresh();
+      await this.contacts.assertAvailable('sms', phone);
       const now = Date.now();
       const actives = this.db.findBy<SignupPhoneChallenge>(
         SIGNUP_PHONE_CHALLENGES,
@@ -149,7 +151,7 @@ export class SignupPhoneChallengesService implements OnModuleInit {
   // ── 확인 ────────────────────────────────────────────────────────────────
   /** 코드 확인 — sha256 대조·시도 5회 잠금·만료 판정. 실패 카운터는 예외보다 먼저 커밋한다. */
   async confirm(id: number, rawPhone: string, code: string): Promise<{ id: number; status: 'verified' }> {
-    const phone = this.normalizePhone(rawPhone);
+    const phone = this.contacts.normalize('sms', rawPhone);
     const outcome = await this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'signupPhoneChallenge', id }]);
       await this.refresh();
@@ -197,7 +199,7 @@ export class SignupPhoneChallengesService implements OnModuleInit {
    * 전체 롤백(부분 상태 0). 성공 시 consumed + consumed_by_user_id 기록.
    */
   async consumeForSignup(id: number, rawPhone: string, createdUserId: number): Promise<SignupPhoneChallenge> {
-    const phone = this.normalizePhone(rawPhone);
+    const phone = this.contacts.normalize('sms', rawPhone);
     await this.uow.lockTargets([{ kind: 'signupPhoneChallenge', id }]);
     await this.store.hydrate<SignupPhoneChallenge>(SIGNUP_PHONE_CHALLENGES_SPEC);
     const challenge = this.db.findById<SignupPhoneChallenge>(SIGNUP_PHONE_CHALLENGES, id);
@@ -218,15 +220,6 @@ export class SignupPhoneChallengesService implements OnModuleInit {
   }
 
   // ── 내부 ────────────────────────────────────────────────────────────────
-  /** 휴대전화 canonical(E.164) — profile-verifications.normalizeTarget('sms') 규약 동일. */
-  normalizePhone(raw: string): string {
-    const parsed = parsePhoneNumberFromString(raw.trim(), 'KR');
-    if (!parsed?.isValid()) throw new BadRequestException('올바른 휴대전화 번호가 아닙니다.');
-    const e164 = parsed.number;
-    if (!/^\+[1-9]\d{7,14}$/.test(e164)) throw new BadRequestException('올바른 휴대전화 번호가 아닙니다.');
-    return e164;
-  }
-
   private isExpired(challenge: SignupPhoneChallenge): boolean {
     return Date.parse(challenge.expiresAt) <= Date.now();
   }

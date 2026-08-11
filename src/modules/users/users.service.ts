@@ -20,6 +20,7 @@ import {
 } from '../../common/rrn-crypto.util'; // [TBO-31 C1 D2] (마스킹은 user.entity.rrnMaskedOf — TBO-68 C3)
 import { SignupEmailChallengesService } from '../auth/signup-email-challenges.service'; // [TBO-31 C1 D1]
 import { SignupPhoneChallengesService } from '../auth/signup-phone-challenges.service'; // [TBO-57]
+import { SignupContactAvailabilityService } from '../auth/signup-contact-availability.service';
 import { INSTRUCTOR_PROFILES, InstructorProfilesStore, activeTeachingProfileUserIds, type InstructorProfile } from './instructor-profiles.store';
 import { UserRoleTransitionService } from './user-role-transition.service';
 import { claimRolesFor,
@@ -55,6 +56,8 @@ export class UsersService implements OnModuleInit {
     // [TBO-57] 가입 tx에서 휴대전화 OTP challenge를 일회 소비(SENS 설정 시 필수) — 동일 forwardRef.
     @Inject(forwardRef(() => SignupPhoneChallengesService))
     private readonly signupPhoneChallenges: SignupPhoneChallengesService,
+    @Inject(forwardRef(() => SignupContactAvailabilityService))
+    private readonly signupContacts: SignupContactAvailabilityService,
   ) {}
 
   // [TBO-68 C3] 강사 HR aggregate CRUD → instructor-hr.service.ts 분리(본문 이동 — 규약 무변).
@@ -130,7 +133,8 @@ export class UsersService implements OnModuleInit {
   }): Promise<{ account: SafeAccount }> {
     await this.refreshFromDb(); // [28F] 교차 인스턴스 중복 검사 정합
     const webId = input.webId.trim();
-    const email = input.email.trim().toLowerCase();
+    const email = this.signupContacts.normalize('email', input.email);
+    const phone = input.phone?.trim() ? this.signupContacts.normalize('sms', input.phone) : null;
     const role: StaffRole = input.role && isStaffRole(input.role) && input.role !== 'super_admin' ? input.role : 'instructor';
     if (webId.length < 3) throw new BadRequestException('아이디는 3자 이상이어야 합니다.');
     if (input.password.length < 8) throw new BadRequestException('비밀번호는 8자 이상이어야 합니다.');
@@ -140,57 +144,59 @@ export class UsersService implements OnModuleInit {
     const rrnEncrypted = encryptRrn(rrnCanonical);
     const birthYear = birthYearFromRrn(rrnCanonical); // 파생 저장 — 기존 승계·표시 소비처 무파괴
     if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.');
-    if (this.db.findBy<StaffAccount>(USERS, (a) => !!a.email && a.email.toLowerCase() === email).length)
-      throw new BadRequestException('이미 사용 중인 이메일입니다.');
+    this.signupContacts.assertAvailableInCurrentProjection('email', email);
+    if (phone) this.signupContacts.assertAvailableInCurrentProjection('sms', phone);
 
     const passwordHash = await bcrypt.hash(input.password, 12) // [보안 2026-07-03] cost 12;
     // [M1] await(hash) 사이에 동일 webId/email 가입이 끼어들 수 있음(TOCTOU) — insert 직전 동기 재검증
     if (this.findByWebId(webId)) throw new BadRequestException('이미 사용 중인 아이디입니다.');
-    if (this.db.findBy<StaffAccount>(USERS, (a) => !!a.email && a.email.toLowerCase() === email).length)
-      throw new BadRequestException('이미 사용 중인 이메일입니다.');
+    this.signupContacts.assertAvailableInCurrentProjection('email', email);
+    if (phone) this.signupContacts.assertAvailableInCurrentProjection('sms', phone);
     return this.uow.run(async () => {
-    const acc = await this.store.insert<StaffAccount>(USERS_SPEC, {
-      webId, name: input.name.trim(), email, role,
-      status: 'pending', passwordHash,
-      // [D1] 가입 전 OTP로 이메일 소유 실증 완료 — verified 생성, 링크 토큰 컬럼은 처음부터 null.
-      emailVerified: true,
-      emailVerifyTokenHash: null,
-      emailVerifyExpiresAt: null,
-      authVersion: 1,
-      profileVersion: 1,
-      mustChangePassword: false,
-      // [E0.5 ④b] 지원자 제공 정보 — 승인센터 상세에 노출, 승인 tx에서 instructor_profiles 승계.
-      phone: input.phone?.trim() || null,
-      university: input.university?.trim() || null,
-      major: input.major?.trim() || null,
-      birthYear,
-      rrnEncrypted,
-    });
-    // [D1] challenge 소비 — verified·이메일 일치·미소비 검증. 실패 예외 → 계정 insert까지 롤백.
-    await this.signupChallenges.consumeForSignup(input.emailChallengeId, email, acc.id);
-    // [TBO-57] 휴대전화 OTP 소비 — SENS 설정(required) 환경에서만 필수. 판정 단일 진실원 =
-    //  signupPhoneChallenges.required() (GET /auth/signup-config와 같은 소스 — FE 스테퍼·submit
-    //  게이트와 불일치 불가). 실패 예외 → 계정 insert까지 롤백(부분 상태 0).
-    {
-      const rawPhone = input.phone?.trim();
-      if (this.signupPhoneChallenges.required()) {
-        if (!rawPhone) throw new BadRequestException('휴대전화 번호를 입력해 주세요.');
-        if (input.phoneChallengeId == null) throw new BadRequestException('휴대전화 인증이 필요합니다. 인증을 먼저 완료해 주세요.');
+      await this.signupContacts.assertAvailable('email', email);
+      if (phone) await this.signupContacts.assertAvailable('sms', phone);
+      const acc = await this.store.insert<StaffAccount>(USERS_SPEC, {
+        webId, name: input.name.trim(), email, role,
+        status: 'pending', passwordHash,
+        // [D1] 가입 전 OTP로 이메일 소유 실증 완료 — verified 생성, 링크 토큰 컬럼은 처음부터 null.
+        emailVerified: true,
+        emailVerifyTokenHash: null,
+        emailVerifyExpiresAt: null,
+        authVersion: 1,
+        profileVersion: 1,
+        mustChangePassword: false,
+        // [E0.5 ④b] 지원자 제공 정보 — 승인센터 상세에 노출, 승인 tx에서 instructor_profiles 승계.
+        phone,
+        university: input.university?.trim() || null,
+        major: input.major?.trim() || null,
+        birthYear,
+        rrnEncrypted,
+      });
+      // [D1] challenge 소비 — verified·이메일 일치·미소비 검증. 실패 예외 → 계정 insert까지 롤백.
+      await this.signupChallenges.consumeForSignup(input.emailChallengeId, email, acc.id);
+      // [TBO-57] 휴대전화 OTP 소비 — SENS 설정(required) 환경에서만 필수. 판정 단일 진실원 =
+      //  signupPhoneChallenges.required() (GET /auth/signup-config와 같은 소스 — FE 스테퍼·submit
+      //  게이트와 불일치 불가). 실패 예외 → 계정 insert까지 롤백(부분 상태 0).
+      {
+        const rawPhone = phone;
+        if (this.signupPhoneChallenges.required()) {
+          if (!rawPhone) throw new BadRequestException('휴대전화 번호를 입력해 주세요.');
+          if (input.phoneChallengeId == null) throw new BadRequestException('휴대전화 인증이 필요합니다. 인증을 먼저 완료해 주세요.');
+        }
+        // 비필수 환경에서도 제출된 challenge는 소비한다(개발·e2e에서 전체 흐름 검증 가능 — 판정만 env 게이트).
+        if (input.phoneChallengeId != null) {
+          if (!rawPhone) throw new BadRequestException('휴대전화 번호를 입력해 주세요.');
+          await this.signupPhoneChallenges.consumeForSignup(input.phoneChallengeId, rawPhone, acc.id);
+        }
       }
-      // 비필수 환경에서도 제출된 challenge는 소비한다(개발·e2e에서 전체 흐름 검증 가능 — 판정만 env 게이트).
-      if (input.phoneChallengeId != null) {
-        if (!rawPhone) throw new BadRequestException('휴대전화 번호를 입력해 주세요.');
-        await this.signupPhoneChallenges.consumeForSignup(input.phoneChallengeId, rawPhone, acc.id);
-      }
-    }
-    // [감사 전수 2026-07-16] 자기 가입 생성 이력 — actor=생성된 본인(추적 기점). PII·RRN은 기록 안 함
-    //  (D2: rrn은 마스킹조차 남기지 않는다 — 기록 자체 생략).
-    await this.audit.log({
-      entity: 'users', entityId: acc.id, action: 'create', actorId: acc.id,
-      changes: { webId: { after: acc.webId }, role: { after: acc.role }, status: { after: 'pending' } },
-      reason: '자기 가입 신청',
-    });
-    return { account: toSafe(acc) };
+      // [감사 전수 2026-07-16] 자기 가입 생성 이력 — actor=생성된 본인(추적 기점). PII·RRN은 기록 안 함
+      //  (D2: rrn은 마스킹조차 남기지 않는다 — 기록 자체 생략).
+      await this.audit.log({
+        entity: 'users', entityId: acc.id, action: 'create', actorId: acc.id,
+        changes: { webId: { after: acc.webId }, role: { after: acc.role }, status: { after: 'pending' } },
+        reason: '자기 가입 신청',
+      });
+      return { account: toSafe(acc) };
     });
   }
 

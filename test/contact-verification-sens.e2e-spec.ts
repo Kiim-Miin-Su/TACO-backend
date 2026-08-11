@@ -8,13 +8,14 @@ import { createTestApp } from './setup-app';
 import { InMemoryDatabase } from '../src/database/in-memory.database';
 import {
   DefaultContactVerificationProvider,
+  sensFailureDiagnostic,
   sensRecipientOf,
   sensSignature,
 } from '../src/modules/profile-verifications/default-contact-verification.provider';
 import type { MailService } from '../src/modules/mail/mail.service';
 
 const SENS_ENV = {
-  NCP_SENS_ACCESS_KEY: ' test-access-key ',
+  NCP_SENS_ACCESS_KEY_ID: ' test-access-key ',
   NCP_SENS_SECRET_KEY: ' test-secret-key\n',
   NCP_SENS_SERVICE_ID: ' ncp:sms:kr:123:taco ', // 실제 SENS 형식 — ':'를 URL 인코딩하지 않는다.
   NCP_SENS_FROM: '02-1234-5678',
@@ -127,5 +128,9 @@ describe('[SENS] contact verification via NCP SENS (e2e)', () => {
     );
     expect(sensRecipientOf('+821055550101')).toEqual({ countryCode: '82', to: '01055550101' });
     expect(sensRecipientOf('+447911123456')).toEqual({ countryCode: '44', to: '7911123456' });
+    expect(sensFailureDiagnostic({ error: { errorCode: '200', message: 'Authentication Failed' } }))
+      .toEqual({ providerCode: '200', category: 'authentication' });
+    expect(sensFailureDiagnostic({ errorCode: '<unsafe>', message: 'contains signature mismatch' }))
+      .toEqual({ providerCode: 'unknown', category: 'signature' });
   });
 });

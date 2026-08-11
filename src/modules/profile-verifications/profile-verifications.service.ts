@@ -14,7 +14,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { createHash, randomInt } from 'crypto';
-import { parsePhoneNumberFromString } from 'libphonenumber-js';
+import { normalizeContactTarget, tryNormalizePhone } from '../../common/contact-normalization';
 import { InMemoryDatabase } from '../../database/in-memory.database';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { PROFILE_VERIFICATION_CHALLENGES_SPEC } from '../../database/calendar-asset-specs';
@@ -255,18 +255,7 @@ export class ProfileVerificationsService implements OnModuleInit {
 
   // ── 정규화·중복 검사(생성·승인 공용) ────────────────────────────────────
   normalizeTarget(channel: VerificationChannel, raw: string): string {
-    if (channel === 'email') {
-      const email = raw.trim().toLowerCase();
-      if (email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-        throw new BadRequestException('올바른 이메일 주소가 아닙니다.');
-      }
-      return email;
-    }
-    const parsed = parsePhoneNumberFromString(raw.trim(), 'KR');
-    if (!parsed?.isValid()) throw new BadRequestException('올바른 휴대전화 번호가 아닙니다.');
-    const e164 = parsed.number;
-    if (!/^\+[1-9]\d{7,14}$/.test(e164)) throw new BadRequestException('올바른 휴대전화 번호가 아닙니다.');
-    return e164;
+    return normalizeContactTarget(channel, raw);
   }
 
   /** 발송 전·승인 tx 안 양쪽에서 재검사(§3) — canonical 값 기준, 본인 제외. */
@@ -276,8 +265,7 @@ export class ProfileVerificationsService implements OnModuleInit {
       if (u.id === requesterId) return false;
       if (channel === 'email') return !!u.email && u.email.trim().toLowerCase() === target;
       if (!u.phone) return false;
-      const normalized = parsePhoneNumberFromString(u.phone.trim(), 'KR');
-      return normalized?.isValid() ? normalized.number === target : false;
+      return tryNormalizePhone(u.phone) === target;
     });
     if (clash) throw new ConflictException('이미 사용 중인 연락처입니다.');
   }

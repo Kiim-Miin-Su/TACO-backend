@@ -14,9 +14,16 @@ export function smsChallengeAvailable(): boolean {
 //  소유(hash 대조) 규약이 강제되는 SENS만 지원한다(signup-phone-challenges.service 상단 주석).
 export function sensChallengeAvailable(): boolean {
   return [
-    process.env.NCP_SENS_ACCESS_KEY,
+    ncpSensAccessKey(),
     process.env.NCP_SENS_SECRET_KEY,
     process.env.NCP_SENS_SERVICE_ID,
     process.env.NCP_SENS_FROM,
   ].every((value) => Boolean(value?.trim()));
+}
+
+/** NCP 콘솔 명칭(Access Key ID)을 정본으로 사용하고 기존 배포 키는 호환용으로만 허용한다. */
+export function ncpSensAccessKey(): string | undefined {
+  return process.env.NCP_SENS_ACCESS_KEY_ID?.trim()
+    || process.env.NCP_SENS_ACCESS_KEY?.trim()
+    || undefined;
 }

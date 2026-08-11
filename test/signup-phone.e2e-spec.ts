@@ -93,10 +93,20 @@ describe('[TBO-57] 가입 전 휴대전화 OTP — 기본 환경(SENS 미설정,
     const config = (await http.get('/api/auth/signup-config').expect(200)).body;
     expect(config).toEqual({ phoneVerificationRequired: false });
     const { webId, email } = nextUser('plain');
+    const phone = nextPhone();
     const emailChallengeId = await verifiedSignupChallenge(http, email);
     await http.post('/api/auth/signup')
-      .send(signupBody(webId, { email, emailChallengeId, phone: nextPhone() }))
+      .send(signupBody(webId, { email, emailChallengeId, phone }))
       .expect(201); // phoneChallengeId 없이도 가입(비필수 환경)
+
+    const before = db.findAll<PhoneChallengeRow>('signup_phone_challenges').length;
+    const duplicate = await http.post('/api/auth/signup-phone-challenge')
+      .send({ phone: e164Of(phone) }).expect(409);
+    expect(duplicate.body).toMatchObject({
+      code: 'SIGNUP_PHONE_ALREADY_REGISTERED',
+      message: '이미 가입된 휴대폰입니다.',
+    });
+    expect(db.findAll<PhoneChallengeRow>('signup_phone_challenges')).toHaveLength(before);
   });
 
   it('발송 — devOtpCode 관례·마스킹·E.164 정규화·평문 미저장', async () => {
@@ -140,12 +150,13 @@ describe('[TBO-57] 가입 전 휴대전화 OTP — 기본 환경(SENS 미설정,
     const userId = res.body.account.id as number;
     expect(challengeOf(fresh.id)).toMatchObject({ status: 'consumed', consumedByUserId: userId });
 
-    // 소진 챌린지 재사용 가입 → 400 (일회성)
+    // 같은 번호 재가입은 OTP 재사용 판정보다 앞선 연락처 중복 게이트에서 409.
     const reuse = nextUser('reuse');
     const emailChallengeId2 = await verifiedSignupChallenge(http, reuse.email);
-    await http.post('/api/auth/signup')
+    const replay = await http.post('/api/auth/signup')
       .send(signupBody(reuse.webId, { email: reuse.email, emailChallengeId: emailChallengeId2, phone, phoneChallengeId: fresh.id }))
-      .expect(400);
+      .expect(409);
+    expect(replay.body.code).toBe('SIGNUP_PHONE_ALREADY_REGISTERED');
   });
 
   it('쿨다운 400(60초 1회) + verified 없는 confirm·형식 오류 방어', async () => {
@@ -173,7 +184,7 @@ describe('[TBO-57] 가입 전 휴대전화 OTP — SENS 설정 환경(필수 강
   let db: InMemoryDatabase;
   const fake = new FakeSensProvider();
   const SENS_ENV = {
-    NCP_SENS_ACCESS_KEY: 'test-access', NCP_SENS_SECRET_KEY: 'test-secret',
+    NCP_SENS_ACCESS_KEY_ID: 'test-access', NCP_SENS_SECRET_KEY: 'test-secret',
     NCP_SENS_SERVICE_ID: 'ncp:sms:kr:000000000000:test', NCP_SENS_FROM: '0212345678',
   } as const;
 
@@ -226,6 +237,10 @@ describe('[TBO-57] 가입 전 휴대전화 OTP — SENS 설정 환경(필수 강
       .send(signupBody(webId, { email, emailChallengeId: emailChallengeId2, phone, phoneChallengeId: created.id }))
       .expect(201);
     expect(challengeOf(created.id)).toMatchObject({ status: 'consumed', consumedByUserId: res.body.account.id });
+    const sentBeforeDuplicate = fake.sent.length;
+    const duplicate = await http.post('/api/auth/signup-phone-challenge').send({ phone }).expect(409);
+    expect(duplicate.body.message).toBe('이미 가입된 휴대폰입니다.');
+    expect(fake.sent).toHaveLength(sentBeforeDuplicate); // 중복이면 provider 호출 0
   });
 
   it('재인증(쿨다운 뒤 supersede): 구 pending 만료 처리 — 새 코드만 유효', async () => {

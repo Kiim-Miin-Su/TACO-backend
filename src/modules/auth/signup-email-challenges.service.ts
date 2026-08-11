@@ -14,8 +14,9 @@ import { InMemoryDatabase } from '../../database/in-memory.database';
 import { CalendarUnitOfWork } from '../../database/calendar-unit-of-work.service';
 import { SIGNUP_EMAIL_CHALLENGES_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { USERS, type StaffAccount } from '../users/user.entity';
+import type { StaffAccount } from '../users/user.entity';
 import { MailService } from '../mail/mail.service';
+import { SignupContactAvailabilityService } from './signup-contact-availability.service';
 import {
   CHALLENGE_TTL_MS,
   MAX_ATTEMPTS,
@@ -80,6 +81,7 @@ export class SignupEmailChallengesService implements OnModuleInit {
     private readonly store: PostgresCollectionStore,
     private readonly uow: CalendarUnitOfWork,
     private readonly mail: MailService,
+    private readonly contacts: SignupContactAvailabilityService,
   ) {}
 
   async onModuleInit(): Promise<void> {
@@ -92,13 +94,14 @@ export class SignupEmailChallengesService implements OnModuleInit {
    * · 재발송 규약(단순화 — 스펙 §2 D1 허용): 별도 resend 엔드포인트 없이, 같은 이메일의 기존
    *   pending은 **쿨다운(60초)만 지나면** 만료(supersede) 처리하고 새 코드를 발급한다.
    *   쿨다운 이전 재요청은 400(카운터는 DB 컬럼 영속 — process-local limit 아님).
-   * · **이미 가입된 이메일도 응답은 동일하다(실제 메일 발송만 생략)** — 계정 열거 방지(H2 재발
-   *   방지 규약). 이후 confirm→signup까지 가도 가입 시 이메일 중복 400으로 끝난다.
+   * · signup 목적은 발송 전에 users 권위 DB를 조회하고 이미 가입된 이메일이면 409로 중단한다.
+   *   recovery 목적은 계정 열거 방지를 위해 기존과 같이 가입 여부와 무관하게 동일하게 처리한다.
    */
   async create(rawEmail: string, purpose: EmailChallengePurpose = 'signup'): Promise<SignupEmailChallengeResponse> {
-    const email = this.normalizeEmail(rawEmail);
+    const email = this.contacts.normalize('email', rawEmail);
     const result = await this.uow.run(async () => {
       await this.refresh();
+      if (purpose === 'signup') this.contacts.assertAvailableInCurrentProjection('email', email);
       const now = Date.now();
       const actives = this.db.findBy<SignupEmailChallenge>(
         SIGNUP_EMAIL_CHALLENGES,
@@ -112,18 +115,14 @@ export class SignupEmailChallengesService implements OnModuleInit {
       for (const active of actives) {
         await this.store.update<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES_SPEC, active.id, { status: 'expired' });
       }
-      const registered = this.db.findBy<StaffAccount>(
-        USERS,
-        (a) => !!a.email && a.email.trim().toLowerCase() === email,
-      ).length > 0;
       const code = String(randomInt(100000, 1000000));
       // 발송은 tx 안·insert 전 — 발송 실패(예외) 시 row +0. 발송 규약(D8):
-      //  · signup: 가입된 이메일이면 발송만 생략(열거 방지 — 응답 동일, confirm→signup 시 중복 400).
-      //  · recovery: 항상 발송 — 미가입 이메일도 코드는 가되 인증 후 '계정 없음'만 보게 된다
+      //  · signup: 위 중복 판정을 통과한 이메일에 발송.
+      //  · recovery: 미가입 이메일도 코드는 가되 인증 후 '계정 없음'만 보게 된다
       //    (이메일 소유를 증명한 본인에게만 노출되므로 열거 아님).
       //  MailService.sendOtpEmail은 SMTP 미설정 시 false(fail-closed) — 비production만 devOtpCode로
       //  대체(개발·e2e 편의), production은 부팅 가드(SMTP 필수)로 이 분기 자체가 없다.
-      const sent = purpose === 'signup' && registered ? false : await this.mail.sendOtpEmail(email, code);
+      const sent = await this.mail.sendOtpEmail(email, code);
       const row = await this.store.insert<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES_SPEC, {
         emailNormalized: email,
         purpose,
@@ -137,13 +136,7 @@ export class SignupEmailChallengesService implements OnModuleInit {
         consumedAt: null,
         consumedByUserId: null,
       });
-      const deliveryOutcome = purpose === 'signup' && registered
-        ? 'neutral_skipped_existing'
-        : sent
-          ? 'sent'
-          : isProduction()
-            ? 'failed_closed'
-            : 'dev_fallback';
+      const deliveryOutcome = sent ? 'sent' : isProduction() ? 'failed_closed' : 'dev_fallback';
       return { row, devOtpCode: !sent && !isProduction() ? code : undefined, deliveryOutcome };
     });
     // 운영자가 "201인데 메일이 없음"을 구분할 수 있는 서버 진단 로그. 이메일·코드·계정 ID는 넣지 않는다.
@@ -159,7 +152,7 @@ export class SignupEmailChallengesService implements OnModuleInit {
   // ── 확인 ────────────────────────────────────────────────────────────────
   /** 코드 확인 — sha256 대조·시도 5회 잠금·만료 판정. 실패 카운터는 예외보다 먼저 커밋한다. */
   async confirm(id: number, rawEmail: string, code: string, purpose: EmailChallengePurpose = 'signup'): Promise<{ id: number; status: 'verified' }> {
-    const email = this.normalizeEmail(rawEmail);
+    const email = this.contacts.normalize('email', rawEmail);
     const outcome = await this.uow.run(async () => {
       await this.uow.lockTargets([{ kind: 'signupChallenge', id }]);
       await this.refresh();
@@ -234,7 +227,7 @@ export class SignupEmailChallengesService implements OnModuleInit {
    * 실패(미인증·목적/이메일 불일치·만료·이중 소비)는 전부 GENERIC 400(열거 방지).
    */
   async consumeForRecovery(id: number, rawEmail: string, matchedUserId: number | null): Promise<SignupEmailChallenge> {
-    const email = this.normalizeEmail(rawEmail);
+    const email = this.contacts.normalize('email', rawEmail);
     await this.uow.lockTargets([{ kind: 'signupChallenge', id }]);
     await this.store.hydrate<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES_SPEC);
     const challenge = this.db.findById<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES, id);
@@ -255,14 +248,6 @@ export class SignupEmailChallengesService implements OnModuleInit {
   }
 
   // ── 내부 ────────────────────────────────────────────────────────────────
-  private normalizeEmail(raw: string): string {
-    const email = raw.trim().toLowerCase();
-    if (email.length > 320 || !/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email)) {
-      throw new BadRequestException('올바른 이메일 주소가 아닙니다.');
-    }
-    return email;
-  }
-
   private isExpired(challenge: SignupEmailChallenge): boolean {
     return Date.parse(challenge.expiresAt) <= Date.now();
   }

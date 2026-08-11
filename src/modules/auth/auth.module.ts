@@ -9,6 +9,7 @@ import { AuthEventsService } from './auth-events.service';
 import { RefreshTokensService } from './refresh-tokens.service';
 import { SignupEmailChallengesService } from './signup-email-challenges.service';
 import { SignupPhoneChallengesService } from './signup-phone-challenges.service'; // [TBO-57]
+import { SignupContactAvailabilityService } from './signup-contact-availability.service';
 import { CONTACT_VERIFICATION_PROVIDER } from '../profile-verifications/contact-verification.provider';
 import { DefaultContactVerificationProvider } from '../profile-verifications/default-contact-verification.provider';
 import { UsersModule } from '../users/users.module';
@@ -55,10 +56,11 @@ import { AccessControlService } from './access-control.service';
     // [TBO-57] 가입 전 휴대전화 OTP(공개 흐름) — provider 토큰은 ProfileVerificationsModule과 동일
     //  등록(테스트 overrideProvider가 양쪽 모두 대체). AuthModule은 MailModule을 이미 import.
     SignupPhoneChallengesService,
+    SignupContactAvailabilityService,
     { provide: CONTACT_VERIFICATION_PROVIDER, useClass: DefaultContactVerificationProvider },
   ],
   // SignupEmailChallengesService export: UsersService.signup이 가입 tx에서 consumeForSignup을 호출
   //  (UsersModule ↔ AuthModule 기존 forwardRef 순환 위에 얹힘 — 주입부는 @Inject(forwardRef)).
-  exports: [AuthService, RolesGuard, AccessControlService, AuthEventsService, SignupEmailChallengesService, SignupPhoneChallengesService, SudoGuard],
+  exports: [AuthService, RolesGuard, AccessControlService, AuthEventsService, SignupEmailChallengesService, SignupPhoneChallengesService, SignupContactAvailabilityService, SudoGuard],
 })
 export class AuthModule {}

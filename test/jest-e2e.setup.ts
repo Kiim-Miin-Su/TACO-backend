@@ -8,7 +8,7 @@
 //    fake 기반 스위트가 비결정적으로 깨진다 — SENS 스위트는 자체적으로 주입 후 원복한다.
 for (const k of [
   'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'MAIL_FROM',
-  'NCP_SENS_ACCESS_KEY', 'NCP_SENS_SECRET_KEY', 'NCP_SENS_SERVICE_ID', 'NCP_SENS_FROM',
+  'NCP_SENS_ACCESS_KEY_ID', 'NCP_SENS_ACCESS_KEY', 'NCP_SENS_SECRET_KEY', 'NCP_SENS_SERVICE_ID', 'NCP_SENS_FROM',
   'TWILIO_ACCOUNT_SID', 'TWILIO_AUTH_TOKEN', 'TWILIO_VERIFY_SERVICE_SID',
 ]) {
   delete process.env[k];

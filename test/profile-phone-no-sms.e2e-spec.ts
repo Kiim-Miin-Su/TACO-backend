@@ -21,7 +21,7 @@ describe('[SMS 추후] phone change without SMS provider (e2e)', () => {
     }
   });
   afterAll(async () => {
-    for (const k of ['NCP_SENS_ACCESS_KEY', 'NCP_SENS_SECRET_KEY', 'NCP_SENS_SERVICE_ID', 'NCP_SENS_FROM']) delete process.env[k];
+    for (const k of ['NCP_SENS_ACCESS_KEY_ID', 'NCP_SENS_ACCESS_KEY', 'NCP_SENS_SECRET_KEY', 'NCP_SENS_SERVICE_ID', 'NCP_SENS_FROM']) delete process.env[k];
     await app.close();
   });
   const as = (w: string) => ({ Authorization: `Bearer ${tokens[w]}` });
@@ -44,14 +44,14 @@ describe('[SMS 추후] phone change without SMS provider (e2e)', () => {
 
   it('provider env 설정 시 — phone 인증 필수가 자동 복원(400)', async () => {
     Object.assign(process.env, {
-      NCP_SENS_ACCESS_KEY: 'k', NCP_SENS_SECRET_KEY: 's', NCP_SENS_SERVICE_ID: 'id', NCP_SENS_FROM: '0212345678',
+      NCP_SENS_ACCESS_KEY_ID: 'k', NCP_SENS_SECRET_KEY: 's', NCP_SENS_SERVICE_ID: 'id', NCP_SENS_FROM: '0212345678',
     });
     try {
       await http.post('/api/profile-change-requests').set(as('manager'))
         .send({ currentPassword: 'demo1234', phone: '010-3333-9999', reason: 'provider 복원 검증' })
         .expect(400);
     } finally {
-      for (const k of ['NCP_SENS_ACCESS_KEY', 'NCP_SENS_SECRET_KEY', 'NCP_SENS_SERVICE_ID', 'NCP_SENS_FROM']) delete process.env[k];
+      for (const k of ['NCP_SENS_ACCESS_KEY_ID', 'NCP_SENS_ACCESS_KEY', 'NCP_SENS_SECRET_KEY', 'NCP_SENS_SERVICE_ID', 'NCP_SENS_FROM']) delete process.env[k];
     }
   });
 });

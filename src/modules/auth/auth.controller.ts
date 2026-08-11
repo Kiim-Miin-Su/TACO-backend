@@ -71,13 +71,13 @@ export class AuthController {
 
   // ── 가입 전 이메일 OTP → 가입 신청 → 대표 승인 → 로그인 ──
 
-  // 0-a) [TBO-31 C1 D1] 가입 전 이메일 OTP 발송 — 공개(비로그인). 이미 가입된 이메일도 **응답 동일**
-  //  (실제 발송만 생략 — 계정 열거 방지, H2 재발 방지 규약). devOtpCode는 비production+SMTP 부재에서만.
+  // 0-a) 가입 전 이메일 OTP 발송 — 공개(비로그인). users 권위 DB를 먼저 조회해 기존 이메일은
+  //  명시 409로 중단하고 challenge/메일을 만들지 않는다(가입 UX 요구). 복구 API의 열거 방지 규약은 유지.
   @Post('signup-email-challenge')
   @Public()
   @UseGuards(LoginThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @ApiOperation({ summary: '가입 전 이메일 OTP 발송(공개) — 5회/분. 가입 여부와 무관하게 동일 응답(열거 방지).' })
+  @ApiOperation({ summary: '가입 전 이메일 OTP 발송(공개) — 5회/분. 기존 이메일은 409, challenge/발송 없음.' })
   createSignupEmailChallenge(@Body() dto: CreateSignupEmailChallengeDto) {
     return this.signupChallenges.create(dto.email);
   }
@@ -108,13 +108,13 @@ export class AuthController {
   }
 
   // 0-d) [TBO-57] 가입 전 휴대전화 OTP 발송 — 공개(비로그인). SENS 미설정: 비production은
-  //  devOtpCode 폴백(이메일판 관례), production은 503 fail-closed. 전화는 계정 유니크가 아니라
-  //  열거 방지 발송 생략 분기 없음(항상 발송).
+  //  devOtpCode 폴백(이메일판 관례), production은 503 fail-closed. users 권위 DB의 기존 번호는
+  //  E.164 정규화 비교 후 409로 중단해 challenge/문자를 만들지 않는다.
   @Post('signup-phone-challenge')
   @Public()
   @UseGuards(LoginThrottlerGuard)
   @Throttle({ default: { limit: 5, ttl: 60_000 } })
-  @ApiOperation({ summary: '가입 전 휴대전화 OTP 발송(공개) — 5회/분, 쿨다운 60초.' })
+  @ApiOperation({ summary: '가입 전 휴대전화 OTP 발송(공개) — 기존 번호는 409, 그 외 5회/분·쿨다운 60초.' })
   createSignupPhoneChallenge(@Body() dto: CreateSignupPhoneChallengeDto) {
     return this.signupPhoneChallenges.create(dto.phone);
   }

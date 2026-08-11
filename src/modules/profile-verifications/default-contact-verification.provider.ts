@@ -18,11 +18,32 @@ import type {
   SendChallengeInput,
 } from './contact-verification.provider';
 import { fetchTrustedOrigin } from '../../common/trusted-fetch';
+import { ncpSensAccessKey } from './sms-availability';
 
 const TWILIO_BASE = 'https://verify.twilio.com/v2';
 const SENS_BASE = 'https://sens.apigw.ntruss.com';
 
 type SensConfig = { accessKey: string; secretKey: string; serviceId: string; from: string };
+
+type SensErrorBody = { error?: { errorCode?: unknown; message?: unknown }; errorCode?: unknown; message?: unknown };
+
+/** SENS 오류 원문에는 요청 정보가 섞일 수 있으므로 로그에는 안전한 분류와 짧은 코드만 남긴다. */
+export function sensFailureDiagnostic(body: SensErrorBody): { providerCode: string; category: string } {
+  const rawCode = body.error?.errorCode ?? body.errorCode;
+  const providerCode = typeof rawCode === 'string' && /^[A-Za-z0-9_.:-]{1,40}$/.test(rawCode)
+    ? rawCode
+    : 'unknown';
+  const rawMessage = body.error?.message ?? body.message;
+  const message = typeof rawMessage === 'string' ? rawMessage.toLowerCase() : '';
+  const category = /signature/.test(message)
+    ? 'signature'
+    : /access|permission|service.?id/.test(message)
+      ? 'authorization'
+      : /auth|unauthor/.test(message)
+        ? 'authentication'
+        : 'provider_rejected';
+  return { providerCode, category };
+}
 
 /** SENS API 게이트웨이 서명 — base64(HMAC-SHA256(secret, "POST {path}\n{timestamp}\n{accessKey}")). */
 export function sensSignature(secretKey: string, method: string, path: string, timestamp: string, accessKey: string): string {
@@ -111,8 +132,10 @@ export class DefaultContactVerificationProvider implements ContactVerificationPr
       }),
     });
     if (res.status !== 202) {
-      // 응답 본문에 대상 번호가 섞일 수 있어 상태 코드만 로깅(§7 redaction — 코드/번호 로그 금지).
-      this.logger.warn(`SENS 발송 실패: HTTP ${res.status}`);
+      const errorBody = (await res.json().catch(() => ({}))) as SensErrorBody;
+      const diagnostic = sensFailureDiagnostic(errorBody);
+      // 응답 원문은 번호·Service ID를 포함할 수 있어 기록하지 않는다. 분류와 provider code만 남긴다.
+      this.logger.warn(`SENS 발송 실패: HTTP ${res.status} code=${diagnostic.providerCode} category=${diagnostic.category}`);
       throw new ServiceUnavailableException('인증 문자 발송에 실패했습니다.');
     }
     const body = (await res.json().catch(() => ({}))) as { requestId?: string };
@@ -121,7 +144,7 @@ export class DefaultContactVerificationProvider implements ContactVerificationPr
 
   private sensConfig(): SensConfig | null {
     // Vercel 대시보드에서 복사한 값에 붙는 앞뒤 공백/개행은 인증 서명을 깨뜨리므로 제거한다.
-    const accessKey = process.env.NCP_SENS_ACCESS_KEY?.trim();
+    const accessKey = ncpSensAccessKey();
     const secretKey = process.env.NCP_SENS_SECRET_KEY?.trim();
     const serviceId = process.env.NCP_SENS_SERVICE_ID?.trim();
     // SENS 발신번호는 숫자만 허용한다. 콘솔 표기(02-1234-5678)를 그대로 붙여도 동작하게 한다.
@@ -130,7 +153,7 @@ export class DefaultContactVerificationProvider implements ContactVerificationPr
     if (!accessKey && !secretKey && !serviceId && !from) return null; // 미설정 → Twilio fallback
     if (!accessKey || !secretKey || !serviceId || !from) {
       // 부분 설정은 구성 오류 — 조용한 fallback 대신 fail-closed(잘못된 채널로 새는 것 방지).
-      throw new ServiceUnavailableException('SENS 설정이 불완전합니다(NCP_SENS_ACCESS_KEY/SECRET_KEY/SERVICE_ID/FROM 4종 필요).');
+      throw new ServiceUnavailableException('SENS 설정이 불완전합니다(NCP_SENS_ACCESS_KEY_ID/SECRET_KEY/SERVICE_ID/FROM 4종 필요).');
     }
     if (!/^ncp:sms:[a-z]{2}:[^/]+:[^/]+$/.test(serviceId)) {
       throw new ServiceUnavailableException('SENS Service ID 형식이 올바르지 않습니다.');
