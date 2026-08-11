@@ -54,11 +54,11 @@ describe('role policy', () => {
     expect(roleHasCapability('instructor', 'counsel.manage')).toBe(false);
   });
 
-  it('limits destructive student registry deletion to CEO and admin', () => {
-    expect(rolesForCapability('student.hard-delete')).toEqual(['super_admin', 'admin']);
+  it('allows all operations roles to perform sudo-protected student soft deletion', () => {
+    expect(rolesForCapability('student.hard-delete')).toEqual(['super_admin', 'manager', 'admin']);
     expect(roleHasCapability('super_admin', 'student.hard-delete')).toBe(true);
     expect(roleHasCapability('admin', 'student.hard-delete')).toBe(true);
-    expect(roleHasCapability('manager', 'student.hard-delete')).toBe(false);
+    expect(roleHasCapability('manager', 'student.hard-delete')).toBe(true);
     expect(roleHasCapability('instructor', 'student.hard-delete')).toBe(false);
   });
 

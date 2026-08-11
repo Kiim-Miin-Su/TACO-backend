@@ -1,4 +1,4 @@
-// [TBO-59 C3 2026-07-24] SECURITY-P0 e2e — 강사 PII scope(P0-5)·parents 승격·sudo 확장·대표 소유 403.
+// [TBO-59/TBO-92] SECURITY-P0 e2e — 강사 PII scope·parents 승격·sudo·운영 역할 수업 CRUD.
 //  픽스처: park_inst(강사1 — 코스10/12 담당), jung_inst(강사2 — 코스 없음), admin(super_admin), manager.
 import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
@@ -100,7 +100,7 @@ describe('[TBO-59 C3] SECURITY-P0 (e2e)', () => {
     expect(JSON.stringify(bearerDelete.body)).toContain('SUDO_REQUIRED');
   });
 
-  it('C3-3 대표 소유 스케줄 — manager 변경/삭제 403, 대표 본인 200', async () => {
+  it('TBO-92 대표 소유 스케줄도 manager가 기존 transaction command로 변경·삭제한다', async () => {
     // 대표(super_admin, id 조회) 담당 세션 생성
     const me = (await http.get('/api/auth/me').set(auth('admin')).expect(200)).body;
     const ceoId = Number(me.id ?? me.sub);
@@ -108,14 +108,9 @@ describe('[TBO-59 C3] SECURITY-P0 (e2e)', () => {
       courseId: 10, instructorId: ceoId, studentIds: [1], sessionDate: '2099-06-01',
       startTime: '10:00', durationMinutes: 60, force: true,
     }).expect(201)).body.row;
-    // manager 수정·삭제 → 403
-    const patch = await http.patch(`/api/schedule/${created.id}`).set(auth('manager')).send({ startTime: '11:00', force: true });
-    expect(patch.status).toBe(403);
-    const del = await http.delete(`/api/schedule/${created.id}`).set(auth('manager'));
-    expect(del.status).toBe(403);
-    // 대표 본인 → 200
-    await http.patch(`/api/schedule/${created.id}`).set(auth('admin')).send({ startTime: '11:00', force: true }).expect(200);
-    await http.delete(`/api/schedule/${created.id}`).set(auth('admin')).expect(200);
+    await http.patch(`/api/schedule/${created.id}`).set(auth('manager'))
+      .send({ startTime: '11:00', force: true }).expect(200);
+    await http.delete(`/api/schedule/${created.id}`).set(auth('manager')).expect(200);
     // 일반 강사 세션은 종전대로 manager가 변경 가능(회귀 아님 증명)
     const normal = (await http.post('/api/schedule').set(auth('admin')).send({
       courseId: 10, instructorId: 1, studentIds: [1], sessionDate: '2099-06-02',

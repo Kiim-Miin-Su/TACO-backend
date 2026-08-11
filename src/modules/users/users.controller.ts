@@ -22,6 +22,7 @@ import { UserLifecycleDto } from './dto/user-lifecycle.dto';
 import { StaffAccountResponseDto } from './dto/staff-account-response.dto';
 import { AccessControlService } from '../auth/access-control.service';
 import { SetUserCapabilityDto } from '../auth/dto/set-user-capability.dto';
+import { assertInstructorPayInputAllowed } from './instructor-finance.policy';
 
 @Controller('users')
 export class UsersController {
@@ -60,15 +61,16 @@ export class UsersController {
     };
   }
 
-  // [운영 흐름 2026-07-14] 대표 직접 강사 등록 — 즉시 active(계정+프로필+audit 단일 tx).
+  // 강사 직접 등록 alias — /instructors와 같은 운영 역할·sudo·금액 필드 정책을 사용한다.
   @Post('instructors')
   @UseGuards(SudoGuard)
-  @RequireCapabilities('executive.manage')
+  @Roles(...ADMIN_ROLES)
   @ApiBearerAuth()
-  @ApiOperation({ summary: '강사 직접 등록(대표 전용·재인증 필수) — 즉시 active, users+instructor_profiles+audit 원자 tx. cookie 세션은 reauth 후 10분 내만 허용(403 SUDO_REQUIRED).' })
+  @ApiOperation({ summary: '강사 직접 등록 alias(매니저 이상·재인증 필수) — users+instructor_profiles+audit 원자 tx. 기본 시급은 재무 권한 필요.' })
   async createInstructor(@Body() dto: CreateInstructorDto, @Req() req: Request & { user?: JwtClaims }) {
     const sub = req.user?.sub;
     if (typeof sub !== 'number') throw new UnauthorizedException('인증 정보가 없습니다.');
+    assertInstructorPayInputAllowed(dto, req.user?.effectiveCapabilities ?? []);
     return this.signupApproval.provisionInstructor(dto, sub);
   }
 

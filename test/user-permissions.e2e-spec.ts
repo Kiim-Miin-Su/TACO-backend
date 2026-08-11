@@ -158,6 +158,12 @@ describe('User capability overrides (e2e)', () => {
     instructor = await login('park_inst');
     const me = (await http.get('/api/auth/me').set(auth(instructor)).expect(200)).body;
     expect(me.effectiveCapabilities).toContain('calendar.manage');
+    await http.post('/api/schedule').set(auth(instructor)).send({
+      courseId: 10, sessionDate: '2099-11-01', startTime: '10:00', endTime: '11:00', studentIds: [1],
+    }).expect(403);
+    await http.post('/api/schedule-requests').set(auth(instructor)).send({
+      courseId: 10, sessionDate: '2099-11-01', startTime: '10:00', endTime: '11:00', studentIds: [1],
+    }).expect(201);
 
     await http.put(`/api/users/${instructorId}/permissions/calendar.manage`)
       .set(sudoAuthHeaders(app, ceo))

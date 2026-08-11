@@ -141,7 +141,7 @@ export class StudentsController {
   @Delete(':id')
   @UseGuards(SudoGuard) // [TBO-59 C3-2] 원부 삭제 = sudo 재인증(브라우저 cookie 경로 강제)
   @RequireCapabilities('student.hard-delete')
-  @ApiOperation({ summary: '학생 원부 soft delete 및 관련 활성 관계 정리(재인증 필수) [대표/관리자]. 매니저는 퇴원 상태 변경만 가능.' })
+  @ApiOperation({ summary: '학생 원부 soft delete 및 관련 활성 관계 정리(재인증 필수) [매니저 이상].' })
   remove(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.students.remove(id, req.user?.sub);
   }

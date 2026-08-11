@@ -29,7 +29,6 @@ import { ClassSession, SESSIONS } from './schedule.entity';
 import { detectConflicts } from './conflict.util';
 import { UpdateScheduleDto } from './dto/update-schedule.dto';
 import { CoursesService } from '../courses/courses.service';
-import type { StaffAccount } from '../users/user.entity';
 import { ClassSessionsStore } from './class-sessions.store';
 import { ScheduleReadService, SESSION_DEFAULTS } from './schedule-read.service'; // [TBO-69 C1]
 import { CLASS_SESSION_SERIES, type ScheduleSeriesRow } from './schedule-series.entity';
@@ -42,7 +41,7 @@ import {
   type CalendarLockKey,
 } from '../../database/calendar-unit-of-work.service';
 import { PostgresCollectionStore } from '../../database/postgres-collection.store';
-import { CLASS_SESSION_SERIES_SPEC, USERS_SPEC } from '../../database/calendar-asset-specs';
+import { CLASS_SESSION_SERIES_SPEC } from '../../database/calendar-asset-specs';
 import {
   accountingImpactOf,
   accountingImpactOfRemoval,
@@ -683,7 +682,6 @@ export class ScheduleService {
       await this.refreshAfterLock();
       const before = this.db.findById<ClassSession>(SESSIONS, id);
       if (!before) throw new NotFoundException(`Session ${id} not found`);
-      await this.assertCeoOwnedSessionMutable(before, actorId); // [TBO-59 C3-3]
       const seriesRow = before.seriesId != null ? this.db.findById<ScheduleSeriesRow>(CLASS_SESSION_SERIES, before.seriesId) : undefined;
       if (opts?.expectedSeriesVersion != null && seriesRow && opts.expectedSeriesVersion !== seriesRow.version) {
         throw new ConflictException({
@@ -798,19 +796,6 @@ export class ScheduleService {
   }
   // 이동·리사이즈·상세편집. 충돌 시(force 아니면) 409 + conflicts 반환.
   // scope(this_and_following|all)면 같은 seriesId 세션에 동일 날짜·시간 델타를 함께 적용.
-  /** [TBO-59 C3-3] 대표 소유 스케줄 보호 — 담당(instructorId)이 super_admin인 세션의 변경·삭제는
-   *  대표 본인만(FABLE §3.1). 판정은 lock 후 재조회된 세션 행 + users DB 행(권위) 기준. */
-  private async assertCeoOwnedSessionMutable(session: { instructorId?: number | null }, actorId?: number): Promise<void> {
-    const ownerId = session.instructorId;
-    if (ownerId == null) return;
-    const [owner] = await this.collections.findActive<StaffAccount>(USERS_SPEC, {
-      where: { id: ownerId } as never, limit: 1,
-    });
-    if (owner?.role === 'super_admin' && actorId !== ownerId) {
-      throw new ForbiddenException('대표 소유 스케줄은 대표 본인만 변경·삭제할 수 있습니다.');
-    }
-  }
-
   /** 삭제는 출결·보고서·반복 시리즈 메타를 함께 전이한다.
    * 삭제 배치 스냅샷 없는 단일 세션 restore는 종속 행을 빠뜨리므로 fail-closed 한다. */
   async restoreSession(_id: number, _actorId?: number): Promise<never> {
@@ -997,7 +982,6 @@ export class ScheduleService {
         currentInstructorAttendance: cur.instructorAttendance ?? null,
       });
     }
-    await this.assertCeoOwnedSessionMutable(cur, actorId); // [TBO-59 C3-3]
     // 참조 무결성(FK) 검증
     if (dto.courseId != null && !this.read.courseOf(dto.courseId)) throw new BadRequestException(`courseId ${dto.courseId} 없음`);
     if (dto.instructorId != null && !this.read.isScheduleOwner(dto.instructorId)) throw new BadRequestException(`instructorId ${dto.instructorId}는 활성 강사 또는 대표가 아닙니다`);

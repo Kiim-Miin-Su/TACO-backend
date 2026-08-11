@@ -94,7 +94,7 @@ describe('Students Soft-Delete (e2e)', () => {
     await http.get(`/api/students/${withdrawn.id}/aggregate`).set(asAdmin()).expect(404);
   });
 
-  it('manager는 퇴원 상태만 변경하고 원부 삭제는 admin/CEO+sudo만 가능하다', async () => {
+  it('manager와 admin은 sudo 후 원부 soft delete를 수행하고 강사는 차단된다', async () => {
     const managerStudent = (await http.post('/api/students').set(asAdmin())
       .send(studentAggregateBody('매니저퇴원학생')).expect(201)).body.student;
     await http.patch(`/api/students/${managerStudent.id}`)
@@ -105,11 +105,14 @@ describe('Students Soft-Delete (e2e)', () => {
       .set({ Authorization: `Bearer ${MANAGER}` })
       .send({ studentId: managerStudent.id, courseId: 10 })
       .expect(400);
-    await http.delete(`/api/students/${managerStudent.id}`).set(asManager()).expect(403);
+    await http.delete(`/api/students/${managerStudent.id}`)
+      .set({ Authorization: `Bearer ${MANAGER}` })
+      .expect(403)
+      .expect(({ body }) => expect(body.code).toBe('SUDO_REQUIRED'));
+    await http.delete(`/api/students/${managerStudent.id}`).set(asManager()).expect(200);
     await http.get(`/api/students/${managerStudent.id}/aggregate`)
       .set({ Authorization: `Bearer ${MANAGER}` })
-      .expect(200)
-      .expect(({ body }) => expect(body.student.status).toBe('withdrawn'));
+      .expect(404);
 
     const adminStudent = (await http.post('/api/students').set(asAdmin())
       .send(studentAggregateBody('관리자삭제학생')).expect(201)).body.student;
@@ -118,6 +121,10 @@ describe('Students Soft-Delete (e2e)', () => {
       .expect(403)
       .expect(({ body }) => expect(body.code).toBe('SUDO_REQUIRED'));
     await http.delete(`/api/students/${adminStudent.id}`).set(asProfAdmin()).expect(200);
+
+    await http.delete('/api/students/1')
+      .set({ Authorization: `Bearer ${INSTRUCTOR}` })
+      .expect(403);
   });
 
   it('프로필 입력을 컬럼 계약대로 저장하고 유효하지 않은 날짜·성별·상태는 400으로 차단한다', async () => {
