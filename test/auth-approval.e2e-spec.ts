@@ -322,7 +322,7 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     const pending = (await http.get('/api/auth/pending').set('Authorization', `Bearer ${admin}`).expect(200)).body;
     const mine = pending.find((row: { webId: string }) => row.webId === 'e05_inst');
     expect(mine).toMatchObject({
-      phone: '010-9876-5432', university: '연세대학교', major: '영어영문학', birthYear: 1997,
+      phone: '+821098765432', university: '연세대학교', major: '영어영문학', birthYear: 1997,
       rrnMasked: '970315-2******', // [D2] 승인 판단 근거 — 마스킹만
     });
     expect(mine.passwordHash).toBeUndefined();
