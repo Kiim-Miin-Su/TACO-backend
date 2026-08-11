@@ -88,7 +88,9 @@ export class DefaultContactVerificationProvider implements ContactVerificationPr
   // ── NCP SENS ──────────────────────────────────────────────────────────────
   private async sendViaSens(sens: SensConfig, input: SendChallengeInput): Promise<ProviderChallenge> {
     if (!input.code) throw new Error('SENS 채널은 서비스가 생성한 code가 필요합니다.');
-    const path = `/sms/v2/services/${encodeURIComponent(sens.serviceId)}/messages`;
+    // NCP 서명은 실제 요청 URI와 바이트 단위로 같아야 한다. SENS serviceId의 ':'는
+    // 공식 요청 예시처럼 그대로 둔다(%3A로 인코딩하면 API Gateway가 서명을 401로 거절할 수 있다).
+    const path = `/sms/v2/services/${sens.serviceId}/messages`;
     const timestamp = String(Date.now());
     const { countryCode, to } = sensRecipientOf(input.target);
     const res = await fetchTrustedOrigin(`${SENS_BASE}${path}`, SENS_BASE, {
@@ -118,14 +120,23 @@ export class DefaultContactVerificationProvider implements ContactVerificationPr
   }
 
   private sensConfig(): SensConfig | null {
-    const accessKey = process.env.NCP_SENS_ACCESS_KEY;
-    const secretKey = process.env.NCP_SENS_SECRET_KEY;
-    const serviceId = process.env.NCP_SENS_SERVICE_ID;
-    const from = process.env.NCP_SENS_FROM;
+    // Vercel 대시보드에서 복사한 값에 붙는 앞뒤 공백/개행은 인증 서명을 깨뜨리므로 제거한다.
+    const accessKey = process.env.NCP_SENS_ACCESS_KEY?.trim();
+    const secretKey = process.env.NCP_SENS_SECRET_KEY?.trim();
+    const serviceId = process.env.NCP_SENS_SERVICE_ID?.trim();
+    // SENS 발신번호는 숫자만 허용한다. 콘솔 표기(02-1234-5678)를 그대로 붙여도 동작하게 한다.
+    const rawFrom = process.env.NCP_SENS_FROM?.trim();
+    const from = rawFrom?.replace(/[\s-]/g, '');
     if (!accessKey && !secretKey && !serviceId && !from) return null; // 미설정 → Twilio fallback
     if (!accessKey || !secretKey || !serviceId || !from) {
       // 부분 설정은 구성 오류 — 조용한 fallback 대신 fail-closed(잘못된 채널로 새는 것 방지).
       throw new ServiceUnavailableException('SENS 설정이 불완전합니다(NCP_SENS_ACCESS_KEY/SECRET_KEY/SERVICE_ID/FROM 4종 필요).');
+    }
+    if (!/^ncp:sms:[a-z]{2}:[^/]+:[^/]+$/.test(serviceId)) {
+      throw new ServiceUnavailableException('SENS Service ID 형식이 올바르지 않습니다.');
+    }
+    if (!/^\d+$/.test(from)) {
+      throw new ServiceUnavailableException('SENS 발신번호는 숫자만 입력해야 합니다.');
     }
     return { accessKey, secretKey, serviceId, from };
   }
