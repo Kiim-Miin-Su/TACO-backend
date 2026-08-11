@@ -132,7 +132,7 @@ export class DefaultContactVerificationProvider implements ContactVerificationPr
       // 부분 설정은 구성 오류 — 조용한 fallback 대신 fail-closed(잘못된 채널로 새는 것 방지).
       throw new ServiceUnavailableException('SENS 설정이 불완전합니다(NCP_SENS_ACCESS_KEY/SECRET_KEY/SERVICE_ID/FROM 4종 필요).');
     }
-    if (!/^ncp:sms:[a-z]{2}:[^/]+:sens$/.test(serviceId)) {
+    if (!/^ncp:sms:[a-z]{2}:[^/]+:[^/]+$/.test(serviceId)) {
       throw new ServiceUnavailableException('SENS Service ID 형식이 올바르지 않습니다.');
     }
     if (!/^\d+$/.test(from)) {
