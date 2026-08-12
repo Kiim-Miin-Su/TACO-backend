@@ -47,6 +47,7 @@ export class UsersController {
       id: account.id,
       webId: account.webId,
       name: account.name,
+      englishName: account.englishName,
       email: account.email,
       phone: account.phone,
       countryCode: account.countryCode,

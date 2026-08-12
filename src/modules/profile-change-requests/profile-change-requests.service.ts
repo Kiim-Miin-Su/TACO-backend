@@ -20,6 +20,7 @@ import { maskTarget } from '../profile-verifications/profile-verification.entity
 import { smsChallengeAvailable } from '../profile-verifications/sms-availability';
 import { CountriesService } from '../catalog/countries.service';
 import { CreateProfileChangeRequestDto } from './dto/create-profile-change-request.dto';
+import { requireStaffEnglishName } from '../users/staff-english-name.policy';
 import {
   PROFILE_CHANGE_REQUESTS,
   type ProfileChangeRequest,
@@ -451,6 +452,7 @@ export class ProfileChangeRequestsService implements OnModuleInit {
   private async normalizeChanges(dto: CreateProfileChangeRequestDto): Promise<ProfileChanges> {
     const changes: ProfileChanges = {};
     if (dto.name !== undefined) changes.name = dto.name.trim();
+    if (dto.englishName !== undefined) changes.englishName = requireStaffEnglishName(dto.englishName);
     // [E0] 아이디(webId) — 승인제 전환(즉시 변경 경로에서 분리). 형식은 즉시 변경과 동일 최소 규칙.
     if (dto.webId !== undefined) {
       const webId = dto.webId.trim();

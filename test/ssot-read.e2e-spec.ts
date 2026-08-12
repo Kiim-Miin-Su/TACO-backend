@@ -46,7 +46,7 @@ describeDb('[TBO-54 C2] SSOT read-after-write — 2-instance PG (e2e)', () => {
     else {
       const passwordHash = await bcrypt.hash(`Ssot!${stamp}`, 12);
       const row = await appA.get(PostgresCollectionStore).insert(USERS_SPEC, {
-        webId: `ssot_ceo_${stamp}`, name: `SSOT 대표 ${stamp}`, email: `ssot_${stamp}@qa.local`,
+        webId: `ssot_ceo_${stamp}`, name: `SSOT 대표 ${stamp}`, englishName: `Ssot Ceo ${stamp}`, email: `ssot_${stamp}@qa.local`,
         role: 'super_admin', status: 'active', passwordHash, emailVerified: true,
       } as never);
       ceoId = (row as { id: number }).id;
@@ -55,8 +55,8 @@ describeDb('[TBO-54 C2] SSOT read-after-write — 2-instance PG (e2e)', () => {
     openApps.add(appB);
     httpA = request(appA.getHttpServer());
     httpB = request(appB.getHttpServer());
-    admin = appA.get(AuthService).sign({ sub: ceoId, name: 'SSOT', roles: ['super_admin'], authVersion: 1, mustChangePassword: false });
-    adminB = appB.get(AuthService).sign({ sub: ceoId, name: 'SSOT', roles: ['super_admin'], authVersion: 1, mustChangePassword: false });
+    admin = appA.get(AuthService).sign({ sub: ceoId, name: 'SSOT', englishName: 'Ssot Ceo', roles: ['super_admin'], authVersion: 1, mustChangePassword: false });
+    adminB = appB.get(AuthService).sign({ sub: ceoId, name: 'SSOT', englishName: 'Ssot Ceo', roles: ['super_admin'], authVersion: 1, mustChangePassword: false });
   }, 120_000);
 
   afterAll(async () => { for (const app of openApps) await app.close(); }, 60_000);
@@ -92,7 +92,7 @@ describeDb('[TBO-54 C2] SSOT read-after-write — 2-instance PG (e2e)', () => {
       .some((row) => row.id === event.id)).toBe(true);
     // 카탈로그(과목·코스) + 학생·수강
     const instructorId = Number((await httpA.post('/api/users/instructors').set(auth(admin)).send({
-      webId: `ssot_inst_${stamp}`, name: `SSOT 강사 ${stamp}`, password: `Ssot!${stamp}x`,
+      webId: `ssot_inst_${stamp}`, name: `SSOT 강사 ${stamp}`, englishName: `Ssot Instructor ${stamp}`, password: `Ssot!${stamp}x`,
       defaultHourlyRate: 40000, canTeachKinder: false, countryCode: 'KR', timeZone: 'Asia/Seoul',
     }).expect(201)).body.id);
     const subjectId = Number((await httpA.post('/api/subjects').set(auth(admin))
@@ -130,7 +130,7 @@ describeDb('[TBO-54 C2] SSOT read-after-write — 2-instance PG (e2e)', () => {
   it('정산: A의 세션·승인 보고서·정산서가 B의 preview/readiness/목록/단건에 즉시 반영', async () => {
     // A: 강사·코스(시급 60,000)·학생·수강 — 적격 입력 전부 API로 생성
     const instructorId = Number((await httpA.post('/api/users/instructors').set(auth(admin)).send({
-      webId: `ssot_pay_inst_${stamp}`, name: `SSOT 정산강사 ${stamp}`, password: `Ssot!${stamp}p`,
+      webId: `ssot_pay_inst_${stamp}`, name: `SSOT 정산강사 ${stamp}`, englishName: `Ssot Pay Instructor ${stamp}`, password: `Ssot!${stamp}p`,
       defaultHourlyRate: 60000, canTeachKinder: false, countryCode: 'KR', timeZone: 'Asia/Seoul',
     }).expect(201)).body.id);
     const subjectId = Number((await httpA.post('/api/subjects').set(auth(admin))
@@ -185,7 +185,7 @@ describeDb('[TBO-54 C2] SSOT read-after-write — 2-instance PG (e2e)', () => {
         interests: [{ customLabel: 'SSOT-A1', priority: 1 }, { customLabel: 'SSOT-A2', priority: 2 }],
       })).expect(201)).body.student.id);
     const instructorId = Number((await httpA.post('/api/users/instructors').set(auth(admin)).send({
-      webId: `ssot_att_inst_${stamp}`, name: `SSOT 출결강사 ${stamp}`, password: `Ssot!${stamp}a`,
+      webId: `ssot_att_inst_${stamp}`, name: `SSOT 출결강사 ${stamp}`, englishName: `Ssot Attendance Instructor ${stamp}`, password: `Ssot!${stamp}a`,
       defaultHourlyRate: 40000, canTeachKinder: false, countryCode: 'KR', timeZone: 'Asia/Seoul',
     }).expect(201)).body.id);
     const subjectId = Number((await httpA.post('/api/subjects').set(auth(admin))

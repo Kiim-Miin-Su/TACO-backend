@@ -151,7 +151,7 @@ export class AuthController {
     return {
       ok: true,
       message: '가입 신청이 접수되었습니다. 대표 승인 후 로그인할 수 있습니다.',
-      account: { id: account.id, webId: account.webId, name: account.name, role: account.role, status: account.status },
+      account: { id: account.id, webId: account.webId, name: account.name, englishName: account.englishName, role: account.role, status: account.status },
     };
   }
 
@@ -180,7 +180,7 @@ export class AuthController {
     @Body() dto: LoginDto,
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ accessToken?: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } }> {
+  ): Promise<{ accessToken?: string; account: { id: number; name: string; englishName: string; role: string; mustChangePassword: boolean } }> {
     await this.users.refreshFromDb(); // [28F] 다른 인스턴스에서 승인/등록된 계정도 즉시 로그인 가능
     const acc = this.users.findByWebId(dto.webId);
     const deny = async (failureCode: string, err: Error): Promise<never> => {
@@ -202,6 +202,7 @@ export class AuthController {
     const claims: JwtClaims = {
       sub: account.id,
       name: account.name,
+      englishName: account.englishName,
       roles: this.users.claimRolesOf(account), // [TBO-87] 겸직 합성 — manager/admin+활성 강사원부 → +'instructor'
       authVersion: authVersionOf(account),
       mustChangePassword: account.mustChangePassword === true,
@@ -223,7 +224,7 @@ export class AuthController {
     setAccessCookie(res, accessToken, (accessClaims.exp ?? Math.floor(Date.now() / 1000) + 3600) * 1000);
     return {
       ...(!isProduction() ? { accessToken } : {}),
-      account: { id: account.id, name: account.name, role: account.role, mustChangePassword: account.mustChangePassword === true },
+      account: { id: account.id, name: account.name, englishName: account.englishName, role: account.role, mustChangePassword: account.mustChangePassword === true },
     };
   }
 
@@ -238,7 +239,7 @@ export class AuthController {
   async refresh(
     @Req() req: Request,
     @Res({ passthrough: true }) res: Response,
-  ): Promise<{ accessToken?: string; account: { id: number; name: string; role: string; mustChangePassword: boolean } }> {
+  ): Promise<{ accessToken?: string; account: { id: number; name: string; englishName: string; role: string; mustChangePassword: boolean } }> {
     const raw = readCookie(req, REFRESH_COOKIE);
     if (!raw) {
       // HttpOnly access cookie는 frontend JavaScript가 지울 수 없다. refresh가 없으면 여기서 함께
@@ -282,6 +283,7 @@ export class AuthController {
     const claims: JwtClaims = {
       sub: account.id,
       name: account.name,
+      englishName: account.englishName,
       roles: this.users.claimRolesOf(account), // [TBO-87] 겸직 합성 — manager/admin+활성 강사원부 → +'instructor'
       authVersion: authVersionOf(account),
       mustChangePassword: account.mustChangePassword === true,
@@ -291,7 +293,7 @@ export class AuthController {
     setAccessCookie(res, accessToken, (accessClaims.exp ?? Math.floor(Date.now() / 1000) + 3600) * 1000);
     return {
       ...(!isProduction() ? { accessToken } : {}),
-      account: { id: account.id, name: account.name, role: account.role, mustChangePassword: account.mustChangePassword === true },
+      account: { id: account.id, name: account.name, englishName: account.englishName, role: account.role, mustChangePassword: account.mustChangePassword === true },
     };
   }
 

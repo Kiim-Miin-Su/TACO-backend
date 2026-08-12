@@ -16,6 +16,7 @@ import type { Course } from '../courses/course.entity';
 import type { InstructorContract } from '../instructor-contracts/instructor-contract.entity';
 import { isTeachingAccount, USERS, authVersionOf, toSafe, type StaffAccount } from './user.entity';
 import { UsersService } from './users.service';
+import { requireStaffEnglishName } from './staff-english-name.policy';
 
 @Injectable()
 export class InstructorHrService {
@@ -34,6 +35,7 @@ export class InstructorHrService {
       id: account.id,
       webId: account.webId,
       name: account.name,
+      englishName: account.englishName,
       email: account.email ?? null,
       phone: account.phone ?? null,
       status: account.status,
@@ -86,6 +88,7 @@ export class InstructorHrService {
 
       const userPatch: Partial<StaffAccount> = {};
       if (patch.name !== undefined) userPatch.name = patch.name.trim();
+      if (patch.englishName !== undefined) userPatch.englishName = requireStaffEnglishName(patch.englishName);
       if (patch.phone !== undefined) userPatch.phone = patch.phone.trim() || null;
       if (patch.email !== undefined) {
         const email = patch.email?.trim().toLowerCase() || null;

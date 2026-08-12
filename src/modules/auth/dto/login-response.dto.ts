@@ -8,6 +8,9 @@ export class LoginAccountResponseDto {
   @ApiProperty({ example: '김민수' })
   name!: string;
 
+  @ApiProperty({ example: 'Minsoo Kim' })
+  englishName!: string;
+
   @ApiProperty({ enum: ['super_admin', 'admin', 'manager', 'instructor'] })
   role!: StaffRole;
 

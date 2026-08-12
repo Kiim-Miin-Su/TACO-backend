@@ -27,6 +27,7 @@ import { claimRolesFor,
   USERS, authVersionOf, isStaffRole, rrnMaskedOf, toSafe,
   type SafeAccount, type StaffAccount, type StaffRole,
 } from './user.entity';
+import { requireStaffEnglishName } from './staff-english-name.policy';
 
 // 하위 호환 재노출(외부 소비처가 users.service 경유로 import하던 심볼)
 export { isStaffRole, toAccount, toSafe } from './user.entity';
@@ -80,6 +81,7 @@ export class UsersService implements OnModuleInit {
     await this.store.insert<StaffAccount>(USERS_SPEC, {
       webId,
       name: process.env.INITIAL_ADMIN_NAME?.trim() || '대표',
+      englishName: requireStaffEnglishName(process.env.INITIAL_ADMIN_ENGLISH_NAME?.trim() || 'CEO'),
       email: process.env.INITIAL_ADMIN_EMAIL?.trim().toLowerCase() || `${webId}@bootstrap.invalid`,
       role: 'super_admin',
       status: 'active',
@@ -124,7 +126,7 @@ export class UsersService implements OnModuleInit {
   //  [TBO-31 C1 D2] rrn 필수 — 암호문(rrn_encrypted)만 저장, birthYear는 파생 저장. 평문은
   //  응답·로그·audit 어디에도 기록하지 않는다.
   async signup(input: {
-    webId: string; name: string; email: string; password: string; role?: string;
+    webId: string; name: string; englishName: string; email: string; password: string; role?: string;
     rrn: string; emailChallengeId: number;
     // [TBO-57] SENS 설정 시 필수(서비스 게이트) — verified 휴대전화 challenge를 같은 tx 소비.
     phoneChallengeId?: number;
@@ -133,6 +135,7 @@ export class UsersService implements OnModuleInit {
   }): Promise<{ account: SafeAccount }> {
     await this.refreshFromDb(); // [28F] 교차 인스턴스 중복 검사 정합
     const webId = input.webId.trim();
+    const englishName = requireStaffEnglishName(input.englishName);
     const email = this.signupContacts.normalize('email', input.email);
     const phone = input.phone?.trim() ? this.signupContacts.normalize('sms', input.phone) : null;
     const role: StaffRole = input.role && isStaffRole(input.role) && input.role !== 'super_admin' ? input.role : 'instructor';
@@ -156,7 +159,7 @@ export class UsersService implements OnModuleInit {
       await this.signupContacts.assertAvailable('email', email);
       if (phone) await this.signupContacts.assertAvailable('sms', phone);
       const acc = await this.store.insert<StaffAccount>(USERS_SPEC, {
-        webId, name: input.name.trim(), email, role,
+        webId, name: input.name.trim(), englishName, email, role,
         status: 'pending', passwordHash,
         // [D1] 가입 전 OTP로 이메일 소유 실증 완료 — verified 생성, 링크 토큰 컬럼은 처음부터 null.
         emailVerified: true,
@@ -245,13 +248,14 @@ export class UsersService implements OnModuleInit {
       currentPassword: string; newWebId?: string; newPassword?: string;
       // [E0.5 ⑥] 첫 로그인 강제 변경에서만 허용되는 프로필 동시 설정(가입 폼 재사용 — 대표 지시 2026-07-15).
       // [대표 추가요청 2026-07-16] 수정 가능 컬럼 전부로 확장 — 국가/시간대/출신교/전공/출생연도.
-      name?: string; email?: string; phone?: string;
+      name?: string; englishName?: string; email?: string; phone?: string;
       countryCode?: string; timeZone?: string; university?: string; major?: string; birthYear?: number;
     },
   ): Promise<SafeAccount> {
     const newWebId = input.newWebId?.trim();
     const newPassword = input.newPassword;
     const newName = input.name?.trim();
+    const newEnglishName = input.englishName !== undefined ? requireStaffEnglishName(input.englishName) : undefined;
     const newEmail = input.email?.trim().toLowerCase();
     const newPhone = input.phone?.trim();
     const newCountryCode = input.countryCode?.trim().toUpperCase();
@@ -280,7 +284,7 @@ export class UsersService implements OnModuleInit {
       }
       // [E0.5 ⑥] 프로필 동시 설정은 강제 변경(부트스트랩/리셋 직후) 컨텍스트에서만 — 평시 이메일/전화
       //  변경은 29B-4 인증(challenge)·승인 경로를 우회할 수 없다(마이 페이지로 안내).
-      const wantsProfile = newName !== undefined || newEmail !== undefined || newPhone !== undefined
+      const wantsProfile = newName !== undefined || newEnglishName !== undefined || newEmail !== undefined || newPhone !== undefined
         || newCountryCode !== undefined || newTimeZone !== undefined
         || newUniversity !== undefined || newMajor !== undefined || newBirthYear !== undefined;
       if (wantsProfile && !before.mustChangePassword) {
@@ -323,6 +327,7 @@ export class UsersService implements OnModuleInit {
             //  컨텍스트 + 미검증이면 로그인 게이트(email_unverified)와 복구 흐름이 잠긴다). 오타 리스크는
             //  마이 페이지 재변경(인증 경로)으로 정정 가능.
             ...(newName ? { name: newName } : {}),
+            ...(newEnglishName ? { englishName: newEnglishName } : {}),
             // [대표 추가요청 2026-07-16] 이메일은 통합 설정에서 OTP 인증을 통과한 값만 도달
             //  (CredentialsService가 같은 tx에서 challenge 소비) — verified는 실제 인증 결과.
             ...(newEmail ? { email: newEmail, emailVerified: true } : {}),
@@ -353,6 +358,7 @@ export class UsersService implements OnModuleInit {
           ...(newPassword ? { password: { before: '[redacted]', after: '[changed]' } } : {}),
           // [보안] 이메일/전화는 audit에 masked만 (29B-4 §5와 동일 규약)
           ...(newName && newName !== before.name ? { name: { before: before.name, after: newName } } : {}),
+          ...(newEnglishName && newEnglishName !== before.englishName ? { englishName: { before: before.englishName, after: newEnglishName } } : {}),
           ...(newEmail && newEmail !== (before.email ?? '') ? { email: { before: before.email ? maskTarget('email', before.email) : null, after: maskTarget('email', newEmail) } } : {}),
           ...(newPhone && newPhone !== (before.phone ?? '') ? { phone: { before: before.phone ? maskTarget('sms', before.phone) : null, after: maskTarget('sms', newPhone) } } : {}),
           ...(newCountryCode && newCountryCode !== (before.countryCode ?? '') ? { countryCode: { before: before.countryCode ?? null, after: newCountryCode } } : {}),
@@ -530,14 +536,14 @@ export class UsersService implements OnModuleInit {
   }
 
   /**
-   * 대표 직접 수정 — name/phone/email/role만(webId=profile-change 경로·학력=강사 프로필 권위).
+   * 대표 직접 수정 — name/englishName/phone/email/role만(webId=profile-change 경로·학력=강사 프로필 권위).
    * 대상이 super_admin이면 400(단일 불변식 — 대표 본인은 마이페이지). role/email 변경은
    * auth_version+1(기존 세션 전멸 — 권한·수신처 변화). 전 변경 audit(before/after).
    */
   async adminUpdateUser(
     id: number,
     actorId: number,
-    patch: { name?: string; phone?: string; email?: string; role?: 'instructor' | 'manager' | 'admin'; keepTeaching?: boolean },
+    patch: { name?: string; englishName?: string; phone?: string; email?: string; role?: 'instructor' | 'manager' | 'admin'; keepTeaching?: boolean },
   ): Promise<SafeAccount> {
     await this.refreshFromDb();
     return this.uow.run(async () => {
@@ -553,6 +559,13 @@ export class UsersService implements OnModuleInit {
       if (patch.name != null && patch.name.trim() && patch.name.trim() !== before.name) {
         next.name = patch.name.trim();
         changes.name = { before: before.name, after: next.name };
+      }
+      if (patch.englishName !== undefined) {
+        const englishName = requireStaffEnglishName(patch.englishName);
+        if (englishName !== before.englishName) {
+          next.englishName = englishName;
+          changes.englishName = { before: before.englishName, after: englishName };
+        }
       }
       if (patch.phone != null && patch.phone.trim() !== (before.phone ?? '')) {
         next.phone = patch.phone.trim() || null as never;

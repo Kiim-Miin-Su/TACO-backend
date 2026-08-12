@@ -141,8 +141,10 @@ describe("Schedule API (e2e)", () => {
     }
     const park = res.body.instructors.find((i: { id: number }) => i.id === 1);
     const jung = res.body.instructors.find((i: { id: number }) => i.id === 2);
-    expect(park).toMatchObject({ countryCode: "KR", timeZone: "Asia/Seoul" });
-    expect(jung).toMatchObject({ countryCode: "GB", timeZone: "Europe/London" });
+    expect(park).toMatchObject({ name: "Jihoon Park", countryCode: "KR", timeZone: "Asia/Seoul" });
+    expect(jung).toMatchObject({ name: "Yujin Jung", countryCode: "GB", timeZone: "Europe/London" });
+    expect(res.body.courses.filter((course: { instructorId: number | null }) => course.instructorId != null)
+      .every((course: { instructorName: string | null }) => course.instructorName && /^[A-Za-z .'-]+$/.test(course.instructorName))).toBe(true);
     expect(res.body.instructors.some((i: { scheduleOwnerRole?: string }) => i.scheduleOwnerRole === 'super_admin')).toBe(true);
     const overseasStudent = res.body.students.find((s: { id: number }) => s.id === 1);
     expect(overseasStudent).toMatchObject({ countryCode: "US" });

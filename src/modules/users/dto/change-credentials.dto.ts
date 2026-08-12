@@ -1,5 +1,7 @@
 import { IsEmail, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
+import { normalizeStaffEnglishName, STAFF_ENGLISH_NAME_MAX_LENGTH, STAFF_ENGLISH_NAME_MESSAGE, STAFF_ENGLISH_NAME_PATTERN } from '@kms545487/contracts';
 
 export class ChangeCredentialsDto {
   @ApiProperty({ writeOnly: true, maxLength: 72 })
@@ -37,6 +39,14 @@ export class ChangeCredentialsDto {
   @MinLength(1)
   @MaxLength(50)
   name?: string;
+
+  @ApiPropertyOptional({ maxLength: STAFF_ENGLISH_NAME_MAX_LENGTH, example: 'Minsoo Kim', pattern: STAFF_ENGLISH_NAME_PATTERN.source })
+  @Transform(({ value }) => typeof value === 'string' ? normalizeStaffEnglishName(value) : value)
+  @IsOptional()
+  @IsString()
+  @MaxLength(STAFF_ENGLISH_NAME_MAX_LENGTH)
+  @Matches(STAFF_ENGLISH_NAME_PATTERN, { message: STAFF_ENGLISH_NAME_MESSAGE })
+  englishName?: string;
 
   @ApiPropertyOptional({ maxLength: 320 })
   @IsOptional()

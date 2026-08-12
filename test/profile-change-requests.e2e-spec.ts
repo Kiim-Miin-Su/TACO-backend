@@ -7,7 +7,7 @@ import { createTestApp } from './setup-app';
 // [TBO-31 C1 D4] 프로필 변경 = 비밀번호 + 본인 이메일 OTP 상시 — 각 생성 전에 verified challenge 위조.
 import { forgeVerifiedEmailChallenge } from './profile-challenge-helper';
 
-type UserRow = { id: number; name: string; phone?: string | null; profileVersion: number };
+type UserRow = { id: number; name: string; englishName: string; phone?: string | null; profileVersion: number };
 type RequestRow = { id: number; requesterId: number; status: string; rejectionReason?: string | null };
 
 describe('Profile change requests (e2e)', () => {
@@ -51,7 +51,7 @@ describe('Profile change requests (e2e)', () => {
 
   it('returns the staff profile and blocks no-op and mass assignment', async () => {
     const profile = await http.get('/api/users/me/profile').set(bearer(tokens.instructor)).expect(200);
-    expect(profile.body).toMatchObject({ id: 1, webId: 'park_inst', name: '박지훈', profileVersion: 1 });
+    expect(profile.body).toMatchObject({ id: 1, webId: 'park_inst', name: '박지훈', englishName: 'Jihoon Park', profileVersion: 1 });
     // [TBO-29B-4] 모든 변경은 현재 비밀번호 재확인 — 누락 400, 오입력 403
     await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
       .send({ name: '박지훈 변경', reason: '비밀번호 재확인 누락 요청입니다.' }).expect(400);
@@ -74,12 +74,12 @@ describe('Profile change requests (e2e)', () => {
     // [TBO-31 C1 D4] 본인(현재) 이메일로 verified된 challenge 소비 — 같은 tx 일회 소비.
     const challengeId = await forgeVerifiedEmailChallenge(app, 1, 'park@tnacademy.test');
     const created = await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
-      .send({ currentPassword: 'demo1234', name: '박지훈 변경', countryCode: 'us', timeZone: 'America/New_York', verificationChallengeId: challengeId, reason: '해외 근무지 정보가 변경되었습니다.' })
+      .send({ currentPassword: 'demo1234', name: '박지훈 변경', englishName: 'Jihoon Park Updated', countryCode: 'us', timeZone: 'America/New_York', verificationChallengeId: challengeId, reason: '해외 근무지 정보와 영문 이름이 변경되었습니다.' })
       .expect(201);
     mainRequestId = created.body.id;
     expect(created.body).toMatchObject({ requesterId: 1, baseProfileVersion: 1, status: 'pending' });
     expect(created.body.requestedChanges).toEqual({
-      name: '박지훈 변경', countryCode: 'US', timeZone: 'America/New_York',
+      name: '박지훈 변경', englishName: 'Jihoon Park Updated', countryCode: 'US', timeZone: 'America/New_York',
     });
     await http.post('/api/profile-change-requests').set(bearer(tokens.instructor))
       .send({ currentPassword: 'demo1234', name: '박지훈 3차', reason: '추가 변경 요청을 제출합니다.' }).expect(409);
@@ -150,7 +150,7 @@ describe('Profile change requests (e2e)', () => {
     ]);
     expect([left.status, right.status].sort()).toEqual([201, 409]);
     expect(db.findById<UserRow>('users', 1)).toMatchObject({
-      name: '박지훈 변경', profileVersion: 2,
+      name: '박지훈 변경', englishName: 'Jihoon Park Updated', profileVersion: 2,
     });
     expect([left.body, right.body].find((body) => body.status === 'approved')).toMatchObject({ appliedProfileVersion: 2 });
     const audits = db.findAll<Record<string, unknown> & { id: number }>('audit_log')

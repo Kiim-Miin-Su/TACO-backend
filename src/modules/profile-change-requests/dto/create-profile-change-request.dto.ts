@@ -1,6 +1,7 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Transform } from 'class-transformer';
 import { IsEmail, IsInt, IsOptional, IsString, Matches, MaxLength, MinLength, ValidateIf } from 'class-validator';
-import type { CreateProfileChangeRequestInput } from '@kms545487/contracts';
+import { normalizeStaffEnglishName, STAFF_ENGLISH_NAME_MAX_LENGTH, STAFF_ENGLISH_NAME_MESSAGE, STAFF_ENGLISH_NAME_PATTERN, type CreateProfileChangeRequestInput } from '@kms545487/contracts';
 
 export class CreateProfileChangeRequestDto implements CreateProfileChangeRequestInput {
   // [TBO-29B-4] 모든 마이 페이지 변경은 현재 비밀번호 재확인 필수(§2). 저장·로그 금지.
@@ -12,6 +13,13 @@ export class CreateProfileChangeRequestDto implements CreateProfileChangeRequest
   @ValidateIf((_object, value) => value !== undefined)
   @IsString() @MinLength(1) @MaxLength(50)
   name?: string;
+
+  @ApiPropertyOptional({ example: 'Jihoon Park', maxLength: STAFF_ENGLISH_NAME_MAX_LENGTH, pattern: STAFF_ENGLISH_NAME_PATTERN.source })
+  @Transform(({ value }) => typeof value === 'string' ? normalizeStaffEnglishName(value) : value)
+  @ValidateIf((_object, value) => value !== undefined)
+  @IsString() @MaxLength(STAFF_ENGLISH_NAME_MAX_LENGTH)
+  @Matches(STAFF_ENGLISH_NAME_PATTERN, { message: STAFF_ENGLISH_NAME_MESSAGE })
+  englishName?: string;
 
   // [E0] 아이디(webId) 변경 — 승인제(대표 결정). 승인 시 auth_version+1로 기존 세션 전부 무효.
   @ApiPropertyOptional({ example: 'jihoon_park', minLength: 3, maxLength: 50, description: '변경할 아이디(대표 승인 후 적용·재로그인 필요)' })

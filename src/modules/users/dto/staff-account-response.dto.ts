@@ -11,6 +11,9 @@ export class StaffAccountResponseDto implements StaffAccountSummary {
   @ApiProperty({ example: '이지원' })
   name!: string;
 
+  @ApiProperty({ example: 'Jiwon Lee', description: '학부모 전달용 영문 이름' })
+  englishName!: string;
+
   @ApiPropertyOptional({ example: 'manager@tnacademy.test', nullable: true })
   email?: string | null;
 

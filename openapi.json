@@ -9664,6 +9664,13 @@
       "SignupDto": {
         "type": "object",
         "properties": {
+          "englishName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "학부모 전달용 영문 이름",
+            "example": "Jiwon Kim",
+            "pattern": "^[A-Za-z][A-Za-z .'-]*$"
+          },
           "webId": {
             "type": "string",
             "minLength": 3,
@@ -9714,6 +9721,7 @@
           }
         },
         "required": [
+          "englishName",
           "webId",
           "name",
           "email",
@@ -9749,6 +9757,10 @@
             "type": "string",
             "example": "김민수"
           },
+          "englishName": {
+            "type": "string",
+            "example": "Minsoo Kim"
+          },
           "role": {
             "enum": [
               "super_admin",
@@ -9766,6 +9778,7 @@
         "required": [
           "id",
           "name",
+          "englishName",
           "role",
           "mustChangePassword"
         ]
@@ -9932,6 +9945,11 @@
             "type": "string",
             "example": "이지원"
           },
+          "englishName": {
+            "type": "string",
+            "example": "Jiwon Lee",
+            "description": "학부모 전달용 영문 이름"
+          },
           "email": {
             "type": "string",
             "nullable": true,
@@ -10017,6 +10035,7 @@
           "id",
           "webId",
           "name",
+          "englishName",
           "role",
           "status",
           "emailVerified",
@@ -10062,6 +10081,11 @@
           "name": {
             "type": "string",
             "example": "박지훈"
+          },
+          "englishName": {
+            "type": "string",
+            "example": "Jihoon Park",
+            "description": "학부모 전달용 영문 이름"
           },
           "email": {
             "type": "string",
@@ -10120,6 +10144,7 @@
           "id",
           "webId",
           "name",
+          "englishName",
           "role",
           "status",
           "emailVerified",
@@ -10150,6 +10175,13 @@
             "minLength": 1,
             "maxLength": 50,
             "description": "이름"
+          },
+          "englishName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "학부모 전달용 영문 이름",
+            "example": "Jiwon Kim",
+            "pattern": "^[A-Za-z][A-Za-z .'-]*$"
           },
           "password": {
             "type": "string",
@@ -10207,6 +10239,7 @@
         "required": [
           "webId",
           "name",
+          "englishName",
           "password"
         ]
       },
@@ -10248,6 +10281,12 @@
             "minLength": 1,
             "maxLength": 50,
             "description": "이름"
+          },
+          "englishName": {
+            "type": "string",
+            "maxLength": 80,
+            "description": "학부모 전달용 영문 이름",
+            "pattern": "^[A-Za-z][A-Za-z .'-]*$"
           },
           "phone": {
             "type": "string",
@@ -10294,6 +10333,12 @@
           "name": {
             "type": "string",
             "maxLength": 50
+          },
+          "englishName": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "Jiwon Kim",
+            "pattern": "^[A-Za-z][A-Za-z .'-]*$"
           },
           "phone": {
             "type": "string",
@@ -10367,6 +10412,12 @@
             "type": "string",
             "minLength": 1,
             "maxLength": 50
+          },
+          "englishName": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "Minsoo Kim",
+            "pattern": "^[A-Za-z][A-Za-z .'-]*$"
           },
           "email": {
             "type": "string",
@@ -10626,6 +10677,12 @@
             "minLength": 1,
             "maxLength": 50,
             "example": "박지훈"
+          },
+          "englishName": {
+            "type": "string",
+            "maxLength": 80,
+            "example": "Jihoon Park",
+            "pattern": "^[A-Za-z][A-Za-z .'-]*$"
           },
           "webId": {
             "type": "string",

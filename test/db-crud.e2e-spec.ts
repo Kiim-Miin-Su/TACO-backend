@@ -79,6 +79,7 @@ function tokenFor(app: INestApplication, actorId: number): string {
   return app.get(AuthService).sign({
     sub: account.id,
     name: account.name,
+    englishName: account.englishName,
     roles: [account.role],
     authVersion: account.authVersion ?? 1,
     mustChangePassword: account.mustChangePassword ?? false,

@@ -55,10 +55,10 @@ describe('Staff attendance ledger (e2e)', () => {
       checkInAt: '2026-08-05T00:00:00.000Z',
       checkOutAt: '2026-08-05T09:00:00.000Z',
     }).expect(200);
-    const ledger = (await http.get('/api/staff-attendance/instructor-ledger?from=2026-06-01&to=2026-08-31&q=박지훈')
+    const ledger = (await http.get('/api/staff-attendance/instructor-ledger?from=2026-06-01&to=2026-08-31&q=Jihoon%20Park')
       .set(auth('manager')).expect(200)).body;
     expect(ledger.entries.length).toBeGreaterThan(0);
-    expect(ledger.entries.every((row: { instructorName: string }) => row.instructorName.includes('박지훈'))).toBe(true);
+    expect(ledger.entries.every((row: { instructorName: string }) => row.instructorName.includes('Jihoon Park'))).toBe(true);
     expect(ledger.entries.some((row: { source: string }) => row.source === 'class_session')).toBe(true);
     expect(ledger.entries.some((row: { source: string; date: string }) => row.source === 'staff_day' && row.date === '2026-08-03')).toBe(true);
     expect(ledger.entries.find((row: { source: string; date: string }) => row.source === 'staff_day' && row.date === '2026-08-05'))

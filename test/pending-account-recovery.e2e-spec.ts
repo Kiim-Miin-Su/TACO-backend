@@ -32,7 +32,7 @@ describe('Legacy pending account recovery + delete (e2e, hotfix 2026-07-20)', ()
   // 레거시(구 링크 가입) 시뮬레이션 — TBO-31 이후 생성 경로는 전부 verified라 직접 삽입으로 재현.
   const insertLegacyPending = async (webId: string, email: string) =>
     store.insert<UserRow & { name: string; role: string; passwordHash: string }>(USERS_SPEC, {
-      webId, name: '레거시대기', email, role: 'instructor', status: 'pending',
+      webId, name: '레거시대기', englishName: 'Legacy Pending', email, role: 'instructor', status: 'pending',
       passwordHash: '$2b$12$C6UzMDM.H6dfI/f/IKcEeO7ZBpDgYaN3BB/L8/1PqFOSGzX8vC/P2', // bcrypt 임의값
       emailVerified: false, rrnEncrypted: 'legacy-enc-blob',
     } as never);
@@ -85,7 +85,7 @@ describe('Legacy pending account recovery + delete (e2e, hotfix 2026-07-20)', ()
     // 같은 아이디·이메일 재가입 — OTP 정상 흐름으로 성공(UNIQUE 충돌 없음)
     const challengeId = await verifiedSignupChallenge(http, 'del@legacy.test');
     await http.post('/api/auth/signup').send({
-      webId: 'legacy_del', name: '재가입', email: 'del@legacy.test', password: 'password123',
+      webId: 'legacy_del', name: '재가입', englishName: 'Rejoined Staff', email: 'del@legacy.test', password: 'password123',
       rrn: '950101-1234567', emailChallengeId: challengeId, role: 'instructor',
     }).expect(201);
   });
@@ -103,6 +103,7 @@ describe('Legacy pending account recovery + delete (e2e, hotfix 2026-07-20)', ()
     const acc = (await http.post('/api/auth/signup').send({
       webId: 'legacy_delete_race',
       name: '삭제승인경합',
+      englishName: 'Delete Approve Race',
       email: 'delete-race@legacy.test',
       password: 'password123',
       rrn: '950101-1234567',

@@ -309,7 +309,7 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     // 전화 형식 위반 → 400 (SignupDto @Matches — SMS 유예 규약과 동일 정규식)
     await http.post('/api/auth/signup')
       .send({
-        webId: 'e05_badphone', name: '형식오류', email: 'e05bad@t.test', password: 'password123',
+        webId: 'e05_badphone', name: '형식오류', englishName: 'Invalid Phone', email: 'e05bad@t.test', password: 'password123',
         phone: '01012345678', rrn: '950101-1234567', emailChallengeId: 1,
       })
       .expect(400);
@@ -340,7 +340,7 @@ describe('Auth approval command + auth events (e2e, TBO-28B)', () => {
     const admin = await login('admin');
     const inst = await login('park_inst');
     const body = {
-      webId: 'direct_inst', name: '김직접', password: 'securepw1', phone: '010-1234-5678',
+      webId: 'direct_inst', name: '김직접', englishName: 'Direct Kim', password: 'securepw1', phone: '010-1234-5678',
       university: '한국대학교', major: '수학교육', birthYear: 1998,
     };
     // 비대표 → 403

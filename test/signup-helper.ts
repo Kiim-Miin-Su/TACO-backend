@@ -12,7 +12,7 @@ export const TEST_RRN_BIRTH_YEAR = 1995;
 export type SignupResult = {
   ok: boolean;
   message: string;
-  account: { id: number; webId: string; name: string; role: string; status: string };
+  account: { id: number; webId: string; name: string; englishName: string; role: string; status: string };
 };
 
 /**
@@ -37,7 +37,7 @@ export async function verifiedSignupChallenge(http: Http, email: string): Promis
 export async function signupWithOtp(
   http: Http,
   input: {
-    webId: string; name?: string; email?: string; password?: string; role?: string; rrn?: string;
+    webId: string; name?: string; englishName?: string; email?: string; password?: string; role?: string; rrn?: string;
     phone?: string; university?: string; major?: string;
   },
 ): Promise<SignupResult> {
@@ -46,6 +46,7 @@ export async function signupWithOtp(
   const res = await http.post('/api/auth/signup').send({
     webId: input.webId,
     name: input.name ?? `계정${input.webId}`,
+    englishName: input.englishName ?? 'Test Staff',
     email,
     password: input.password ?? 'password123',
     rrn: input.rrn ?? TEST_RRN,

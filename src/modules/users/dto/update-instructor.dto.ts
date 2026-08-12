@@ -1,12 +1,19 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
-import type { UpdateInstructorInput } from '@kms545487/contracts';
+import { Transform } from 'class-transformer';
+import { IsBoolean, IsEmail, IsInt, IsOptional, IsString, Matches, Max, MaxLength, Min } from 'class-validator';
+import { normalizeStaffEnglishName, STAFF_ENGLISH_NAME_MAX_LENGTH, STAFF_ENGLISH_NAME_MESSAGE, STAFF_ENGLISH_NAME_PATTERN, type UpdateInstructorInput } from '@kms545487/contracts';
 import { MAX_AMOUNT } from '../../../common/validation-limits';
 
 export class UpdateInstructorDto implements UpdateInstructorInput {
   @ApiPropertyOptional({ maxLength: 50 })
   @IsOptional() @IsString() @MaxLength(50)
   name?: string;
+
+  @ApiPropertyOptional({ maxLength: STAFF_ENGLISH_NAME_MAX_LENGTH, example: 'Jiwon Kim', pattern: STAFF_ENGLISH_NAME_PATTERN.source })
+  @Transform(({ value }) => typeof value === 'string' ? normalizeStaffEnglishName(value) : value)
+  @IsOptional() @IsString() @MaxLength(STAFF_ENGLISH_NAME_MAX_LENGTH)
+  @Matches(STAFF_ENGLISH_NAME_PATTERN, { message: STAFF_ENGLISH_NAME_MESSAGE })
+  englishName?: string;
 
   @ApiPropertyOptional({ maxLength: 20 })
   @IsOptional() @IsString() @MaxLength(20)

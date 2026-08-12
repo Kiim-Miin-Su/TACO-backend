@@ -26,7 +26,7 @@ const auth = (token: string) => ({ Authorization: `Bearer ${token}` });
 const openApps = new Set<INestApplication>();
 
 function tokenFor(app: INestApplication, actorId: number, role: string, name: string): string {
-  return app.get(AuthService).sign({ sub: actorId, name, roles: [role], authVersion: 1, mustChangePassword: false });
+  return app.get(AuthService).sign({ sub: actorId, name, englishName: 'Race Staff', roles: [role], authVersion: 1, mustChangePassword: false });
 }
 
 describeDb('[TBO-53 C1] Money race — 2-instance PG (e2e)', () => {
@@ -67,7 +67,7 @@ describeDb('[TBO-53 C1] Money race — 2-instance PG (e2e)', () => {
       // 완전 빈 DB(로컬 fresh) 한정 bootstrap — 고유 stamp 자격증명, 종료 시 soft-delete.
       const passwordHash = await bcrypt.hash(`Race!${stamp}`, 12);
       const row = await appA.get(PostgresCollectionStore).insert(USERS_SPEC, {
-        webId: `race_ceo_${stamp}`, name: `RACE 대표 ${stamp}`, email: `race_${stamp}@qa.local`,
+        webId: `race_ceo_${stamp}`, name: `RACE 대표 ${stamp}`, englishName: `Race Ceo ${stamp}`, email: `race_${stamp}@qa.local`,
         role: 'super_admin', status: 'active', passwordHash, emailVerified: true,
       } as never);
       ceoId = (row as { id: number }).id;
@@ -84,7 +84,7 @@ describeDb('[TBO-53 C1] Money race — 2-instance PG (e2e)', () => {
     // QA aggregate 준비(전부 A 인스턴스 API 경유 — B 메모리에는 없음 = stale 재현 장치)
     // [74D-1] 강사 직접 등록은 SudoGuard — Bearer 단독은 403 SUDO_REQUIRED.
     instructorId = Number((await httpA.post('/api/users/instructors').set(sudoAuthHeaders(appA, admin)).send({
-      webId: `race_inst_${stamp}`, name: `RACE 강사 ${stamp}`, password: `Race!${stamp}x`,
+      webId: `race_inst_${stamp}`, name: `RACE 강사 ${stamp}`, englishName: `Race Instructor ${stamp}`, password: `Race!${stamp}x`,
       defaultHourlyRate: 40000, canTeachKinder: false, countryCode: 'KR', timeZone: 'Asia/Seoul',
     }).expect(201)).body.id);
     cleanupIds.push({ table: 'users', id: instructorId });

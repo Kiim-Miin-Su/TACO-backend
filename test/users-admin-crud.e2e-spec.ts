@@ -43,7 +43,7 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
     // OTP 가입 계정(rrn 보유)으로 rrnMasked 검증
     const challengeId = await verifiedSignupChallenge(http, 'crud-detail@t32.test');
     const created = (await http.post('/api/auth/signup').send({
-      webId: 'crud_detail', name: '상세검증', email: 'crud-detail@t32.test', password: 'password123',
+      webId: 'crud_detail', name: '상세검증', englishName: 'Detail Staff', email: 'crud-detail@t32.test', password: 'password123',
       rrn: '950101-1234567', emailChallengeId: challengeId, role: 'instructor',
     }).expect(201)).body.account;
 
@@ -58,14 +58,14 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
 
   it('③ 직접 등록 역할 확장: manager 생성 → 즉시 active·로그인 가능 (Create 버튼 경로)', async () => {
     const created = (await http.post('/api/users/instructors').set(sudoAdmin()).send({
-      webId: 'crud_mgr', name: '직접매니저', password: 'password123', role: 'manager', email: 'crud-mgr@t32.test',
+      webId: 'crud_mgr', name: '직접매니저', englishName: 'Direct Manager', password: 'password123', role: 'manager', email: 'crud-mgr@t32.test',
     }).expect(201)).body;
     expect(created).toMatchObject({ role: 'manager', status: 'active', emailVerified: true });
     await login('crud_mgr', 'password123');
     // 강사 프로필은 강사 역할만 생성된다
     expect(db.findBy<{ userId: number }>('instructor_profiles', (p) => p.userId === created.id)).toHaveLength(0);
     await http.post('/api/users/instructors').set(auth(manager)).send({
-      webId: 'crud_x', name: 'x', password: 'password123',
+      webId: 'crud_x', name: 'x', englishName: 'Guard Staff', password: 'password123',
     }).expect(403); // 대표 전용
   });
 
@@ -101,7 +101,7 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
 
   it('⑤ 역할 전이 audit 실패 시 users와 instructor_profiles가 모두 rollback된다', async () => {
     const created = (await http.post('/api/users/instructors').set(sudoAdmin()).send({
-      webId: 'crud_role_rollback', name: '역할롤백', password: 'password123',
+      webId: 'crud_role_rollback', name: '역할롤백', englishName: 'Role Rollback', password: 'password123',
       role: 'manager', email: 'crud-role-rollback@t32.test',
     }).expect(201)).body;
     const audit = app.get(AuditService);
@@ -161,6 +161,7 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
     const created = (await http.post('/api/users/instructors').set(sudoAdmin()).send({
       webId: 'crud_terminate_rollback',
       name: '종료롤백',
+      englishName: 'Terminate Rollback',
       password: 'password123',
       role: 'instructor',
       email: 'crud-terminate-rollback@t32.test',
@@ -190,6 +191,7 @@ describe('Users admin CRUD + reauth (e2e, 유저 관리 2026-07-20)', () => {
     const created = (await http.post('/api/users/instructors').set(sudoAdmin()).send({
       webId: 'crud_restore_rollback',
       name: '복구롤백',
+      englishName: 'Restore Rollback',
       password: 'password123',
       role: 'instructor',
       email: 'crud-restore-rollback@t32.test',

@@ -19,6 +19,7 @@ import {
   type SafeAccount, type StaffAccount, type StaffRole,
 } from './user.entity';
 import { UsersService, identityLockId } from './users.service';
+import { requireStaffEnglishName } from './staff-english-name.policy';
 
 const sha256 = (value: string): string => createHash('sha256').update(value).digest('hex');
 
@@ -115,7 +116,7 @@ export class SignupApprovalService {
   //  이메일 인증 생략(직접 신원 확인 전제). 학생·수업 추가는 기존 웹 화면 흐름.
   async provisionInstructor(
     input: {
-      webId: string; name: string; password: string;
+      webId: string; name: string; englishName: string; password: string;
       email?: string; phone?: string; university?: string; major?: string; birthYear?: number;
       countryCode?: string; timeZone?: string;
       defaultHourlyRate?: number; canTeachKinder?: boolean;
@@ -148,7 +149,7 @@ export class SignupApprovalService {
       }
       const approvedAt = new Date().toISOString();
       const acc = await this.store.insert<StaffAccount>(USERS_SPEC, {
-        webId, name: input.name.trim(), email, phone: input.phone?.trim() || null,
+        webId, name: input.name.trim(), englishName: requireStaffEnglishName(input.englishName), email, phone: input.phone?.trim() || null,
         role, status: 'active', passwordHash,
         emailVerified: true, // 직접 등록 — 인증 게이트 생략(로그인 게이트 통과용)
         approvedBy: actorId, approvedAt, authVersion: 1,

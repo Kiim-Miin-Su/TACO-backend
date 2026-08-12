@@ -21,7 +21,7 @@ describe('GET /payouts/uncovered — 비활성(반려) 강사 내성 (TBO-80 80J
     const ch = (await http.post('/api/auth/signup-email-challenge').send({ email }).expect(201)).body;
     await http.post(`/api/auth/signup-email-challenge/${ch.id}/confirm`).send({ email, code: ch.devOtpCode }).expect(201);
     const su = (await http.post('/api/auth/signup').send({
-      webId: 't80_rejected', name: '반려강사', email, password: 'password123',
+      webId: 't80_rejected', name: '반려강사', englishName: 'Rejected Instructor', email, password: 'password123',
       rrn: '910101-1234567', emailChallengeId: ch.id, role: 'instructor',
     }).expect(201)).body;
     rejectedId = su.account.id;

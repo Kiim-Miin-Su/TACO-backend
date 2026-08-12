@@ -36,6 +36,21 @@ describe('Signup email OTP + RRN + webId policy (e2e, TBO-31 C1)', () => {
 
   const challengeOf = (id: number) => db.findById<ChallengeRow>('signup_email_challenges', id)!;
 
+  it('영문 이름은 가입 필수이며 허용 문자 검증 후 원본 계정에 저장된다', async () => {
+    const email = 'english-name@t31.test';
+    const emailChallengeId = await verifiedSignupChallenge(http, email);
+    const base = {
+      webId: 't31_english_name', name: '영문이름검증', email, password: 'password123',
+      rrn: '950101-1234567', emailChallengeId, role: 'instructor',
+    };
+    await http.post('/api/auth/signup').send(base).expect(400);
+    await http.post('/api/auth/signup').send({ ...base, englishName: '박지훈' }).expect(400);
+    const created = (await http.post('/api/auth/signup')
+      .send({ ...base, englishName: '  Jihoon   Park  ' }).expect(201)).body;
+    expect(created.account).toMatchObject({ englishName: 'Jihoon Park' });
+    expect(db.findById<{ englishName: string }>('users', created.account.id)?.englishName).toBe('Jihoon Park');
+  });
+
   it('① OTP 발송(devOtpCode)→오답 5회 잠금→새 챌린지→confirm→signup 201(파생·암호화·마스킹)', async () => {
     const email = 'otp1@t31.test';
     const created = (await http.post('/api/auth/signup-email-challenge').send({ email }).expect(201)).body;
@@ -65,7 +80,7 @@ describe('Signup email OTP + RRN + webId policy (e2e, TBO-31 C1)', () => {
 
     // 가입 — emailVerified=true 생성 · birthYear 파생(950101-1 → 1995) · 암호문만 저장
     const res = await http.post('/api/auth/signup').send({
-      webId: 't31_otp1', name: '가입자일', email, password: 'password123',
+      webId: 't31_otp1', name: '가입자일', englishName: 'Signup One', email, password: 'password123',
       rrn: '950101-1234567', emailChallengeId: fresh.id, role: 'instructor',
     }).expect(201);
     expect(res.body.account.status).toBe('pending');
@@ -90,7 +105,7 @@ describe('Signup email OTP + RRN + webId policy (e2e, TBO-31 C1)', () => {
     expect(challengeOf(fresh.id)).toMatchObject({ status: 'consumed', consumedByUserId: id });
     // 같은 이메일 재가입은 OTP 재사용 판정보다 앞선 연락처 중복 게이트에서 409.
     const replay = await http.post('/api/auth/signup').send({
-      webId: 't31_otp1_re', name: '재사용', email, password: 'password123',
+      webId: 't31_otp1_re', name: '재사용', englishName: 'Signup Replay', email, password: 'password123',
       rrn: '950101-1234567', emailChallengeId: fresh.id,
     }).expect(409);
     expect(replay.body.code).toBe('SIGNUP_EMAIL_ALREADY_REGISTERED');
@@ -126,7 +141,7 @@ describe('Signup email OTP + RRN + webId policy (e2e, TBO-31 C1)', () => {
     const created = (await http.post('/api/auth/signup-email-challenge').send({ email }).expect(201)).body;
     const before = db.findAll<UserRow>('users').length;
     await http.post('/api/auth/signup').send({
-      webId: 't31_unverified', name: '미인증', email, password: 'password123',
+      webId: 't31_unverified', name: '미인증', englishName: 'Unverified Staff', email, password: 'password123',
       rrn: '950101-1234567', emailChallengeId: created.id,
     }).expect(400);
     expect(db.findAll<UserRow>('users').length).toBe(before);
@@ -137,7 +152,7 @@ describe('Signup email OTP + RRN + webId policy (e2e, TBO-31 C1)', () => {
   it('③ 이메일 불일치: 다른 이메일로 verified된 챌린지 → signup 400', async () => {
     const challengeId = await verifiedSignupChallenge(http, 'match-a@t31.test');
     await http.post('/api/auth/signup').send({
-      webId: 't31_mismatch', name: '불일치', email: 'match-b@t31.test', password: 'password123',
+      webId: 't31_mismatch', name: '불일치', englishName: 'Mismatch Staff', email: 'match-b@t31.test', password: 'password123',
       rrn: '950101-1234567', emailChallengeId: challengeId,
     }).expect(400);
     expect(db.findAll<UserRow>('users').some((u) => u.webId === 't31_mismatch')).toBe(false);
@@ -146,7 +161,7 @@ describe('Signup email OTP + RRN + webId policy (e2e, TBO-31 C1)', () => {
   it('④ RRN 형식 위반 400 · 체크섬은 검증하지 않는다(형식만 유효하면 201)', async () => {
     const email = 'rrn@t31.test';
     const challengeId = await verifiedSignupChallenge(http, email);
-    const base = { webId: 't31_rrn', name: '알알엔', email, password: 'password123', emailChallengeId: challengeId };
+    const base = { webId: 't31_rrn', name: '알알엔', englishName: 'Rrn Staff', email, password: 'password123', emailChallengeId: challengeId };
     await http.post('/api/auth/signup').send({ ...base, rrn: '95010112345678' }).expect(400); // 자릿수 초과
     await http.post('/api/auth/signup').send({ ...base, rrn: '950101-923456' }).expect(400); // 자릿수 부족
     await http.post('/api/auth/signup').send({ ...base, rrn: '950101-9234567' }).expect(400); // 성별자리 9

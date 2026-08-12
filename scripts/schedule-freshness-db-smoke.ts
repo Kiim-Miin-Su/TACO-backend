@@ -40,12 +40,14 @@ async function main(): Promise<void> {
     const manager = appA.get(AuthService).sign({
       sub: managerAccount.id,
       name: managerAccount.name,
+      englishName: managerAccount.englishName,
       roles: [managerAccount.role],
       authVersion: managerAccount.authVersion ?? 1,
     });
     const instructorToken = appB.get(AuthService).sign({
       sub: instructor.id,
       name: instructor.name,
+      englishName: instructor.englishName,
       roles: [instructor.role],
       authVersion: instructor.authVersion ?? 1,
     });

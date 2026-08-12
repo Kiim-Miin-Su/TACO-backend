@@ -19,6 +19,7 @@ export type AccountStatus = 'pending' | 'active' | 'rejected';
 export type StaffAccount = {
   webId: string;
   name: string;
+  englishName: string;
   // [TBO-28B] nullable — 대표 직접 등록 강사는 이메일 없이 생성될 수 있다(운영 흐름 2026-07-14).
   //  self-signup 경로는 여전히 필수(SignupDto @IsEmail)·인증 게이트 유지.
   email?: string | null;
@@ -121,7 +122,7 @@ export const authVersionOf = (u: Pick<StaffAccount, 'authVersion'>): number => u
 export const profileVersionOf = (u: Pick<StaffAccount, 'profileVersion'>): number => u.profileVersion ?? 1;
 
 // (참고) contracts Account 형태로 변환이 필요할 때
-export const toAccount = (a: SafeAccount): Account => ({ id: a.id, webId: a.webId, name: a.name, role: a.role });
+export const toAccount = (a: SafeAccount): Account => ({ id: a.id, webId: a.webId, name: a.name, englishName: a.englishName, role: a.role });
 
 /** [TBO-68 C3] RRN 마스킹 산출(서버 내부 복호화) — 승인 대기 목록·계정 상세(super_admin) 공유.
  *  복호 실패(키 교체·구 데이터)는 노출 대신 null(fail-closed). 평문·암호문은 어떤 응답에도 없다. */

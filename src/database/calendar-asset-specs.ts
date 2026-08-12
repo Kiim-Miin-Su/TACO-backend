@@ -42,6 +42,7 @@ import { INSTRUCTOR_CONTRACT_INTEGRITY_SQL } from './migrations/instructor-contr
 import { INSTRUCTOR_CONTRACT_BOUNDS_SQL } from './migrations/instructor-contract-bounds.migration';
 import { TRANSACTION_SOURCE_INTEGRITY_SQL } from './migrations/transaction-source-integrity.migration';
 import { SOFTDELETE_UNIQUE_MIDNIGHT_SQL } from './migrations/softdelete-unique-midnight.migration';
+import { STAFF_ENGLISH_NAME_MIGRATION_SQL } from './migrations/staff-english-name.migration';
 import { REPORT_TEMPLATE_OWNER_MIGRATION_SQL } from './migrations/report-template-owner.migration';
 import {
   REPORT_TEMPLATE_SCOPE_MIGRATION_SQL,
@@ -69,6 +70,11 @@ export const USERS_SPEC: PostgresCollectionSpec = {
       id serial PRIMARY KEY,
       web_id varchar(50) NOT NULL UNIQUE,
       name varchar(50) NOT NULL,
+      english_name varchar(80) NOT NULL CHECK (
+        char_length(english_name) BETWEEN 1 AND 80
+        AND english_name=btrim(english_name)
+        AND english_name ~ '^[A-Za-z][A-Za-z .''-]*$'
+      ),
       email varchar(255) UNIQUE,
       phone varchar(20),
       role varchar(32) NOT NULL,
@@ -116,6 +122,7 @@ export const USERS_SPEC: PostgresCollectionSpec = {
     // [TBO-31 C1 D2] 주민등록번호 — AES-256-GCM 암호문만 저장(평문·마스킹 저장 금지).
     //  birth_year는 RRN 앞자리 파생값으로 계속 채운다(승인센터·instructor_profiles 승계 무파괴).
     `ALTER TABLE users ADD COLUMN IF NOT EXISTS rrn_encrypted text`,
+    ...STAFF_ENGLISH_NAME_MIGRATION_SQL,
     // [TBO-86J] soft delete partial unique 잔여(email ci)·자정 CHECK — 표 부재 guard 포함(멱등).
     ...SOFTDELETE_UNIQUE_MIDNIGHT_SQL,
   ],
@@ -157,7 +164,7 @@ export const PROFILE_CHANGE_REQUESTS_SPEC: PostgresCollectionSpec = {
       CONSTRAINT profile_change_requested_keys_check CHECK (
         jsonb_typeof(requested_changes) = 'object'
         AND requested_changes <> '{}'::jsonb
-        AND requested_changes - ARRAY['name','phone','countryCode','timeZone','email','webId'] = '{}'::jsonb
+        AND requested_changes - ARRAY['name','englishName','phone','countryCode','timeZone','email','webId'] = '{}'::jsonb
       ),
       CONSTRAINT profile_change_decision_check CHECK (
         (status = 'pending' AND decided_by IS NULL AND decided_at IS NULL

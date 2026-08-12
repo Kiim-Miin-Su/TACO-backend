@@ -13,6 +13,9 @@ export class ProfileResponseDto implements StaffProfile {
   @ApiProperty({ example: '박지훈' })
   name!: string;
 
+  @ApiProperty({ example: 'Jihoon Park', description: '학부모 전달용 영문 이름' })
+  englishName!: string;
+
   @ApiPropertyOptional({ example: 'park@tnacademy.test', nullable: true })
   email?: string | null;
 

@@ -1,4 +1,7 @@
-import { IsEmail, IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, Matches, MaxLength, MinLength } from 'class-validator';
+import { Transform } from 'class-transformer';
+import { ApiProperty } from '@nestjs/swagger';
+import { normalizeStaffEnglishName, STAFF_ENGLISH_NAME_MAX_LENGTH, STAFF_ENGLISH_NAME_MESSAGE, STAFF_ENGLISH_NAME_PATTERN } from '@kms545487/contracts';
 import { RRN_FORMAT_MESSAGE, RRN_REGEX } from '../../../common/rrn-crypto.util';
 
 const SIGNUP_ROLES = ['instructor', 'manager', 'admin'];
@@ -14,6 +17,12 @@ export class SignupDto {
 
   @IsString() @MinLength(1) @MaxLength(50)
   name!: string;
+
+  @ApiProperty({ description: '학부모 전달용 영문 이름', example: 'Jiwon Kim', maxLength: STAFF_ENGLISH_NAME_MAX_LENGTH, pattern: STAFF_ENGLISH_NAME_PATTERN.source })
+  @Transform(({ value }) => typeof value === 'string' ? normalizeStaffEnglishName(value) : value)
+  @IsString() @IsNotEmpty() @MaxLength(STAFF_ENGLISH_NAME_MAX_LENGTH)
+  @Matches(STAFF_ENGLISH_NAME_PATTERN, { message: STAFF_ENGLISH_NAME_MESSAGE })
+  englishName!: string;
 
   @IsEmail()
   email!: string;

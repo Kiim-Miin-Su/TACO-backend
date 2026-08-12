@@ -16,14 +16,14 @@ jest.setTimeout(20000);
 
 /** SafeAccount(= StaffAccountSummary)가 가질 수 있는 키의 전체 집합. */
 const ACCOUNT_SUMMARY_KEYS = new Set([
-  'id', 'webId', 'name', 'email', 'phone', 'role', 'status', 'countryCode', 'timeZone',
+  'id', 'webId', 'name', 'englishName', 'email', 'phone', 'role', 'status', 'countryCode', 'timeZone',
   'profileVersion', 'emailVerified', 'authVersion', 'mustChangePassword',
   'approvedBy', 'approvedAt', 'lastLoginAt', 'university', 'major', 'birthYear',
   'createdAt', 'updatedAt', 'deletedAt', 'deletedBy',
 ]);
 
 const STAFF_PROFILE_KEYS = new Set([
-  'id', 'webId', 'name', 'email', 'phone', 'role', 'status', 'countryCode', 'timeZone',
+  'id', 'webId', 'name', 'englishName', 'email', 'phone', 'role', 'status', 'countryCode', 'timeZone',
   'profileVersion', 'emailVerified', 'smsVerificationAvailable',
 ]);
 
@@ -80,7 +80,7 @@ describe('[TBO-79] 계정·세션 wire ↔ 계약 일치 (e2e)', () => {
   it('E5 — POST /auth/login 은 계약이 선언한 필드만 돌려준다(accessToken 포함)', async () => {
     const body = (await http.post('/api/auth/login').send({ webId: 'admin', password: 'demo1234' }).expect(201)).body as Record<string, unknown>;
     expect(Object.keys(body).sort()).toEqual(['accessToken', 'account']);
-    expect(Object.keys(body.account as object).sort()).toEqual(['id', 'mustChangePassword', 'name', 'role']);
+    expect(Object.keys(body.account as object).sort()).toEqual(['englishName', 'id', 'mustChangePassword', 'name', 'role']);
   });
 
   it('E5 — PUT /schedule/:id/pay-amount 는 형제 라우트와 같은 enrich된 행을 돌려준다', async () => {

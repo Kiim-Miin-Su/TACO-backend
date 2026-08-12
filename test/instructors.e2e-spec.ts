@@ -34,14 +34,14 @@ describe('Instructor aggregate CRUD (e2e)', () => {
   it.each(['manager', 'admin'])('%s는 비재무 강사 C/U/D를 sudo로 수행하고 감사 이력을 남긴다', async (role) => {
     const webId = `inst_${role}_${Date.now().toString(36)}`;
     const endpoint = role === 'manager' ? '/api/users/instructors' : '/api/instructors';
-    await http.post(endpoint).set(as(role)).send({ webId, name: 'sudo 없음', password: 'password123' })
+    await http.post(endpoint).set(as(role)).send({ webId, name: 'sudo 없음', englishName: 'No Sudo', password: 'password123' })
       .expect(403).expect(({ body }) => expect(body.code).toBe('SUDO_REQUIRED'));
     await http.post(endpoint).set(sudo(role)).send({
-      webId, name: '시급 우회', password: 'password123', defaultHourlyRate: 55000,
+      webId, name: '시급 우회', englishName: 'Pay Bypass', password: 'password123', defaultHourlyRate: 55000,
     }).expect(403);
 
     const created = (await http.post(endpoint).set(sudo(role)).send({
-      webId, name: `${role} 등록 강사`, password: 'password123', phone: '010-5555-0000',
+      webId, name: `${role} 등록 강사`, englishName: `${role} Instructor`, password: 'password123', phone: '010-5555-0000',
       university: 'TACO University', major: 'Education', birthYear: 1992,
       canTeachKinder: true,
     }).expect(201)).body;
@@ -71,9 +71,9 @@ describe('Instructor aggregate CRUD (e2e)', () => {
   it('대표는 기본 시급을 포함해 강사를 관리하고 강사는 직접 원부를 생성하지 못한다', async () => {
     const webId = `inst_pay_${Date.now().toString(36)}`;
     await http.post('/api/instructors').set(sudo('instructor'))
-      .send({ webId, name: '강사 우회', password: 'password123' }).expect(403);
+      .send({ webId, name: '강사 우회', englishName: 'Instructor Bypass', password: 'password123' }).expect(403);
     const created = (await http.post('/api/instructors').set(sudo('super')).send({
-      webId, name: '시급 관리 강사', password: 'password123', defaultHourlyRate: 55000,
+      webId, name: '시급 관리 강사', englishName: 'Pay Managed Instructor', password: 'password123', defaultHourlyRate: 55000,
     }).expect(201)).body;
     expect(created).toMatchObject({ defaultHourlyRate: 55000 });
     await http.patch(`/api/instructors/${created.id}`).set(sudo('super'))

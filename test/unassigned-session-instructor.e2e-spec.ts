@@ -104,7 +104,7 @@ describe('[TBO-86E] 배정중 수업과 사후 배정 (e2e)', () => {
       .send({ instructorId: 1, expectedInstructorId: null, reason: '담당 가능 강사 확정', setCourseDefault: true })
       .expect(200)).body;
     expect(assigned).toMatchObject({ previousInstructorId: null, courseDefaultUpdated: true });
-    expect(assigned.row).toMatchObject({ instructorId: 1, instructorName: '박지훈' });
+    expect(assigned.row).toMatchObject({ instructorId: 1, instructorName: 'Jihoon Park' });
     await http.put(`/api/schedule/${assignable.row.id}/instructor-assignment`).set(auth('manager'))
       .send({ instructorId: 2, expectedInstructorId: null, reason: '오래된 화면 변경 차단' }).expect(409);
     expect((await http.get(`/api/courses/${assignable.course.id}`).set(auth('manager')).expect(200)).body)

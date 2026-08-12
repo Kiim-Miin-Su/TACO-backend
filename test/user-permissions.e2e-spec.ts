@@ -34,6 +34,7 @@ describe('User capability overrides (e2e)', () => {
     const created = (await http.post('/api/users/instructors').set(sudoAuthHeaders(app, ceo)).send({
       webId: 'permission_admin',
       name: '권한 관리자',
+      englishName: 'Permission Admin',
       password: 'password123',
       role: 'admin',
       email: 'permission-admin@t82.test',

@@ -142,7 +142,7 @@ export class ScheduleReadService implements OnModuleInit {
     return this.db.findBy<StaffAccount>(USERS, (u) => isActiveScheduleOwner(u, teaching));
   }
   instructorName(id?: number | null): string | undefined {
-    return id == null ? undefined : this.db.findById<StaffAccount>(USERS, id)?.name;
+    return id == null ? undefined : this.db.findById<StaffAccount>(USERS, id)?.englishName;
   }
   isScheduleOwner(id: number): boolean {
     return isActiveScheduleOwner(this.db.findById<StaffAccount>(USERS, id), this.teachingProfileIds());
@@ -319,7 +319,7 @@ export class ScheduleReadService implements OnModuleInit {
       instructors: this.scheduleOwnerUsers().filter((u) => scope?.instructorId == null || Number(u.id) === Number(scope.instructorId)).map((u) => {
         const c = courses.find((x) => x.instructorId === u.id);
         return {
-          type: 'instructor' as const, id: u.id, name: u.name,
+          type: 'instructor' as const, id: u.id, name: u.englishName,
           color: PALETTE[u.id % PALETTE.length],
           sub: c ? this.subjectOf(c.subjectId)?.name : undefined,
           countryCode: u.countryCode ?? undefined,

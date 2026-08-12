@@ -60,7 +60,7 @@ const nextUser = (prefix: string) => {
 };
 
 const signupBody = (webId: string, over: Record<string, unknown> = {}) => ({
-  webId, name: `계정${webId}`, email: `${webId}@t57.test`, password: 'password123', rrn: TEST_RRN, ...over,
+  webId, name: `계정${webId}`, englishName: 'Test Staff', email: `${webId}@t57.test`, password: 'password123', rrn: TEST_RRN, ...over,
 });
 
 // 오답 4회(GENERIC 400) + 5회째 잠금 메시지 → locked 상태까지 몰아넣는 공용 절차.
