@@ -118,7 +118,7 @@
     "contracts:stage:check": "node scripts/stage-local-contracts.js --check"
   },
   "dependencies": {
-    "@kms545487/contracts": "^0.2.55",
+    "@kms545487/contracts": "^0.2.57",
     "@neondatabase/serverless": "^1.1.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
