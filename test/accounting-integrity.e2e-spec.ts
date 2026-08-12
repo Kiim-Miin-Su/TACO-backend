@@ -1,5 +1,6 @@
 import { assertExpectedAfter } from '../src/common/expected-after.util';
 import { checkAccountingIntegrity, type AccountingIntegritySnapshot } from '../src/modules/payouts/accounting-integrity';
+import { allowsDeletedParentReference } from '../src/database/integrity-reference.policy';
 
 const valid = (): AccountingIntegritySnapshot => ({
   sessions: [{ id: 10, courseId: 1, instructorId: 7, studentIds: [3], payoutId: 20, instructorPayAmount: 50000 }],
@@ -27,5 +28,14 @@ describe('accounting relational integrity', () => {
     const snapshot = structuredClone(valid());
     mutate(snapshot);
     expect(checkAccountingIntegrity(snapshot).map((row) => row.code)).toContain(code);
+  });
+
+  it('학생 soft-delete 뒤 canceled 수강은 합법적 역사 참조로 분류한다', () => {
+    expect(allowsDeletedParentReference({
+      child: 'enrollments', field: 'studentId', row: { status: 'canceled' },
+    })).toBe(true);
+    expect(allowsDeletedParentReference({
+      child: 'enrollments', field: 'studentId', row: { status: 'active' },
+    })).toBe(false);
   });
 });

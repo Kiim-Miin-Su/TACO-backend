@@ -19,7 +19,7 @@ export class ReportsController {
 
   @Get()
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '보고서 목록(기간·학생·과목·강사·상태 필터). 조인 context 포함, 강사는 JWT 본인 범위.' })
+  @ApiOperation({ summary: '보고서 목록(기간·학생·과목·강사·상태 필터). 보존된 과거 원부까지 조인한 context 포함, 강사는 JWT 본인 범위.' })
   findAll(
     @Req() req: Request & { user?: JwtClaims },
     @Query() query: ListReportsQueryDto,
@@ -41,7 +41,7 @@ export class ReportsController {
 
   @Get(':id')
   @Roles(...STAFF_ROLES) // [보안 2026-07-03] 사내 데이터 조회 — 로그인 필수
-  @ApiOperation({ summary: '보고서 단건 + 서버 조인 context — 강사는 본인 보고서만(404→403 표준).' })
+  @ApiOperation({ summary: '보고서 단건 + 보존된 과거 원부 서버 조인 context — 강사는 본인 보고서만(404→403 표준).' })
   findOne(@Param('id', PositiveIntPipe) id: number, @Req() req: Request & { user?: JwtClaims }) {
     return this.reports.getDbForActor(id, req.user ? { id: req.user.sub, roles: req.user.roles } : undefined); // [TBO-54 C2]
   }

@@ -105,14 +105,15 @@ export class ReportsService implements OnModuleInit {
     const courseIds = sessions.map((row) => row.courseId);
     const instructorIds = rows.map((row) => row.instructorId);
     const [students, histories, courses, instructors] = await Promise.all([
-      this.store.findActiveByFieldValues<Student>(STUDENTS_SPEC, 'id', studentIds),
-      this.store.findActiveByFieldValues<StudentAcademicHistory>(
+      this.store.findByFieldValues<Student>(STUDENTS_SPEC, 'id', studentIds, { withDeleted: true }),
+      this.store.findByFieldValues<StudentAcademicHistory>(
         STUDENT_ACADEMIC_HISTORIES_SPEC,
         'studentId',
         studentIds,
+        { withDeleted: true },
       ),
-      this.store.findActiveByFieldValues<Course>(COURSES_SPEC, 'id', courseIds),
-      this.store.findActiveByFieldValues<StaffAccount>(USERS_SPEC, 'id', instructorIds),
+      this.store.findByFieldValues<Course>(COURSES_SPEC, 'id', courseIds, { withDeleted: true }),
+      this.store.findByFieldValues<StaffAccount>(USERS_SPEC, 'id', instructorIds, { withDeleted: true }),
     ]);
     // 작성 당시 과목 snapshot이 있으면 현재 course 과목보다 우선한다. 과거 보고서의 표시가
     // 카탈로그 수정으로 소급 변경되지 않게 하면서 snapshot 없는 레거시만 현재 course로 보완한다.
@@ -120,7 +121,7 @@ export class ReportsService implements OnModuleInit {
       ...rows.map((row) => row.subjectId).filter((id): id is number => id != null),
       ...courses.map((row) => row.subjectId),
     ])];
-    const subjects = await this.store.findActiveByFieldValues<Subject>(SUBJECTS_SPEC, 'id', subjectIds);
+    const subjects = await this.store.findByFieldValues<Subject>(SUBJECTS_SPEC, 'id', subjectIds, { withDeleted: true });
     const studentById = new Map(students.map((row) => [row.id, row]));
     const courseById = new Map(courses.map((row) => [row.id, row]));
     const subjectById = new Map(subjects.map((row) => [row.id, row]));

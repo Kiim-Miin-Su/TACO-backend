@@ -15,6 +15,7 @@ import { checkAccountingIntegrity, type AccountingIntegritySnapshot } from '../s
 import { checkPayoutIntegrity } from '../src/modules/payouts/payout-integrity';
 import type { BaseRow } from '../src/common/types/base';
 import { loadLocalEnv } from '../src/config/load-env';
+import { allowsDeletedParentReference } from '../src/database/integrity-reference.policy';
 
 type Issue = { code: string; entity: string; entityId?: number; message: string };
 
@@ -101,7 +102,8 @@ async function main() {
     reports: rows('session_reports') as never,
     payouts: rows('instructor_payouts') as never,
     transactions: rows('transactions') as never,
-    students: rows('students') as never,
+    // 출결·리포트는 학생 원부 soft-delete 뒤에도 역사 행을 보존한다. 물리 부재만 고아다.
+    students: rows('students', true) as never,
     enrollments: rows('enrollments') as never,
   };
   for (const found of checkAccountingIntegrity(snapshot)) issues.push(found);
@@ -114,7 +116,7 @@ async function main() {
       if (ref == null) continue;
       const target = parents.get(Number(ref));
       if (!target) push(issues, 'APP_FK_ORPHAN', child, row.id, `${field}=${ref} → ${parent} 없음`);
-      else if ((target as BaseRow).deletedAt != null)
+      else if ((target as BaseRow).deletedAt != null && !allowsDeletedParentReference({ child, field, row }))
         push(issues, 'SOFT_DELETED_PARENT_REF', child, row.id, `${field}=${ref} → ${parent} 삭제됨(활성 자식 잔존)`);
     }
   }

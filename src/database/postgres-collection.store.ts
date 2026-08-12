@@ -151,13 +151,26 @@ export class PostgresCollectionStore {
     field: keyof T & string,
     requestedValues: readonly unknown[],
   ): Promise<T[]> {
+    return this.findByFieldValues(spec, field, requestedValues);
+  }
+
+  /**
+   * 여러 FK 값을 한 번에 읽는 공용 배치 조회. 기본값은 활성 행만이며, 감사·역사 projection처럼
+   * soft-delete된 부모의 표시값을 보존해야 하는 읽기에서만 withDeleted를 명시한다.
+   */
+  async findByFieldValues<T extends BaseRow>(
+    spec: PostgresCollectionSpec,
+    field: keyof T & string,
+    requestedValues: readonly unknown[],
+    options: { withDeleted?: boolean } = {},
+  ): Promise<T[]> {
     const values: unknown[] = [
       ...new Set<unknown>(requestedValues.filter((value) => value !== undefined && value !== null)),
     ];
     if (!values.length) return [];
     if (!(await this.ensureReady(spec))) {
       const allowed = new Set(values);
-      return this.memory.findAll<T>(spec.table).filter(
+      return this.memory.findAll<T>(spec.table, { withDeleted: options.withDeleted }).filter(
         (row) => allowed.has((row as Record<string, unknown>)[field]),
       );
     }
@@ -165,7 +178,7 @@ export class PostgresCollectionStore {
     const column = safeColumn(field);
     const placeholders = values.map((_, index) => `$${index + 1}`).join(', ');
     const rows = await this.query(
-      `SELECT * FROM ${table} WHERE deleted_at IS NULL AND ${column} IN (${placeholders}) ORDER BY id ASC`,
+      `SELECT * FROM ${table} WHERE ${options.withDeleted ? '' : 'deleted_at IS NULL AND '}${column} IN (${placeholders}) ORDER BY id ASC`,
       values,
     );
     return rows.map((row) => this.fromDbRow<T>(spec, row));

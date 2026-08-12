@@ -61,6 +61,42 @@ describe('Students Soft-Delete (e2e)', () => {
     for (const e of enrAfter) expect(e.status).toBe('canceled');
   });
 
+  it('학생 원부 삭제 뒤에도 보존된 수업 리포트는 역사 원부를 조인해 목록·상세에서 읽힌다', async () => {
+    const created = (await http.post('/api/students').set(asAdmin())
+      .send(studentAggregateBody('리포트보존학생', { student: { status: 'enrolled' } })).expect(201)).body.student;
+    await http.post('/api/enrollments').set(asAdmin()).send({ studentId: created.id, courseId: 10 }).expect(201);
+    const session = (await http.post('/api/schedule/historical-completed').set({ Authorization: `Bearer ${MANAGER}` }).send({
+      courseId: 10,
+      instructorId: 1,
+      studentIds: [created.id],
+      sessionDate: '2025-08-12',
+      startTime: '13:00',
+      durationMinutes: 60,
+      kind: 'class',
+      mode: 'online',
+      topic: 'soft-delete report projection',
+      importReason: '학생 삭제 뒤 역사 리포트 조회 회귀 검증',
+    }).expect(201)).body.row;
+    const report = (await http.post('/api/reports').set({ Authorization: `Bearer ${INSTRUCTOR}` }).send({
+      sessionId: session.id,
+      studentId: created.id,
+      content: '삭제 이후에도 보존할 수업 리포트',
+      status: 'draft',
+    }).expect(201)).body;
+
+    await http.delete(`/api/students/${created.id}`).set(asManager()).expect(200);
+
+    const list = (await http.get('/api/reports').set(asManager()).query({ studentId: created.id }).expect(200)).body;
+    expect(list).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        id: report.id,
+        context: expect.objectContaining({ student: expect.objectContaining({ id: created.id, name: '리포트보존학생' }) }),
+      }),
+    ]));
+    await http.get(`/api/reports/${report.id}`).set(asManager()).expect(200)
+      .expect(({ body }) => expect(body.context.student).toMatchObject({ id: created.id, name: '리포트보존학생' }));
+  });
+
   it('DELETE 없는 학생 → 404', async () => {
     await http.delete('/api/students/99999').set(asAdmin()).expect(404);
   });
