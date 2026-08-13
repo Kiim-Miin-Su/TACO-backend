@@ -121,7 +121,6 @@
   },
   "dependencies": {
     "@kms545487/contracts": "^0.2.59",
-    "@neondatabase/serverless": "^1.1.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
     "@nestjs/platform-express": "^11.1.27",
@@ -136,7 +135,6 @@
     "jsonwebtoken": "^9.0.3",
     "libphonenumber-js": "^1.13.8",
     "nodemailer": "^9.0.1",
-    "openapi": "^1.0.0",
     "pg": "^8.22.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
