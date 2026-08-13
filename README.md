@@ -7,14 +7,15 @@ Neon PostgreSQL(TypeORM 커넥션 + 자체 collection store), 배포는 Vercel �
   메모리는 인스턴스별 read model(부팅 hydrate 미러)로만 사용합니다.
 - **동시성 규약**: 돈·상태 전이는 `advisory lock → DB 재조회 → CAS(WHERE+RETURNING) →
   같은 tx 원장/audit` — 2-instance 경쟁 e2e(race/ssot)로 실증합니다.
-- **스키마 권위**: versioned migration ledger(`schema_migrations`, expected 28).
+- **스키마 권위**: versioned migration ledger(`schema_migrations`, expected 55).
   production 런타임 DDL 금지 — 신설 표는 owner가 migration을 선적용해야 하며(런북 §9),
   미적용 상태로 배포돼도 **부팅은 생존**하고 해당 표 기능만 fail-closed 됩니다(2026-07-24 원천 픽스).
 
 ## 실행
 
 ```bash
-npm install
+nvm use                         # Node 22.22.3
+npm ci
 npm run dev                     # http://localhost:3001/api (watch) · Swagger /docs
 npm run build && npm start
 ```
@@ -28,14 +29,16 @@ npm run build && npm start
 ## 게이트 (커밋마다 그린)
 
 ```bash
-npx tsc --noEmit                                     # 타입 0
-npx jest --config test/jest-e2e.json                 # e2e 88 suites / 610+ (memory 모드)
-RUN_MONEY_RACE_E2E=1 DATABASE_URL=... npx jest ...   # PG 전용: race/ssot/phone/boot-guard 19
-npm run openapi                                      # OpenAPI 생성+검증 (138 paths / 192 ops)
-npm run e2e:coverage                                 # 라우트 커버리지 192/192 (미커버 0 게이트)
+npm run typecheck                    # TypeScript 0
+npm run lint                         # ESLint 0
+npm run test:e2e                     # 144 suites / 1,030 tests
+npm run openapi                      # 160 paths / 226 operations / 133 schemas
+npm run e2e:coverage                 # 라우트 커버리지 226/226
+npm audit --omit=dev                 # production vulnerability 0
 ```
 
-- DB 검증: `npm run db:verify-migrations`(ledger 대조) · `npm run db:integrity`(읽기 전용 무결성 센서).
+- DB 검증: `npm run db:verify-migrations`(ledger 55/55 대조) · `npm run db:integrity`(읽기 전용 무결성 센서) ·
+  `npm run db:verify-schema-shape`(DBML/live shape) · `npm run db:verify-persistence-docs`(자산화 문서 drift).
 - 마이그레이션: `npm run db:migrate:*` — dry-run 기본, `APPLY=1`로 실행(owner URL 전용).
 
 ## 구조
@@ -63,3 +66,5 @@ src/
 FABLE(운영 계약·현재 판정) · TODO(스프린트) · RUNBOOK(백업·모니터링·owner 절차) ·
 erd.dbml/DATA_DICTIONARY(스키마) · TBO-* (스프린트별 상세 회고).
 라이브 Swagger는 배포 `/docs`, 정적 스펙은 `openapi.json`(빌드 타임 생성·커밋)입니다.
+production은 Swagger를 기본 404로 차단하며 `openapi.json`과 `docs/api/openapi.yaml`의 의미 동일성을
+release gate가 검사합니다.
