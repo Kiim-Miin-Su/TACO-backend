@@ -2,6 +2,7 @@
 //  불변식: requester/channel/target 결합 · 활성(pending|verified) 1건/requester+channel ·
 //  만료 10분 · 실패 5회=locked · 재전송 cooldown 60초 · consumed는 profile request 생성 tx에서만.
 import type { BaseRow } from '../../common/types/base';
+import type { ProfileVerificationPurpose } from '@kms545487/contracts';
 
 export const PROFILE_VERIFICATION_CHALLENGES = 'profile_verification_challenges';
 
@@ -12,6 +13,8 @@ export type VerificationProviderName = 'email_smtp' | 'ncp_sens' | 'twilio_verif
 export type ProfileVerificationChallenge = {
   requesterId: number;
   channel: VerificationChannel;
+  /** legacy는 TBO-97 이전 행/목적 누락 writer의 fail-closed 표식이며 확인·소비할 수 없다. */
+  purpose: ProfileVerificationPurpose | 'legacy';
   /** email lowercase 또는 phone E.164 — API 응답·audit에는 masked만 노출 */
   targetNormalized: string;
   targetHash: string;

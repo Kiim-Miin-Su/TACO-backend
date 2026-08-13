@@ -86,6 +86,7 @@
     "db:migrate:report-template-scope": "ts-node scripts/migrate-report-template-scope.ts",
     "db:migrate:softdelete-unique-midnight": "ts-node scripts/migrate-softdelete-unique-midnight.ts",
     "db:migrate:staff-english-name": "ts-node scripts/migrate-staff-english-name.ts",
+    "db:migrate:profile-verification-purpose": "ts-node scripts/migrate-profile-verification-purpose.ts",
     "db:verify-migrations": "ts-node scripts/verify-migration-ledger.ts",
     "verify:runtime-data": "ts-node scripts/verify-runtime-data-boundary.ts",
     "verify:crud-surfaces": "ts-node scripts/verify-crud-surfaces.ts",

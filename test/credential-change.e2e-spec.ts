@@ -49,7 +49,7 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
     //  발송 자체는 SMTP 유무에 따라 201/503(이 스위트는 실 provider) — 403이 아니면 가드 통과가 증명된다.
     await http.get('/api/catalog/countries').set('Authorization', `Bearer ${initial.accessToken}`).expect(200);
     const allowedRes = await http.post('/api/profile-verifications').set('Authorization', `Bearer ${initial.accessToken}`)
-      .send({ currentPassword: 'demo1234', channel: 'email', target: 'rotate@tnacademy.test' });
+      .send({ currentPassword: 'demo1234', channel: 'email', target: 'rotate@tnacademy.test', purpose: 'account_setup' });
     expect([201, 503]).toContain(allowedRes.status);
     if (allowedRes.status === 201) {
       // 활성 챌린지 (requester,channel) partial unique — 이후 테스트의 위조 헬퍼와 충돌하지 않게 만료.
@@ -113,7 +113,7 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
         name: '김민선', email: 'CEO@tnacademy.test', phone: '010-5555-6666',
       }).expect(400);
     // 다른 이메일로 verified된 챌린지 → 400 (설정할 이메일과 대상 일치 필수) — 변경도 롤백
-    const mismatch = await forgeVerifiedEmailChallenge(3, 'other@tnacademy.test');
+    const mismatch = await forgeVerifiedEmailChallenge(3, 'other@tnacademy.test', 'account_setup');
     await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${ceo.accessToken}`)
       .send({
         currentPassword: 'SecurePass123!', newWebId: 'ceo_minsun', newPassword: 'MinsunSecure1!',
@@ -127,7 +127,7 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
     }
 
     // 설정할 새 이메일(canonical)로 verified 챌린지 → 200 + 같은 tx에서 consumed
-    const rotation = await forgeVerifiedEmailChallenge(3, 'ceo@tnacademy.test');
+    const rotation = await forgeVerifiedEmailChallenge(3, 'ceo@tnacademy.test', 'account_setup');
     const changed = await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${ceo.accessToken}`)
       .send({
         currentPassword: 'SecurePass123!', newWebId: 'ceo_minsun', newPassword: 'MinsunSecure1!',
@@ -161,13 +161,17 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
 
   // [E0] 검증용 verified 이메일 challenge 위조 헬퍼 — store.insert(양 모드 권위 소스에 기록).
   //  실제 발송/코드 확인 흐름 회귀는 profile-verification.e2e-spec — 여기서는 소비 규약만 검증.
-  const forgeVerifiedEmailChallenge = async (requesterId: number, target: string) => {
+  const forgeVerifiedEmailChallenge = async (
+    requesterId: number,
+    target: string,
+    purpose: 'profile_change' | 'password_change' | 'account_setup' = 'password_change',
+  ) => {
     const { PROFILE_VERIFICATION_CHALLENGES_SPEC } = await import('../src/database/calendar-asset-specs');
     const { PostgresCollectionStore } = await import('../src/database/postgres-collection.store');
     const store = app.get(PostgresCollectionStore);
     const now = Date.now();
     return store.insert<Record<string, unknown> & { id: number }>(PROFILE_VERIFICATION_CHALLENGES_SPEC, {
-      requesterId, channel: 'email', targetNormalized: target,
+      requesterId, channel: 'email', purpose, targetNormalized: target,
       targetHash: 'test-forged', provider: 'fake_test', providerReference: null,
       codeHash: 'test-forged', status: 'verified', attemptCount: 0, resendCount: 0,
       resendAvailableAt: new Date(now).toISOString(), expiresAt: new Date(now + 600_000).toISOString(),
@@ -182,6 +186,15 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
     await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${manager.accessToken}`)
       .send({ currentPassword: 'demo1234', newPassword: 'ManagerPass123!' }).expect(400);
     await login('manager', 'demo1234');
+    // 목적이 다른 본인 이메일 challenge도 교차 소비할 수 없다.
+    const wrongPurpose = await forgeVerifiedEmailChallenge(4, 'manager@tnacademy.test', 'profile_change');
+    await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${manager.accessToken}`)
+      .send({ currentPassword: 'demo1234', newPassword: 'ManagerPass123!', verificationChallengeId: wrongPurpose.id }).expect(400);
+    {
+      const { PROFILE_VERIFICATION_CHALLENGES_SPEC } = await import('../src/database/calendar-asset-specs');
+      const { PostgresCollectionStore } = await import('../src/database/postgres-collection.store');
+      await app.get(PostgresCollectionStore).update(PROFILE_VERIFICATION_CHALLENGES_SPEC, wrongPurpose.id, { status: 'expired' });
+    }
     // 다른 이메일로 verified된 챌린지 → 400 (본인 현재 이메일만)
     const wrongTarget = await forgeVerifiedEmailChallenge(4, 'other@tnacademy.test');
     await http.patch('/api/users/me/credentials').set('Authorization', `Bearer ${manager.accessToken}`)
@@ -237,7 +250,7 @@ describe('Credential change and first-login gate (e2e, TBO-29B)', () => {
 
     // 대표(user 3 — 앞 테스트 rotation으로 ceo_minsun) 요청은 허용: [D4] 본인 이메일 OTP 소비 필수.
     const superLogin = await login('ceo_minsun', 'MinsunSecure1!');
-    const challenge = await forgeVerifiedEmailChallenge(3, 'ceo@tnacademy.test');
+    const challenge = await forgeVerifiedEmailChallenge(3, 'ceo@tnacademy.test', 'profile_change');
     // 중복 webId(case-insensitive) → 409 (생성 선검사 — challenge는 소비되지 않고 남는다)
     await http.post('/api/profile-change-requests').set('Authorization', `Bearer ${superLogin.accessToken}`)
       .send({ currentPassword: 'MinsunSecure1!', webId: 'MANAGER', verificationChallengeId: challenge.id, reason: '다른 계정 아이디로 변경 시도.' }).expect(409);

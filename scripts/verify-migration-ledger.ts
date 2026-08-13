@@ -57,6 +57,7 @@ import { SESSION_REPORT_REVISIONS_MIGRATION_ID } from '../src/database/migration
 import { REPORT_TEMPLATE_SCOPE_MIGRATION_ID } from '../src/database/migrations/report-template-scope.migration';
 import { SOFTDELETE_UNIQUE_MIDNIGHT_MIGRATION_ID } from '../src/database/migrations/softdelete-unique-midnight.migration';
 import { STAFF_ENGLISH_NAME_MIGRATION_ID } from '../src/database/migrations/staff-english-name.migration';
+import { PROFILE_VERIFICATION_PURPOSE_MIGRATION_ID } from '../src/database/migrations/profile-verification-purpose.migration';
 
 loadLocalEnv();
 
@@ -115,6 +116,7 @@ export const EXPECTED_MIGRATION_IDS = [
   REPORT_TEMPLATE_SCOPE_MIGRATION_ID, // [86G3b] 리포트 템플릿 owner/default/enforced scope
   SOFTDELETE_UNIQUE_MIDNIGHT_MIGRATION_ID, // [86J] email/code 활성 partial unique·자정 크로스 CHECK
   STAFF_ENGLISH_NAME_MIGRATION_ID, // [TBO-96] 직원 영문 이름 NOT NULL/CHECK + 프로필 변경 키
+  PROFILE_VERIFICATION_PURPOSE_MIGRATION_ID, // [TBO-97] 로그인 후 인증 challenge 목적 결속
 ] as const;
 
 const url = directDatabaseUrl();

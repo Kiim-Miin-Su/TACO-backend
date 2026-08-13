@@ -122,7 +122,11 @@ export class SignupEmailChallengesService implements OnModuleInit {
       //    (이메일 소유를 증명한 본인에게만 노출되므로 열거 아님).
       //  MailService.sendOtpEmail은 SMTP 미설정 시 false(fail-closed) — 비production만 devOtpCode로
       //  대체(개발·e2e 편의), production은 부팅 가드(SMTP 필수)로 이 분기 자체가 없다.
-      const sent = await this.mail.sendOtpEmail(email, code);
+      const sent = await this.mail.sendOtpEmail(
+        email,
+        code,
+        purpose === 'signup' ? 'signup' : 'account_recovery',
+      );
       const row = await this.store.insert<SignupEmailChallenge>(SIGNUP_EMAIL_CHALLENGES_SPEC, {
         emailNormalized: email,
         purpose,

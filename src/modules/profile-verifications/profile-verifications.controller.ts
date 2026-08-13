@@ -21,7 +21,7 @@ export class ProfileVerificationsController {
 
   @Post()
   @Roles(...STAFF_ROLES)
-  @ApiOperation({ summary: '연락처 인증 발송 — 현재 비밀번호 재확인 + 채널(email/sms) + 대상. 응답은 masked만.' })
+  @ApiOperation({ summary: '내정보/비밀번호 인증 발송 — 현재 비밀번호 재확인 + 목적 + 채널 + 대상. 응답은 masked만.' })
   create(@Body() dto: CreateProfileVerificationDto, @Req() req: Request & { user?: JwtClaims }): Promise<ProfileVerificationResponseDto> {
     return this.verifications.create(this.actorOf(req), dto);
   }

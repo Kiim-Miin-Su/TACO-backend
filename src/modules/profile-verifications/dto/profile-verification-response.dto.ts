@@ -1,9 +1,11 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { PROFILE_VERIFICATION_PURPOSES, type ProfileVerificationPurpose } from '@kms545487/contracts';
 
 // [TBO-29B-4 §6] 응답은 masked target·상태·만료·재전송 가능 시각만 — canonical target/코드/hash 미노출.
 export class ProfileVerificationResponseDto {
   @ApiProperty() id!: number;
   @ApiProperty({ enum: ['email', 'sms'] }) channel!: 'email' | 'sms';
+  @ApiProperty({ enum: PROFILE_VERIFICATION_PURPOSES }) purpose!: ProfileVerificationPurpose;
   @ApiProperty({ description: '마스킹된 대상(예: pa***@t***.test, +82*****678)' }) maskedTarget!: string;
   @ApiProperty({ enum: ['pending', 'verified', 'consumed', 'expired', 'locked'] }) status!: string;
   @ApiProperty({ description: '만료 시각(ISO)' }) expiresAt!: string;

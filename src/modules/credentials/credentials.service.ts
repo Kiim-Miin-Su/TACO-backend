@@ -50,10 +50,20 @@ export class CredentialsService {
       // OTP 소비는 변경 성공 **후** 같은 tx — 잘못된 현재 비밀번호 등으로 실패하면 챌린지가 타지 않고,
       //  소비가 실패하면(만료/불일치/이중 소비) 비밀번호 변경까지 함께 롤백된다(부분 상태 없음).
       if (otpRequired) {
-        await this.verifications.consumeForCredentialChange(dto.verificationChallengeId!, id, email);
+        await this.verifications.consumeForCredentialChange(
+          dto.verificationChallengeId!,
+          id,
+          email,
+          'password_change',
+        );
       } else if (rotationEmail) {
         // 강제 변경: challenge 대상 = **새로 설정하는 이메일**(본인 소유 실증) — 같은 tx 소비.
-        await this.verifications.consumeForCredentialChange(dto.verificationChallengeId!, id, rotationEmail);
+        await this.verifications.consumeForCredentialChange(
+          dto.verificationChallengeId!,
+          id,
+          rotationEmail,
+          'account_setup',
+        );
       }
       return account;
     });

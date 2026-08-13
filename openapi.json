@@ -1811,7 +1811,7 @@
             "access_token": []
           }
         ],
-        "summary": "연락처 인증 발송 — 현재 비밀번호 재확인 + 채널(email/sms) + 대상. 응답은 masked만.",
+        "summary": "내정보/비밀번호 인증 발송 — 현재 비밀번호 재확인 + 목적 + 채널 + 대상. 응답은 masked만.",
         "tags": [
           "profile-verifications"
         ]
@@ -10521,6 +10521,15 @@
             "minLength": 3,
             "maxLength": 320,
             "description": "변경할 연락처(이메일 주소 또는 휴대전화 — E.164/국내형)"
+          },
+          "purpose": {
+            "enum": [
+              "profile_change",
+              "password_change",
+              "account_setup"
+            ],
+            "type": "string",
+            "description": "인증 목적. 구버전 client가 생략하면 profile_change로 처리하며 새 client는 반드시 명시한다."
           }
         },
         "required": [
@@ -10539,6 +10548,14 @@
             "enum": [
               "email",
               "sms"
+            ],
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "profile_change",
+              "password_change",
+              "account_setup"
             ],
             "type": "string"
           },
@@ -10572,6 +10589,7 @@
         "required": [
           "id",
           "channel",
+          "purpose",
           "maskedTarget",
           "status",
           "expiresAt",

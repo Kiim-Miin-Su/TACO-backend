@@ -74,7 +74,7 @@ export class DefaultContactVerificationProvider implements ContactVerificationPr
   async send(input: SendChallengeInput): Promise<ProviderChallenge> {
     if (input.channel === 'email') {
       if (!input.code) throw new Error('email 채널은 서비스가 생성한 code가 필요합니다.');
-      const sent = await this.mail.sendOtpEmail(input.target, input.code);
+      const sent = await this.mail.sendOtpEmail(input.target, input.code, input.purpose);
       if (!sent) throw new ServiceUnavailableException('인증 메일 발송이 설정되지 않았습니다.');
       return { provider: 'email_smtp', providerReference: null };
     }

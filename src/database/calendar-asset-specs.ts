@@ -43,6 +43,7 @@ import { INSTRUCTOR_CONTRACT_BOUNDS_SQL } from './migrations/instructor-contract
 import { TRANSACTION_SOURCE_INTEGRITY_SQL } from './migrations/transaction-source-integrity.migration';
 import { SOFTDELETE_UNIQUE_MIDNIGHT_SQL } from './migrations/softdelete-unique-midnight.migration';
 import { STAFF_ENGLISH_NAME_MIGRATION_SQL } from './migrations/staff-english-name.migration';
+import { PROFILE_VERIFICATION_PURPOSE_MIGRATION_SQL } from './migrations/profile-verification-purpose.migration';
 import { REPORT_TEMPLATE_OWNER_MIGRATION_SQL } from './migrations/report-template-owner.migration';
 import {
   REPORT_TEMPLATE_SCOPE_MIGRATION_SQL,
@@ -236,6 +237,8 @@ export const PROFILE_VERIFICATION_CHALLENGES_SPEC: PostgresCollectionSpec = {
       id serial PRIMARY KEY,
       requester_id integer NOT NULL,
       channel varchar(16) NOT NULL CHECK (channel IN ('email','sms')),
+      purpose varchar(32) NOT NULL DEFAULT 'legacy'
+        CHECK (purpose IN ('legacy','profile_change','password_change','account_setup')),
       target_normalized varchar(320) NOT NULL,
       target_hash varchar(64) NOT NULL,
       provider varchar(32) NOT NULL CHECK (provider IN ('email_smtp','ncp_sens','twilio_verify','fake_test')),
@@ -276,6 +279,7 @@ export const PROFILE_VERIFICATION_CHALLENGES_SPEC: PostgresCollectionSpec = {
   //  소비는 프로필 요청 행이 없다(NULL = 자격증명 소비, NOT NULL = 프로필 요청 소비 — 20260715_10과 SQL 공유).
   migrations: [
     ...SENS_PROVIDER_MIGRATION_SQL,
+    ...PROFILE_VERIFICATION_PURPOSE_MIGRATION_SQL,
     `DO $$
      BEGIN
        IF EXISTS (

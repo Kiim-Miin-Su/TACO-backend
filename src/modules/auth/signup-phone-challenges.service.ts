@@ -119,7 +119,7 @@ export class SignupPhoneChallengesService implements OnModuleInit {
       let sent = false;
       if (sensChallengeAvailable()) {
         // SENS(서비스 코드 소유) — 실패는 예외로 전파(tx 롤백, fail-closed).
-        await this.provider.send({ channel: 'sms', target: phone, code });
+        await this.provider.send({ channel: 'sms', target: phone, code, purpose: 'signup' });
         sent = true;
       } else if (isProduction()) {
         throw new ServiceUnavailableException('휴대전화 인증 발송이 설정되지 않았습니다.');

@@ -18,6 +18,7 @@ export async function forgeVerifiedEmailChallenge(
   const row = await store.insert<Record<string, unknown> & { id: number }>(PROFILE_VERIFICATION_CHALLENGES_SPEC, {
     requesterId,
     channel: 'email',
+    purpose: 'profile_change',
     targetNormalized: target,
     targetHash: `test-forged-${requesterId}-${now}`,
     provider: 'fake_test',

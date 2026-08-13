@@ -38,6 +38,10 @@ import {
 } from './profile-verification.entity';
 import { CreateProfileVerificationDto } from './dto/create-profile-verification.dto';
 import { ProfileVerificationResponseDto } from './dto/profile-verification-response.dto';
+import {
+  PROFILE_VERIFICATION_PURPOSES,
+  type ProfileVerificationPurpose,
+} from '@kms545487/contracts';
 
 const hashSecret = (): string =>
   process.env.PROFILE_VERIFICATION_SALT || process.env.JWT_SECRET || 'dev-verification-salt';
@@ -73,6 +77,7 @@ export class ProfileVerificationsService implements OnModuleInit {
       throw new ForbiddenException('현재 비밀번호가 올바르지 않습니다.');
     }
     const target = this.normalizeTarget(dto.channel, dto.target);
+    const purpose = dto.purpose ?? 'profile_change';
     this.assertTargetAvailable(dto.channel, target, requesterId);
 
     const created = await this.uow.run(async () => {
@@ -90,11 +95,12 @@ export class ProfileVerificationsService implements OnModuleInit {
       //  [SENS 전환] 코드 생성 여부는 채널 하드코딩이 아니라 provider 코드 소유권으로 판정 —
       //  email·SENS는 서비스 생성(hash 저장), Twilio Verify는 provider 생성(codeHash null).
       const code = this.provider.ownsCode(dto.channel) ? undefined : String(randomInt(100000, 1000000));
-      const sent = await this.provider.send({ channel: dto.channel, target, code });
+      const sent = await this.provider.send({ channel: dto.channel, target, code, purpose });
       const seed = `${requesterId}:${dto.channel}:${target}`;
       return this.store.insert<ProfileVerificationChallenge>(PROFILE_VERIFICATION_CHALLENGES_SPEC, {
         requesterId,
         channel: dto.channel,
+        purpose,
         targetNormalized: target,
         targetHash: targetHashOf(target),
         provider: sent.provider,
@@ -124,6 +130,7 @@ export class ProfileVerificationsService implements OnModuleInit {
       await this.refresh();
       const challenge = this.ownChallenge(requesterId, id);
       if (!challenge) return { kind: 'missing' as const };
+      if (!this.isUsablePurpose(challenge.purpose)) return { kind: 'invalid_state' as const };
       if (challenge.status !== 'pending') return { kind: 'invalid_state' as const, challenge };
       if (this.isExpired(challenge)) {
         await this.store.update<ProfileVerificationChallenge>(PROFILE_VERIFICATION_CHALLENGES_SPEC, id, { status: 'expired' });
@@ -169,6 +176,7 @@ export class ProfileVerificationsService implements OnModuleInit {
       await this.refresh();
       const challenge = this.ownChallenge(requesterId, id);
       if (!challenge || challenge.status !== 'pending') return { kind: 'invalid' as const };
+      if (!this.isUsablePurpose(challenge.purpose)) return { kind: 'invalid' as const };
       if (this.isExpired(challenge)) {
         await this.store.update<ProfileVerificationChallenge>(PROFILE_VERIFICATION_CHALLENGES_SPEC, id, { status: 'expired' });
         return { kind: 'invalid' as const };
@@ -178,7 +186,12 @@ export class ProfileVerificationsService implements OnModuleInit {
       if (challenge.resendCount >= MAX_RESENDS) return { kind: 'resend_limit' as const };
 
       const code = this.provider.ownsCode(challenge.channel) ? undefined : String(randomInt(100000, 1000000));
-      await this.provider.send({ channel: challenge.channel, target: challenge.targetNormalized, code });
+      await this.provider.send({
+        channel: challenge.channel,
+        target: challenge.targetNormalized,
+        code,
+        purpose: challenge.purpose,
+      });
       const seed = `${requesterId}:${challenge.channel}:${challenge.targetNormalized}`;
       const updated = await this.store.update<ProfileVerificationChallenge>(PROFILE_VERIFICATION_CHALLENGES_SPEC, id, {
         ...(code ? { codeHash: codeHashOf(seed, code) } : {}),
@@ -213,6 +226,7 @@ export class ProfileVerificationsService implements OnModuleInit {
     await this.refresh();
     const challenge = this.ownChallenge(requesterId, challengeId);
     if (!challenge) throw new BadRequestException(GENERIC_INVALID);
+    if (challenge.purpose !== 'profile_change') throw new BadRequestException(GENERIC_INVALID);
     if (challenge.status !== 'verified' || this.isExpired(challenge)) throw new BadRequestException(GENERIC_INVALID);
     if (challenge.channel !== expected.channel || challenge.targetNormalized !== expected.target) {
       throw new BadRequestException('인증한 연락처와 변경 요청 값이 일치하지 않습니다.');
@@ -235,10 +249,12 @@ export class ProfileVerificationsService implements OnModuleInit {
     challengeId: number,
     requesterId: number,
     expectedEmail: string,
+    expectedPurpose: Extract<ProfileVerificationPurpose, 'password_change' | 'account_setup'>,
   ): Promise<ProfileVerificationChallenge> {
     await this.refresh();
     const challenge = this.ownChallenge(requesterId, challengeId);
     if (!challenge) throw new BadRequestException(GENERIC_INVALID);
+    if (challenge.purpose !== expectedPurpose) throw new BadRequestException(GENERIC_INVALID);
     if (challenge.status !== 'verified' || this.isExpired(challenge)) throw new BadRequestException(GENERIC_INVALID);
     if (challenge.channel !== 'email' || challenge.targetNormalized !== expectedEmail) {
       throw new BadRequestException('본인 이메일로 완료한 인증이 필요합니다.');
@@ -305,6 +321,10 @@ export class ProfileVerificationsService implements OnModuleInit {
     return Date.parse(challenge.expiresAt) <= Date.now();
   }
 
+  private isUsablePurpose(value: ProfileVerificationChallenge['purpose']): value is ProfileVerificationPurpose {
+    return PROFILE_VERIFICATION_PURPOSES.includes(value as ProfileVerificationPurpose);
+  }
+
   private async refresh(): Promise<void> {
     await this.users.refreshFromDb();
     await this.store.hydrate<ProfileVerificationChallenge>(PROFILE_VERIFICATION_CHALLENGES_SPEC);
@@ -314,6 +334,7 @@ export class ProfileVerificationsService implements OnModuleInit {
     return {
       id: challenge.id,
       channel: challenge.channel,
+      purpose: challenge.purpose as ProfileVerificationPurpose,
       maskedTarget: maskTarget(challenge.channel, challenge.targetNormalized),
       status: challenge.status,
       expiresAt: challenge.expiresAt,

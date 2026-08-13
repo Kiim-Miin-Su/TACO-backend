@@ -95,7 +95,7 @@ describe('Route coverage gaps (e2e, B8 E4)', () => {
     const store = app.get(PostgresCollectionStore);
     const now = Date.now();
     const challenge = await store.insert<Record<string, unknown> & { id: number }>(PROFILE_VERIFICATION_CHALLENGES_SPEC, {
-      requesterId: adminId, channel: 'email', targetNormalized: 'b8-coverage@test.local',
+      requesterId: adminId, channel: 'email', purpose: 'profile_change', targetNormalized: 'b8-coverage@test.local',
       targetHash: 'test-forged', provider: 'fake_test', providerReference: null,
       codeHash: 'test-forged', status: 'pending', attemptCount: 0, resendCount: 0,
       resendAvailableAt: new Date(now + 60_000).toISOString(), // 미래 → cooldown 분기

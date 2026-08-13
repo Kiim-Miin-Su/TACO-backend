@@ -19,7 +19,7 @@ import {
 import { seedBusinessFixtures } from './fixtures/seed-business-fixtures';
 
 class FakeContactVerificationProvider implements ContactVerificationProvider {
-  sent: Array<{ channel: string; target: string; code?: string }> = [];
+  sent: SendChallengeInput[] = [];
   failNextSend = false;
   // Twilio Verify형 fake — sms 코드는 provider 소유(check 위임 경로 회귀 유지). SENS형은 별도 스펙.
   ownsCode(channel: 'email' | 'sms'): boolean {
@@ -30,7 +30,7 @@ class FakeContactVerificationProvider implements ContactVerificationProvider {
       this.failNextSend = false;
       throw new Error('injected provider failure');
     }
-    this.sent.push({ channel: input.channel, target: input.target, code: input.code });
+    this.sent.push({ ...input });
     return { provider: 'fake_test', providerReference: input.channel === 'sms' ? `fake-${this.sent.length}` : null };
   }
   async check(input: CheckChallengeInput): Promise<{ ok: boolean }> {
@@ -92,7 +92,7 @@ describe('Profile contact verification (e2e, TBO-29B-4)', () => {
 
   async function makeVerifiedEmailChallenge(token: string, target: string): Promise<number> {
     const created = (await http.post('/api/profile-verifications').set(bearer(token))
-      .send({ currentPassword: 'demo1234', channel: 'email', target }).expect(201)).body;
+      .send({ currentPassword: 'demo1234', channel: 'email', target, purpose: 'profile_change' }).expect(201)).body;
     await http.post(`/api/profile-verifications/${created.id}/confirm`).set(bearer(token))
       .send({ code: fake.lastCode() }).expect(201);
     return created.id as number;
@@ -110,11 +110,12 @@ describe('Profile contact verification (e2e, TBO-29B-4)', () => {
       .send({ currentPassword: 'demo1234', channel: 'email', target: 'JUNG@tnacademy.test' }).expect(409);
 
     const created = (await http.post('/api/profile-verifications').set(bearer(tokens.instructor))
-      .send({ currentPassword: 'demo1234', channel: 'email', target: 'Park.New@TnAcademy.test' }).expect(201)).body;
+      .send({ currentPassword: 'demo1234', channel: 'email', target: 'Park.New@TnAcademy.test', purpose: 'profile_change' }).expect(201)).body;
     expect(created.status).toBe('pending');
+    expect(created.purpose).toBe('profile_change');
     expect(created.maskedTarget).not.toContain('park.new@tnacademy.test');
     expect(JSON.stringify(created)).not.toContain('park.new@tnacademy.test'); // canonical 미노출
-    expect(fake.sent[fake.sent.length - 1]).toMatchObject({ channel: 'email', target: 'park.new@tnacademy.test' });
+    expect(fake.sent[fake.sent.length - 1]).toMatchObject({ channel: 'email', target: 'park.new@tnacademy.test', purpose: 'profile_change' });
     expect(fake.lastCode()).toMatch(/^\d{6}$/);
     // 평문 코드는 저장되지 않는다(hash만)
     expect(challengeOf(created.id).codeHash).not.toBe(fake.lastCode());
@@ -155,12 +156,14 @@ describe('Profile contact verification (e2e, TBO-29B-4)', () => {
 
   it('재전송: cooldown 400 → 경과 후 새 코드·시도 카운터 리셋, 구 코드는 무효', async () => {
     const created = (await http.post('/api/profile-verifications').set(bearer(tokens.foreign))
-      .send({ currentPassword: 'demo1234', channel: 'email', target: 'jung.new@tnacademy.test' }).expect(201)).body;
+      .send({ currentPassword: 'demo1234', channel: 'email', target: 'jung.new@tnacademy.test', purpose: 'password_change' }).expect(201)).body;
     const firstCode = fake.lastCode();
     await http.post(`/api/profile-verifications/${created.id}/resend`).set(bearer(tokens.foreign)).expect(400); // cooldown
     await force('profile_verification_challenges', created.id, { resendAvailableAt: new Date(Date.now() - 1000).toISOString() });
     const resent = (await http.post(`/api/profile-verifications/${created.id}/resend`).set(bearer(tokens.foreign)).expect(201)).body;
     expect(resent.status).toBe('pending');
+    expect(resent.purpose).toBe('password_change');
+    expect(fake.sent[fake.sent.length - 1]?.purpose).toBe('password_change');
     const secondCode = fake.lastCode();
     expect(secondCode).not.toBe(firstCode);
     await http.post(`/api/profile-verifications/${created.id}/confirm`).set(bearer(tokens.foreign))

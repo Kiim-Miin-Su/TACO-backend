@@ -7,11 +7,13 @@
 //  · production에서 채널 설정이 없으면 fail-closed(자동 성공/dev fallback 금지).
 //  · 테스트는 DI로 deterministic fake를 주입(실 발송 0).
 import type { VerificationChannel, VerificationProviderName } from './profile-verification.entity';
+import type { VerificationPurpose } from '@kms545487/contracts';
 
 export const CONTACT_VERIFICATION_PROVIDER = 'CONTACT_VERIFICATION_PROVIDER';
 
 export type SendChallengeInput = {
   channel: VerificationChannel;
+  purpose: VerificationPurpose;
   /** canonical target — email lowercase 또는 E.164 */
   target: string;
   /** 서비스가 코드를 소유하는 채널(ownsCode=false): 서비스 생성 OTP(발송 후 즉시 폐기 — provider 저장 금지) */

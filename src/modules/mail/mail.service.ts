@@ -3,6 +3,8 @@ import { isProduction } from '../../common/env'; // [TBO-34 C3] 환경 판정 �
 import * as nodemailer from 'nodemailer';
 import { escapeHtml } from '../../common/html-escape';
 import { assertWebAppLink } from '../../common/web-origin';
+import type { VerificationPurpose } from '@kms545487/contracts';
+import { verificationEmailCopyOf } from './verification-email-copy';
 
 /**
  * 이메일 발송. 운영에서는 SMTP 환경변수로 무료 SMTP(예: Gmail 앱비밀번호, Resend, Brevo 무료티어)를 연결.
@@ -101,15 +103,16 @@ ${safeLink}
   }
 
   //  fail-closed: SMTP 미설정이면 false 반환(호출부가 채널 차단) — devLink류 폴백을 만들지 않는다(§4).
-  async sendOtpEmail(to: string, code: string): Promise<boolean> {
+  async sendOtpEmail(to: string, code: string, purpose: VerificationPurpose): Promise<boolean> {
     if (!this.transporter) return false;
     const htmlCode = escapeHtml(code);
+    const copy = verificationEmailCopyOf(purpose);
     await this.transporter.sendMail({
       from: process.env.MAIL_FROM ?? 'no-reply@tnacademy.test',
       to,
-      subject: '[TACO ERP] 연락처 변경 인증 코드',
-      text: `연락처 변경 인증 코드: ${code}\n10분 안에 입력해 주세요. 본인이 요청하지 않았다면 이 메일을 무시하세요.`,
-      html: `<p>연락처 변경 인증 코드</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${htmlCode}</p><p>10분 안에 입력해 주세요. 본인이 요청하지 않았다면 이 메일을 무시하세요.</p>`,
+      subject: copy.subject,
+      text: `${copy.heading}: ${code}\n${copy.instruction}\n본인이 요청하지 않았다면 이 메일을 무시하세요.`,
+      html: `<p>${copy.heading}</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${htmlCode}</p><p>${copy.instruction}</p><p>본인이 요청하지 않았다면 이 메일을 무시하세요.</p>`,
     });
     return true;
   }
