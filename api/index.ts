@@ -32,7 +32,7 @@ const staticOpenapi = staticOpenapiJson as unknown as OpenAPIObject;
 // Postgres가 구성된 production에서는 영속 store가 권위이며, 메모리는 인스턴스별 read model로만 사용한다.
 // ─────────────────────────────────────────────────────────────
 let cachedServer: ((req: unknown, res: unknown) => void) | undefined;
-let bootstrapPromise: Promise<((req: unknown, res: unknown) => void)> | undefined;
+let bootstrapPromise: Promise<(req: unknown, res: unknown) => void> | undefined;
 
 async function bootstrapServer() {
   console.log("[boot] serverless bootstrap start");
@@ -51,13 +51,15 @@ async function bootstrapServer() {
   const document = staticOpenapi ?? createOpenApiDocument(app);
   // 서버리스(Vercel)는 Swagger UI 정적 에셋을 서빙하지 못해 흰 화면이 됨.
   // → JS/CSS를 CDN(jsdelivr swagger-ui-dist)에서 로드하도록 지정.
-  measurePerformanceSync("boot.configureDocs", () => configureApiDocs(app, document, {
-    customCssUrl: "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui.css",
-    customJs: [
-      "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui-bundle.js",
-      "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui-standalone-preset.js",
-    ],
-  }));
+  measurePerformanceSync("boot.configureDocs", () =>
+    configureApiDocs(app, document, {
+      customCssUrl: "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui.css",
+      customJs: [
+        "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui-bundle.js",
+        "https://cdn.jsdelivr.net/npm/swagger-ui-dist@5.32.8/swagger-ui-standalone-preset.js",
+      ],
+    }),
+  );
 
   console.log("[boot] Nest application init start");
   await measurePerformance("boot.appInit", () => app.init());
@@ -67,7 +69,7 @@ async function bootstrapServer() {
   return app.getHttpAdapter().getInstance() as (req: unknown, res: unknown) => void;
 }
 
-function getServer(): Promise<((req: unknown, res: unknown) => void)> {
+function getServer(): Promise<(req: unknown, res: unknown) => void> {
   if (cachedServer) return Promise.resolve(cachedServer);
   if (!bootstrapPromise) {
     bootstrapPromise = bootstrapServer()
@@ -77,9 +79,10 @@ function getServer(): Promise<((req: unknown, res: unknown) => void)> {
       })
       .catch((error: unknown) => {
         bootstrapPromise = undefined;
-        const details = error instanceof Error
-          ? { name: error.name, message: error.message, stack: error.stack }
-          : { message: String(error) };
+        const details =
+          error instanceof Error
+            ? { name: error.name, message: error.message, stack: error.stack }
+            : { message: String(error) };
         console.error("[boot] serverless bootstrap failed", details);
         throw error;
       });
@@ -98,10 +101,12 @@ export default async function handler(req: unknown, res: unknown): Promise<void>
     response.statusCode = 503;
     response.setHeader("Content-Type", "application/json; charset=utf-8");
     response.setHeader("Cache-Control", "no-store");
-    response.end(JSON.stringify({
-      status: "unavailable",
-      service: "taco-api",
-      code: "BOOT_FAILED",
-    }));
+    response.end(
+      JSON.stringify({
+        status: "unavailable",
+        service: "taco-api",
+        code: "BOOT_FAILED",
+      }),
+    );
   }
 }
