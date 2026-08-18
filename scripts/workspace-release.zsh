@@ -28,6 +28,17 @@
 #   · `delete_stale_locks`가 `-mmin +5`(나이)로 판정해 방금 생긴 고아 락을 남겼다 →
 #     preflight는 통과하고 commit에서 죽었다. 이제 **점유 프로세스**로 판정한다.
 #
+# [2026-08-19] "자동 배포가 안 된다" 실측 원인 3건을 고쳤다:
+#   · preflight가 **untracked 파일** 때문에 죽었다 — docs에 놓아둔 외부 자료 PDF/PPTX 2개가
+#     `docs working tree is not clean`을 만들어 push 0건으로 중단됐다. release의 커밋은 전부
+#     pathspec이고 push는 커밋만 옮기므로 untracked는 산출물에 섞일 수 없다 → tracked 변경만
+#     차단하고 untracked는 목록과 함께 경고 후 진행한다(STRICT_CLEAN=1로 종전 동작).
+#   · push가 non-fast-forward로 거부될 상황을 **게이트 30분 뒤에야** 알 수 있었다 →
+#     preflight에서 origin을 fetch해 diverge/behind를 20초 안에 판정한다(assert_pushable).
+#   · push까지 초록이어도 Vercel이 실제로 그 SHA를 배포했는지는 확인하지 않았다 →
+#     VERIFY_DEPLOYMENT 기본값을 PUSH에 연동한다. 비공개 repo + GITHUB_TOKEN 부재로 배포
+#     확인이 불가능한 경우는 preflight에서 미리 안내와 함께 중단한다(마지막 단계 404 방지).
+#
 # Useful modes:
 #   PUSH=0 ./scripts/release.zsh
 #     Read-only release verification. Does not publish, update locks, or push.
@@ -59,6 +70,11 @@
 #   ALLOW_UNAPPLIED_MIGRATIONS=1 ./scripts/release.zsh
 #     Push even though the reachable DB is missing ledger migrations. Logs loudly.
 #     Only for a deliberate code-first deploy where the owner applies migrations after.
+#   STRICT_CLEAN=1 ./scripts/release.zsh
+#     untracked 파일도 preflight 실패로 취급(2026-08-19 이전의 동작). 기본은 tracked 변경만
+#     차단한다 — untracked 자료 파일이 저장소에 놓여 있어도 배포는 진행된다.
+#   VERIFY_DEPLOYMENT=0 ./scripts/release.zsh
+#     push 후 Vercel 배포 identity/health 확인을 끈다(기본은 PUSH=1이면 함께 켜짐).
 
 emulate -L zsh
 setopt err_exit pipe_fail no_unset
@@ -78,7 +94,10 @@ RUN_DB_SMOKE="${RUN_DB_SMOKE:-0}"
 RUN_DB_CRUD="${RUN_DB_CRUD:-0}"
 # [TBO-79 K1] 읽기 전용 DB 검증기 — smoke를 켜면 함께 켠다(smoke가 쓰기이므로 그 전에 확인해야 한다).
 RUN_DB_VERIFY="${RUN_DB_VERIFY:-$RUN_DB_SMOKE}"
-VERIFY_DEPLOYMENT="${VERIFY_DEPLOYMENT:-0}"
+# [2026-08-19] 기본값을 PUSH에 연동 — 종전 기본 0은 "release 초록 = push까지"였고 Vercel이 실제로
+#  그 SHA를 배포했는지는 아무도 확인하지 않았다("자동 배포 안 됨"이 사후에야 발견되는 구조).
+#  push하는 실행은 기본으로 배포 identity + health/db/CORS까지 확인한다. 끄려면 VERIFY_DEPLOYMENT=0.
+VERIFY_DEPLOYMENT="${VERIFY_DEPLOYMENT:-$PUSH}"
 DB_ENV_FILE="${DOTENV_CONFIG_PATH:-.env.local}"
 BACKEND_URL="${BACKEND_URL:-https://taco-backend-omega.vercel.app}"
 FRONTEND_URL="${FRONTEND_URL:-https://taco-frontend-tau.vercel.app}"
@@ -183,11 +202,29 @@ repo_status() {
   git -C "$ROOT/$1" status --porcelain
 }
 
+# [2026-08-19] tracked 변경만 차단한다. untracked 파일이 preflight를 죽여 배포 전체를 막았다
+#  (실측: docs의 외부 자료 PDF/PPTX 2개 → die → push 0건). release가 만드는 커밋은 전부
+#  pathspec(-- package.json package-lock.json)이고 push는 커밋만 옮기므로, untracked 파일은
+#  어떤 release 산출물에도 섞일 수 없다. 목록을 경고로 남겨 은폐는 하지 않는다. STRICT_CLEAN=1
+#  이면 종전처럼 untracked도 차단한다.
+typeset -gA RELEASE_UNTRACKED_WARNED
 assert_clean() {
   local repo="$1"
-  local repo_state
-  repo_state="$(repo_status "$repo")"
-  [[ -z "$repo_state" ]] || die "$repo working tree is not clean. Commit or isolate it first.\n$repo_state"
+  local tracked untracked line
+  git -C "$ROOT/$repo" update-index -q --refresh 2>/dev/null || true
+  tracked="$(git -C "$ROOT/$repo" status --porcelain --untracked-files=no)"
+  [[ -z "$tracked" ]] || die "$repo working tree has tracked changes. Commit or isolate them first.\n$tracked"
+  untracked="$(git -C "$ROOT/$repo" ls-files --others --exclude-standard)"
+  [[ -n "$untracked" ]] || return 0
+  if is_true "${STRICT_CLEAN:-0}"; then
+    die "$repo has untracked files (STRICT_CLEAN=1).\n$untracked"
+  fi
+  if [[ -z "${RELEASE_UNTRACKED_WARNED[$repo]:-}" ]]; then
+    RELEASE_UNTRACKED_WARNED[$repo]=1
+    warn "$repo: untracked 파일은 커밋/푸시에 포함되지 않으므로 무시하고 진행합니다 —"
+    print -r -- "$untracked" | while IFS= read -r line; do warn "  ?? $line"; done
+    warn "  격리하려면 workspace의 _incoming/ 등으로 옮기세요(종전 엄격 동작: STRICT_CLEAN=1)"
+  fi
 }
 
 assert_main_branch() {
@@ -195,6 +232,62 @@ assert_main_branch() {
   local branch
   branch="$(repo_branch "$repo")"
   [[ "$branch" == "$MAIN_BRANCH" ]] || die "$repo branch=$branch, expected=$MAIN_BRANCH"
+}
+
+# [2026-08-19] push 가능성 preflight — 게이트 30분을 돌린 뒤 push가 non-fast-forward로 거부되면
+#  락 사고와 정확히 같은 낭비다(막힐 거라면 20초 안에 막혀야 한다). origin을 fetch해 diverge를
+#  미리 판정한다. fetch 실패(오프라인·자격증명)는 위반이 아니라 정보 부재 — 원장 판정과 같은
+#  원칙으로 경고 후 진행한다.
+assert_pushable() {
+  local repo="$1"
+  local branch ahead behind
+  branch="$(repo_branch "$repo")"
+  if ! git -C "$ROOT/$repo" fetch origin "$branch" --quiet 2>/dev/null; then
+    warn "$repo: origin fetch 실패 — push 가능 여부를 미리 확인하지 못했습니다(오프라인/자격증명?)"
+    return 0
+  fi
+  behind="$(git -C "$ROOT/$repo" rev-list --count "HEAD..origin/$branch" 2>/dev/null || print 0)"
+  ahead="$(git -C "$ROOT/$repo" rev-list --count "origin/$branch..HEAD" 2>/dev/null || print 0)"
+  if (( behind > 0 )); then
+    die "$repo: origin/$branch 에 로컬에 없는 커밋 ${behind}개 — push가 거부됩니다.\n  git -C $repo pull --rebase origin $branch 로 정리한 뒤 다시 실행하세요."
+  fi
+  if (( ahead > 0 )); then
+    ok "$repo: push 예정 커밋 ${ahead}개 (origin/$branch 기준 fast-forward)"
+  else
+    ok "$repo: origin/$branch 와 동일 — push할 커밋 없음"
+  fi
+}
+
+# [2026-08-19] 배포 확인 접근성 preflight — VERIFY_DEPLOYMENT는 GitHub commit status API로 Vercel
+#  배포 identity를 판정하는데, 비공개 repo + GITHUB_TOKEN 부재면 **마지막 단계**(HTTP 404)에서야
+#  죽었다. repo 메타를 먼저 조회해 20초 안에 해결 방법과 함께 중단한다.
+preflight_deployment_status_access() {
+  is_true "$VERIFY_DEPLOYMENT" || return 0
+  is_true "$PUSH" || return 0
+  require_command curl
+  local repo remote slug code
+  local -a auth_headers
+  auth_headers=()
+  [[ -n "${GITHUB_TOKEN:-}" ]] && auth_headers=(-H "Authorization: Bearer $GITHUB_TOKEN")
+  for repo in backend frontend; do
+    remote="$(git -C "$ROOT/$repo" remote get-url origin 2>/dev/null)" || continue
+    slug="$(github_repo_slug "$remote")" || continue
+    code="$(curl -sS -o /dev/null -w '%{http_code}' \
+      -H 'Accept: application/vnd.github+json' -H 'X-GitHub-Api-Version: 2022-11-28' \
+      "${auth_headers[@]}" --connect-timeout 10 --max-time 20 \
+      "$(normalize_url "$GITHUB_API_URL")/repos/$slug" || true)"
+    case "$code" in
+      200) ok "$repo: GitHub 상태 API 접근 확인($slug)" ;;
+      404)
+        die "$repo: $slug 조회 불가(HTTP 404) — 비공개 repo는 GITHUB_TOKEN 없이 Vercel 배포 상태를 확인할 수 없습니다.\n  export GITHUB_TOKEN=<repo 읽기 권한 토큰> 후 재실행하거나,\n  VERIFY_DEPLOYMENT=0 ./scripts/release.zsh 로 확인 없이 push만 할 수 있습니다(비권장)." ;;
+      401|403)
+        die "$repo: GitHub API 인증/한도 문제(HTTP $code) — GITHUB_TOKEN 값을 확인하세요." ;;
+      000)
+        warn "$repo: GitHub API에 연결하지 못했습니다 — 배포 확인 단계가 나중에 실패할 수 있습니다" ;;
+      *)
+        warn "$repo: GitHub API 사전 확인 예상 밖 응답(HTTP $code) — 배포 확인 단계에서 재시도합니다" ;;
+    esac
+  done
 }
 
 # [TBO-79 K1 2026-07-30] 락 판정을 **나이 → 점유 프로세스**로 바꾼다.
@@ -707,7 +800,7 @@ wait_for_vercel_commit_deployment() {
     warn "$repo exact deployment not ready ($attempt/$DEPLOY_WAIT_ATTEMPTS, sha=${expected_sha[1,12]}, status=$http_code)"
     sleep "$DEPLOY_WAIT_SECONDS"
   done
-  die "$repo Vercel deployment did not succeed for commit $expected_sha"
+  die "$repo Vercel deployment did not succeed for commit $expected_sha\n  Vercel 프로젝트가 이 GitHub repo에 연결돼 있는지(Settings → Git), Production Branch가 $MAIN_BRANCH 인지,\n  Ignored Build Step이 이 커밋을 걸러내지 않았는지 확인하세요. 연동이 꺼져 있으면 push해도 배포는 시작되지 않습니다."
 }
 
 wait_for_json() {
@@ -851,6 +944,14 @@ for repo in "${CHECK_REPOS[@]}"; do
   assert_clean "$repo"
 done
 ok "repo preflight clean (${CHECK_REPOS[*]})"
+
+# [2026-08-19] push·배포확인이 "가능한지"를 여기서 판정 — 막힐 거라면 게이트 전에 막힌다.
+if is_true "$PUSH"; then
+  for repo in "${RELEASE_REPOS[@]}"; do
+    assert_pushable "$repo"
+  done
+fi
+preflight_deployment_status_access
 
 CT_LOCAL_VER="$(json_value "$ROOT/contracts/package.json" "p.version")"
 CT_NPM_VER="$(npm view "$CT_NAME" version 2>/dev/null || echo "none")"
