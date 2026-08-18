@@ -120,7 +120,7 @@
     "contracts:stage:check": "node scripts/stage-local-contracts.js --check"
   },
   "dependencies": {
-    "@kms545487/contracts": "^0.2.59",
+    "@kms545487/contracts": "^0.2.60",
     "@nestjs/common": "^11.1.27",
     "@nestjs/core": "^11.1.27",
     "@nestjs/platform-express": "^11.1.27",
