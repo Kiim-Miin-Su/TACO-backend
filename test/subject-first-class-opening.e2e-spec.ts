@@ -30,7 +30,8 @@ describe('Subject-first class opening aggregate (e2e)', () => {
     await http.post('/api/schedule/open-class').set(auth(admin)).send({ ...base, instructorId: 99999 }).expect(400);
   });
 
-  it('과목+강사별 course+선택 학생 enrollment+세션+audit를 한 번에 만든다', async () => {
+  it('과목+강사별 course+독립 참가자 세션+audit를 한 번에 만든다', async () => {
+    const enrollmentsBefore = (await http.get('/api/enrollments').set(auth(admin)).expect(200)).body;
     const result = (await http.post('/api/schedule/open-class').set(auth(admin)).send({
       subjectName: '  Writing   Lab  ',
       instructorId: 1,
@@ -52,16 +53,16 @@ describe('Subject-first class opening aggregate (e2e)', () => {
       name: 'Writing Lab', subjectId: result.subject.id, instructorId: 1,
       hourlyRate: 47000, hourlyRateOverride: 47000, price: 320000, isKinder: false,
     });
-    expect(result.enrollments).toHaveLength(1);
-    expect(result.enrollments[0]).toMatchObject({ studentId: 1, courseId: result.course.id, status: 'active' });
+    expect(result).not.toHaveProperty('enrollments');
     expect(result.row).toMatchObject({
       courseId: result.course.id, subjectName: 'Writing Lab', courseName: 'Writing Lab', instructorId: 1,
       studentIds: [1], mode: 'online', topic: 'Essay structure', memo: '교재 2장', durationMinutes: 90,
     });
-    const [scheduleReadback, subjectReadback, courseReadback] = await Promise.all([
+    const [scheduleReadback, subjectReadback, courseReadback, enrollmentsAfter] = await Promise.all([
       http.get('/api/schedule').set(auth(admin)).expect(200),
       http.get(`/api/subjects/${result.subject.id}`).set(auth(admin)).expect(200),
       http.get(`/api/courses/${result.course.id}`).set(auth(admin)).expect(200),
+      http.get('/api/enrollments').set(auth(admin)).expect(200),
     ]);
     expect(scheduleReadback.body.find((row: { id: number }) => row.id === result.row.id)).toMatchObject({
       courseName: 'Writing Lab', subjectName: 'Writing Lab', instructorId: 1,
@@ -70,15 +71,16 @@ describe('Subject-first class opening aggregate (e2e)', () => {
     expect(courseReadback.body).toMatchObject({
       id: result.course.id, name: 'Writing Lab', hourlyRateOverride: 47000,
     });
+    expect(enrollmentsAfter.body).toEqual(enrollmentsBefore);
     for (const [entity, id] of [
-      ['subjects', result.subject.id], ['courses', result.course.id], ['enrollments', result.enrollments[0].id], ['class_sessions', result.row.id],
+      ['subjects', result.subject.id], ['courses', result.course.id], ['class_sessions', result.row.id],
     ] as const) {
       const audit = (await http.get(`/api/audit?entity=${entity}&entityId=${id}`).set(auth(admin)).expect(200)).body;
       expect(audit.some((row: { action: string }) => row.action === 'create')).toBe(true);
     }
   });
 
-  it('같은 과목+강사는 기존 catalog/roster를 재사용하고 관리자 페이 override를 수정한다', async () => {
+  it('같은 과목+강사는 기존 catalog를 재사용하고 수강 등록은 변경하지 않는다', async () => {
     const beforeSubjects = (await http.get('/api/subjects').set(auth(admin)).expect(200)).body;
     const beforeCourses = (await http.get('/api/courses').set(auth(admin)).expect(200)).body;
     const subject = beforeSubjects.find((row: { name: string }) => row.name === 'Writing Lab');
@@ -91,8 +93,7 @@ describe('Subject-first class opening aggregate (e2e)', () => {
     expect(result.course).toMatchObject({ id: course.id, name: 'Writing Lab', hourlyRate: 52000, hourlyRateOverride: 52000, price: 350000 });
     const enrollments = (await http.get('/api/enrollments').set(auth(admin)).expect(200)).body
       .filter((row: { studentId: number; courseId: number }) => row.studentId === 1 && row.courseId === course.id);
-    expect(enrollments).toHaveLength(1);
-    await http.post('/api/enrollments').set(auth(admin)).send({ studentId: 1, courseId: course.id }).expect(409);
+    expect(enrollments).toHaveLength(0);
   });
 
   it('반복 개설은 기존 bulk command로 series와 occurrence 전체를 원자 생성한다', async () => {
@@ -108,7 +109,7 @@ describe('Subject-first class opening aggregate (e2e)', () => {
       row.courseId === result.course.id && row.seriesId === result.series.id)).toBe(true);
   });
 
-  it('후속 충돌 실패 시 새 subject/course/enrollment가 부분 커밋되지 않는다', async () => {
+  it('후속 충돌 실패 시 새 subject/course가 부분 커밋되지 않는다', async () => {
     const marker = `Rollback ${Date.now()}`;
     await http.post('/api/schedule/open-class').set(auth(admin)).send({
       subjectName: marker, instructorId: 1, studentIds: [2], hourlyRateOverride: 48000,

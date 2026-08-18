@@ -98,6 +98,9 @@ describe("[TBO-76H] production organic journey", () => {
       })
       .expect(403);
 
+    const enrollmentsBeforeOpen = (
+      await http.get('/api/enrollments').set(auth("manager")).expect(200)
+    ).body;
     const opened = (
       await http
         .post("/api/schedule/open-class")
@@ -117,13 +120,11 @@ describe("[TBO-76H] production organic journey", () => {
     ).body;
     const sessionId = Number(opened.row.id);
     const courseId = Number(opened.course.id);
-    expect(opened.enrollments).toEqual([
-      expect.objectContaining({
-        studentId,
-        courseId,
-        status: "active",
-      }),
-    ]);
+    expect(opened).not.toHaveProperty("enrollments");
+    const enrollmentsAfterOpen = (
+      await http.get('/api/enrollments').set(auth("manager")).expect(200)
+    ).body;
+    expect(enrollmentsAfterOpen).toEqual(enrollmentsBeforeOpen);
 
     const report = (
       await http

@@ -117,7 +117,7 @@ export class ScheduleReadService implements OnModuleInit {
     }, undefined, this.logger);
   }
 
-  /** [TBO-28C] 학생 세션 간 중복 검사용 유효 코호트 리졸버(명시 studentIds ?? 코스 활성 수강생). */
+  /** 명시 참가자 우선. 빈 값의 코스 roster fallback은 과거 세션 호환 전용이다. */
   effectiveStudentIds = (s: ClassSession): number[] =>
     s.studentIds?.length ? s.studentIds : this.activeStudentIds(s.courseId);
 
@@ -169,17 +169,9 @@ export class ScheduleReadService implements OnModuleInit {
   }
 
   // 기간/필터 조회 → enriched 읽기모델(주간 표/캘린더용)
-  // studentId 필터: 해당 학생이 활성 수강 중인 코스의 세션만(enrollments 역추적 — 단일 소스).
+  // studentId 필터는 세션 참가자 snapshot 기준이다. enrollment는 장기 수강 관계일 뿐 일정 참가 여부가 아니다.
   list(opts: ScheduleQuery): ScheduleRow[] {
     const rooms = new Map(this.rooms.findAll().map((r) => [r.id, r]));
-    const coursesOfStudent = opts.studentId != null
-      ? new Set(
-          this.db
-            .findByField<Enrollment>(ENROLLMENTS_COL, 'studentId', opts.studentId)
-            .filter((e) => e.status === 'active')
-            .map((e) => e.courseId),
-        )
-      : null;
     // [EP3 2026-07-16] 인덱스 진입 — instructorId(강사 캘린더 핫패스)·roomId 지정 시 세컨더리
     //  인덱스(findByField)로 후보를 좁힌 뒤 잔여 필터. 종전엔 인덱스가 있는데도 findBy 전량 스캔.
     const base = opts.instructorId
@@ -195,7 +187,7 @@ export class ScheduleReadService implements OnModuleInit {
         (opts.roomId ? s.roomId === opts.roomId : true) &&
         (opts.assignment === 'assigned' ? s.instructorId != null : true) &&
         (opts.assignment === 'unassigned' ? s.instructorId == null : true) &&
-        (coursesOfStudent ? coursesOfStudent.has(s.courseId) : true),
+        (opts.studentId != null ? this.effectiveStudentIds(s).includes(Number(opts.studentId)) : true),
       )
       .map((s) => this.enrich(s, rooms))
       .sort((a, b) => (a.sessionDate + (a.startTime ?? '')).localeCompare(b.sessionDate + (b.startTime ?? '')));
@@ -217,13 +209,9 @@ export class ScheduleReadService implements OnModuleInit {
   ): Promise<ScheduleRow[]> {
     await this.ensureReady();
     const rooms = new Map(this.rooms.findAll().map((room) => [room.id, room]));
-    // [TBO-80 80C] 활성 판정은 정책 위임 — 학생 행만 인덱스로 골라 buildCohortIndex의 keys를 쓴다.
-    const coursesOfStudent = opts.studentId != null
-      ? new Set(buildCohortIndex(this.db.findByField<Enrollment>(ENROLLMENTS_COL, 'studentId', opts.studentId)).keys())
-      : null;
     const rows = await this.sessions.listDb(opts);
     return rows
-      .filter((row) => coursesOfStudent ? coursesOfStudent.has(row.courseId) : true)
+      .filter((row) => opts.studentId != null ? this.effectiveStudentIds(row).includes(Number(opts.studentId)) : true)
       .map((row) => this.enrich(row, rooms));
   }
 
@@ -351,8 +339,24 @@ export class ScheduleReadService implements OnModuleInit {
     };
   }
 
+  /** 세션 참가자 검증 SSOT. 과목/수강 관계와 독립적으로 학생 실존·캘린더 노출 상태·중복만 확인한다. */
+  validateSessionStudentIds(studentIds?: readonly number[]): void {
+    if (!studentIds?.length) return;
+    const normalized = studentIds.map(Number);
+    if (new Set(normalized).size !== normalized.length) {
+      throw new BadRequestException('학생은 중복 선택할 수 없습니다.');
+    }
+    const bad = normalized.filter((id) => {
+      const student = this.studentOf(id);
+      return student == null || !isScheduleVisibleStudentStatus(student.status);
+    });
+    if (bad.length) {
+      throw new BadRequestException(`수업 참가자로 추가할 수 없는 학생입니다: studentId ${bad.join(', ')}`);
+    }
+  }
+
   // 세션 생성(추천→배정). FK 검증 + 충돌 검사(force 아니면 충돌 시 409).
-  /** [TBO-16 #9] 세션 입력 공통 검증(FK·코호트) — create와 schedule-requests가 **같은 함수** 사용(우회 경로 방지).
+  /** 세션 입력 공통 검증(FK·참가자) — create와 schedule-requests가 **같은 함수** 사용(우회 경로 방지).
    *  반환: 확정 instructorId. undefined는 코스 기본값, null은 명시적 배정중이다. */
   validateSessionInput(input: { courseId: number; instructorId?: number | null; roomId?: number; studentIds?: number[] }): number | null {
     const course = this.courseOf(input.courseId);
@@ -361,11 +365,7 @@ export class ScheduleReadService implements OnModuleInit {
     if (instructorId != null && !this.isScheduleOwner(instructorId)) throw new BadRequestException(`instructorId ${instructorId}는 활성 강사 또는 대표가 아닙니다`);
     if (input.roomId != null && !this.rooms.findAll().some((r) => r.id === input.roomId))
       throw new BadRequestException(`roomId ${input.roomId} 없음`);
-    if (input.studentIds?.length) {
-      const allowed = new Set(this.activeStudentIds(input.courseId));
-      const bad = input.studentIds.filter((id) => !allowed.has(id));
-      if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
-    }
+    this.validateSessionStudentIds(input.studentIds);
     return instructorId;
   }
 
@@ -392,6 +392,11 @@ export class ScheduleReadService implements OnModuleInit {
     }
     const resolved = this.validateSessionInput(input);
     if (resolved == null) throw new ForbiddenException('강사는 배정중 코스의 수업을 요청할 수 없습니다.');
+    if (input.studentIds?.length) {
+      const allowed = new Set(this.resources({ instructorId: actorInstructorId }).students.map((student) => Number(student.id)));
+      const bad = input.studentIds.filter((studentId) => !allowed.has(Number(studentId)));
+      if (bad.length) throw new ForbiddenException('강사는 조회 권한이 있는 학생만 수업 참가자로 지정할 수 있습니다.');
+    }
     return resolved;
   }
 

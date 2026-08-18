@@ -34,7 +34,7 @@ export class OpenClassDto extends OmitType(CreateScheduleDto, [
   @IsDefined() @ValidateIf((_object, value) => value !== null) @IsInt() @Min(1)
   instructorId!: number | null;
 
-  @ApiPropertyOptional({ type: [Number] })
+  @ApiPropertyOptional({ type: [Number], description: '과목/수강 관계와 독립적인 수업 참가자 snapshot' })
   @IsOptional() @IsArray() @ArrayUnique() @ArrayMaxSize(20) @IsInt({ each: true }) @Min(1, { each: true })
   studentIds?: number[];
 
@@ -64,7 +64,7 @@ export class OpenClassSeriesDto extends OmitType(CreateScheduleSeriesDto, [
   @IsDefined() @ValidateIf((_object, value) => value !== null) @IsInt() @Min(1)
   instructorId!: number | null;
 
-  @ApiPropertyOptional({ type: [Number] })
+  @ApiPropertyOptional({ type: [Number], description: '과목/수강 관계와 독립적인 수업 참가자 snapshot' })
   @IsOptional() @IsArray() @ArrayUnique() @ArrayMaxSize(20) @IsInt({ each: true }) @Min(1, { each: true })
   studentIds?: number[];
 

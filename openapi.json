@@ -4606,7 +4606,7 @@
             "name": "studentId",
             "required": false,
             "in": "query",
-            "description": "학생 코호트(enrollment status≠drop) 역추적",
+            "description": "세션의 명시 참가자 snapshot 기준. 구 데이터만 활성 수강 명단 fallback",
             "schema": {
               "type": "integer",
               "format": "int32",
@@ -5009,7 +5009,7 @@
         },
         "responses": {
           "201": {
-            "description": "subject + course + enrollments + row + conflicts"
+            "description": "subject + course + row + conflicts. 수강 등록은 변경하지 않음"
           }
         },
         "security": [
@@ -5042,7 +5042,7 @@
         },
         "responses": {
           "201": {
-            "description": "subject + course + enrollments + series + rows + conflicts"
+            "description": "subject + course + series + rows + conflicts. 수강 등록은 변경하지 않음"
           }
         },
         "security": [
@@ -5053,7 +5053,7 @@
             "access_token": []
           }
         ],
-        "summary": "과목명 직접 입력 반복 수업 개설 — 과목/수강/시리즈 전체 원자 커밋 [매니저 이상]",
+        "summary": "과목명 직접 입력 반복 수업 개설 — 과목/운영단위/시리즈 전체 원자 커밋 [매니저 이상]",
         "tags": [
           "scheduling"
         ]
@@ -11608,6 +11608,7 @@
           "studentIds": {
             "uniqueItems": true,
             "maxItems": 20,
+            "description": "과목/수강 관계와 독립적인 수업 참가자 snapshot",
             "type": "array",
             "items": {
               "type": "number",
@@ -11801,6 +11802,7 @@
           "studentIds": {
             "uniqueItems": true,
             "maxItems": 20,
+            "description": "과목/수강 관계와 독립적인 수업 참가자 snapshot",
             "type": "array",
             "items": {
               "type": "number",
@@ -11873,8 +11875,9 @@
             "description": "endTime 없을 때 사용(기본 60)"
           },
           "studentIds": {
+            "uniqueItems": true,
             "maxItems": 20,
-            "description": "명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용",
+            "description": "명시 참가자 snapshot — 과목/수강과 독립. 미지정은 legacy roster fallback 전용",
             "type": "array",
             "items": {
               "type": "number"
@@ -12248,8 +12251,9 @@
             "description": "강의실 FK"
           },
           "studentIds": {
+            "uniqueItems": true,
             "maxItems": 20,
-            "description": "명시 코호트 — 미지정=코스 활성 수강생 전원. 지정 시 부분집합만 허용",
+            "description": "명시 참가자 snapshot — 과목/수강과 독립. 미지정은 legacy roster fallback 전용",
             "type": "array",
             "items": {
               "type": "number"
@@ -12377,8 +12381,9 @@
             "example": 60
           },
           "studentIds": {
+            "uniqueItems": true,
             "maxItems": 20,
-            "description": "명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용",
+            "description": "명시 참가자 snapshot — 과목/수강과 독립. 미지정은 legacy roster fallback 전용",
             "type": "array",
             "items": {
               "type": "number"

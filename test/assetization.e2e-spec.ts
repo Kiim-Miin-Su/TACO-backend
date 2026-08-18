@@ -94,17 +94,24 @@ describe('Assetization sweep 2 (e2e)', () => {
     await http.patch('/api/students/99999').set(asAdmin()).send({ status: 'enrolled' }).expect(404);
   });
 
-  it('[v0.1.13] 세션 명시 코호트: 학생 선택 저장·부분집합 검증 400·미지정=코스 파생(하위 호환)', async () => {
+  it('[v0.2.60] 세션 명시 참가자: 과목 수강과 독립 저장·미지정=레거시 코스 파생', async () => {
     // 코스10 활성 수강생: 1(김서연), 4(최민준) — 시드. 부분 선택(1만) → studentIds=[1]
     const ses = (await http.post('/api/schedule').set(asAdmin())
       .send({ courseId: 10, sessionDate: '2099-07-01', startTime: '10:00', durationMinutes: 60, studentIds: [1] })
       .expect(201)).body.row;
     expect(ses.studentIds).toEqual([1]);
     expect(ses.studentNames).toEqual(['김서연']);
-    // 비수강생(2=이준호는 코스11) 포함 → 400(유령 코호트 방지)
-    await http.post('/api/schedule').set(asAdmin())
+    // 비수강생(2=이준호는 코스11)도 수업 참가자로 지정 가능하고 수강 행은 만들지 않는다.
+    const enrollmentIdsBefore = ((await http.get('/api/enrollments').set(asAdmin()).expect(200)).body as Array<{ id: number }>)
+      .map((row) => row.id);
+    const independent = (await http.post('/api/schedule').set(asAdmin())
       .send({ courseId: 10, sessionDate: '2099-07-02', startTime: '10:00', durationMinutes: 60, studentIds: [1, 2] })
-      .expect(400);
+      .expect(201)).body.row;
+    expect(independent.studentIds).toEqual([1, 2]);
+    expect(independent.studentNames).toEqual(['김서연', '이준호']);
+    const enrollmentIdsAfter = ((await http.get('/api/enrollments').set(asAdmin()).expect(200)).body as Array<{ id: number }>)
+      .map((row) => row.id);
+    expect(enrollmentIdsAfter).toEqual(enrollmentIdsBefore);
     // 미지정 → 기존대로 코스 활성 수강생 전원 파생(하위 호환)
     const auto = (await http.post('/api/schedule').set(asAdmin())
       .send({ courseId: 10, sessionDate: '2099-07-03', startTime: '10:00', durationMinutes: 60 })

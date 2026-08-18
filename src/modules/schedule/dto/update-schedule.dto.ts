@@ -1,4 +1,4 @@
-import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, IsBoolean, Max, IsArray, ArrayMaxSize } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Matches, MaxLength, Min, IsBoolean, Max, IsArray, ArrayMaxSize, ArrayUnique } from 'class-validator';
 import { SESSION_STATUSES } from '../schedule.entity'; // [P2 M5]
 import { SESSION_MAX_MIN, SESSION_MIN_MIN } from '../session-time.policy'; // [P2 M7] 분 상한 단일 진실원
 import { MAX_AMOUNT } from '../../../common/validation-limits'; // [P2 M6]
@@ -37,8 +37,8 @@ export class UpdateScheduleDto implements UpdateClassSessionInput {
   @IsOptional() @IsInt() @Min(SESSION_MIN_MIN) @Max(SESSION_MAX_MIN) // [감사 H4] 상한 8h — 시급 계산 오염 방지
   durationMinutes?: number;
 
-  @ApiPropertyOptional({ description: '명시 코호트(v0.1.13) — 미지정=코스 활성 수강생 전원. 지정 시 그 코스 활성 수강생의 부분집합만 허용', type: [Number] })
-  @IsOptional() @IsArray() @IsInt({ each: true }) @ArrayMaxSize(20)
+  @ApiPropertyOptional({ description: '명시 참가자 snapshot — 과목/수강과 독립. 미지정은 legacy roster fallback 전용', type: [Number] })
+  @IsOptional() @IsArray() @ArrayUnique() @IsInt({ each: true }) @ArrayMaxSize(20)
   studentIds?: number[];
 
   @ApiPropertyOptional({ example: 2, description: '강의실 FK' })

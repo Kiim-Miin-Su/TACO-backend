@@ -48,8 +48,8 @@ export class CreateScheduleSeriesDto implements CreateScheduleSeriesCommand {
   @IsOptional() @IsInt()
   roomId?: number;
 
-  @ApiPropertyOptional({ description: '명시 코호트 — 미지정=코스 활성 수강생 전원. 지정 시 부분집합만 허용', type: [Number] })
-  @IsOptional() @IsArray() @IsInt({ each: true }) @ArrayMaxSize(20)
+  @ApiPropertyOptional({ description: '명시 참가자 snapshot — 과목/수강과 독립. 미지정은 legacy roster fallback 전용', type: [Number] })
+  @IsOptional() @IsArray() @ArrayUnique() @IsInt({ each: true }) @ArrayMaxSize(20)
   studentIds?: number[];
 
   @ApiProperty({ type: ScheduleSeriesRepeatDto, description: '반복 규칙 — 서버가 occurrence 날짜를 정규화·발급' })

@@ -42,7 +42,7 @@ export class ScheduleController {
   @ApiOperation({ summary: '스케줄 조회. 강사는 본인 배정 일반 일정만, 상담 일정은 관리 역할만.' })
   @ApiQuery({ name: 'from', required: false }) @ApiQuery({ name: 'to', required: false })
   @ApiQuery({ name: 'instructorId', required: false }) @ApiQuery({ name: 'roomId', required: false })
-  @ApiQuery({ name: 'studentId', required: false, description: '학생 코호트(enrollment status≠drop) 역추적' })
+  @ApiQuery({ name: 'studentId', required: false, description: '세션의 명시 참가자 snapshot 기준. 구 데이터만 활성 수강 명단 fallback' })
   @ApiQuery({ name: 'assignment', required: false, enum: ['assigned', 'unassigned'], description: '담당 강사 배정 여부' })
   async list(
     @Req() req: Request & { user?: JwtClaims },
@@ -143,7 +143,7 @@ export class ScheduleController {
   @Roles(...ADMIN_ROLES)
   @RequireCapabilities('calendar.manage')
   @ApiOperation({ summary: '과목명 직접 입력 수업 개설 — 과목/강사별 운영단위/수강/세션/audit 원자 커밋 [매니저 이상]' })
-  @ApiCreatedResponse({ description: 'subject + course + enrollments + row + conflicts' })
+  @ApiCreatedResponse({ description: 'subject + course + row + conflicts. 수강 등록은 변경하지 않음' })
   openClass(@Body() dto: OpenClassDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.schedule.openClass(dto, req.user?.sub);
   }
@@ -151,8 +151,8 @@ export class ScheduleController {
   @Post('open-class-series')
   @Roles(...ADMIN_ROLES)
   @RequireCapabilities('calendar.manage')
-  @ApiOperation({ summary: '과목명 직접 입력 반복 수업 개설 — 과목/수강/시리즈 전체 원자 커밋 [매니저 이상]' })
-  @ApiCreatedResponse({ description: 'subject + course + enrollments + series + rows + conflicts' })
+  @ApiOperation({ summary: '과목명 직접 입력 반복 수업 개설 — 과목/운영단위/시리즈 전체 원자 커밋 [매니저 이상]' })
+  @ApiCreatedResponse({ description: 'subject + course + series + rows + conflicts. 수강 등록은 변경하지 않음' })
   openClassSeries(@Body() dto: OpenClassSeriesDto, @Req() req: Request & { user?: JwtClaims }) {
     return this.schedule.openClassSeries(dto, req.user?.sub);
   }

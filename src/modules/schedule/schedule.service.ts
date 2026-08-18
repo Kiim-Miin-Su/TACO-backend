@@ -51,7 +51,6 @@ import {
   payoutIdOf,
   type SessionAccountingImpact,
 } from './session-accounting.policy';
-import { EnrollmentsService } from '../enrollments/enrollments.service';
 import { isProduction } from '../../common/env';
 import { SessionAccountingContextService } from './session-accounting-context.service';
 import {
@@ -119,7 +118,6 @@ export class ScheduleService {
     private readonly reports: ReportsService,
     private readonly collections: PostgresCollectionStore, // [TBO-28F] users 투영 재조회(교차 인스턴스 정합)
     private readonly courses: CoursesService,
-    private readonly enrollments: EnrollmentsService,
     private readonly read: ScheduleReadService, // [TBO-69 C1] 읽기 단방향 주입
     private readonly accountingContext: SessionAccountingContextService,
   ) {}
@@ -155,7 +153,7 @@ export class ScheduleService {
     await this.read.ensureReady();
   }
 
-  /** 과목 text input → subject/course/enrollment/session 단일 transaction. */
+  /** 과목 text input → subject/course/session 단일 transaction. 참가자는 enrollment와 독립이다. */
   async openClass(dto: OpenClassInput, actorId?: number): Promise<OpenClassResult> {
     await this.read.ensureReady();
     const studentIds = [...new Set((dto.studentIds ?? []).map(Number))];
@@ -174,7 +172,6 @@ export class ScheduleService {
         isKinder: dto.isKinder,
         color: dto.color,
       }, actorId);
-      const enrollments = await this.enrollments.ensureActiveForCourse(studentIds, course.id, actorId);
       const { row, conflicts } = await this.create({
         courseId: course.id,
         instructorId: dto.instructorId,
@@ -194,11 +191,11 @@ export class ScheduleService {
         mode: dto.mode,
         isPublic: dto.isPublic,
       }, actorId);
-      return { subject, course, enrollments, row, conflicts };
+      return { subject, course, row, conflicts };
     });
   }
 
-  /** 과목 text input → subject/course/enrollment + 기존 원자 bulk series command 재사용. */
+  /** 과목 text input → subject/course + 기존 원자 bulk series command 재사용. */
   async openClassSeries(dto: OpenClassSeriesInput, actorId?: number): Promise<OpenClassSeriesResult> {
     await this.read.ensureReady();
     const studentIds = [...new Set((dto.studentIds ?? []).map(Number))];
@@ -217,7 +214,6 @@ export class ScheduleService {
         isKinder: dto.isKinder,
         color: dto.color,
       }, actorId);
-      const enrollments = await this.enrollments.ensureActiveForCourse(studentIds, course.id, actorId);
       const result = await this.createSeries({
         courseId: course.id,
         instructorId: dto.instructorId,
@@ -238,7 +234,7 @@ export class ScheduleService {
         isPublic: dto.isPublic,
         force: dto.force,
       }, actorId);
-      return { subject, course, enrollments, ...result };
+      return { subject, course, ...result };
     });
   }
 
@@ -557,6 +553,9 @@ export class ScheduleService {
         instructorIds: [instructorId], roomIds: [dto.roomId], studentIds,
       }));
       await this.refreshAfterLock();
+
+      // 단건 create와 동일하게 잠금 후 권위 학생 상태를 다시 검증한다.
+      this.read.validateSessionInput({ ...dto, studentIds });
 
       // 전체 conflict 선계산 — 어떤 회차도 쓰기 전에 모든 날짜를 검사(부분 커밋 원천 차단).
       const existing = this.db.findAll<ClassSession>(SESSIONS);
@@ -913,13 +912,6 @@ export class ScheduleService {
     },
   ): Promise<ScheduleMutationResult> {
     await this.read.ensureReady();
-    // [명시 코호트 v0.1.13] 부분집합 검증 — create와 동일 규칙(함수 통일: activeStudentIds 단일 소스)
-    if (dto.studentIds?.length) {
-      const cur0 = this.db.findById<ClassSession>(SESSIONS, id);
-      const allowed = new Set(this.read.activeStudentIds(dto.courseId ?? cur0?.courseId ?? 0));
-      const bad = dto.studentIds.filter((x) => !allowed.has(x));
-      if (bad.length) throw new BadRequestException(`이 코스의 활성 수강생이 아닙니다: studentId ${bad.join(', ')}`);
-    }
     // [원자성] 반복 시리즈 scope 편집 — 대상+동반 세션이 전부 반영되거나 전부 롤백(부분 편집 잔존 금지)
     // [TBO-28C] 사전 조회는 잠금 키 산정용 — 잠금 후 권위 재조회로 다시 읽는다.
     const pre = this.db.findById<ClassSession>(SESSIONS, id);
@@ -999,6 +991,7 @@ export class ScheduleService {
 
     // 1) 대상(primary) 세션의 새 필드 계산
     const primary = this.mergeFields(cur, dto);
+    this.read.validateSessionStudentIds(primary.studentIds);
     if (instructorAttendanceCommand?.kind === 'set') {
       primary.instructorAttendance = instructorAttendanceCommand.status;
     } else if (instructorAttendanceCommand?.kind === 'clear') {

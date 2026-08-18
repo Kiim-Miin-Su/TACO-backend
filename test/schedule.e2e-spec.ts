@@ -199,6 +199,45 @@ describe("Schedule API (e2e)", () => {
     expect(res.body.conflicts).toEqual([]);
   });
 
+  it("POST/PATCH /schedule — 비수강 활성 학생을 독립 참가자로 저장하고 enrollment를 변경하지 않는다", async () => {
+    const date = "2098-03-10";
+    const before = (await http.get('/api/enrollments').set(asAdmin()).expect(200)).body;
+    expect(before.some((row: { studentId: number; courseId: number; status: string }) =>
+      row.studentId === 2 && row.courseId === 10 && row.status === 'active')).toBe(false);
+
+    const created = (await http.post('/api/schedule').set(TH()).send({
+      courseId: 10,
+      instructorId: 1,
+      studentIds: [2],
+      sessionDate: date,
+      startTime: "06:00",
+      durationMinutes: 60,
+      force: true,
+    }).expect(201)).body.row;
+    expect(created).toMatchObject({ courseId: 10, studentIds: [2] });
+
+    const filtered = (await http.get('/api/schedule').set(asAdmin())
+      .query({ from: date, to: date, studentId: 2 }).expect(200)).body;
+    expect(filtered.map((row: { id: number }) => row.id)).toContain(created.id);
+
+    const patched = (await http.patch(`/api/schedule/${created.id}`).set(TH()).send({
+      studentIds: [2],
+      topic: '비수강 참가자 수정 유지',
+      force: true,
+    }).expect(200)).body.row;
+    expect(patched).toMatchObject({ studentIds: [2], topic: '비수강 참가자 수정 유지' });
+
+    const after = (await http.get('/api/enrollments').set(asAdmin()).expect(200)).body;
+    expect(after).toEqual(before);
+    await http.delete(`/api/schedule/${created.id}`).set(TH()).expect(200);
+  });
+
+  it("POST /schedule — 중복·미존재 참가자를 방어한다", async () => {
+    const base = { courseId: 10, sessionDate: "2098-03-11", startTime: "06:00", durationMinutes: 60, force: true };
+    await http.post('/api/schedule').set(TH()).send({ ...base, studentIds: [2, 2] }).expect(400);
+    await http.post('/api/schedule').set(TH()).send({ ...base, studentIds: [999999] }).expect(400);
+  });
+
   it("POST /schedule — 존재하지 않는 courseId → 400(참조 무결성)", async () => {
     await http
       .post("/api/schedule")
