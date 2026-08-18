@@ -310,12 +310,17 @@ delete_stale_locks() {
   for lock in "${locks[@]}"; do
     [[ -n "$lock" && -e "$lock" ]] || continue
     if (( $+commands[lsof] )); then
-      # `lsof -t`는 점유자가 없으면 exit 1 — err_exit 아래에서는 반드시 if 문 형태로 물어야 한다
-      #  (명령 치환에 그대로 쓰면 스크립트가 **메시지 없이** 죽는다. 실측으로 한 번 겪었다).
-      if lsof -t -- "$lock" >/dev/null 2>&1; then
+      # macOS/Codex의 Virtualization file provider가 stale lock을 read-only(`ar`)로 열어 둘 수 있다.
+      # 단순 `lsof -t`는 이 reader도 Git owner로 오인해 0-byte index.lock을 영구 보존했고,
+      # 실제 `git add`가 막혔다. lock 소유권은 write/update access(`aw`/`au`)만 인정한다.
+      # `lsof` access 필드: r=read, w=write, u=read/write.
+      if lsof -F a -- "$lock" 2>/dev/null | grep -Eq '^a[wu]$'; then
         holder="$(lsof -t -- "$lock" 2>/dev/null | tr '\n' ' ' || true)"
-        warn "$repo: ${lock:t} 은 실행 중인 프로세스(pid ${holder% })가 점유 — 건드리지 않는다"
+        warn "$repo: ${lock:t} 은 쓰기 프로세스(pid ${holder% })가 점유 — 건드리지 않는다"
         continue
+      fi
+      if lsof -t -- "$lock" >/dev/null 2>&1; then
+        warn "$repo: ${lock:t} 의 read-only file-provider handle은 Git 점유가 아니므로 stale 정리합니다"
       fi
       if rm -f -- "$lock" 2>/dev/null; then
         ok "$repo: 고아 git 락 제거 ${lock:t}"

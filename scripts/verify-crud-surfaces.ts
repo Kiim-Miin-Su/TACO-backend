@@ -118,7 +118,17 @@ const S: Record<string, Surface> = {
     verdict: 'complete',
     note: 'manager-approved content edits append exact before/after; update/delete forbidden',
   },
-  calendar_view_presets: { lifecycle: 'direct', contract: ['CalendarViewPreset'], api: ['POST /view-presets', 'PATCH /view-presets/{id}', 'DELETE /view-presets/{id}'], frontend: ['api.viewPresets'], verdict: 'complete', note: 'owner-scoped persisted CRUD' },
+  // [TBO-104 Sprint 1] 저장 프리셋 UI/client는 사용자 요구로 제거했다. DB/API를 같은 청크에서
+  // drop하면 기존 자산과 migration 순서를 깨므로, 참조 0 + forward migration 청크 전까지는
+  // server compatibility surface로 유지한다. 계약/OpenAPI는 계속 검증하되 frontend marker를
+  // 되살리지 않는다 — 물리 제거는 contracts→backend/OpenAPI→DB 순서로 별도 수행한다.
+  calendar_view_presets: {
+    lifecycle: 'direct',
+    contract: ['CalendarViewPreset'],
+    api: ['POST /view-presets', 'PATCH /view-presets/{id}', 'DELETE /view-presets/{id}'],
+    verdict: 'by-design',
+    note: 'frontend retired; owner-scoped server compatibility CRUD pending forward migration removal',
+  },
   report_templates: {
     lifecycle: 'direct',
     contract: ['ReportTemplate', 'CreateReportTemplateInput', 'UpdateReportTemplateInput'],
